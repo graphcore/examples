@@ -1,0 +1,34 @@
+*.tar.gz
+
+**/weights
+**/images
+
+**/model
+**/data
+**/logs
+
+!tensorflow/sequence-modeling/nmt/data/
+
+*.pyc
+__pycache__
+.cache
+*.csv
+*.json
+*.log
+
+report.txt
+
+*.onnx
+
+.DS_Store
+
+.idea
+.project
+.pydevproject
+
+# Remove VIM temp files
+*.swp
+
+# C++ examples build into the "build" directory
+**/build
+.vscode

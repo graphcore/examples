@@ -1,0 +1,7 @@
+ckpts
+!*.json
+*.so
+*.gp
+__*
+!__*.py
+test_results

@@ -1,0 +1,171 @@
+# Copyright 2019 Graphcore Ltd.
+import argparse
+import time
+import json
+import popart
+import json
+import numpy as np
+from collections import namedtuple
+
+Benchmark = namedtuple(
+    'Benchmark', [
+        'graph_builder',     # opts -> proto,data,outputs,losses,optimizer
+        'add_args',          # parser -> parser
+        'iteration_report',  # duration,opts -> string
+    ]
+)
+Benchmark.__new__.__defaults__ = (lambda parser: parser, lambda *_: "")
+
+
+def run(benchmark, opts):
+    proto, data, outputs, losses, optimizer = benchmark.graph_builder(opts)
+
+    if opts.save_graph:
+        with open('model.onnx', "wb") as f:
+            f.write(proto)
+            print("Written to file: model.onnx")
+
+    dataFlow = popart.DataFlow(opts.batches_per_step, outputs)
+
+    # Create a session to compile and execute the graph
+    options = popart.SessionOptions()
+    options.ignoreData = not opts.use_data
+    options.engineOptions = {
+        "debug.instrumentCompute": "true" if opts.cycle_report else "false"
+    }
+    if opts.convolution_options:
+        options.convolutionOptions = json.loads(opts.convolution_options)
+
+    if opts.shards > 1:
+        if opts.auto_sharding:
+            options.virtualGraphMode = popart.VirtualGraphMode.Auto
+        else:
+            options.virtualGraphMode = popart.VirtualGraphMode.Manual
+
+    options.enablePipelining = opts.pipeline
+
+    # Select a device
+    deviceManager = popart.DeviceManager()
+    if opts.simulation:
+        deviceOptions = {"compileIPUCode": True,
+                         'numIPUs': opts.shards, "tilesPerIPU": 1216}
+        device = deviceManager.createIpuModelDevice(deviceOptions)
+    else:
+        device = deviceManager.acquireAvailableDevice(opts.shards)
+        if device is None:
+            raise OSError("Failed to acquire IPU.")
+
+    if opts.mode == 'train':
+        session = popart.TrainingSession(fnModel=proto,
+                                         losses=losses,
+                                         deviceInfo=device,
+                                         optimizer=optimizer,
+                                         dataFeed=dataFlow,
+                                         userOptions=options)
+    else:
+        session = popart.InferenceSession(fnModel=proto,
+                                          losses=losses,
+                                          deviceInfo=device,
+                                          dataFeed=dataFlow,
+                                          userOptions=options)
+
+    print("Compiling...")
+    start = time.time()
+    session.prepareDevice()
+    compilation_duration = time.time() - start
+    print("Duration: {:.3f} seconds\n".format(compilation_duration))
+
+    if opts.tensor_tile_mapping:
+        with open("tile_mapping.json", 'w') as f:
+            json.dump(session.getTensorTileMap(), f)
+            print("Written to file: tile_mapping.json")
+
+    # Create buffers to receive results from the execution
+    anchors = session.initAnchorArrays()
+
+    # Copy weights and optimization parameters onto the device
+    session.weightsFromHost()
+    if opts.mode == 'train':
+        session.optimizerFromHost()
+
+    # Add a batches_per_step dimension if needed
+    if opts.batches_per_step > 1:
+        data = {k: np.repeat(v[np.newaxis], opts.batches_per_step, 0)
+                for k, v in data.items()}
+
+    stepio = popart.PyStepIO(data, anchors)
+
+    print("Executing...")
+    average_batches_per_sec = 0
+    # Steps
+    for __ in range(opts.steps):
+        # Run
+        start = time.time()
+        session.run(stepio)
+        duration = time.time() - start
+
+        if opts.cycle_report:
+            return save_reports(opts, session)
+
+        average_batches_per_sec += (opts.batches_per_step /
+                                    duration)/opts.steps
+        report_string = "{:<8.3} sec/itr.".format(duration)
+        report_string += "   " + benchmark.iteration_report(opts, duration)
+        print(report_string)
+
+    return compilation_duration, average_batches_per_sec
+
+
+def parse_opts(benchmark, arg_string=None):
+    parser = argparse.ArgumentParser(
+        description='Synthetic Benchmarks in Popart', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    # Default Arguments
+    parser.add_argument('--mode', choices=["infer", "eval", "train"], default='infer',
+                        help='Which graph to run: infer/eval/train')
+    parser.add_argument('--use-data', action="store_true",
+                        help="Add data transfer ops. Models execution with IO but unbounded by the CPU pipeline.")
+    parser.add_argument('--cycle-report', action="store_true",
+                        help="Generate Cycle Report when run on hardware")
+    parser.add_argument('--batches-per-step', type=int, default=1,
+                        help="Number of batches to run per step (on the device)")
+    parser.add_argument('--steps', type=int, default=1,
+                        help="Number of steps to run (on the host)")
+    parser.add_argument('--convolution-options', type=str,
+                        help='Set convolution options as a JSON string.')
+    parser.add_argument('--shards', type=int, default=1,
+                        help="Select a number of IPUs to split across")
+    parser.add_argument('--auto-sharding', action="store_true",
+                        help="Use auto sharding")
+    parser.add_argument('--pipeline', action="store_true",
+                        help="Pipeline the model over 'shards' IPUs")
+    parser.add_argument('--simulation', action="store_true",
+                        help="Run the program on the IPU Model")
+    parser.add_argument('--save-graph', action="store_true",
+                        help="Save default graph to model.onnx")
+    parser.add_argument('--tile-activity-report', action="store_true",
+                        help="Save a tile activity csv")
+    parser.add_argument('--tensor-tile-mapping', action="store_true",
+                        help="Save a tensor tile mapping JSON file")
+    parser.add_argument('--use-zero-values', action="store_true",
+                        help="If True weights and input will be initialised to zeros (otherwise random data)")
+    # Benchmark Arguments
+    benchmark.add_args(parser)
+
+    opts = parser.parse_args(arg_string)
+
+    if opts.tile_activity_report:
+        opts.cycle_report = True
+
+    if opts.cycle_report:
+        opts.batches_per_step = 1
+
+    # Should change this to a dictonary
+    return opts
+
+
+def save_reports(opts, session):
+    with open("graph.json", "wb") as f:
+        f.write(session.getGraphReport())
+    with open("execution.json", "wb") as f:
+        f.write(session.getExecutionReport())
+    print("Written to: graph.json, execution.json")

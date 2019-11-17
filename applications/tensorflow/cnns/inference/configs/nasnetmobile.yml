@@ -1,0 +1,6 @@
+input_shape: [224, 224, 3]
+penultimate_filters: 1056
+num_blocks: 4
+stem_block_filters: 32
+skip_reduction: False
+filter_multiplier: 2

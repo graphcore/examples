@@ -1,0 +1,5 @@
+input_shape: [224, 224, 3]
+model: efficientnet-edgetpu-L
+model_url: https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/efficientnet-edgetpu-L.tar.gz
+dtype: float32
+graph_input: images

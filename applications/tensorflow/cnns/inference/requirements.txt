@@ -1,0 +1,4 @@
+pyyaml
+pillow
+pytest
+matplotlib

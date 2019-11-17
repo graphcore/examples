@@ -1,0 +1,25 @@
+{
+    "task": "SQUAD",
+    "num_layers": 24,
+    "layers_per_ipu": 2,
+    "hidden_size": 1024,
+    "attention_heads": 16,
+    "sequence_length": 128,
+    "popart_dtype": "FLOAT16",
+    "stochastic_rounding": true,
+    "custom_ops": [
+        "gather",
+        "attention"
+    ],
+    "batches_per_step": 8192,
+    "epochs": 10,
+    "aggregate_epochs_over_steps": 1,
+    "input_files": [
+        "data/squad/train-v1.1.json"
+    ],
+    "synthetic_data": true,
+    "vocab_length": 30400,
+    "pipeline": true,
+    "no_model_save": true,
+    "no_validation": true
+}
