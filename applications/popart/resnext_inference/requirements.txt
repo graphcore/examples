@@ -1,6 +1,6 @@
 absl-py==0.8.0
 onnx==1.5.0
-Pillow==6.1.0
+Pillow==6.2.0
 torch==1.2.0
 torchvision==0.4.0
 urllib3==1.25.3
