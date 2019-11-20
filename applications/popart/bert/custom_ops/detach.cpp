@@ -62,4 +62,4 @@ public:
 };
 
 static popart::popx::OpxCreator<DetachOpx>
-    detachOpxCreator(CustomOperators::Detach)
+    detachOpxCreator(CustomOperators::Detach);

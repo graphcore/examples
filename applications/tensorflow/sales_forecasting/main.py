@@ -419,7 +419,9 @@ def get_options():
                        help="Select IPUs either: AUTO or tuple of ids ('TRAIN,VALID')")
     group.add_argument('--valid-per-epoch',     type=float, default=1,
                        help="Validation steps per epoch.")
-    group.add_argument('--batches-per-step',    type=int,   default=8069,
+    # The rossmann dataset has 806871 elements.  In data.py, drop_remainder drops 806871 % batch_size = 71 elements (by default), leaving 806800.
+    # With a default "batch size" of 100 and a default "batches per step" of 8068 the model trains on 1 epoch of data per step.
+    group.add_argument('--batches-per-step',    type=int,   default=8068,
                        help="How many minibatches to perform on the device before returning to the host."
                             "When replication is set to N, the data stream is split into N streams, each doing 1/N batches."
                             "If replication-factor is set to N, this must be a minimum of N.")

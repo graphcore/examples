@@ -41,7 +41,7 @@ pip install -r requirements.txt
 
 **1) Download dataset from Kaggle**
 
-The data for this example is from a Kaggle competition. You will need to create a Kaggle account from here: https://www.kaggle.com/account/login. Then, navigate to https://www.kaggle.com/c/rossmann-store-sales/data) and press the "Download All" button. Alternatively, you can use the Kaggle API (https://github.com/Kaggle/kaggle-api) to download it via command line with `kaggle competitions download rossmann-store-sales` after setting up your Kaggle API token.
+The data for this example is from a Kaggle competition. You will need to create a Kaggle account from here: https://www.kaggle.com/account/login. Then, navigate to https://www.kaggle.com/c/rossmann-store-sales/data) and press the "Download All" button. If you haven't already, you will be asked to verify your Kaggle account via your mobile phone. After entering a valid mobile phone number you will receive an SMS message with a verification code. Alternatively, you can use the Kaggle API (https://github.com/Kaggle/kaggle-api) to download it via command line with `kaggle competitions download rossmann-store-sales` after setting up your Kaggle API token.
 
 **2) Extract the data into a folder**
 

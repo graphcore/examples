@@ -38,7 +38,7 @@ The `code_examples/` folder contains small code examples showing you how to use 
 
 ### Utilities
 
-The `utils/` folder contains utilities libraries and scripts that are used across the other code examples. Current this is split into:
+The `utils/` folder contains utilities libraries and scripts that are used across the other code examples. Currently this is split into:
 
 * `utils/tests` - Common python helper functions for the repo's unit tests.
 * `utils/benchmarks` - Common python helper functions for running benchmarks on the IPU in different frameworks.

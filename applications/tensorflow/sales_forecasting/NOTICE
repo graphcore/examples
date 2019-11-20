@@ -15,9 +15,9 @@ Horovod
    See the License for the specific language governing permissions and
    limitations under the License.
 
-   The derived work can be found in the files:
+   The derived work can be found at
 
-        - models/tensorflow/mlp.py
+          https://github.com/horovod/horovod/blob/master/examples/keras_spark_rossmann.py
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:

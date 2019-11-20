@@ -271,4 +271,4 @@ void EmbeddingGatherGradOpx::grow(poplar::program::Sequence &prog) const
 }
 
 static popart::popx::OpxCreator<EmbeddingGatherOpx> embeddingGatherOpxCreator(CustomOperators::EmbeddingGather);
-static popart::popx::OpxCreator<EmbeddingGatherGradOpx> embeddingGatherGradOpxCreator(CustomGradOperators::EmbeddingGatherGrad)
+static popart::popx::OpxCreator<EmbeddingGatherGradOpx> embeddingGatherGradOpxCreator(CustomGradOperators::EmbeddingGatherGrad);

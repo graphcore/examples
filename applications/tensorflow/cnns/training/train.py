@@ -62,7 +62,6 @@ def calculate_loss(logits, label, opts):
 
     tf.add_to_collection('losses', cross_entropy)
     loss = tf.add_n(tf.get_collection('losses'), name='total_loss')
-    loss *= opts['loss_scaling']
 
     return loss, cross_entropy, accuracy
 
@@ -73,45 +72,25 @@ def get_optimizer(opts):
     elif opts['optimiser'] == 'momentum':
         opt_fun = partial(tf.train.MomentumOptimizer, momentum=opts['momentum'])
 
+    wd_exclude = opts["wd_exclude"] if "wd_exclude" in opts.keys() else []
+
+    def filter_fn(name):
+        return not any(s in name for s in wd_exclude)
+
     return lambda lr: IPUOptimizer(opt_fun(lr),
                                    sharded=opts["shards"] > 1 and opts['pipeline_depth'] == 1,
                                    replicas=opts["replicas"],
-                                   gradients_to_accumulate=opts['pipeline_depth'] * opts["gradients_to_accumulate"])
-
-
-def calculate_gradients(loss, weight_decay, opts):
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    with tf.control_dependencies(update_ops):
-        grads = tf.gradients(loss, tf.trainable_variables(), colocate_gradients_with_ops=True)
-    grads = list(zip(grads, tf.trainable_variables()))
-
-    # apply weight decay directly to grads
-    if weight_decay != 0:
-        wd_exclude = opts["wd_exclude"] if "wd_exclude" in opts.keys() else []
-
-        def filter_fn(name):
-            return not any(s in name for s in wd_exclude)
-
-        grads = [(grad + (weight_decay * var), var) if filter_fn(var.name) else (grad, var)
-                 for grad, var in grads]
-
-    return grads
-
-
-def apply_gradients(grads_and_vars, opts=None, learning_rate=None):
-    gradient_scale = opts['loss_scaling']
-    scaled_learning_rate = learning_rate / gradient_scale
-    optimizer = get_optimizer(opts)(scaled_learning_rate)
-
-    apply_grads = optimizer.apply_gradients(grads_and_vars=grads_and_vars)
-
-    return learning_rate, scaled_learning_rate, apply_grads
+                                   gradients_to_accumulate=opts["gradients_to_accumulate"] * opts['pipeline_depth'],
+                                   pipelining = opts['pipeline_depth'] > 1,
+                                   weight_decay=opts["weight_decay"] * opts['loss_scaling'],
+                                   weight_decay_filter_fn=filter_fn)
 
 
 def calculate_and_apply_gradients(loss, opts=None, learning_rate=None):
-    grads_and_vars = calculate_gradients(loss, opts["weight_decay"] * opts['loss_scaling'], opts)
-
-    return apply_gradients(grads_and_vars, opts, learning_rate)
+    optimizer = get_optimizer(opts)(learning_rate / opts['loss_scaling'])
+    grads_and_vars = optimizer.compute_gradients(loss * opts['loss_scaling'])
+    with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+        return learning_rate, optimizer.apply_gradients(grads_and_vars)
 
 
 def basic_training_step(image, label, model, opts, learning_rate):
@@ -121,14 +100,14 @@ def basic_training_step(image, label, model, opts, learning_rate):
     logits = model(opts, training=True, image=image)
     loss, cross_entropy, accuracy = calculate_loss(logits, label, opts)
 
-    learning_rate, scaled_learning_rate, train_op = calculate_and_apply_gradients(loss, opts, learning_rate=learning_rate)
+    learning_rate, train_op = calculate_and_apply_gradients(loss, opts, learning_rate=learning_rate)
     if opts['shards'] > 1:
         def filter(edge):
             return (any(f in e for e in edge for f in opts["sharding_exclude_filter"]) or
                     not any(f in e for e in edge for f in opts["sharding_include_filter"]))
         automatic_sharding(opts['shards'], image, cross_entropy, edge_filter=filter)
 
-    return loss / opts["loss_scaling"], cross_entropy, accuracy, learning_rate, scaled_learning_rate, train_op
+    return loss, cross_entropy, accuracy, learning_rate, train_op
 
 
 def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, iterations_per_step=1):
@@ -139,26 +118,23 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
     def final_stage(learning_rate, x, label,  pipeline_stage=None):
         x = pipeline_stage(x)
         loss, cross_entropy, accuracy = calculate_loss(x, label, opts)
-        return learning_rate, loss, cross_entropy, accuracy
+        return loss, cross_entropy, accuracy, learning_rate / opts["loss_scaling"]
 
     model_stages = model(opts)
     computational_stages = [partial(first_stage, pipeline_stage=model_stages[x]) for x in range(len(model_stages) - 1)]
     computational_stages.append(partial(final_stage, pipeline_stage=model_stages[-1]))
 
-    def optimizer_stage(lr, loss, cross_entropy, accuracy):
-        grads_and_vars = calculate_gradients(loss, opts["weight_decay"]*opts['loss_scaling'], opts)
+    def optimizer_function(loss, _, __, lr):
         optimizer = get_optimizer(opts)(lr)
-        apply_grads = optimizer.apply_gradients(grads_and_vars=grads_and_vars)
-
-        return loss / opts["loss_scaling"], cross_entropy, accuracy, lr * opts['loss_scaling'], lr, apply_grads
+        return pipelining_ops.OptimizerFunctionOutput(optimizer, loss * opts["loss_scaling"])
 
     return pipelining_ops.pipeline(computational_stages=computational_stages,
                                    pipeline_depth=int(opts['pipeline_depth']),
                                    repeat_count=iterations_per_step,
-                                   inputs=[learning_rate/opts['loss_scaling']],
+                                   inputs=[learning_rate],
                                    infeed_queue=infeed,
                                    outfeed_queue=outfeed,
-                                   optimizer_stage=optimizer_stage,
+                                   optimizer_function=optimizer_function,
                                    pipeline_schedule=next(p for p in list(pipelining_ops.PipelineSchedule)
                                                           if opts["pipeline_schedule"] == str(p).split(".")[-1]),
                                    name="Pipeline")
@@ -188,8 +164,8 @@ def training_step_with_infeeds_and_outfeeds(train_iterator, outfeed, model, opts
                                 learning_rate=learning_rate)
 
         def training_step_loop(image=None, label=None, outfeed=None):
-            loss, cross_ent, accuracy, lr_out, scaled_lr_out, apply_grads = training_step(image, label)
-            outfeed = outfeed.enqueue((loss, cross_ent, accuracy, lr_out, scaled_lr_out))
+            loss, cross_ent, accuracy, lr_out, apply_grads = training_step(image, label)
+            outfeed = outfeed.enqueue((loss, cross_ent, accuracy, lr_out))
             return outfeed, apply_grads
 
         def compiled_fn():
@@ -254,14 +230,13 @@ def training_step(train, e, learning_rate):
     _ = train.session.run(train.ops, feed_dict={train.placeholders['learning_rate']: learning_rate})
     batch_time = (time.time() - start)
     if not os.environ.get('TF_POPLAR_FLAGS') or '--use_synthetic_data' not in os.environ.get('TF_POPLAR_FLAGS'):
-        loss, cross_ent, accuracy, lr_out, scaled_lr = train.session.run(train.outfeed)
+        loss, cross_ent, accuracy, lr_out = train.session.run(train.outfeed)
         loss = np.mean(loss)
         accuracy = 100.0 * np.mean(accuracy)
         lr = lr_out.flatten()[-1]
-        scaled_lr = scaled_lr.flatten()[-1]
     else:
-        loss, accuracy, lr, scaled_lr = 0, 0, 0, 0
-    return loss, accuracy, batch_time, lr, scaled_lr
+        loss, accuracy, lr = 0, 0, 0
+    return loss, accuracy, batch_time, lr
 
 
 def train_process(model, LR_Class, opts):
@@ -346,7 +321,9 @@ def train_process(model, LR_Class, opts):
 
         # Run Training
         try:
-            batch_loss, batch_acc, batch_time, current_lr, scaled_lr = training_step(train, i + 1, LR.feed_dict_lr(i))
+            batch_loss, batch_acc, batch_time, current_lr = training_step(train, i + 1, LR.feed_dict_lr(i))
+            if opts['pipeline_depth'] > 1:
+                current_lr *= opts["loss_scaling"]
         except tf.errors.OpError as e:
             raise tf.errors.ResourceExhaustedError(e.node_def, e.op, e.message)
 
@@ -380,7 +357,6 @@ def train_process(model, LR_Class, opts):
                 ('iteration', i+iterations_per_step),
                 ('epoch', epoch),
                 ('lr', current_lr),
-                ('scaled_lr', scaled_lr),
                 ('loss_batch', batch_loss),
                 ('loss_avg', train_loss),
                 ('train_acc_batch', batch_acc),

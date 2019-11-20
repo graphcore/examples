@@ -22,11 +22,11 @@ class DataSet:
         # and replication factor
         self.batch_shape = [samples_per_device]
 
-        if self.batches_per_step > 1:
-            self.batch_shape = [self.batches_per_step] + self.batch_shape
-
         if self.replication_factor > 1:
             self.batch_shape = [self.replication_factor] + self.batch_shape
+
+        if self.batches_per_step > 1:
+            self.batch_shape = [self.batches_per_step] + self.batch_shape
 
         # This needs to be done here as the DataLoader will fork the workers.
         # Fork does not work well once the program has started
