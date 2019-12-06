@@ -25,5 +25,9 @@
 	"extensions": [
         "ms-vscode.cpptools",
         "ms-python.python"
-	]
+	],
+
+	"workspaceFolder": "/home/bbird/project",
+	"workspaceMount": "src=/home/patrick/repos/examples,dst=/home/bbird/project,type=bind"
+
 }
