@@ -1,0 +1,4 @@
+{
+    "name": "VS Online for IPU",
+    "dockerFile": "Dockerfile"
+}
