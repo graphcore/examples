@@ -36,9 +36,7 @@ The following files are included in this repo:
 
 1. Prepare the TensorFlow environment.
    Install the poplar-sdk following the README provided. Make sure to run the enable.sh scripts and activate a Python virtualenv with gc_tensorflow installed.
-2. Setup PYTHONPATH. The model code for this example is given in examples/models. So before running the program, execute:
-   `export PYTHONPATH=$PYTHONPATH:<path-to-examples>`
-3. Run the training program.
+2. Run the training program.
    `python3 rl_benchmark.py --batch_size 8 --time_steps 16 --num_ipus 8`
 
 Use `--help` to show all available options.

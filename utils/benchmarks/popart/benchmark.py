@@ -30,6 +30,7 @@ def run(benchmark, opts):
     # Create a session to compile and execute the graph
     options = popart.SessionOptions()
     options.ignoreData = not opts.use_data
+    options.instrumentWithHardwareCycleCounter = opts.report_hw_cycle_count
     options.engineOptions = {
         "debug.instrumentCompute": "true" if opts.cycle_report else "false"
     }
@@ -113,6 +114,9 @@ def run(benchmark, opts):
         report_string += "   " + benchmark.iteration_report(opts, duration)
         print(report_string)
 
+    if opts.report_hw_cycle_count:
+        print("Hardware cycle count per 'run':", session.getCycleCount())
+
     return compilation_duration, average_batches_per_sec
 
 
@@ -148,6 +152,8 @@ def parse_opts(benchmark, arg_string=None):
                         help="Save a tensor tile mapping JSON file")
     parser.add_argument('--use-zero-values', action="store_true",
                         help="If True weights and input will be initialised to zeros (otherwise random data)")
+    parser.add_argument('--report-hw-cycle-count', type=bool, default=False,
+                        help='Report the number of cycles a "run" takes.')
     # Benchmark Arguments
     benchmark.add_args(parser)
 

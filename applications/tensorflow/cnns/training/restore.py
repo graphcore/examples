@@ -28,4 +28,4 @@ if __name__ == '__main__':
     except ImportError:
         raise ValueError("LR_Schedules/{}.py not found".format(opts['lr_schedule']))
 
-    train.train_process(model.Model, lr_schedule.LearningRate, opts)
+    train.train_process(model, lr_schedule.LearningRate, opts)

@@ -6,8 +6,6 @@ import sys
 import subprocess
 from contextlib import contextmanager
 
-import tests.test_util as tu
-
 
 def run_lstm(batch_size, timesteps, hidden_size, extra_args=None):
     cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))

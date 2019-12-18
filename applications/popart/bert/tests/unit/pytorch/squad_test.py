@@ -47,16 +47,16 @@ def test_squad_fwd(custom_ops):
     fwd_graph(popart_model,
               torch_model,
               mapping={
-                "cls.transform.dense.weight": "CLS/LMPredictionW",
-                "cls.transform.dense.bias": "CLS/LMPredictionB",
-                "cls.transform.LayerNorm.weight": "CLS/Gamma",
-                "cls.transform.LayerNorm.bias": "CLS/Beta",
-                "qa_outputs.weight": "Squad/SquadW",
-                "qa_outputs.bias": "Squad/SquadB"
+                  "cls.transform.dense.weight": "CLS/LMPredictionW",
+                  "cls.transform.dense.bias": "CLS/LMPredictionB",
+                  "cls.transform.LayerNorm.weight": "CLS/Gamma",
+                  "cls.transform.LayerNorm.bias": "CLS/Beta",
+                  "qa_outputs.weight": "Squad/SquadW",
+                  "qa_outputs.bias": "Squad/SquadB"
               },
               transform={
-                "cls.transform.dense.weight": np.transpose,
-                "qa_outputs.weight": np.transpose
+                  "cls.transform.dense.weight": np.transpose,
+                  "qa_outputs.weight": np.transpose
               })
 
 
@@ -108,14 +108,14 @@ def test_squad_bwd(custom_ops):
               popart_loss_fn=popart_loss_fn,
               torch_loss_fn=torch_loss_fn,
               mapping={
-                "cls.transform.dense.weight": "CLS/LMPredictionW",
-                "cls.transform.dense.bias": "CLS/LMPredictionB",
-                "cls.transform.LayerNorm.weight": "CLS/Gamma",
-                "cls.transform.LayerNorm.bias": "CLS/Beta",
-                "qa_outputs.weight": "Squad/SquadW",
-                "qa_outputs.bias": "Squad/SquadB"
+                  "cls.transform.dense.weight": "CLS/LMPredictionW",
+                  "cls.transform.dense.bias": "CLS/LMPredictionB",
+                  "cls.transform.LayerNorm.weight": "CLS/Gamma",
+                  "cls.transform.LayerNorm.bias": "CLS/Beta",
+                  "qa_outputs.weight": "Squad/SquadW",
+                  "qa_outputs.bias": "Squad/SquadB"
               },
               transform={
-                "cls.transform.dense.weight": np.transpose,
-                "qa_outputs.weight": np.transpose
+                  "cls.transform.dense.weight": np.transpose,
+                  "qa_outputs.weight": np.transpose
               })

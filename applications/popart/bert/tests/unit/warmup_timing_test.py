@@ -104,13 +104,13 @@ def test_warmup(custom_ops, num_steps=100000):
     popart_model = Bert(config, builder=builder)
 
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
     data = {
-        indices: np.random.randint(0, config.vocab_length, (config.batch_size * config.sequence_length)).astype(np.int32),
+        indices: np.random.randint(0, config.vocab_length, (config.batch_size * config.sequence_length)).astype(np.uint32),
         positions: np.random.randint(
-            0, config.sequence_length, (config.batch_size * config.sequence_length)).astype(np.int32)
+            0, config.sequence_length, (config.batch_size * config.sequence_length)).astype(np.uint32)
     }
 
     output = popart_model.build_graph(indices, positions)[0]

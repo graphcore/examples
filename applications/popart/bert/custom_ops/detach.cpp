@@ -1,6 +1,8 @@
 // Copyright 2019 Graphcore Ltd.
 #include <popart/op.hpp>
+#include <popart/names.hpp>
 #include <popart/opmanager.hpp>
+#include <popart/region.hpp>
 #include <popart/popx/opx.hpp>
 #include <popart/popx/opxmanager.hpp>
 #include <popart/popx/devicex.hpp>
@@ -26,8 +28,10 @@ public:
   float getSubgraphValue() const final { return getLowSubgraphValue(); }
 };
 
+static popart::OpDefinition detachOpDef({});
+
 static popart::OpCreator<DetachOp> detachOpCreator(
-  {CustomOperators::Detach},
+    popart::OpDefinitions({{CustomOperators::Detach, detachOpDef}}),
   [](const popart::OperatorIdentifier &_opid,
      const popart::Op::Settings &settings,
      const popart::Attributes &attr) -> std::unique_ptr<popart::Op> {
@@ -54,6 +58,12 @@ public:
 
   poplar::Tensor unwindTensorLayout(poplar::Tensor tensor, popart::InIndex, popart::OutIndex) const {
     return tensor;
+  }
+
+  popart::view::RegMap unwindRegion(popart::InIndex, popart::OutIndex) const {
+    return [this](const popart::view::Region &r) {
+      return popart::view::Regions(1, r);
+    };
   }
 
   void grow(poplar::program::Sequence &prog) const final {

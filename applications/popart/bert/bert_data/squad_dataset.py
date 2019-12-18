@@ -124,8 +124,13 @@ class BertDataTransform(object):
         # Out of Bounds indicies over a certain threshold will cause numerical issues.
         # 100 is unknown token [UNK]
         # 0 in the label is padding
-        OOB = items[0] > self.vocab_length
+        OOB = items[0] >= self.vocab_length
         items[0][OOB] = 100
+
+        # Force use of uint32 for all inputs.
+        for i in range(len(items)):
+            if self.is_training or i < 4:
+                items[i] = items[i].astype(np.uint32)
 
         return items
 
@@ -250,6 +255,33 @@ class SquadDataSet(DataSet):
             logger.info(status_string)
 
 
+def no_drop_batches_per_step(batches_per_step,
+                             dataset_size,
+                             batch_size,
+                             replication_factor=1,
+                             accumulation_factor=1,
+                             max_pipeline_stage=1,
+                             is_training=True):
+    fixed_factors = batch_size * replication_factor * accumulation_factor
+    if (dataset_size % fixed_factors) != 0:
+        raise RuntimeError(f"The batch_size * replication_factor * accumulation_factor does divide the dataset ({dataset_size} / {fixed_factors}). "
+                           "no_drop_remainder cannot adjust batches_per_step to use all the dataset.")
+    dataset_size = int(dataset_size // fixed_factors)
+    # Pipelining requires a minimum number of batches_per_step to make sure
+    # there is a enough data to fill the pipeline
+    if is_training:
+        min_batches_per_step = 2 * (max_pipeline_stage - 1) + 1
+    else:
+        min_batches_per_step = max_pipeline_stage
+    while batches_per_step > min_batches_per_step and (dataset_size % batches_per_step) != 0:
+        batches_per_step -= 1
+    if batches_per_step <= min_batches_per_step:
+        batches_per_step = min_batches_per_step
+        while (dataset_size % batches_per_step) != 0:
+            batches_per_step += 1
+    return batches_per_step
+
+
 def get_bert_dataset(tensor_shapes,
                      input_file,
                      output_dir,
@@ -266,7 +298,8 @@ def get_bert_dataset(tensor_shapes,
                      no_drop_remainder=False,
                      evaluate_script=None,
                      synthetic=False,
-                     do_lower_case=False):
+                     do_lower_case=False,
+                     max_pipeline_stage=1):
     samples_per_step = batch_size * batches_per_step * \
         replication_factor * accumulation_factor
 
@@ -286,20 +319,17 @@ def get_bert_dataset(tensor_shapes,
             do_lower_case=do_lower_case)
 
     if no_drop_remainder and not synthetic:
-        dataset_size = len(features)
-        fixed_factors = batch_size * replication_factor * accumulation_factor
-        if (dataset_size % fixed_factors) != 0:
-            raise RuntimeError(f"The batch_size * replication_factor * accumulation_factor does divide the dataset ({len(features)} / {fixed_factors}). "
-                               "no_drop_remainder cannot adjust batches_per_step to use all the dataset.")
-        else:
-            dataset_size = int(dataset_size // fixed_factors)
-            while (dataset_size % batches_per_step) != 0:
-                batches_per_step -= 1
-            if batches_per_step == 1:
-                batches_per_step = dataset_size
-            logger.info(f"Adjusted Batches Per Step to: {batches_per_step}")
-            samples_per_step = batch_size * batches_per_step * \
-                replication_factor * accumulation_factor
+        batches_per_step = no_drop_batches_per_step(
+            batches_per_step,
+            len(features),
+            batch_size,
+            replication_factor,
+            accumulation_factor,
+            max_pipeline_stage,
+            is_training)
+        logger.info(f"Adjusted Batches Per Step to: {batches_per_step}")
+        samples_per_step = batch_size * batches_per_step * \
+            replication_factor * accumulation_factor
 
     dl = SquadDataLoader(
         features,

@@ -4,7 +4,7 @@ SSD implementation based on Vgg-16 entry network as originally published by Liu 
 
 This version processes a single image at a time without the use of in-feeds.
 
-This is an implementation fhe Single Shot MultiBox Detector (SSD) using a dual-device, single-graph
+This is an implementation of the Single Shot MultiBox Detector (SSD) using a dual-device, single-graph
 framework as deployed for inference. The convolutional component of the model is entirely deployed
 on the IPU, while the decoding component lives entirely on host.
 
@@ -13,7 +13,7 @@ in his Github repository:
 
 https://github.com/pierluigiferrari/ssd_keras
 
-The code can be run with randomly generated weights for purely synthetic benchmarking purposed,
+The code can be run with randomly generated weights for purely synthetic benchmarking purposes,
 or trained weights can be loaded to run actual detections. Further details can be found in the README
 file included in this directory.
 

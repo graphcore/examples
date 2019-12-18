@@ -128,6 +128,15 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
         optimizer = get_optimizer(opts)(lr)
         return pipelining_ops.OptimizerFunctionOutput(optimizer, loss * opts["loss_scaling"])
 
+    options = None
+    amps = opts['available_memory_proportion']
+    if amps and len(amps) > 1:
+        # Map values to the different pipeline stages
+        options = []
+        for i in range(len(amps) // 2):
+            options.append(pipelining_ops.PipelineStageOptions({"availableMemoryProportion": amps[2*i]},
+                                                               {"availableMemoryProportion": amps[2*i + 1]}))
+
     return pipelining_ops.pipeline(computational_stages=computational_stages,
                                    pipeline_depth=int(opts['pipeline_depth']),
                                    repeat_count=iterations_per_step,
@@ -135,6 +144,8 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
                                    infeed_queue=infeed,
                                    outfeed_queue=outfeed,
                                    optimizer_function=optimizer_function,
+                                   forward_propagation_stages_poplar_options=options,
+                                   backward_propagation_stages_poplar_options=options,
                                    pipeline_schedule=next(p for p in list(pipelining_ops.PipelineSchedule)
                                                           if opts["pipeline_schedule"] == str(p).split(".")[-1]),
                                    name="Pipeline")
@@ -208,6 +219,10 @@ def training_graph(model, opts, iterations_per_step=1):
         ipu.utils.move_variable_initialization_to_cpu()
         train_init = tf.global_variables_initializer()
 
+    globalAMP = None
+    if opts["available_memory_proportion"] and len(opts["available_memory_proportion"]) == 1:
+        globalAMP = opts["available_memory_proportion"][0]
+
     ipu_options = get_config(ipu_id=opts["select_ipu"],
                              prng=not opts["no_stochastic_rounding"],
                              shards=opts["shards"],
@@ -216,7 +231,7 @@ def training_graph(model, opts, iterations_per_step=1):
                              fp_exceptions=opts["fp_exceptions"],
                              xla_recompute=opts["xla_recompute"],
                              seed=opts["seed"],
-                             availableMemoryProportion=opts["available_memory_proportion"])
+                             availableMemoryProportion=globalAMP)
 
     ipu.utils.configure_ipu_system(ipu_options)
     train_sess = tf.Session(graph=train_graph, config=tf.ConfigProto())
@@ -301,7 +316,7 @@ def train_process(model, LR_Class, opts):
 
     # ------------- TRAINING LOOP ----------------
 
-    print_format = ("step: {step:6d}, iteration: {iteration:6d}, epoch: {epoch:6.2f}, lr: {lr:6.4g}, loss: {loss_avg:6.3f}, accuracy: {train_acc_avg:6.3f}%"
+    print_format = ("step: {step:6d}, iteration: {iteration:6d}, epoch: {epoch:6.2f}, lr: {lr:6.4g}, loss: {loss_avg:6.3f}, top-1 accuracy: {train_acc_avg:6.3f}%"
                     ", img/sec: {img_per_sec:6.2f}, time: {it_time:8.6f}, total_time: {total_time:8.1f}")
 
     step = 0
@@ -382,7 +397,7 @@ def train_process(model, LR_Class, opts):
         i += iterations_per_step
 
     # ------------ RUN VALIDATION ------------
-    if opts['validation']:
+    if 'validation_points' in locals() and opts['validation']:
         for iteration, epoch, first_run, filepath in validation_points:
             validation.validation_run(valid, filepath, iteration, epoch, first_run, opts)
 
@@ -500,7 +515,7 @@ def add_ipu_arguments(parser):
     group.add_argument('--xla-recompute', action="store_true",
                        help="Allow recomputation of activations to reduce memory usage")
     group.add_argument('--seed', default=None, help="Seed for randomizing training")
-    group.add_argument('--available-memory-proportion', default=None,
+    group.add_argument('--available-memory-proportion', default=None, nargs='+',
                        help="Proportion of memory which is available for convolutions. Use a value of less than 0.6 "
                             "to reduce memory usage.")
     return parser
@@ -541,7 +556,6 @@ def create_parser(model, lr_schedule, parser):
     parser = dataset.add_arguments(parser)
     parser = add_training_arguments(parser)
     parser = lr_schedule.add_arguments(parser)
-    parser = validation.add_validation_arguments(parser)
     parser = add_ipu_arguments(parser)
     parser = logging.add_arguments(parser)
     return parser
@@ -586,6 +600,13 @@ if __name__ == '__main__':
             raise ValueError("gradients-to-accumulate can't be specified when using --pipeline-depth > 1")
         if opts['pipeline_depth'] > 1 and opts['shards'] == 1:
             raise ValueError("--pipeline-depth can only be used if --shards > 1")
+        amps = opts['available_memory_proportion']
+        if amps and len(amps) > 1:
+            if not opts['pipeline_depth'] > 1:
+                raise ValueError('--available-memory-propotion should only have one value unless using pipelining')
+            if len(amps) != int(opts['shards']) * 2:
+                raise ValueError('--available-memory-propotion should have either one value or 2*shards values specified')
+
         opts["command"] = ' '.join(sys.argv)
         set_defaults(model, lr_schedule, opts)
 

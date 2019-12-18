@@ -3,6 +3,5 @@ custom_ops.so: custom_ops/*
 		custom_ops/attention.cpp \
 		custom_ops/embeddingGather.cpp \
 		custom_ops/detach.cpp \
-		custom_ops/gelu.cpp \
 		-shared -lpopart -lpoplar -lpoplin -lpopnn -lpopops -lpoputil -lpoprand \
 		-o custom_ops.so

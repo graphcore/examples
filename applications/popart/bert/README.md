@@ -39,8 +39,8 @@ Instructions on how to download the Wikipedia and SQuAD datasets can be found in
 
 If full pre-training is required (with the two phases with different sequence lengths) then data will need to be generated separately for the two phases: 
 
--  once with --sequence-length 128 and --mask-tokens 20
-- once with --sequence-length 384 --mask-tokens 60
+- once with --sequence-length 128 --mask-tokens 20 --duplication-factor 6
+- once with --sequence-length 384 --mask-tokens 56 --duplication-factor 6
 
 See the `bert_data/README.md file`  for more details on how to generate this data. 
 
@@ -78,9 +78,15 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-##### 3) Compile `custom_ops`
+##### 3) Install Boost and compile `custom_ops`
 
-Run:
+To install Boost run:
+
+```bash
+apt-get update; apt-get install libboost-dev
+```
+
+To compile custom_ops run:
 
 ```bash
 make
@@ -159,13 +165,6 @@ python bert.py --config configs/demo.json
 
 This will compile the graph and run for 150 epochs. At end our model should have overfit to 100% test accuracy.
 
-#### Pre-training results (small sample)
-
-```
-[...]
-Iteration: 149 Epoch: 149/149 Loss (MLM NSP): 0.019 0.029 Accuracy (MLM NSP): 0.993 1.000 Learning Rate: 0.00080 Duration: 0.1593 s Throughput:  740.8 samples/s
-```
-
 ##### View the pre-training results in Tensorboard
 
 `requirements.txt` will install a standalone version of tensorboard. The program will log all training runs to `--log-dir`(`logs` by default). View them by running:
@@ -176,22 +175,13 @@ tensorboard --logdir logs
 
 ### Run the training loop for pre-training (Wikipedia)
 
-For BERT Base, use the following command:
+For BERT Base phase 1, use the following command:
 
 `python bert.py --config configs/pretrain_base.json`
 
-For BERT Large, use the following command:
+For BERT Base phase 2, use the following command:
 
-`python bert.py --config configs/pretrain_large.json`
-
-#### Pre-training results (Wikipedia)
-
-The expected result from phase 1 of pretraining (`pretrain_base.json`) is:
-
-```
-[...]
-Iteration:  12000 Epoch:   2/2 Loss (MLM NSP): 1.847 0.067 Accuracy (MLM NSP): 0.633 0.975 Learning Rate: 0.00012
-```
+`python bert.py --config configs/pretrain_base_384.json`
 
 ### Run the training loop with training data (SQuAD 1.1)
 

@@ -171,10 +171,7 @@ def train(opts):
 
     # Options
     userOpts = popart.SessionOptions()
-    userOpts.logging = {
-        'ir': 'TRACE' if opts.log_graph_trace else 'CRITICAL',
-        'devicex': 'CRITICAL'
-    }
+
     # The validation graph by default will be optimized to change all variables to constants
     # This prevents that, which allows for checkpoints to be loaded into the model without recompiling
     userOpts.constantWeights = False
@@ -249,5 +246,9 @@ if __name__ == "__main__":
     parser.add_argument('--log-graph-trace', action='store_true',
                         help="Turn on ir logging to display the graph's ops.")
     opts = parser.parse_args()
+
+    # Set logging
+    popart.getLogger('ir').setLevel('TRACE' if opts.log_graph_trace else 'CRITICAL')
+    popart.getLogger('devicex').setLevel('CRITICAL')
 
     train(opts)

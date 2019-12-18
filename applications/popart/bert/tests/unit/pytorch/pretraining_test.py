@@ -32,6 +32,7 @@ def test_pretraining_fwd(custom_ops):
     builder = popart.Builder(opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1})
     config = BertConfig(task="PRETRAINING",
                         vocab_length=9728,
+                        projection_serialization_steps=4,
                         num_layers=2,
                         batch_size=1,
                         hidden_size=768,
@@ -62,6 +63,7 @@ def test_pretraining_bwd(custom_ops):
     builder = popart.Builder(opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1})
     config = BertConfig(task="PRETRAINING",
                         vocab_length=9728,
+                        projection_serialization_steps=4,
                         num_layers=1,
                         batch_size=1,
                         hidden_size=768,

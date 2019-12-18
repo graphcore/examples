@@ -15,6 +15,18 @@ from .full_graph_utils import fwd_graph, bwd_graph
 Tests the full nsp graph.
 '''
 
+NSP_MAPPING = {
+    "bert.pooler.dense.weight": "NSP/PoolW",
+    "bert.pooler.dense.bias": "NSP/PoolB",
+    "cls.seq_relationship.weight": "NSP/NspW",
+    "cls.seq_relationship.bias": "NSP/NspB"
+}
+
+NSP_TRANSFORM = {
+    "bert.pooler.dense.weight": np.transpose,
+    "cls.seq_relationship.weight": np.transpose
+}
+
 
 def test_nsp_fwd(custom_ops):
     #  ------------------- PopART --------------------
@@ -39,7 +51,7 @@ def test_nsp_fwd(custom_ops):
                         num_hidden_layers=config.num_layers,
                         num_attention_heads=config.attention_heads,
                         intermediate_size=config.ff_size,
-                        hidden_act="relu",
+                        hidden_act=config.activation_type,
                         max_position_embeddings=config.max_positional_length,
                         layer_norm_eps=config.layer_norm_eps,
                         mask_tokens=config.mask_tokens,
@@ -47,16 +59,8 @@ def test_nsp_fwd(custom_ops):
 
     fwd_graph(popart_model,
               torch_model,
-              mapping={
-                  "bert.pooler.dense.weight": "NSP/PoolW",
-                  "bert.pooler.dense.bias": "NSP/PoolB",
-                  "cls.seq_relationship.weight": "NSP/NspW",
-                  "cls.seq_relationship.bias": "NSP/NspB"
-              },
-              transform={
-                  "bert.pooler.dense.weight": np.transpose,
-                  "cls.seq_relationship.weight": np.transpose
-              })
+              mapping=NSP_MAPPING,
+              transform=NSP_TRANSFORM)
 
 
 def test_nsp_bwd(custom_ops):
@@ -81,7 +85,7 @@ def test_nsp_bwd(custom_ops):
                         num_hidden_layers=config.num_layers,
                         num_attention_heads=config.attention_heads,
                         intermediate_size=config.ff_size,
-                        hidden_act="relu",
+                        hidden_act=config.activation_type,
                         max_position_embeddings=config.max_positional_length,
                         layer_norm_eps=config.layer_norm_eps,
                         mask_tokens=config.mask_tokens,
@@ -99,13 +103,5 @@ def test_nsp_bwd(custom_ops):
               torch_model,
               popart_loss_fn=popart_loss_fn,
               torch_loss_fn=torch_loss_fn,
-              mapping={
-                  "bert.pooler.dense.weight": "NSP/PoolW",
-                  "bert.pooler.dense.bias": "NSP/PoolB",
-                  "cls.seq_relationship.weight": "NSP/NspW",
-                  "cls.seq_relationship.bias": "NSP/NspB"
-              },
-              transform={
-                  "bert.pooler.dense.weight": np.transpose,
-                  "cls.seq_relationship.weight": np.transpose
-              })
+              mapping=NSP_MAPPING,
+              transform=NSP_TRANSFORM)

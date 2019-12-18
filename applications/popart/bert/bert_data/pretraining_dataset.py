@@ -52,7 +52,8 @@ class BinaryDataLoader(object):
                  batch_size=1,
                  dtype=np.int32,
                  shuffle=True,
-                 duplication_factor=1):
+                 duplication_factor=1,
+                 start_data_at_epoch=0):
         self.files = input_files
         self.sample_size = reduce(lambda a, s: a + s, sample_sizes, 0)
         self.sample_sizes = sample_sizes
@@ -60,7 +61,7 @@ class BinaryDataLoader(object):
         self.dtype = dtype
         self.file_index = 0
         self.data_index = 0
-        self.file_duplication_index = [0] * len(self.files)
+        self.file_duplication_index = [start_data_at_epoch % duplication_factor] * len(self.files)
         self.duplication_factor = duplication_factor
         self.shuffle = shuffle
         self.len = None
@@ -246,12 +247,16 @@ class BertDataTransform(object):
         # Mask values that are not within the vocab_length
         # 100 is unknown token [UNK]
         # 0 in the label is padding
-        OOB = items[0] > self.vocab_length
+        OOB = items[0] >= self.vocab_length
         items[0][OOB] = 100
 
         # TODO: If Ind == [MASK] and label > vocab_length, should [MASK] be changed to [UNK]
-        OOB = items[5] > self.vocab_length
+        OOB = items[5] >= self.vocab_length
         items[5][OOB] = 0
+
+        # Force use of uint32 for all inputs.
+        for i in range(len(items)):
+            items[i] = items[i].astype(np.uint32)
         return items
 
 
@@ -267,14 +272,16 @@ def get_bert_dataset(tensor_shapes,
                      duplication_factor=1,
                      shuffle=True,
                      synthetic=False,
-                     epochs_to_cache=0):
+                     epochs_to_cache=0,
+                     start_data_at_epoch=0):
     if len(input_files) == 0 and not synthetic:
         raise ValueError("No input files were provided for the BERT dataset.")
     data_loader_args = dict(
         input_files=input_files,
         sample_sizes=data_file_format(sequence_length, mask_tokens),
         batch_size=batch_size * batches_per_step * replication_factor * accumulation_factor,
-        duplication_factor=duplication_factor
+        duplication_factor=duplication_factor,
+        start_data_at_epoch=start_data_at_epoch
     )
     if synthetic:
         dl = SyntheticDataLoader(**data_loader_args,

@@ -8,18 +8,17 @@
     "popart_dtype": "FLOAT16",
     "stochastic_rounding": true,
     "custom_ops": [
-        "gather",
-        "attention"
+        "gather"
     ],
     "batches_per_step": 8192,
-    "epochs": 10,
+    "epochs": 3,
     "aggregate_epochs_over_steps": 1,
     "input_files": [
         "data/squad/train-v1.1.json"
     ],
     "synthetic_data": true,
     "vocab_length": 30400,
-    "pipeline": true,
+    "execution_mode": "PIPELINE",
     "no_model_save": true,
     "no_validation": true
 }

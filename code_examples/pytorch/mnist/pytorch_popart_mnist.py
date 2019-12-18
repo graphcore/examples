@@ -184,10 +184,6 @@ def train(opts) -> None:
 
     # Options
     userOpts = popart.SessionOptions()
-    userOpts.logging = {
-        "ir": "TRACE" if opts.log_graph_trace else "CRITICAL",
-        "devicex": "CRITICAL",
-    }
 
     # Ensure weight tensors in the validation model are not modified by the IR
     userOpts.constantWeights = False
@@ -307,5 +303,9 @@ if __name__ == "__main__":
         help="Turn on ir logging to display the graph's ops.",
     )
     opts = parser.parse_args()
+
+    # Set logging
+    popart.getLogger('ir').setLevel('TRACE' if opts.log_graph_trace else 'CRITICAL')
+    popart.getLogger('devicex').setLevel('CRITICAL')
 
     train(opts)

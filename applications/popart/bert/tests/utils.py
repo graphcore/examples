@@ -88,6 +88,8 @@ def run_py(proto: onnx.ModelProto,
     options = popart.SessionOptions()
     options.enableGroupedMatmuls = False
     options.enableStochasticRounding = False
+    options.constantWeights = True
+    options.outlineThreshold = 10.0
     options.reportOptions = {
         "showVarStorage": "true"
     }
@@ -115,8 +117,6 @@ def run_py(proto: onnx.ModelProto,
 
     request_ipus = pow(2, math.ceil(math.log2(ipus)))
     device = popart.DeviceManager().acquireAvailableDevice(request_ipus)
-    # The cycle estimates of MSR_OPS codelets have not been validated
-    # so it is incorrect to use the IPU_MODEL.
     if device is None:
         raise Exception("Failed to acquire IPU.")
 
@@ -254,13 +254,14 @@ def copy_weights_to_torch(
         for name, w in torch_model.named_parameters():
             if name in torch_to_onnx.keys():
                 onnx_name = torch_to_onnx[name]
-                if name in transform.keys():
-                    onnx_tensor = torch.Tensor(transform[name](
-                        onnx_weights[onnx_name]))
-                else:
-                    onnx_tensor = torch.Tensor(onnx_weights[onnx_name])
-                # PyTorch CPU does not support float16...
-                w.data.copy_(onnx_tensor.float())
+                if onnx_name in onnx_weights.keys():
+                    if name in transform.keys():
+                        onnx_tensor = torch.Tensor(transform[name](
+                            onnx_weights[onnx_name]))
+                    else:
+                        onnx_tensor = torch.Tensor(onnx_weights[onnx_name])
+                    # PyTorch CPU does not support float16...
+                    w.data.copy_(onnx_tensor.float())
 
 
 def check_tensors(torch_outputs: Iterable[np.ndarray],

@@ -78,17 +78,17 @@ def fwd_graph(popart_model, torch_model, mapping=None, transform=None):
     builder = popart_model.builder
 
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
     segments = builder.addInputTensor(sequence_info)
     data = {
         indices: np.random.randint(
-            0, config.vocab_length, (config.batch_size * config.sequence_length)).astype(np.int32),
+            0, config.vocab_length, (config.batch_size * config.sequence_length)).astype(np.uint32),
         positions: np.random.randint(
-            0, config.sequence_length, (config.batch_size * config.sequence_length)).astype(np.int32),
+            0, config.sequence_length, (config.batch_size * config.sequence_length)).astype(np.uint32),
         segments: np.random.randint(
-            0, 2, (config.batch_size * config.sequence_length)).astype(np.int32)
+            0, 2, (config.batch_size * config.sequence_length)).astype(np.uint32)
     }
 
     output = popart_model.build_graph(indices, positions, segments)
@@ -101,9 +101,9 @@ def fwd_graph(popart_model, torch_model, mapping=None, transform=None):
     proto = onnx.load_model_from_string(proto)
 
     inputs = {
-        "input_ids": data[indices].reshape(config.batch_size, config.sequence_length),
-        "position_ids": data[positions].reshape(config.batch_size, config.sequence_length),
-        "token_type_ids": data[segments].reshape(config.batch_size, config.sequence_length)
+        "input_ids": data[indices].reshape(config.batch_size, config.sequence_length).astype(np.int32),
+        "position_ids": data[positions].reshape(config.batch_size, config.sequence_length).astype(np.int32),
+        "token_type_ids": data[segments].reshape(config.batch_size, config.sequence_length).astype(np.int32)
     }
 
     torch_to_onnx = get_mapping(config, init=mapping)
@@ -137,17 +137,17 @@ def bwd_graph(popart_model,
     builder = popart_model.builder
 
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
     segments = builder.addInputTensor(sequence_info)
     data = {
         indices: np.random.randint(
-            0, config.vocab_length, (config.batch_size * config.sequence_length)).astype(np.int32),
+            0, config.vocab_length, (config.batch_size * config.sequence_length)).astype(np.uint32),
         positions: np.random.randint(
-            0, config.sequence_length, (config.batch_size * config.sequence_length)).astype(np.int32),
+            0, config.sequence_length, (config.batch_size * config.sequence_length)).astype(np.uint32),
         segments: np.random.randint(
-            0, 2, (config.batch_size * config.sequence_length)).astype(np.int32)
+            0, 2, (config.batch_size * config.sequence_length)).astype(np.uint32)
     }
 
     output = popart_model.build_graph(indices, positions, segments)
@@ -165,9 +165,9 @@ def bwd_graph(popart_model,
     proto = onnx.load_model_from_string(proto)
 
     inputs = {
-        "input_ids": data[indices].reshape(config.batch_size, config.sequence_length),
-        "position_ids": data[positions].reshape(config.batch_size, config.sequence_length),
-        "token_type_ids": data[segments].reshape(config.batch_size, config.sequence_length)
+        "input_ids": data[indices].reshape(config.batch_size, config.sequence_length).astype(np.int32),
+        "position_ids": data[positions].reshape(config.batch_size, config.sequence_length).astype(np.int32),
+        "token_type_ids": data[segments].reshape(config.batch_size, config.sequence_length).astype(np.int32)
     }
 
     torch_to_onnx = get_mapping(config, init=mapping)

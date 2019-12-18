@@ -26,26 +26,32 @@ This directory contains the code to run ResNet training end-to-end.
   For ImageNet follow the instruction on how to download and prepare the data. 
   <https://github.com/pytorch/examples/tree/master/imagenet>
 
-3) Install pytorch
+3) Setup a virtual environment
 
-  This example uses the pytorch to prepare and load the data. To install with pip execute:
+  virtualenv venv -p python3.6
+
+  source venv/bin/activate
+
+4) Install pytorch
+
+  This example uses pytorch to prepare and load the data. To install with pip execute:
   
   pip install torch torchvision
 
-  Fully instructions can be found on https://pytorch.org
+  Full instructions can be found at https://pytorch.org
 
-4) Install requirements
+5) Install requirements
 
   pip install -r requirements.txt
 
-  Note: You need torch version 1.1.0. The dataloader is not compatiable with 1.0.0
+  Note: You need torch version 1.1.0. The dataloader is not compatible with 1.0.0
 
-5) Run the training program. Use the `--data-dir` option to specify a path to
+6) Run the training program. Use the `--data-dir` option to specify a path to
    the data.
 
     python resnet_main.py --data-dir=./ [--help]
 
-6) To run run parallel data training on two IPUS
+7) To run parallel data training on two IPUS
 
     python resnet_main.py --data-dir=./ --num-ipus=2 --batch-size=8
 

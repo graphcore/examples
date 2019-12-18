@@ -251,7 +251,6 @@ class TestLotsOfOptions(unittest.TestCase):
                            '--synthetic-data': '',
                            '--batch-size': 16,
                            '--base-learning-rate': -4,
-                           '--valid-batch-size': 6,
                            '--precision': '32.32',
                            '--seed': 1234,
                            '--warmup-epochs': 0,

@@ -43,7 +43,7 @@
         "attention"
     ],
     "batches_per_step": 2048,
-    "epochs": 18,
+    "epochs": 3,
     "epochs_per_save": 2,
     "input_files": [
         "data/squad/train-v1.1.json"
@@ -53,7 +53,8 @@
     "tf_checkpoint": "data/ckpts/uncased_L-12_H-768_A-12/bert_model.ckpt",
     "do_lower_case": true,
     "shuffle": true,
-    "pipeline": true,
+    "execution_mode": "PIPELINE",
+    "no_outlining": true,
     "checkpoint_dir": "ckpts/squad_base_384",
     "engine_cache": "__squad_base_384",
     "split_linear_layers": true,
@@ -61,7 +62,7 @@
         "sequence_length": 384,
         "layers_per_ipu": 6,
         "squeeze_model": false,
-        "batches_per_step": 16,
+        "batches_per_step": 23,
         "steps_per_log": 200,
         "input_files": [
             "data/squad/dev-v1.1.json"
@@ -69,6 +70,8 @@
         "squad_results_dir": "data/squad/results",
         "squad_evaluate_script": "data/squad/evaluate-v1.1.py",
         "pipeline": true,
-        "no_drop_remainder": true
+        "no_drop_remainder": true,
+        "variable_weights_inference": true,
+        "max_copy_merge_size": 32000
     }
 }

@@ -73,6 +73,7 @@ def test_embedding_projection_fwd(custom_ops):
         "ai.graphcore": 1
     })
     config = BertConfig(vocab_length=9728,
+                        projection_serialization_steps=4,
                         batch_size=1,
                         hidden_size=768,
                         sequence_length=128,
@@ -84,32 +85,32 @@ def test_embedding_projection_fwd(custom_ops):
     popart_model = Bert(config, builder=builder)
 
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     data = {
         indices:
         np.random.randint(0, config.vocab_length,
                           (config.batch_size * config.sequence_length)).astype(
-                              np.int32)
+                              np.uint32)
     }
 
     x = popart_model.embedding_custom(
         indices, config.vocab_length, "Embedding_Dict", detach=True)
     x = popart_model.norm(x)
     x = popart_model.dropout(x)
-    with popart_model.device_scope(nameScope="CLS"):
-        x = popart_model.lm_prediction_head(x)
+    # FIXME: T11914
+    # with popart_model.device_scope(nameScope="CLS"):
+    #     x = popart_model.lm_prediction_head(x)
     output = popart_model.projection(x)
 
     proto = builder.getModelProto()
 
-    outputs, post_proto = run_py(proto, data, output,
-                                 user_options={"enableStochasticRounding": True})
+    outputs, post_proto = run_py(proto, data, output)
 
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
-    inputs = [data[indices].reshape(config.batch_size, config.sequence_length)]
+    inputs = [data[indices].reshape(config.batch_size, config.sequence_length).astype(np.int32)]
 
     #  ------------------- PyTorch -------------------------
     torch_model = EmbeddingProjectionModel(
@@ -139,6 +140,7 @@ def test_embedding_projection_bwd(custom_ops):
         "ai.graphcore": 1
     })
     config = BertConfig(vocab_length=9728,
+                        projection_serialization_steps=4,
                         batch_size=1,
                         hidden_size=768,
                         sequence_length=128,
@@ -149,21 +151,22 @@ def test_embedding_projection_bwd(custom_ops):
     popart_model = Bert(config, builder=builder)
 
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     data = {
         indices:
         np.random.randint(0, config.vocab_length,
                           (config.batch_size * config.sequence_length)).astype(
-                              np.int32)
+                              np.uint32)
     }
 
     x = popart_model.embedding_custom(
         indices, config.vocab_length, "Embedding_Dict", detach=True)
     x = popart_model.norm(x)
     x = popart_model.dropout(x)
-    with popart_model.device_scope(nameScope="CLS"):
-        x = popart_model.lm_prediction_head(x)
+    # FIXME: T11914
+    # with popart_model.device_scope(nameScope="CLS"):
+    #     x = popart_model.lm_prediction_head(x)
     output = popart_model.projection(x)
 
     proto = builder.getModelProto()
@@ -174,13 +177,12 @@ def test_embedding_projection_bwd(custom_ops):
     outputs, post_proto = run_py(proto,
                                  data, output,
                                  loss=l1,
-                                 optimizer=optimizer,
-                                 user_options={"enableStochasticRounding": True})
+                                 optimizer=optimizer)
 
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
-    inputs = [data[indices].reshape(config.batch_size, config.sequence_length)]
+    inputs = [data[indices].reshape(config.batch_size, config.sequence_length).astype(np.int32)]
 
     #  ------------------- PyTorch -------------------------
 

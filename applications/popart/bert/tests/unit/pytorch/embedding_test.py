@@ -40,7 +40,7 @@ def test_embedding_fwd(custom_ops):
     popart_model.embedding_split_scope = popart_model.embedding_scope
 
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
     segments = builder.addInputTensor(sequence_info)
@@ -48,15 +48,15 @@ def test_embedding_fwd(custom_ops):
         indices:
         np.random.randint(0, config.vocab_length,
                           (config.batch_size * config.sequence_length)).astype(
-                              np.int32),
+                              np.uint32),
         positions:
         np.random.randint(0, config.max_positional_length,
                           (config.batch_size * config.sequence_length)).astype(
-                              np.int32),
+                              np.uint32),
         segments:
         np.random.randint(0, 2,
                           (config.batch_size * config.sequence_length)).astype(
-                              np.int32)
+                              np.uint32)
     }
 
     # Use the custom embedding for layout
@@ -70,7 +70,7 @@ def test_embedding_fwd(custom_ops):
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
-    inputs = [data[t].reshape(config.batch_size, config.sequence_length) for t in [indices, positions, segments]]
+    inputs = [data[t].reshape(config.batch_size, config.sequence_length).astype(np.int32) for t in [indices, positions, segments]]
 
     torch_to_onnx = {
         "word_embeddings.weight": "Embedding_Dict",
@@ -124,7 +124,7 @@ def test_embedding_bwd(custom_ops):
     popart_model.embedding_split_scope = popart_model.embedding_scope
 
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
     segments = builder.addInputTensor(sequence_info)
@@ -132,15 +132,15 @@ def test_embedding_bwd(custom_ops):
         indices:
         np.random.randint(0, config.vocab_length,
                           (config.batch_size * config.sequence_length)).astype(
-                              np.int32),
+                              np.uint32),
         positions:
         np.random.randint(0, config.max_positional_length,
                           (config.batch_size * config.sequence_length)).astype(
-                              np.int32),
+                              np.uint32),
         segments:
         np.random.randint(0, 2,
                           (config.batch_size * config.sequence_length)).astype(
-                              np.int32)
+                              np.uint32)
     }
 
     output = popart_model.embedding(indices, positions, segments)
@@ -160,7 +160,7 @@ def test_embedding_bwd(custom_ops):
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
-    inputs = [data[t].reshape(config.batch_size, config.sequence_length) for t in [indices, positions, segments]]
+    inputs = [data[t].reshape(config.batch_size, config.sequence_length).astype(np.int32) for t in [indices, positions, segments]]
 
     torch_to_onnx = {
         "word_embeddings.weight": "Embedding_Dict",

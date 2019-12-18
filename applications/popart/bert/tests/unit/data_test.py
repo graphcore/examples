@@ -3,6 +3,7 @@ import os
 import tempfile
 import numpy as np
 import struct
+import pytest
 from functools import reduce
 from itertools import chain
 
@@ -16,7 +17,8 @@ from bert_data.pretraining_dataset import (
 )
 from bert_data.squad_dataset import (
     SquadDataLoader,
-    generate_synthetic_features
+    generate_synthetic_features,
+    no_drop_batches_per_step
 )
 
 
@@ -118,17 +120,17 @@ def test_transform():
 
     data = [
         # indicies
-        np.random.randint(0, 2 * vocab_length, (batch_size, sequence_length)).astype(np.int32),
+        np.random.randint(0, 2 * vocab_length, (batch_size, sequence_length)).astype(np.uint32),
         # position
-        np.random.randint(0, sequence_length, (batch_size, sequence_length)).astype(np.int32),
+        np.random.randint(0, sequence_length, (batch_size, sequence_length)).astype(np.uint32),
         # segments
-        np.random.randint(0, 2, (batch_size, sequence_length)).astype(np.int32),
+        np.random.randint(0, 2, (batch_size, sequence_length)).astype(np.uint32),
         # masks
-        np.random.randint(0, sequence_length, (batch_size)).astype(np.int32),
-        np.random.randint(0, sequence_length, (batch_size)).astype(np.int32),
+        np.random.randint(0, sequence_length, (batch_size)).astype(np.uint32),
+        np.random.randint(0, sequence_length, (batch_size)).astype(np.uint32),
         # labels
-        np.random.randint(0, 2 * vocab_length, (batch_size, mask_tokens)).astype(np.int32),
-        np.random.randint(0, 2, (batch_size)).astype(np.int32)
+        np.random.randint(0, 2 * vocab_length, (batch_size, mask_tokens)).astype(np.uint32),
+        np.random.randint(0, 2, (batch_size)).astype(np.uint32)
     ]
 
     # Simulate the BinaryDataLoader
@@ -164,15 +166,15 @@ def test_dataset():
 
     data = [
         # indicies
-        np.random.randint(0, 2 * vocab_length, (samples_per_step, sequence_length)).astype(np.int32),
+        np.random.randint(0, 2 * vocab_length, (samples_per_step, sequence_length)).astype(np.uint32),
         # position
-        np.random.randint(0, sequence_length, (samples_per_step, sequence_length)).astype(np.int32),
+        np.random.randint(0, sequence_length, (samples_per_step, sequence_length)).astype(np.uint32),
         # masks
-        np.random.randint(0, sequence_length, (samples_per_step,)).astype(np.int32),
-        np.random.randint(0, sequence_length, (samples_per_step,)).astype(np.int32),
+        np.random.randint(0, sequence_length, (samples_per_step,)).astype(np.uint32),
+        np.random.randint(0, sequence_length, (samples_per_step,)).astype(np.uint32),
         # labels
-        np.random.randint(0, 2 * vocab_length, (samples_per_step, mask_tokens)).astype(np.int32),
-        np.random.randint(0, 2, (samples_per_step,)).astype(np.int32)
+        np.random.randint(0, 2 * vocab_length, (samples_per_step, mask_tokens)).astype(np.uint32),
+        np.random.randint(0, 2, (samples_per_step,)).astype(np.uint32)
     ]
 
     # Simulate the BertDataTransform
@@ -213,3 +215,94 @@ def test_dataset():
     assert(np.all(sample["indices"].flatten() == data[0].flatten()))
     assert(np.all(sample["positions"].flatten() == data[1].flatten()))
     assert(np.all(sample["labels"].flatten() == data[4].flatten()))
+
+
+def test_no_drop_remainder():
+    pipeline_stages = 14
+    # Prime number dataset
+    prime_dataset = 113
+    bps = no_drop_batches_per_step(
+        2,
+        prime_dataset,
+        1,
+        1,
+        1,
+        pipeline_stages,
+        True
+    )
+    assert prime_dataset == bps
+
+    # gradient accumulation
+    gradient_accumulation = 16
+    bps = no_drop_batches_per_step(
+        2,
+        prime_dataset * gradient_accumulation,
+        1,
+        1,
+        gradient_accumulation,
+        pipeline_stages,
+        True
+    )
+    assert prime_dataset == bps
+
+    # batch_size
+    batch_size = 2
+    bps = no_drop_batches_per_step(
+        2,
+        prime_dataset * batch_size,
+        batch_size,
+        1,
+        1,
+        pipeline_stages,
+        True
+    )
+    assert prime_dataset == bps
+
+    # replication factor
+    replication_factor = 2
+    bps = no_drop_batches_per_step(
+        2,
+        prime_dataset * replication_factor,
+        1,
+        replication_factor,
+        1,
+        pipeline_stages,
+        True
+    )
+    assert prime_dataset == bps
+
+    bps = no_drop_batches_per_step(
+        2,
+        prime_dataset * replication_factor * batch_size * gradient_accumulation,
+        batch_size,
+        replication_factor,
+        gradient_accumulation,
+        pipeline_stages,
+        True
+    )
+    assert prime_dataset == bps
+
+    # Inference
+    bps = no_drop_batches_per_step(
+        6,
+        3*7,
+        1,
+        1,
+        1,
+        3,
+        False
+    )
+    assert 3 == bps
+
+    # Failure
+    with pytest.raises(RuntimeError) as excinfo:
+        no_drop_batches_per_step(
+            6,
+            prime_dataset,
+            2,
+            2,
+            2,
+            3,
+            True
+        )
+    assert "no_drop_remainder cannot adjust batches_per_step" in str(excinfo.value)

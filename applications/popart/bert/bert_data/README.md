@@ -29,7 +29,7 @@ The following files are found in the `bert_data/` folder:
 
 The sample text is in a form that is already suitable to create the pretraining data. Run the script as:
 
-`python create_pretraining_data.py --input-file path/to/sample_text.txt --output-file data/sample_text.bin --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 -- mask-tokens 20 --duplication-factor 10`
+`python create_pretraining_data.py --input-file path/to/sample_text.txt --output-file data/sample_text.bin --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 -- mask-tokens 20 --duplication-factor 6`
 
 ## Wikipedia pre-training data
 
@@ -89,17 +89,52 @@ where `target_folder/AA` contains the files from step 3 and `preprocessed_target
 
 **5) Tokenise the data**
 
-The data can now be tokenised to create the pre-training dataset for BERT. For this step a vocabulary file is required. A vocabulary can be downloaded from the pre-trained model checkpoints at https://github.com/google-research/bert.
+The data can now be tokenised to create the pre-training dataset for BERT. For this step a vocabulary file is required. A vocabulary can be downloaded from the pre-trained model checkpoints at https://github.com/google-research/bert. We recommend to use the pre-trained BERT-Base Uncased model checkpoints. 
 
 The script `create_pretraining_data.py` will accept a glob of input and output files to tokenise however attempting to process them all at once may result in the process being killed by the OS for consuming too much memory. It is therefore preferable to convert the files one by one:
 
-`python create_pretraining_data.py --input-file /preprocessed_target_folder/wiki_00_cleaned --output-file /preprocessed_target_folder/wiki_00_tokenised --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 --mask-tokens 20 --duplication-factor 10`
+`python create_pretraining_data.py --input-file /preprocessed_target_folder/wiki_00_cleaned --output-file /preprocessed_target_folder/wiki_00_tokenised --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 --mask-tokens 20 --duplication-factor 6`
 
 **NOTE:** When using an uncased vocab, use `--do-lower-case`.
 
 **NOTE:** Make sure to use the same values for `mask-tokens` and `duplication-factor` when generating the data and pretraining. 
 
 The wikipedia dataset is now ready to be used in the Graphcore BERT model.
+
+## Book-Corpus pre-training data
+
+**1) Homemade BookCorpus**
+
+Acquire the Homemade BookCorpus scripts from github and install their requirements:
+```bash
+git clone https://github.com/soskek/bookcorpus.git ~/bookcorpus
+cd ~/bookcorpus
+pip3 install -r requirements.txt
+```
+
+**2) URL list and File Download**
+The following commands get the URL list and then download all the files in that list. For more details on these scripts consult the Homemade BookCorpus documentation.
+```bash
+python3 -u download_list.py > url_list.json
+python3 download_files.py --list url_list.json --out files --trash-bad-count
+```
+On successful completeion you will now have approximately 15K documents in the directory .files/.
+
+**3) Concatenate the files**
+Concat all text to one sentence per line format using this script:
+```bash
+python3 make_sentlines.py files > all.txt
+```
+
+**4) Tokenise the data**
+As with any other data (e.g. Wikipedia) the final step is to tokenise for both sequence lengths used in training:
+```bash
+cd path_to_gc_examples/applications/popart/bert/bert_data
+python3 create_pretraining_data.py --input-file ~/bookcorpus/all.txt --output-file ~/bookcorpus/tokenised_128 --vocab-file path_to_the_vocab/vocab.txt --do-lower-case --sequence-length 128 --mask-tokens 20 --duplication-factor 6
+python3 create_pretraining_data.py --input-file ~/bookcorpus/all.txt --output-file ~/bookcorpus/tokenised_384 --vocab-file path_to_the_vocab/vocab.txt --do-lower-case --sequence-length 384 --mask-tokens 60 --duplication-factor 6
+```
+
+The files ~/bookcorpus/tokenised_128 and ~/bookcorpus/tokenised_384 can now be used along-side the wikipedia data to pre-train the Graphcore BERT model.
 
 ## SQuAD training data
 
@@ -120,5 +155,5 @@ curl -L https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json -o da
 
 Get Google's pre-trained weights (or produce your own by pre-training on the IPU). For example to get pre-trained weights for `BERT Base, cased`:
 
-`curl -L https://storage.googleapis.com/bert_models/2018_10_18/cased_L-12_H-768_A-12.zip -o data/ckpts/cased_L-12_H-768_A-12.zip`
+`curl --create-dirs -L https://storage.googleapis.com/bert_models/2018_10_18/cased_L-12_H-768_A-12.zip -o data/ckpts/cased_L-12_H-768_A-12.zip`
 

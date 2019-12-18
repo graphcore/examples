@@ -333,7 +333,7 @@ def create_instances_from_document(
 
         (tokens, masked_lm_positions,
          masked_lm_labels) = create_masked_lm_predictions(
-             tokens, mlm_prob, mask_tokens, vocab_words, rng)
+             tokens, mlm_prob, mask_tokens, vocab_words, rng, max_seq_length)
         instance = TrainingInstance(
             tokens=tokens,
             segment_ids=segment_ids,
@@ -353,7 +353,8 @@ MaskedLmInstance = collections.namedtuple("MaskedLmInstance",
 
 
 def create_masked_lm_predictions(tokens, mlm_prob,
-                                 mask_tokens, vocab_words, rng):
+                                 mask_tokens, vocab_words, rng,
+                                 max_seq_length):
   """Creates the predictions for the masked LM objective."""
 
   cand_indexes = []
@@ -368,6 +369,12 @@ def create_masked_lm_predictions(tokens, mlm_prob,
 
   num_to_predict = min(mask_tokens,
                        max(1, int(round(len(tokens) * mlm_prob))))
+  # MAJOR CHANGE: Make sure that the desired number of mask_tokens is used
+  # to prevent issues with too many tokens needed. Ie
+  # sequence_length 384, mask_tokens 60. if num_to_predict is 58
+  # and len(tokens) is 384 then there will be 326 sequence_tokens with 60 additional tokens
+  # reserved for mask tokens. This will give a total tokens of 386 which is too many.
+  num_to_predict = max(num_to_predict, len(tokens) - max_seq_length + mask_tokens)
 
   masked_lms = []
   covered_indexes = set()
@@ -472,7 +479,7 @@ if __name__ == "__main__":
   parser.add_argument("--sequence-length", type=int, default=128)
   parser.add_argument("--mask-tokens", type=int, default=20)
   parser.add_argument("--seed", type=int, default=1984)
-  parser.add_argument("--duplication-factor", type=int, default=10)
+  parser.add_argument("--duplication-factor", type=int, default=6)
   parser.add_argument("--mlm-prob", type=float, default=0.15)
   parser.add_argument("--short-seq-prob", type=float, default=0.1)
   parser.add_argument("--max-samples", type=int, default=-1)

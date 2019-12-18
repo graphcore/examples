@@ -1,6 +1,5 @@
 # Copyright 2019 Graphcore Ltd.
 import time
-import ctypes
 import os
 import sys
 import math
@@ -24,10 +23,6 @@ import utils
 
 logger = logging.getLogger('BERT')
 
-so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                       "custom_ops.so")
-ctypes.cdll.LoadLibrary(so_path)
-
 
 def set_library_seeds(seed):
     np.random.seed(seed)
@@ -41,25 +36,25 @@ def bert_config_from_args(args):
 
 def bert_add_inputs(args, model):
     sequence_info = popart.TensorInfo(
-        "INT32", [args.batch_size * args.sequence_length])
+        "UINT32", [args.batch_size * args.sequence_length])
     indices = model.builder.addInputTensor(sequence_info, "indices")
     positions = model.builder.addInputTensor(sequence_info, "positions")
     segments = model.builder.addInputTensor(sequence_info, "segments")
     labels = []
     masks = []
-    mask_info = popart.TensorInfo("INT32", [args.batch_size])
+    mask_info = popart.TensorInfo("UINT32", [args.batch_size])
     if args.task == "PRETRAINING":
         masks.append(model.builder.addInputTensor(mask_info, "mask_tokens_mask_idx"))
         masks.append(model.builder.addInputTensor(mask_info, "sequence_mask_idx"))
         labels_info = popart.TensorInfo(
-            "INT32", [args.batch_size, args.mask_tokens])
+            "UINT32", [args.batch_size, args.mask_tokens])
         labels.append(model.builder.addInputTensor(labels_info, "mask_labels"))
         labels.append(model.builder.addInputTensor(mask_info, "nsp_labels"))
     elif args.task == "SQUAD":
         masks.append(model.builder.addInputTensor(mask_info, "seq_pad_idx"))
         if not args.inference:
             labels_info = popart.TensorInfo(
-                "INT32", [args.batch_size])
+                "UINT32", [args.batch_size])
             labels.append(model.builder.addInputTensor(labels_info, "start_labels"))
             labels.append(model.builder.addInputTensor(labels_info, "end_labels"))
     return indices, positions, segments, masks, labels
@@ -141,14 +136,19 @@ def bert_add_validation_outputs(model, predictions, losses):
     return outputs
 
 
-def bert_session_options(args):
+def bert_session_options(args, model):
     options = popart.SessionOptions()
+    options.enableVirtualGraphs = True
     options.virtualGraphMode = popart.VirtualGraphMode.Manual
     options.enableFloatingPointChecks = args.floating_point_exceptions
     options.enableStochasticRounding = args.stochastic_rounding
     options.enableGroupedMatmuls = False
     options.enableOutlining = not args.no_outlining
-    if args.pipeline:
+    # Increasing the outlineThreshold prevents creating subgraphs of cheap Ops
+    # such as add or reshapeInplace.
+    # Instead only reusing ops with a highSubgraphValue such as matmul or normalisation.
+    options.outlineThreshold = 10.0
+    if args.execution_mode == "PIPELINE":
         options.enablePipelining = True
         options.autoRecomputation = popart.RecomputationType.Pipeline
     if args.gradient_accumulation_factor > 1:
@@ -161,7 +161,12 @@ def bert_session_options(args):
         options.enableEngineCaching = True
         options.cachePath = args.engine_cache
     if args.gc_profile:
-        options.reportOptions = {"showVarStorage": "true"}
+        options.reportOptions = {
+            "showVarStorage": "true",
+            "showPerIpuMemoryUsage": "true",
+            "showExecutionSteps": "true"
+        }
+    options.instrumentWithHardwareCycleCounter = args.report_hw_cycle_count
     # Addition of momentum tensors causes merged copies to exceed max
     # host translation table entries during the weightsFromHost program.
     # With the addition of disableGradAccumulationTensorStreams no copy merging
@@ -182,6 +187,13 @@ def bert_session_options(args):
         if args.task == "SQUAD" and args.sequence_length == 384:
             logger.warning(f"Fully connected pass has been disabled. This may cause SQuAD 384 12-layer to go OOM.")
         options.enableFullyConnectedPass = False
+
+    if args.inference and args.engine_cache is not None and not args.variable_weights_inference:
+        logger.warn("Using engine cache with constant weights. Checkpoint weights will be ignored. "
+                    "Use the `--variable-weights-inference` flag if checkpoint weights should be used.")
+
+    if args.variable_weights_inference:
+        options.constantWeights = False
 
     return options
 
@@ -208,7 +220,7 @@ def compile_graph_checked(args, session):
 
 
 def bert_training_session(model, args, feed, losses, device, optimizer_factory):
-    options = bert_session_options(args)
+    options = bert_session_options(args, model)
 
     proto = model.builder.getModelProto()
 
@@ -240,7 +252,7 @@ def bert_training_session(model, args, feed, losses, device, optimizer_factory):
 
 
 def bert_inference_session(model, args, feed, losses, device):
-    options = bert_session_options(args)
+    options = bert_session_options(args, model)
 
     proto = model.builder.getModelProto()
 
@@ -296,7 +308,8 @@ def get_bert_dataset(model, args, inputs):
             duplication_factor=args.duplication_factor,
             shuffle=args.shuffle,
             synthetic=args.synthetic_data,
-            epochs_to_cache=args.epochs_to_cache)
+            epochs_to_cache=args.epochs_to_cache,
+            start_data_at_epoch=args.continue_training_from_epoch)
     if config.task == "SQUAD":
         return get_squad_dataset(
             tensor_shapes,
@@ -315,7 +328,8 @@ def get_bert_dataset(model, args, inputs):
             no_drop_remainder=args.no_drop_remainder,
             evaluate_script=args.squad_evaluate_script,
             synthetic=args.synthetic_data,
-            do_lower_case=args.do_lower_case)
+            do_lower_case=args.do_lower_case,
+            max_pipeline_stage=model.total_pipeline_stages if args.execution_mode == "PIPELINE" else 1)
 
 
 def bert_output_stats(labels, anchors, losses, predictions, ignore_index=None):
@@ -373,7 +387,8 @@ def save_model_and_stats(args, session, writer, step, epoch=None, step_in_filena
 
 class Iteration:
     def __init__(self, args, batches_per_step, steps_per_epoch, writer, recording_steps=None):
-        self.count = 0
+        self.start_epoch = args.continue_training_from_epoch
+        self.count = self.start_epoch * steps_per_epoch
         self.epoch = 0
         self.epochs = args.epochs
         self.epochs_per_save = args.epochs_per_save
@@ -383,9 +398,12 @@ class Iteration:
         self.total_steps = self.steps_per_epoch * self.epochs
         self.writer = writer
         self.task = args.task
+        # This should get overridden but will ensure we can always write a scalar to TB.
+        self.learning_rate = 0
         if recording_steps is None:
             recording_steps = self.steps_per_epoch
         self.durations = deque(maxlen=recording_steps)
+        self.cycles = deque(maxlen=recording_steps)
         if self.task == "PRETRAINING":
             self.mlm_losses = deque(maxlen=recording_steps)
             self.nsp_losses = deque(maxlen=recording_steps)
@@ -397,9 +415,14 @@ class Iteration:
             self.accuracies = deque(maxlen=recording_steps)
             self.stats_fn = bert_output_stats
 
-    def add_stats(self, duration, *args):
+    def add_stats(self, duration, hw_cycles, *args):
         self.durations.append(duration)
+        if hw_cycles:
+            self.cycles.append(hw_cycles)
         loss, accuracy = self.stats_fn(*args)
+        self.writer.add_scalar("defaultLearningRate",
+                               self.learning_rate,
+                               self.count)
         if self.task == "PRETRAINING":
             self.mlm_losses.append(loss[0])
             self.nsp_losses.append(loss[1])
@@ -435,7 +458,7 @@ class Iteration:
         avg = np.average
         status_string = \
             f"Iteration: {self.count:6} " \
-            f"Epoch: {self.epoch:3}/{self.epochs - 1} "
+            f"Epoch: {self.count/self.steps_per_epoch:6.2f}/{self.epochs} "
         if self.task == "PRETRAINING":
             status_string += \
                 f"Loss (MLM NSP): {avg(self.mlm_losses):5.3f} {avg(self.nsp_losses):5.3f} " \
@@ -449,6 +472,8 @@ class Iteration:
         status_string += \
             f"Duration: {avg(self.durations):6.4f} s " \
             f"Throughput: {avg(self.throughput):6.1f} samples/s"
+        if self.cycles:
+            status_string += f" Cycles: {avg(self.cycles)}"
         logger.info(status_string)
 
 
@@ -465,13 +490,14 @@ def bert_process_data(args, session, labels, data, anchors,
     start = time.time()
     session.run(stepio)
     duration = time.time() - start
+    hw_cycles = session.getCycleCount() if args.report_hw_cycle_count else None
 
     if args.gc_profile:
         import gcprofile
         gcprofile.save_popart_report(session)
         sys.exit(0)
 
-    iteration.add_stats(duration, labels_data, anchors, losses, predictions)
+    iteration.add_stats(duration, hw_cycles, labels_data, anchors, losses, predictions)
 
     if (iteration.count % iteration.steps_per_log) == 0:
         iteration.report_stats()
@@ -503,8 +529,9 @@ def create_callback_stepio(data, anchors, start_times, end_times):
 
     # Input callback is called when the data is needed:
     def input_callback(id, is_prefetch: bool):
-        input_time = time.perf_counter()
-        start_times[id].append(input_time)
+        if is_prefetch:
+            input_time = time.perf_counter()
+            start_times[id].append(input_time)
         return data[id]
 
     # Called after the input buffer has been consumed by the device:
@@ -539,26 +566,26 @@ def compute_latency(args, start_times, end_times):
         end_id = get_timing_end_anchor(end_times)
         rtts = list(map(lambda v: v[1]-v[0], zip(start_times[start_id], end_times[end_id])))
         if len(rtts) != args.batches_per_step:
-            raise RuntimeError("More timings than there are items in the batch. Something is wrong.")
+            raise RuntimeError("Number of timings doesn't match items in the batch. Something is wrong.")
         mean_latency = (sum(rtts))/args.batches_per_step
         min_latency = min(rtts)
         max_latency = max(rtts)
+        if (logging.getLogger().isEnabledFor(logging.DEBUG)):
+            for i, v in enumerate(rtts):
+                logging.debug(f"LATENCY: {i} {v}")
     return mean_latency, min_latency, max_latency
 
 
 def bert_process_infer_data(args, session, data, anchors,
-                            logits, iteration: Iteration):
-    start_times = defaultdict(list)
-    end_times = defaultdict(list)
-
-    if args.low_latency_inference and args.task == "SQUAD":
-        stepio = create_callback_stepio(data, anchors, start_times, end_times)
-    else:
+                            logits, iteration: Iteration,
+                            start_times, end_times, stepio):
+    if stepio is None:
         stepio = popart.PyStepIO(data, anchors)
 
     start = time.perf_counter()
     session.run(stepio)
     duration = time.perf_counter() - start
+    hw_cycles = session.getCycleCount() if args.report_hw_cycle_count else None
 
     if args.gc_profile:
         import gcprofile
@@ -576,6 +603,8 @@ def bert_process_infer_data(args, session, data, anchors,
             f"Throughput: {np.average(iteration.throughput):6.1f} samples/s"
         if mean_latency is not None:
             status_string += f" Per-sample Latency: {mean_latency} {min_latency} {max_latency} seconds (mean min max)"
+        if hw_cycles is not None:
+            status_string += f" Cycles: {hw_cycles}"
         logger.info(status_string)
 
     iteration.count += 1
@@ -588,18 +617,38 @@ def bert_train_loop(args, session, writer,
                     iteration, optimizer_factory):
     losses = [loss.output(0) for loss in losses]
 
-    for iteration.epoch in range(args.epochs):
-        if (iteration.epoch % iteration.epochs_per_save) == 0:
-            save_model_and_stats(args, session, writer, iteration.count, iteration.epoch)
+    save_model_and_stats(args, session, writer, iteration.count, iteration.epoch)
 
+    for iteration.epoch in range(iteration.start_epoch, args.epochs):
         for data in dataset:
-            if args.steps_per_save > 0 and (iteration.count % args.steps_per_save) == 0:
-                save_model_and_stats(args, session, writer, iteration.count, iteration.epoch, True)
-
             bert_process_data(args, session, labels, data, anchors,
                               losses, predictions, iteration, optimizer_factory)
 
+            if args.steps_per_save > 0 and (iteration.count % args.steps_per_save) == 0:
+                save_model_and_stats(args, session, writer, iteration.count, iteration.epoch, True)
+
+        if args.epochs_per_save > 0 and ((iteration.epoch) % iteration.epochs_per_save) == 0:
+            save_model_and_stats(args, session, writer, iteration.count, iteration.epoch + 1)
+
     save_model_and_stats(args, session, writer, iteration.count)
+
+
+def enable_realtime_scheduling(args):
+    if args.realtime_scheduler:
+        # Use a system call to enable real-time scheduling
+        # for the whole process:
+        pid = os.getpid()
+        logger.info(f"Enabling real-time scheduler for process: PID {pid}")
+        os.system(f"sudo -n chrt --rr -p 99 {pid}")
+
+
+def disable_realtime_scheduling(args):
+    if args.realtime_scheduler:
+        # Use a system call to reset to default scheduling
+        # for the whole process:
+        pid = os.getpid()
+        logger.info(f"Disabling real-time scheduler for process: PID {pid}")
+        os.system(f"sudo -n chrt --other -p 0 {pid}")
 
 
 def bert_infer_loop(args, session,
@@ -611,13 +660,29 @@ def bert_infer_loop(args, session,
     if args.synthetic_data:
         repeat_count = args.epochs
 
+    # Create the stepio once outside of the inference loop:
+    static_data = {}
+    start_times = defaultdict(list)
+    end_times = defaultdict(list)
+    if args.low_latency_inference and args.task == "SQUAD":
+        stepio = create_callback_stepio(static_data, anchors, start_times, end_times)
+    else:
+        stepio = None
+
+    enable_realtime_scheduling(args)
+
     for iteration.epoch in range(repeat_count):
         for data in dataset:
-            result = bert_process_infer_data(args, session, data, anchors,
-                                             logits, iteration)
-
+            static_data.update(data)
+            result = bert_process_infer_data(args, session, static_data, anchors,
+                                             logits, iteration,
+                                             start_times, end_times, stepio)
             if save_results:
                 dataset.add_results(data, result)
+            start_times.clear()
+            end_times.clear()
+
+    disable_realtime_scheduling(args)
 
     # If SQuAD save the predictions and run the evaulation script
     if save_results:
@@ -628,7 +693,11 @@ def acquire_device(args, request_ipus):
     if args.use_ipu_model:
         device = popart.DeviceManager().createIpuModelDevice({"numIPUs": request_ipus})
     else:
-        device = popart.DeviceManager().acquireAvailableDevice(request_ipus)
+        sync_pattern = popart.SyncPattern.Full
+        device = popart.DeviceManager().acquireAvailableDevice(
+            request_ipus,
+            1216,
+            pattern=sync_pattern)
     if device is None:
         raise OSError("Failed to acquire IPU.")
     logger.info(f"Acquired device: {device}")
@@ -660,7 +729,8 @@ def main(args):
     model = Bert(config,
                  builder=popart.Builder(
                      opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}),
-                 initializers=initializers)
+                 initializers=initializers,
+                 execution_mode=args.execution_mode)
 
     indices, positions, segments, masks, labels = bert_add_inputs(args, model)
     logits = bert_logits_graph(model, indices, positions, segments, masks)
@@ -717,9 +787,6 @@ def main(args):
 
             device.detach()
             logger.info("Training Finished")
-        if not args.no_validation:
-            logger.info("Doing Validation")
-            main(utils.get_validation_args(args))
 
     return session, iteration
 
@@ -744,9 +811,14 @@ if __name__ == "__main__":
     args = utils.parse_bert_args()
     setup_logger(logging.getLevelName(args.log_level))
     logger.info("Program Start")
-    if not args.inference and args.no_training:
+
+    # Run the main inference/training session by default
+    if args.inference or not args.no_training:
+        main(args)
+
+    # If this was a training session and validation isn't disabled; validate.
+    if not args.inference and not args.no_validation:
         logger.info("Doing Validation")
         main(utils.get_validation_args(args))
-    else:
-        main(args)
+
     logger.info("Program Finished")

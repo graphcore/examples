@@ -39,7 +39,6 @@ class BertFCN(nn.Module):
 ACTIVATIONS = {
     'Relu': ['Relu', nn.functional.relu],
     'Gelu': ['Gelu', nn.functional.gelu],
-    'GeluCustom': ['GeluCustom', nn.functional.gelu],
     'SGelu': ['SGelu', simplified_gelu],
     'Leaky_relu':
     ['LRelu', lambda x: nn.functional.leaky_relu(x, negative_slope=0.1)]

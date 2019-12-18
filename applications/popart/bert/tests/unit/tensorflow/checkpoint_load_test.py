@@ -45,7 +45,7 @@ def test_load_from_frozen(config_path, chkpt_path, frozen_path, custom_ops):
 
     # Load Popart model
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
 
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
@@ -59,12 +59,12 @@ def test_load_from_frozen(config_path, chkpt_path, frozen_path, custom_ops):
         indices: np.random.randint(
             0, config.vocab_length,
             (config.batch_size * config.sequence_length)
-        ).astype(np.int32),
+        ).astype(np.uint32),
         positions: np.random.randint(
             0,
             config.sequence_length,
             (config.batch_size * config.sequence_length),
-        ).astype(np.int32),
+        ).astype(np.uint32),
     }
 
     torch_inputs = {
@@ -125,7 +125,7 @@ def test_load_from_chkpt(config_path, chkpt_path, custom_ops):
 
     # Load Popart model
     sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.batch_size * config.sequence_length])
 
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
@@ -139,12 +139,12 @@ def test_load_from_chkpt(config_path, chkpt_path, custom_ops):
         indices: np.random.randint(
             0, config.vocab_length,
             (config.batch_size * config.sequence_length)
-        ).astype(np.int32),
+        ).astype(np.uint32),
         positions: np.random.randint(
             0,
             config.sequence_length,
             (config.batch_size * config.sequence_length),
-        ).astype(np.int32),
+        ).astype(np.uint32),
     }
 
     torch_inputs = {

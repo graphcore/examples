@@ -1,5 +1,7 @@
 # Copyright 2019 Graphcore Ltd.
 import time
+from datetime import datetime
+import os
 from absl import app, flags
 import subprocess
 import re
@@ -56,9 +58,13 @@ def main(argv):
     print(log_str)
     procs = []
     log_files = []
+    timestamp = datetime.now().strftime("%H-%M-%S")
+    if not os.path.exists("logs"):
+        os.mkdir("logs")
+    os.mkdir(f"logs/{timestamp}")
 
     for i in range(FLAGS.num_ipus):
-        f = open(f"logs/log_{i}", "w")
+        f = open(f"logs/{timestamp}/log_{i}", "w")
         p = launch_resnext_subprocess(i, f)
         # sleep to prevent race conditions on acquiring IPUs
         time.sleep(1)
@@ -79,7 +85,7 @@ def main(argv):
     for i in range(FLAGS.num_ipus):
         sub_throughputs = []
         sub_latencies = []
-        with open(f"logs/log_{i}") as f:
+        with open(f"logs/{timestamp}/log_{i}") as f:
             for line in f:
                 match = regex_throughput.search(line)
                 match_lat = regex_latency.search(line)

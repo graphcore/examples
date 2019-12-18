@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import argparse
+import datetime
 import math
 from typing import List, Any, Optional
 import numpy as np
@@ -36,6 +37,16 @@ def save_model_statistics(model_path, writer, i=0):
         writer.add_scalar(f"L2/{name}", np.linalg.norm(np_weight), i)
 
 
+def str_to_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value.lower() in {'false', 'f', '0', 'no', 'n'}:
+        return False
+    elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
+        return True
+    raise ValueError(f'{value} is not a valid boolean value')
+
+
 def parser_from_NamedTuple(parser, ntuple, args={}):
     for key in ntuple._fields:
         string = "--" + key.replace("_", "-")
@@ -49,9 +60,9 @@ def parser_from_NamedTuple(parser, ntuple, args={}):
         )
         if t is bool:
             # Make bool a flag
-            del kwargs["type"]
-            del kwargs["default"]
-            kwargs["action"] = "store_false" if ntuple._field_defaults[key] else "store_true"
+            kwargs["nargs"] = "?"
+            kwargs["const"] = not kwargs["default"]
+            kwargs["type"] = str_to_bool
         else:
             for _t in (str, int):
                 if t == List[_t]:
@@ -135,6 +146,7 @@ def parse_bert_args(args_string=None):
         "num_layers": "Set the number of transformer layers",
         "layers_per_ipu": "Set the number of layers on each IPU",
         "no_dropout": "Don't use dropout",
+        "no_attn_dropout": "Don't use dropout on attention scores",
         "dropout_prob": "Set the dropout probability",
         "layer_norm_eps": "Set the layer norm epsilon value",
         "popart_dtype": dict(
@@ -151,24 +163,30 @@ def parse_bert_args(args_string=None):
             help="Set the function used to initialise the positional embeddings"
         ),
         "custom_ops": dict(
-            choices=["gather", "attention", "feed_forward"],
+            choices=["gather", "attention"],
             help="Use Custom Operators"
         ),
         "split_linear_layers": "Memory Optimisation to serialise MatMul Operations. Required for large sequence_length",
         "squeeze_model": "Try to use fewer IPUs by placing the input embedding and loss onto the \
                             same IPUs as the first and last tranformer layers respectively",
         "no_mask": "Don't apply padding masks to the attention scores",
-        "projection_serialization_steps": "Split the final MLM projection into this many steps"
+        "projection_serialization_steps": "Split the final MLM projection into this many steps",
+        "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on matmuls."
     })
-    group.add_argument("--use-ipu-model", action="store_true",
+    group.add_argument("--use-ipu-model", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Target the IpuModel (acquires a real IPU device by default). \
                              WARNING: The custom ops do not have validated cycle estimates \
                              so do not rely on the model's cycle report.")
 
+    group = parser.add_argument_group("Pretraining Config")
+    group.add_argument("--projection-lr-scale", type=float, default=8.0,
+                       help="Scale the learning rate of the projection/embedding variable. \
+                             This aids training as the variable is not updated from the embedding.")
+
     group = parser.add_argument_group("SQuAD Config")
     group.add_argument("--vocab-file", type=str,
                        help="Path to the vocab file")
-    group.add_argument("--do-lower-case", action="store_true",
+    group.add_argument("--do-lower-case", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Use this when using a uncased vocab")
     group.add_argument("--squad-results-dir", type=str, default="squad_results",
                        help="Path to directory to write results (Note: will be created if path does not exist)")
@@ -192,17 +210,17 @@ def parse_bert_args(args_string=None):
                        help="Set the loss scaling. This helps prevent underflow during backpropagation.")
     group.add_argument("--epochs", type=int, default=35,
                        help="Number of epochs to train for")
-    group.add_argument("--stochastic-rounding", action="store_true",
+    group.add_argument("--stochastic-rounding", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Turn on Stochastic Rounding")
 
     group = parser.add_argument_group("Continuous Pipelining Config")
-    group.add_argument("--pipeline-lr-scaling", action="store_true",
+    group.add_argument("--pipeline-lr-scaling", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Enable learning rate scaling per pipeline stage")
     group.add_argument("--pipeline-lr-scaling-offset", type=float, default=0.25,
                        help="Set the value for learning rate scaling on the first pipeline stage. Learning rates will be scaled "
                             "linearly from this offset (default: 0.25) to 1 as pipeline stage increases to account for increased errors "
                             "at lower-level stages when pipelining. (Note: for pipelines with few stages, this should be increased)")
-    group.add_argument("--pipeline-momentum-scaling", action="store_true",
+    group.add_argument("--pipeline-momentum-scaling", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Enable momentum and dampening scaling per pipeline stage")
     group.add_argument("--pipeline-momentum-scaling-offset", type=float, default=0.1,
                        help="Set the value momentum scaling on the last pipeline stage. Momentums will be scaled "
@@ -213,7 +231,8 @@ def parse_bert_args(args_string=None):
                             "linearly from this offset (default: same as momentum) to 1 as pipeline stage decrease to account for increased errors "
                             "at lower-level stages when pipelining. (Note: this will be set to the momentum offset by default)")
 
-    group = parser.add_mutually_exclusive_group()
+    _group = parser.add_argument_group("Hyperparameter Schedule Config")
+    group = _group.add_mutually_exclusive_group()
     group.add_argument("--lr-schedule-by-epoch", action=ScheduleArgumentParser, nargs="*", default=None,
                        help="A schedule for learning rate warmup and decay, provided as space-separated "
                             "<int>:<float> pairs. The first item is the epoch at which to update and the second is "
@@ -225,7 +244,7 @@ def parse_bert_args(args_string=None):
                             "the learning rate at that step. \n"
                             "E.g.: --lr-schedule-by-step 0:0.00001 2500:0.0001 10000:0.0008 50000:0.00004 100000:0.00002")
 
-    group = parser.add_mutually_exclusive_group()
+    group = _group.add_mutually_exclusive_group()
     group.add_argument("--ls-schedule-by-epoch", action=ScheduleArgumentParser, nargs="*", default=None,
                        help="A schedule for loss scaling, provided as space-separated <int>:<float> pairs. "
                             "The first item is the spoch at which to update and the second is "
@@ -237,7 +256,7 @@ def parse_bert_args(args_string=None):
                             "the loss scaling at that step. \n"
                             "E.g.: --ls-schedule-by-step 0:0.00001 2500:0.0001 10000:0.0008 50000:0.00004 100000:0.00002")
 
-    group = parser.add_argument_group("Initialisation Config", "Flags for initialising the weights")
+    group = parser.add_argument_group("Initialisation Config", "Flags for initialising the weights").add_mutually_exclusive_group()
     group.add_argument("--tf-checkpoint", type=str,
                        help="Path to Tensorflow Checkpoint to initialise the model.")
     group.add_argument("--onnx-checkpoint", type=str,
@@ -248,13 +267,13 @@ def parse_bert_args(args_string=None):
                        help="Files to load data from. "
                             "For Pretraining: Binary files created by bert_data/create_pretraining_data.py. "
                             "For SQuAD: Path to train-v1.1.json")
-    group.add_argument("--shuffle", action="store_true",
+    group.add_argument("--shuffle", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Shuffle Dataset")
-    group.add_argument("--overwrite-cache", action="store_true",
+    group.add_argument("--overwrite-cache", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Regenerates the SQuAD dataset instead of loading the cache if available")
-    group.add_argument("--no-drop-remainder", action="store_true",
+    group.add_argument("--no-drop-remainder", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Adjust the batches_per_step to perfectly divide the dataset so no data is missed. Only available for SQuAD.")
-    group.add_argument("--synthetic-data", action="store_true",
+    group.add_argument("--synthetic-data", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Generate a synthetic dataset. Creates enough data for one step per epoch. "
                             "Increase --epochs for multiple perfomance measurements.")
     group.add_argument("--duplication-factor", type=int, default=1,
@@ -264,9 +283,12 @@ def parse_bert_args(args_string=None):
                        help="Number of epochs of data to load into memory during PRETRAINING. Default is to load input files as needed.")
 
     group = parser.add_argument_group("Execution Config")
+
+    group.add_argument("--pipeline", action="store_const", const="PIPELINE", dest="execution_mode",
+                       help="Build and execute the graph with Pipeline annotations.")
     group.add_argument("--batches-per-step", type=int, default=250,
                        help="Set the number of batches (weight updates) to execute before returning to the Host")
-    group.add_argument("--floating-point-exceptions", action="store_true",
+    group.add_argument("--floating-point-exceptions", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Turn on floating point exceptions")
     group.add_argument("--seed", type=int, default=1984,
                        help="Set the host and device seed")
@@ -274,39 +296,46 @@ def parse_bert_args(args_string=None):
                        help="Path to save a poplar Graph Report")
     group.add_argument("--execution-report", type=str,
                        help="Path to save a poplar Execution Report. NOTE: this will run the graph with instrumentation and for only one 'batch'")
-    group.add_argument("--gc-profile", action="store_true",
+    group.add_argument("--gc-profile", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Run the model and save the reports with gcprofile.save_popart_reports")
-    group.add_argument("--no-outlining", action="store_true",
+    parser.add_argument('--report-hw-cycle-count', action="store_true",
+                        help='Report the number of cycles each "session.run" takes.')
+    group.add_argument("--no-outlining", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Disable PopART outlining optimisations. This will increase memory for a small throughput improvement.")
     group.add_argument("--engine-cache", type=str,
                        help="Path to store a cache of the engine compilation.")
+    group.add_argument("--variable-weights-inference", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Force the weights to be variables during inference. Required for loading weights from a checkpoint when using a cached engine.")
     group.add_argument("--log-dir", type=str, default="logs",
                        help="Path to save Tensorboard logs")
     group.add_argument("--steps-per-log", type=int, default=1,
                        help="Number of session.run to execute before logging training metrics")
     group.add_argument("--aggregate-metrics-over-steps", type=int,
                        help="Number of steps to aggregate metrics over. Default is the number of steps per epoch")
-    group.add_argument("--pipeline", action="store_true",
-                       help="Pipeline execution.")
     group.add_argument("--epochs-per-save", type=int, default=-1,
                        help="Number of epochs between each save of the model. Also saves at the end of training")
     group.add_argument("--steps-per-save", type=int, default=-1,
                        help="Number of steps between each save of the model. Also saves at the end of training")
     group.add_argument("--checkpoint-dir", type=str, default="ckpts",
                        help="Path to directory to save model checkpoints.")
-    group.add_argument("--no-training", action="store_true",
+    group.add_argument("--continue-training-from-epoch", type=int, default=0,
+                       help="Training epoch at which to start hyperparameter schedules when loading from a checkpoint")
+    group.add_argument("--no-training", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Don't run the training loop")
-    group.add_argument("--no-validation", action="store_true",
+    group.add_argument("--no-validation", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Don't validate training. This includes validation at the end of training")
-    group.add_argument("--no-model-save", action="store_true",
+    group.add_argument("--no-model-save", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Don't save the model. Useful for testing.")
     group.add_argument("--validation-config", action=ValidationConfig,
                        help="Path to preset config for validation. If set by the `--config` file, it definied as a dict instead")
-    group.add_argument("--low-latency-inference", action="store_true",
+    group.add_argument("--low-latency-inference", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Use input/output callbacks to minimise inference latency for tasks that support this mode.")
+    group.add_argument("--realtime-scheduler", action="store_true",
+                       help="Set a realtime scheduler for this process. Only activated during inference. \
+                             (IMPORTANT: Requires non-interactive sudo, otherwise has no effect)")
     group.add_argument("--max-copy-merge-size", type=int, default=-1,
                        help="Set the value for Poplar engine option 'opt.maxCopyMergeSize'. Set to -1 to use Poplar's default.")
-    group.add_argument("--disable-fully-connected-pass", action="store_true",
+    group.add_argument("--disable-fully-connected-pass", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Adding fully connected pass to some matmuls causes large transposes before operations during training. "
                        "Note: This will improve throughput at the cost of memory.")
     group.add_argument("--log-level", type=str, default='INFO',
@@ -316,15 +345,43 @@ def parse_bert_args(args_string=None):
     group.add_argument("--config", type=str,
                        help="Path to preset config")
 
+    defaults = dict(execution_mode="DEFAULT")
     if pargs.config is not None:
         with open(pargs.config, "r") as f:
             preset = json.load(f)
-        parser.set_defaults(**preset)
+        clean_exclusive_presets(parser, preset, remaining_argv)
+        defaults.update(**preset)
+    parser.set_defaults(**defaults)
 
     args = parser.parse_args(remaining_argv)
-    validate_args(args)
+
+    # Append datetime string to checkpoints path and create the subdirectory
+    args.checkpoint_dir = os.path.join(args.checkpoint_dir,
+                                       datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S"))
+    os.makedirs(args.checkpoint_dir)
+
     save_args(args)
     return args
+
+
+def clean_exclusive_presets(parser, preset, remaining_argv):
+    """Modifies the presets dictionary in-place to remove any defaults that would violate
+    a mutually exclusive constraint."""
+    def mutually_exclusive_action_on_cmd(group):
+        for action in group._group_actions:
+            if any([opt in remaining_argv for opt in action.option_strings]):
+                return action.dest
+        return None
+
+    def remove_mutually_exclusive_clashes(group, presets, cmd_arg):
+        for action in group._group_actions:
+            if action.dest != cmd_arg and action.dest in presets:
+                del presets[action.dest]
+
+    for group in parser._mutually_exclusive_groups:
+        cmd_arg = mutually_exclusive_action_on_cmd(group)
+        if cmd_arg is not None:
+            remove_mutually_exclusive_clashes(group, preset, cmd_arg)
 
 
 def save_args(args):
@@ -348,8 +405,3 @@ def get_validation_args(args):
     args = vars(args)
     args.update(**validation_kwargs)
     return argparse.Namespace(**args)
-
-
-def validate_args(args):
-    if args.tf_checkpoint and args.onnx_checkpoint:
-        raise RuntimeError("--tf-checkpoint and --onnx-checkpoint cannot both be set")

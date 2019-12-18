@@ -90,8 +90,11 @@ const std::map<int, int> &EmbeddingGatherGradOp::gradOutToNonGradIn() const
 
 void EmbeddingGatherGradOp::setup() { outInfo(gradOutIndex()) = inInfo(dataInIndex()); }
 
+static popart::OpDefinition embeddingGatherOpDef({});
+
 static popart::OpCreator<EmbeddingGatherOp> EmbeddingGatherOpCreator(
-    {CustomOperators::EmbeddingGather},
+    popart::OpDefinitions({{CustomOperators::EmbeddingGather,
+      embeddingGatherOpDef}}),
     [](const popart::OperatorIdentifier &_opid,
        const popart::Op::Settings &settings,
        const popart::Attributes &attr) -> std::unique_ptr<popart::Op> {

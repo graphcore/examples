@@ -47,7 +47,7 @@ DATASET_CONSTANTS = {
 
 
 def data(opts, is_training=True):
-    batch_size = opts["batch_size"] if is_training else opts["valid_batch_size"]
+    batch_size = opts["batch_size"]
     dtypes = opts["precision"].split('.')
     datatype = tf.float16 if dtypes[0] == '16' else tf.float32
 
@@ -83,7 +83,7 @@ def data(opts, is_training=True):
             shuffle_buffer = DATASET_CONSTANTS[opts['dataset']]['SHUFFLE_BUFFER']
             dataset = dataset.shuffle(shuffle_buffer, seed=opts['seed'])
         else:
-            dataset = dataset.take(opts["validation_batches_per_step"]*opts["validation_iterations"]*opts["valid_batch_size"])
+            dataset = dataset.take(opts["validation_batches_per_step"]*opts["validation_iterations"]*batch_size)
             dataset = dataset.cache()
         dataset = dataset.repeat()
 

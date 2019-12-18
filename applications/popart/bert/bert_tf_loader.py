@@ -59,12 +59,16 @@ def load_bert_config_tf(config_path):
         vocab_length=config_data["vocab_size"],
         hidden_size=config_data["hidden_size"],
         sequence_length=config_data["max_position_embeddings"],
+        max_positional_length=config_data["max_position_embeddings"],
         ff_size__=config_data["intermediate_size"],
         attention_heads=config_data["num_attention_heads"],
         num_layers=config_data["num_hidden_layers"],
         # TODO: Read the rest of these in from a GC config?
+        projection_serialization_steps=2,
+        batch_size=1,
         popart_dtype="FLOAT",
         no_dropout=True,
+        custom_ops=["gather", "attention"]
     )
 
     return config
@@ -90,7 +94,7 @@ def generate_initializers(mapping, config, map_names, load_data):
     }
 
     for name, array in zip(map_names, load_data):
-        logger.debug(f"{name} -> {mapping[name]}")
+        logger.debug(f"Initialising tensor from checkpoint {name} -> {mapping[name]}")
 
         if array.dtype == np.float32 and config.dtype == np.float16:
             array = array.astype(config.dtype)
@@ -109,6 +113,7 @@ def generate_initializers(mapping, config, map_names, load_data):
             start_idx = qkv_tensor_range[qkv_part][0]
             end_idx = qkv_tensor_range[qkv_part][1]
             initializers[mapping[name]][:, start_idx:end_idx] = array
+            logger.debug(f"Initialising QKV component {name}[{start_idx}:{end_idx}] from checkpoint")
             continue
 
         if mapping[name] == "Embedding/Embedding_Dict":
@@ -116,6 +121,7 @@ def generate_initializers(mapping, config, map_names, load_data):
             diff = config.vocab_length - tf_vocab_length
             # Pad or Crop the vocab.
             if diff > 0:
+                logger.debug(f"Padding the vocabulary. From {tf_vocab_length} to {config.vocab_length}")
                 pad = np.zeros((diff, config.hidden_size)).astype(array.dtype)
                 array = np.concatenate((array, pad), axis=0)
             else:
@@ -124,7 +130,9 @@ def generate_initializers(mapping, config, map_names, load_data):
         if "gather" in config.custom_ops and mapping[name] in ["Embedding/Embedding_Dict", "Embedding/Positional_Dict"]:
             array = np.transpose(array)
 
-        initializers[mapping[name]] = array
+        # FIXME: This copy is currently required to prevent popart misinterpreting the memory layout after the transpose.
+        # Remove once T13187 is resolved.
+        initializers[mapping[name]] = array.copy()
     return initializers
 
 
@@ -217,6 +225,7 @@ def load_model_from_tf(
     config,
     indices,
     positions,
+    segments,
     builder=popart.Builder(),
 ):
     """
@@ -234,7 +243,7 @@ def load_model_from_tf(
     initializers = load_initializers_from_tf(file_path, is_checkpoint, config)
     popart_model = Bert(config, builder=builder, initializers=initializers)
 
-    output_tensor = popart_model.build_graph(indices, positions)
+    output_tensor = popart_model.build_graph(indices, positions, segments)
     proto = builder.getModelProto()
     return popart_model, proto, output_tensor
 
@@ -287,6 +296,7 @@ if __name__ == "__main__":
 
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
+    segments = builder.addInputTensor(sequence_info)
 
     is_checkpoint = args.tf_checkpoint_path is not None
     input_filename = (
@@ -299,6 +309,7 @@ if __name__ == "__main__":
         config,
         indices,
         positions,
+        segments,
         builder=builder,
     )
 

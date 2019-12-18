@@ -17,6 +17,7 @@
   ],
   "shuffle": true,
   "no_validation": true,
+  "use_default_available_memory_proportion": true,
   "disable_fully_connected_pass": true,
   "projection_serialization_steps": 4
 }

@@ -43,7 +43,7 @@
         "attention"
     ],
     "batches_per_step": 1897,
-    "epochs": 18,
+    "epochs": 3,
     "epochs_per_save": 2,
     "input_files": [
         "data/squad/train-v1.1.json"
@@ -53,11 +53,12 @@
     "tf_checkpoint": "data/ckpts/uncased_L-12_H-768_A-12/bert_model.ckpt",
     "do_lower_case": true,
     "shuffle": true,
-    "pipeline": true,
+    "execution_mode": "PIPELINE",
     "no_outlining": true,
     "checkpoint_dir": "ckpts/squad_base_128",
     "engine_cache": "__squad_base_128",
     "no_drop_remainder": true,
+    "use_default_available_memory_proportion": true,
     "disable_fully_connected_pass": true,
     "validation_config": {
         "sequence_length": 128,

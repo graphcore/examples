@@ -20,6 +20,9 @@ class MockIteration:
 class TestConfig(NamedTuple):
     __test__ = False
 
+    task: str = "PRETRAINING"
+    projection_lr_scale: float = 1.0
+
     learning_rate: float = 1e-8
     loss_scaling: float = 1.0
 
@@ -42,7 +45,7 @@ class TestConfig(NamedTuple):
     steps_per_decay_update: int = 1
 
     # For the per-tensor learning rate
-    pipeline: bool = False
+    execution_mode: str = "PIPELINE"
     pipeline_lr_scaling: bool = False
     pipeline_lr_scaling_offset: float = 0.1
     pipeline_momentum_scaling: bool = False
@@ -459,7 +462,7 @@ def test_per_tensor_lr():
             if i in step_schedule:
                 step_lr = step_schedule[i]
 
-            scaled_lr = step_lr * lr_scale if config.pipeline else step_lr
+            scaled_lr = step_lr * lr_scale if config.execution_mode == "PIPELINE" else step_lr
 
             test_case.append(test_case[-1] - scaled_lr)
         return test_case
@@ -475,7 +478,7 @@ def test_per_tensor_lr():
 
         config = TestConfig(
             lr_schedule_by_step=step_schedule,
-            pipeline=pipeline,
+            execution_mode="PIPELINE" if pipeline else "DEFAULT",
             pipeline_lr_scaling=pipeline,
             pipeline_lr_scaling_offset=offset)
 

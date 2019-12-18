@@ -1,4 +1,6 @@
 # Copyright 2019 Graphcore Ltd.
+import os
+import ctypes
 import popart
 import numpy as np
 from scipy.stats import truncnorm
@@ -6,7 +8,12 @@ from typing import NamedTuple, List, Optional
 from functools import reduce
 from contextlib import contextmanager, ExitStack
 from collections import defaultdict
+from enum import Enum
 import math
+
+so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                       "custom_ops.so")
+ctypes.cdll.LoadLibrary(so_path)
 
 
 class BertConfig(NamedTuple):
@@ -40,22 +47,20 @@ class BertConfig(NamedTuple):
     layers_per_ipu: int = 2
 
     no_dropout: bool = False
+    no_attn_dropout: bool = False
     dropout_prob: float = 0.1
     attn_dropout_prob: float = 0.1
 
     layer_norm_eps: float = 0.001
 
-    # Choices: PRETRAINING (MLM + NSP), SQUAD, MRPC
+    # Choices: PRETRAINING (MLM + NSP), SQUAD
     task: str = "PRETRAINING"
 
-    # Choices: FLOAT, FLOAT16
-    popart_dtype: str = "FLOAT16"
-
-    # Choices: embedding, attention, feed_forward
+    # Choices: gather, attention
     custom_ops: List[str] = []
 
-    # This option uses the projection custom_op for all linear layers and
-    # serialises them to multiples of (hidden_size, hidden_size) matmuls.
+    # This option serializes all matmul layers to multiples
+    # {N, hidden_size} x {hidden_size, hidden_size}.
     # This is required for sequence length 384.
     split_linear_layers: bool = False
 
@@ -64,9 +69,12 @@ class BertConfig(NamedTuple):
 
     no_mask: bool = False
 
-    activation_type: str = 'Relu'
+    activation_type: str = 'Gelu'
 
     relu_leak: float = 0.1
+
+    # Choices: FLOAT, FLOAT16
+    popart_dtype: str = "FLOAT16"
 
     @property
     def dtype(self):
@@ -83,6 +91,8 @@ class BertConfig(NamedTuple):
 
     projection_serialization_steps: int = 5
 
+    use_default_available_memory_proportion: bool = False
+
     @property
     def available_memory_proportion(self):
         '''This matmul option specifies the proportion of total tile memory the temporary values
@@ -90,8 +100,10 @@ class BertConfig(NamedTuple):
         Note: this is different to using PopART's setSerializeMatMul as the matmul will still be a single PopART Op
         meaning other operations cannot be scheduled between the serialised steps.
         BERT uses setSerializeMatMul so VarUpdate can execute between steps thus freeing the required gradient memory'''
-        if self.sequence_length <= 128:
-            return 0.6
+        if self.inference:
+            max_matmul_memory = 104858
+        elif self.sequence_length < 128:
+            max_matmul_memory = 40000
         elif self.sequence_length <= 256:
             max_matmul_memory = 60000
         elif self.sequence_length <= 384:
@@ -102,25 +114,40 @@ class BertConfig(NamedTuple):
         return max_matmul_memory / (2**18)
 
 
+class ExecutionMode(str, Enum):
+    DEFAULT = "DEFAULT"
+    PIPELINE = "PIPELINE"
+
+
 class DeviceScope(object):
     def __init__(self,
                  builder,
+                 execution_mode=ExecutionMode.DEFAULT,
                  virtualGraph=None,
                  pipelineStage=None,
-                 nameScope=None):
+                 nameScope=None,
+                 additional_scopes=None):
         self.builder = builder
+        self.execution_mode = execution_mode
         self.virtualGraph = virtualGraph
         self.pipelineStage = pipelineStage
         self.nameScope = nameScope
+        self.additional_scopes = additional_scopes or []
 
     def __enter__(self):
         self.stack = ExitStack()
         if self.virtualGraph is not None:
             self.stack.enter_context(self.builder.virtualGraph(self.virtualGraph))
-        if self.pipelineStage is not None:
+        # Adding pipelineStage attributes can have side effects on the schedule.
+        # even if it's disabled. FIXME: T13889
+        if self.execution_mode == ExecutionMode.PIPELINE\
+                and self.pipelineStage is not None:
             self.stack.enter_context(self.builder.pipelineStage(self.pipelineStage))
+
         if self.nameScope is not None:
             self.stack.enter_context(self.builder.nameScope(self.nameScope))
+        for scope in self.additional_scopes:
+            self.stack.enter_context(scope)
         return self
 
     def __exit__(self, *exp):
@@ -129,11 +156,14 @@ class DeviceScope(object):
 
 
 class Model(object):
-    def __init__(self, builder=popart.Builder(), initializers=None):
+    def __init__(self, builder=popart.Builder(), initializers=None, execution_mode=ExecutionMode.DEFAULT):
         if initializers is None:
             initializers = {}
         self.builder = builder
         self.initializers = initializers
+        if type(execution_mode) == str:
+            execution_mode = ExecutionMode(execution_mode)
+        self.execution_mode = execution_mode
 
         # Whenever a new tensor is created on a given pipeline stage, it should be added
         # to this dict to ensure it is given the correct learning rate
@@ -176,8 +206,8 @@ class Model(object):
             value = value.astype(dtype)
         return self.builder.aiOnnx.constant(value, debug_name)
 
-    def device_scope(self, virtualGraph=None, pipelineStage=None, nameScope=None):
-        return DeviceScope(self.builder, virtualGraph, pipelineStage, nameScope)
+    def device_scope(self, virtualGraph=None, pipelineStage=None, nameScope=None, additional_scopes=None):
+        return DeviceScope(self.builder, self.execution_mode, virtualGraph, pipelineStage, nameScope, additional_scopes)
 
     def _add_to_tensor_map(self, tensor):
         if not self.builder.hasPipelineStage():
@@ -222,7 +252,7 @@ class Bert(Model):
         pipeline_stage = ((self.config.num_layers - 1) // self.config.layers_per_ipu) + self.layer_offset + 1
         # Task Layers
         if self.config.task in ("NSP", "PRETRAINING"):
-            self.nsp_scope = self.device_scope(self.embedding_split_scope.virtualGraph, pipeline_stage)
+            self.nsp_scope = self.device_scope(self.embedding_split_scope.virtualGraph, pipeline_stage, "NSP")
         if self.config.task == "PRETRAINING":
             if (self.layer_offset - 1) != 0:
                 pipeline_stage += 1
@@ -233,6 +263,8 @@ class Bert(Model):
                 pipeline_stage -= 1
                 ipu = pipeline_stage
             self.squad_scope = self.device_scope(ipu, pipeline_stage, "Squad")
+
+        self.total_pipeline_stages = pipeline_stage + 1
 
     def encoder_scope(self, layer_index):
         ipu = (layer_index // self.config.layers_per_ipu) + self.layer_offset
@@ -251,19 +283,17 @@ class Bert(Model):
 
                 with self.builder.nameScope("FF"):
                     x = self.feed_forward(x)
-
         outputs = []
 
         # PreTraining tasks
         if self.config.task in ("NSP", "PRETRAINING"):
-            with self.nsp_scope, self.builder.nameScope("NSP"):
+            with self.nsp_scope:
                 outputs.append(self.nsp_head(x))
 
         if self.config.task == "PRETRAINING":
             # FIXME: T11914
             # with self.nsp_scope, self.builder.nameScope("CLS"):
             #     predictions = self.lm_prediction_head(x)
-
             with self.mlm_scope:
                 outputs = [self.projection(x)] + outputs
 
@@ -293,19 +323,6 @@ class Bert(Model):
             return self.builder.aiOnnx.dropout([input_x], 1, self.config.dropout_prob)[0]
         return input_x
 
-    def matmul(self, input_x, weight, split=None):
-        if split is None:
-            split = [2, 1]
-        x = self.builder.customOp(opName="Projection",
-                                  opVersion=1,
-                                  domain="ai.graphcore",
-                                  inputs=[input_x, weight],
-                                  attributes={
-                                      "mask_tokens": 0,
-                                      "split": split
-                                  })[0]
-        return x
-
     def leaky_relu(self, input_x, alpha):
         """
             This function implements the leaky relu activation function.
@@ -334,41 +351,9 @@ class Bert(Model):
         result = self.builder.aiOnnx.mul([input_x, result])
         return result
 
-    def gelu(self, input_x):
-        """
-            Implementation of the GELU function (https://arxiv.org/abs/1606.08415)
-        """
-        one_half = self.builder.aiOnnx.constant(
-            np.asarray([0.5], dtype=self.config.dtype))
-        one = self.builder.aiOnnx.constant(
-            np.asarray([1], dtype=self.config.dtype))
-        scale = self.builder.aiOnnx.constant(
-            np.asarray([0.044715], dtype=self.config.dtype))
-        two_on_pi = self.builder.aiOnnx.constant(np.asarray(
-            [math.sqrt(2./math.pi)], dtype=self.config.dtype))
-        result = self.builder.aiOnnx.mul([input_x, input_x])
-        result = self.builder.aiOnnx.mul([result, input_x])
-        result = self.builder.aiOnnx.mul([scale, result])
-        result = self.builder.aiOnnx.add([input_x, result])
-        result = self.builder.aiOnnx.mul([two_on_pi, result])
-        result = self.builder.aiOnnx.tanh([result])
-        result = self.builder.aiOnnx.add([one, result])
-        result = self.builder.aiOnnx.mul([input_x, result])
-        result = self.builder.aiOnnx.mul([one_half, result])
-        return result
-
-    def gelu_custom(self, input_x):
-        return self.builder.customOp(opName="Gelu",
-                                     opVersion=1,
-                                     domain="ai.graphcore",
-                                     inputs=[input_x],
-                                     attributes={})[0]
-
     def intermediate_activation_function(self, input_x):
-        if self.config.activation_type == 'GeluCustom':
-            return self.gelu_custom(input_x)
-        elif self.config.activation_type == 'Gelu':
-            return self.gelu(input_x)
+        if self.config.activation_type == 'Gelu':
+            return self.builder.aiGraphcore.gelu([input_x])
         elif self.config.activation_type == 'SGelu':
             return self.simplified_gelu(input_x)
         elif self.config.activation_type == 'LRelu':
@@ -389,18 +374,14 @@ class Bert(Model):
                                               (self.config.ff_size,),
                                               0,
                                               "B")
-            if 'feed_forward' in self.config.custom_ops:
-                split = [
-                    2, num_splits] if self.config.split_linear_layers else None
-                x = self.matmul(input_x, weight1, split=split)
-            else:
-                x = self.builder.aiOnnx.matmul([input_x, weight1])
-                if self.config.split_linear_layers:
-                    self.builder.setSerializeMatMul({x},
-                                                    'output_channels',
-                                                    num_splits,
-                                                    keep_precision=True)
-                    self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
+            x = self.builder.aiOnnx.matmul([input_x, weight1])
+            if self.config.split_linear_layers:
+                self.builder.setSerializeMatMul({x},
+                                                'output_channels',
+                                                num_splits,
+                                                keep_precision=True)
+            if not self.config.use_default_available_memory_proportion:
+                self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
             x = self.builder.aiOnnx.add([x, bias1])
 
         x = self.intermediate_activation_function(x)
@@ -415,18 +396,14 @@ class Bert(Model):
                                               (self.config.hidden_size,),
                                               0,
                                               "B")
-            if 'feed_forward' in self.config.custom_ops:
-                split = [
-                    1, num_splits] if self.config.split_linear_layers else None
-                x = self.matmul(x, weight2, split=split)
-            else:
-                x = self.builder.aiOnnx.matmul([x, weight2])
-                if self.config.split_linear_layers:
-                    self.builder.setSerializeMatMul({x},
-                                                    'reducing_dim',
-                                                    num_splits,
-                                                    keep_precision=True)
-                    self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
+            x = self.builder.aiOnnx.matmul([x, weight2])
+            if self.config.split_linear_layers:
+                self.builder.setSerializeMatMul({x},
+                                                'reducing_dim',
+                                                num_splits,
+                                                keep_precision=True)
+            if not self.config.use_default_available_memory_proportion:
+                self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
             x = self.builder.aiOnnx.add([x, bias2])
 
         # google-research/bert puts dropout here
@@ -553,14 +530,14 @@ class Bert(Model):
                                                     (embedding_size, self.config.hidden_size),
                                                     init_fn,
                                                     name)
-        self.embedding_dict = embedding_dict
+        if name == "Embedding_Dict":
+            self.embedding_dict = embedding_dict
 
         if detach:
             embedding_dict = self.detach(embedding_dict)
 
         x = self.builder.aiOnnx.gather([embedding_dict, indices])
         return x
-
 
     def attention_mask(self, masks):
         """
@@ -576,12 +553,17 @@ class Bert(Model):
             mask_tokens: 4
             returns: [0,0,-1000.0, -1000.0, 0, -1000.0, ...]
         """
-        ipu = self.builder.getVirtualGraph() if self.builder.hasVirtualGraph() else 0
-        if ipu in self.masks:
-            return self.masks[ipu]
-        with self.builder.nameScope("Mask"):
+        mask_idx = self.builder.getVirtualGraph() if self.builder.hasVirtualGraph() else None
+
+        if mask_idx in self.masks:
+            return self.masks[mask_idx]
+
+        mask_scope = self.device_scope(mask_idx,
+                                       self.builder.getPipelineStage() if self.builder.hasPipelineStage() else None,
+                                       "Mask")
+        with mask_scope:
             base_value = np.arange(self.config.sequence_length)
-            base = self.constant_tensor(base_value, np.int32, "mask_sequence")
+            base = self.constant_tensor(base_value, np.uint32, "mask_sequence")
             if self.config.task == "PRETRAINING":
                 # Mask tokens mask
                 mmask = self.builder.aiOnnx.less([base, masks[0]])
@@ -602,7 +584,7 @@ class Bert(Model):
                 [final_mask, self.constant_tensor(1000.0, self.config.dtype)])
             # TODO: This shouldn't be needed. No Variables on this path.
             final_mask = self.detach(final_mask)
-            self.masks[ipu] = final_mask
+            self.masks[mask_idx] = final_mask
         return final_mask
 
     def attention(self, input_x, masks=None):
@@ -613,6 +595,7 @@ class Bert(Model):
         qkv = self.builder.aiOnnx.matmul([input_x, qkv_weights])
         if self.config.split_linear_layers:
             self.builder.setSerializeMatMul({qkv}, 'output_channels', 3, True)
+        if not self.config.use_default_available_memory_proportion:
             self.builder.setAvailableMemoryProportion(qkv, self.config.available_memory_proportion)
 
         if 'attention' in self.config.custom_ops:
@@ -626,7 +609,8 @@ class Bert(Model):
                                                      0, 0.02,
                                                      "Out")
         x = self.builder.aiOnnx.matmul([x, projection_weights])
-        self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
+        if not self.config.use_default_available_memory_proportion:
+            self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
 
         x = self.dropout(x)
         x = self.builder.aiOnnx.add([input_x, x])
@@ -639,6 +623,15 @@ class Bert(Model):
         else:
             mask = self.constant_tensor(
                 np.zeros([self.config.sequence_length]), self.config.dtype)
+
+        available_memory_proportion = self.config.available_memory_proportion
+        if self.config.use_default_available_memory_proportion:
+            available_memory_proportion = -1
+
+        dropout_modifier = self.dropout_modifier
+        if self.config.no_dropout or self.config.no_attn_dropout:
+            dropout_modifier = -1
+
         x = self.builder.customOp(opName="Attention",
                                   opVersion=1,
                                   domain="ai.graphcore",
@@ -646,8 +639,8 @@ class Bert(Model):
                                   attributes={
                                       "heads": self.config.attention_heads,
                                       "sequence_length": self.config.sequence_length,
-                                      "mask_tokens": self.config.mask_tokens,
-                                      "dropout_modifier": self.dropout_modifier if not self.config.no_dropout else -1,
+                                      "available_memory_proportion": available_memory_proportion,
+                                      "dropout_modifier": dropout_modifier,
                                       "dropout_ratio": self.config.attn_dropout_prob
                                   },
                                   numOutputs=6)[0]
@@ -658,18 +651,15 @@ class Bert(Model):
         comb_shape = [self.config.batch_size, self.config.sequence_length,
                       self.config.attention_heads, self.config.qkv_length]
 
-        def extract_heads(tensor, index, hidden_size, transpose=False):
-            tensor = self.builder.aiOnnxOpset9.slice([qkv], axes=[1],
-                                                     starts=[
-                                                         index * hidden_size],
-                                                     ends=[(index + 1) * hidden_size])
+        def extract_heads(tensor, transpose=False):
             tensor = self.builder.reshape_const(
                 self.builder.aiOnnx, [tensor], comb_shape)
             perm = [0, 2, 1, 3] if not transpose else [0, 2, 3, 1]
             return self.builder.aiOnnx.transpose([tensor], perm=perm)
 
-        q, kt, v = [extract_heads(
-            qkv, i, self.config.hidden_size, i == 1) for i in range(3)]
+        split_qkv = self.builder.aiOnnx.split([qkv], num_outputs=3, axis=1, split=[self.config.hidden_size]*3, debugPrefix="QKV_Split")
+
+        q, kt, v = [extract_heads(t, i == 1) for i, t in enumerate(split_qkv)]
 
         # Attention calculation
         with self.builder.nameScope('Z'):
@@ -685,7 +675,8 @@ class Bert(Model):
 
             x = self.builder.aiOnnx.softmax([x], axis=-1)
 
-            x = self.dropout(x)
+            if not self.config.no_attn_dropout:
+                x = self.dropout(x)
 
             # x[batch_size, attention_heads, sequence_length, sequence_length] * v[batch_size, attention_heads, sequence_length, qkv_length]
             z = self.builder.aiOnnx.matmul([x, v])
@@ -704,8 +695,14 @@ class Bert(Model):
         x = self.builder.aiOnnxOpset9.slice([x], axes=[1], starts=[
             0], ends=[self.config.mask_tokens])
 
-        # The non-custom embedding creates the embedding_dict for the gather. So it needs transposing
         weight = self.embedding_dict
+
+        # Move the weight to the current pipeline stage
+        if weight in self.pipeline_stage_tensors[self.embedding_scope.pipelineStage]:
+            self.pipeline_stage_tensors[self.embedding_scope.pipelineStage].remove(weight)
+            self._add_to_tensor_map(weight)
+
+        # The non-custom embedding creates the embedding_dict for the gather. So it needs transposing
         if 'gather' not in self.config.custom_ops:
             weight = self.builder.aiOnnx.transpose([weight])
 

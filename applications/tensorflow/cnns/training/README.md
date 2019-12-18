@@ -66,7 +66,7 @@ multiple parts that are run on separate IPUs.
 
     python train.py --dataset imagenet --data-dir .../imagenet-data --model-size 50 --batch-size 2 --shards 2
 
-Validation accuracy 75.1% after 100 epochs
+Validation top-1 accuracy 75.1% after 100 epochs
 
 The model will fit on a single IPU with a batch size of 1. 
 

@@ -2,9 +2,9 @@
 import enum
 import popart
 import sys
-from logging import getLogger
+import logging
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ScheduleMode(enum.Enum):
@@ -29,13 +29,16 @@ class BaseOptimizerFactory():
 
         self.iteration = iteration
 
+        self.projection_lr_scaling = args.task == "PRETRAINING"
+        self.projection_lr_scale = args.projection_lr_scale
+
         self.lr_scaling = args.pipeline_lr_scaling
         self.momentum_scaling = args.pipeline_momentum_scaling
 
         # If pipelining is enabled, we want to scale the parameters for different
         # pipeline stages. If not, don't perform scaling.
         # Note: This calculates the scale factors, not the absolute values
-        if self.lr_scaling or self.momentum_scaling:
+        if args.execution_mode == "PIPELINE" and (self.lr_scaling or self.momentum_scaling):
             self.pipeline_stage_tensors = tensors
             if self.lr_scaling:
                 offset = args.pipeline_lr_scaling_offset
@@ -70,6 +73,8 @@ class BaseOptimizerFactory():
 
         optimizer = popart.SGD(self.optimizer_options)
 
+        projection_scale_added = False
+
         for stage in self.pipeline_stage_tensors:
             specific_parameters = {}
             if self.lr_scaling:
@@ -82,7 +87,22 @@ class BaseOptimizerFactory():
                 dampening = 1 - ((1 - self.option_values["defaultDampening"]) * self.pipeline_stage_dampening_scaling[stage])
                 specific_parameters["dampening"] = (dampening, True)
             for tensor_id in self.pipeline_stage_tensors[stage]:
-                optimizer.insertSpecific(tensor_id, specific_parameters)
+                # Special case for embedding/projection variable.
+                if self.projection_lr_scaling and "Embedding_Dict" in tensor_id:
+                    lr = specific_parameters.get("learningRate", self.optimizer_options["defaultLearningRate"])
+                    params = specific_parameters.copy()
+                    params["learningRate"] = (lr[0] * self.projection_lr_scale, lr[1])
+                    optimizer.insertSpecific(tensor_id, params)
+                    projection_scale_added = True
+                else:
+                    optimizer.insertSpecific(tensor_id, specific_parameters)
+
+        if self.projection_lr_scaling and not projection_scale_added:
+            lr = self.optimizer_options["defaultLearningRate"]
+            optimizer.insertSpecific(
+                "Embedding/Embedding_Dict",
+                {"learningRate": (lr[0] * self.projection_lr_scale, lr[1])})
+
         return optimizer
 
     def should_update(self, iteration):
@@ -167,7 +187,7 @@ class Schedule(object):
             return {int(k): float(raw_schedule[k]) for k in raw_schedule}
         except ValueError as ex:
             logger.warn(f"Invalid Schedule provided for parameter [{param}]. "
-                         "It should be a set of int:float pairs.")
+                        "It should be a set of int:float pairs.")
             raise ex
 
 
@@ -209,6 +229,12 @@ class ScheduledOptimizerFactory(BaseOptimizerFactory):
                                                  args.ls_schedule_by_epoch,
                                                  args.ls_schedule_by_step,
                                                  args.loss_scaling))
+
+        logger.debug("Created schedules...")
+        for schedule in self._schedules.values():
+            logger.debug(f"Schedule[{schedule.param} | {str(schedule.mode)}]")
+            for key, value in schedule.schedule.items():
+                logger.debug(f"\t{key:>6}: {value}")
 
 
 class LinearStepOptimizerFactory(BaseOptimizerFactory):

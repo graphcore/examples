@@ -20,6 +20,7 @@ import train
 import log as logging
 from Datasets import data as dataset
 from tensorflow.python import ipu
+from ipu_utils import get_config
 from tensorflow.python.ipu.scopes import ipu_scope
 from tensorflow.python.ipu import loops, ipu_infeed_queue
 import tensorflow.contrib.compiler.xla as xla
@@ -64,6 +65,21 @@ def validation_graph(model, opts):
         ipu.utils.move_variable_initialization_to_cpu()
         valid_init = tf.global_variables_initializer()
 
+    globalAMP = None
+    if opts["available_memory_proportion"] and len(opts["available_memory_proportion"]) == 1:
+        globalAMP = opts["available_memory_proportion"][0]
+
+    ipu_options = get_config(ipu_id=opts["select_ipu"],
+                             prng=not opts["no_stochastic_rounding"],
+                             shards=1,
+                             number_of_replicas=opts['replicas']*opts['shards'],
+                             max_cross_replica_buffer_size=opts["max_cross_replica_buffer_size"],
+                             fp_exceptions=opts["fp_exceptions"],
+                             xla_recompute=opts["xla_recompute"],
+                             seed=opts["seed"],
+                             availableMemoryProportion=globalAMP)
+    ipu.utils.configure_ipu_system(ipu_options)
+
     valid_sess = tf.Session(graph=valid_graph, config=tf.ConfigProto())
 
     return train.GraphOps(valid_graph, valid_sess, valid_init, [accuracy], None, valid_iterator, None, valid_saver)
@@ -86,7 +102,7 @@ def validation_run(valid, filepath, i, epoch, first_run, opts):
     val_time = time.time() - start
     accuracy /= opts["validation_iterations"]
 
-    valid_format = ("Validation accuracy (iteration: {iteration:6d}, epoch: {epoch:6.2f}, img/sec: {img_per_sec:6.2f},"
+    valid_format = ("Validation top-1 accuracy (iteration: {iteration:6d}, epoch: {epoch:6.2f}, img/sec: {img_per_sec:6.2f},"
                     " time: {val_time:8.6f}): {val_acc:6.3f}%")
 
     stats = OrderedDict([
@@ -96,7 +112,7 @@ def validation_run(valid, filepath, i, epoch, first_run, opts):
                 ('val_time', val_time),
                 ('img_per_sec', (opts["validation_iterations"] *
                                  opts["validation_batches_per_step"] *
-                                 opts['valid_batch_size']) / val_time),
+                                 opts['total_batch_size']) / val_time),
             ])
     logging.print_to_file_and_screen(valid_format.format(**stats), opts)
     logging.write_to_csv(stats, first_run, False, opts)
@@ -160,22 +176,14 @@ def set_main_defaults(opts):
     opts['summary_str'] = "\n"
 
 
-def add_validation_arguments(parser):
-    val_group = parser.add_argument_group('Validation')
-    val_group.add_argument('--valid-batch-size', type=int,
-                           help="Batch-size for validation graph")
-    return parser
-
-
 def set_validation_defaults(opts):
     if not opts['validation']:
         opts['summary_str'] += "No Validation\n"
     else:
-        if not opts['valid_batch_size']:
-            opts['valid_batch_size'] = opts['batch_size']
-        opts['summary_str'] += "Validation\n Batch Size: {}\n".format("{valid_batch_size}")
+        opts['total_batch_size'] = opts['batch_size']*opts['shards']*opts['replicas']
+        opts['summary_str'] += "Validation\n Batch Size: {}\n".format("{total_batch_size}")
         opts["validation_iterations"] = int(DATASET_CONSTANTS[opts['dataset']]['NUM_VALIDATION_IMAGES'] /
-                                            opts["valid_batch_size"])
+                                            opts["total_batch_size"])
         if opts["batches_per_step"] < opts["validation_iterations"]:
             opts["validation_batches_per_step"] = int(opts["validation_iterations"] //
                                                       int(round(opts["validation_iterations"] / opts['batches_per_step'])))
@@ -191,7 +199,6 @@ def create_parser(model, parser):
     parser = train.add_training_arguments(parser)
     parser = train.add_ipu_arguments(parser)
     parser = logging.add_arguments(parser)
-    parser = add_validation_arguments(parser)
     return parser
 
 
@@ -229,4 +236,4 @@ if __name__ == '__main__':
         logging.print_to_file_and_screen(opts["summary_str"].format(**opts), opts)
         opts["summary_str"] = ""
         logging.print_to_file_and_screen(opts, opts)
-        validation_only_process(model.Model,  opts)
+        validation_only_process(model, opts)

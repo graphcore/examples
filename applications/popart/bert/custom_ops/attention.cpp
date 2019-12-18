@@ -3,6 +3,8 @@
 #include <memory>
 #include <iostream>
 
+#include <math.h>
+
 #include <popart/op.hpp>
 #include <popart/opmanager.hpp>
 #include <popart/popx/opx.hpp>
@@ -34,7 +36,7 @@ class AttentionGradOp : public popart::Op {
 public:
   unsigned heads;
   unsigned sequence_length;
-  unsigned mask_tokens;
+  float available_memory_proportion;
   bool use_dropout;
   uint32_t dropout_modifier;
   float dropout_ratio;
@@ -42,14 +44,14 @@ public:
   AttentionGradOp(const popart::Op &fwdOp, 
                   const unsigned heads,
                   const unsigned sequence_length,
-                  const unsigned mask_tokens,
+                  const float available_memory_proportion,
                   const bool use_dropout,
                   const uint32_t dropout_modifier,
                   const float dropout_ratio)
     : popart::Op(CustomGradOperators::AttentionGrad, fwdOp.settings), 
       heads(heads),
       sequence_length(sequence_length),
-      mask_tokens(mask_tokens),
+      available_memory_proportion(available_memory_proportion),
       use_dropout(use_dropout),
       dropout_modifier(dropout_modifier),
       dropout_ratio(dropout_ratio) {}
@@ -66,15 +68,26 @@ public:
   };
 
   const std::vector<popart::GradInOutMapper> &gradInputInfo() const {
-    static const std::vector<popart::GradInOutMapper> inInfo = {
-        {0, 0, popart::GradOpInType::GRADOUT},
-        {1, 1, popart::GradOpInType::OUT},
-        {2, 2, popart::GradOpInType::OUT},
-        {3, 3, popart::GradOpInType::OUT},
-        {4, 4, popart::GradOpInType::OUT},
-        {5, 5, popart::GradOpInType::OUT},
-        {getSeedInIndex(), 2, popart::GradOpInType::IN}};
-    return inInfo;
+    if (use_dropout) {
+      static const std::vector<popart::GradInOutMapper> inInfo = {
+          {0, 0, popart::GradOpInType::GRADOUT},
+          {1, 1, popart::GradOpInType::OUT},
+          {2, 2, popart::GradOpInType::OUT},
+          {3, 3, popart::GradOpInType::OUT},
+          {4, 4, popart::GradOpInType::OUT},
+          {5, 5, popart::GradOpInType::OUT},
+          {getSeedInIndex(), 2, popart::GradOpInType::IN}};
+      return inInfo;
+    } else {
+      static const std::vector<popart::GradInOutMapper> inInfo = {
+          {0, 0, popart::GradOpInType::GRADOUT},
+          {1, 1, popart::GradOpInType::OUT},
+          {2, 2, popart::GradOpInType::OUT},
+          {3, 3, popart::GradOpInType::OUT},
+          {4, 4, popart::GradOpInType::OUT},
+          {5, 5, popart::GradOpInType::OUT}};
+      return inInfo;
+    }
   }
 
   // The Grad Op has 1 output, which is the gradient of the only input
@@ -83,7 +96,8 @@ public:
     return outInfo;
   }
 
-  bool requiresRandomSeed() const override { return true; }
+  // This function is only called on fwd ops
+  bool requiresRandomSeed() const override { return use_dropout; }
   popart::InIndex getSeedInIndex() const override { return 6; }
 
   float getDropoutRatio() const { return dropout_ratio; }
@@ -96,7 +110,7 @@ class AttentionOp : public popart::Op {
 public:
   unsigned heads;
   unsigned sequence_length;
-  unsigned mask_tokens;
+  float available_memory_proportion;
   bool use_dropout;
   uint32_t dropout_modifier;
   float dropout_ratio;
@@ -105,14 +119,14 @@ public:
               const popart::Op::Settings &settings_,
               const unsigned heads,
               const unsigned sequence_length,
-              const unsigned mask_tokens,
+              const float available_memory_proportion,
               const bool use_dropout,
               const uint32_t dropout_modifier,
               const float dropout_ratio)
     : popart::Op(_opid, settings_),
       heads(heads),
       sequence_length(sequence_length),
-      mask_tokens(mask_tokens),
+      available_memory_proportion(available_memory_proportion),
       use_dropout(use_dropout),
       dropout_modifier(dropout_modifier),
       dropout_ratio(dropout_ratio) {}
@@ -143,7 +157,7 @@ public:
   std::vector<std::unique_ptr<popart::Op>> getGradOps() {
     std::vector<std::unique_ptr<Op>> upops;
     upops.emplace_back(new AttentionGradOp(*this, 
-      heads, sequence_length, mask_tokens, 
+      heads, sequence_length, available_memory_proportion, 
       use_dropout, dropout_modifier, dropout_ratio));
     return upops;
   }
@@ -152,42 +166,28 @@ public:
 
   float getDropoutRatio() const { return dropout_ratio; }
 
-  bool requiresRandomSeed() const override { return true; }
+  bool requiresRandomSeed() const override { return use_dropout; }
   popart::InIndex getSeedInIndex() const override { return 2; }
 };
 
+static popart::OpDefinition attentionOpDef({});
+
 static popart::OpCreator<AttentionOp> attentionOpCreator(
-  {CustomOperators::Attention},
+  popart::OpDefinitions({{CustomOperators::Attention, attentionOpDef}}),
   [](const popart::OperatorIdentifier &_opid,
      const popart::Op::Settings &settings,
-     const popart::Attributes &attr) -> std::unique_ptr<popart::Op> {
+     const popart::Attributes &attr = {}) -> std::unique_ptr<popart::Op> {
     int64_t heads = attr.getAttribute<popart::Attributes::Int>("heads", 12);
     int64_t sequence_length = attr.getAttribute<popart::Attributes::Int>("sequence_length", 128);
-    int64_t mask_tokens = attr.getAttribute<popart::Attributes::Int>("mask_tokens", 20);
     int64_t dropout_modifier = attr.getAttribute<popart::Attributes::Int>("dropout_modifier", 0);
     float dropout_ratio = attr.getAttribute<popart::Attributes::Float>("dropout_ratio", 0.15);
+    float available_memory_proportion = attr.getAttribute<popart::Attributes::Float>("available_memory_proportion", -1);
     return std::unique_ptr<AttentionOp>(new AttentionOp(
       _opid, settings, 
-      heads, sequence_length, mask_tokens, 
+      heads, sequence_length, available_memory_proportion,
       dropout_modifier != -1, dropout_modifier,
       dropout_ratio));
-  },
-  true);
-
-static const std::string availableMemoryProportion(const poplar::Target &target, const unsigned sequence_length) {
-  float matmulLimit;
-  if (sequence_length <= 128) {
-    return "0.6";
-  } else if (sequence_length <= 256) {
-    matmulLimit = 60000;
-  } else if (sequence_length <= 384){
-    matmulLimit = 45000;
-  } else {
-    matmulLimit = 40000;
-  }
-  const auto bytesPerTile = static_cast<float>(target.getBytesPerTile());
-  return std::to_string(matmulLimit/bytesPerTile);
-}
+  }, true);
 
 class AttentionOpx : public popart::popx::Opx {
 public:
@@ -229,11 +229,14 @@ public:
     setOutTensor(2, key);
     setOutTensor(3, value);
 
-    auto availableMemoryStr = availableMemoryProportion(graph().getTarget(), sequence_length);
+    poplar::OptionFlags mmOpts;
+    if (op->available_memory_proportion > 0) {
+      mmOpts.set("availableMemoryProportion", std::to_string(op->available_memory_proportion));
+    }
 
     auto selfAtten = poplin::matMulGrouped(
       graph(), query, key, prog, input.elementType(), debugPrefix("QK"),
-      {{"availableMemoryProportion", availableMemoryStr}}, &dv_p->matmulCache); // [B,An,S,S]
+      mmOpts, &dv_p->matmulCache); // [B,An,S,S]
 
     // Scale the Self Attention Matrix by the head size : Makes Large Difference in SoftMax
     float fscale = 1 / sqrt(float(head_size));
@@ -271,7 +274,7 @@ public:
 
     auto z = poplin::matMulGrouped(
       graph(), selfAtten, value, prog, input.elementType(), debugPrefix("Z"),
-      {{"availableMemoryProportion", availableMemoryStr}}, &dv_p->matmulCache); // [B*An,S,As]
+      mmOpts, &dv_p->matmulCache); // [B*An,S,As]
 
     z = z
       .reshape({batch_size, heads, sequence_length, head_size}) // [B,An,S,As]
@@ -297,8 +300,7 @@ public:
                    key     = getInTensor(2),
                    value   = getInTensor(3),
                    softmax = getInTensor(4),
-                   ref     = getInTensor(5),
-                   seed    = getInTensor(op->getSeedInIndex());
+                   ref     = getInTensor(5);
 
     auto outputInfo = outInfo(0);
     unsigned heads = op->heads;
@@ -312,19 +314,21 @@ public:
             .reshape({batch_size * heads, sequence_length, head_size});
     value = value.dimShufflePartial({1, 2}, {2, 1});
 
-    auto availableMemoryStr = availableMemoryProportion(graph().getTarget(), sequence_length);
+    poplar::OptionFlags mmOpts;
+    if (op->available_memory_proportion > 0) {
+      mmOpts.set("availableMemoryProportion", std::to_string(op->available_memory_proportion));
+    }
 
     auto softmaxGrad = poplin::matMulGrouped(
         graph(), zGrad, value, prog, zGrad.elementType(), debugPrefix("ZGrad"),
-        {{"availableMemoryProportion", availableMemoryStr}}, &dv_p->matmulCache);
-
+        mmOpts, &dv_p->matmulCache);
     softmax = softmax.reshape(softmaxGrad.shape());
 
     if (op->use_dropout && op->getIr().canTrain()) {
       double dropoutProbability = 1. - static_cast<double>(op->getDropoutRatio());
       double scale = 1. / (1. - static_cast<double>(op->getDropoutRatio()));
       auto dropout = poprand::dropout(graph(),
-                                      &seed,
+                                      &getInTensor(op->getSeedInIndex()),
                                       op->dropout_modifier,
                                       softmax,
                                       ref,
@@ -382,7 +386,7 @@ public:
     auto groupedGrad = poplin::matMulGrouped(
       graph(), groupedLhsRearranged, groupedRhsRearranged, 
       prog, groupedLhsRearranged.elementType(), debugPrefix("QKVGrad"),
-        {{"availableMemoryProportion", availableMemoryStr}}, &dv_p->matmulCache);
+        mmOpts, &dv_p->matmulCache);
     
     unsigned numGroups = heads * batch_size;
     auto queryGrad = groupedGrad.slice(0, numGroups)

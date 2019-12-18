@@ -1,9 +1,9 @@
 {
     "task": "PRETRAINING",
-    "num_layers": 12,
-    "layers_per_ipu": 1,
-    "hidden_size": 768,
-    "attention_heads": 12,
+    "num_layers": 24,
+    "layers_per_ipu": 2,
+    "hidden_size": 1024,
+    "attention_heads": 16,
     "sequence_length": 128,
     "mask_tokens": 20,
     "popart_dtype": "FLOAT16",
@@ -61,13 +61,11 @@
     "pipeline_momentum_scaling": true,
     "pipeline_momentum_scaling_offset": 0.1,
     "stochastic_rounding": true,
-    "no_outlining": true,
     "custom_ops": [
-        "gather",
-        "attention"
+        "gather"
     ],
     "batches_per_step": 8192,
-    "epochs": 3,
+    "epochs": 6,
     "epochs_per_save": 1,
     "steps_per_save": 512,
     "steps_per_log": 100,
@@ -89,14 +87,12 @@
         "data/wikipedia/AA/sequence_128/wiki_13_tokenised"
     ],
     "duplication_factor": 6,
-    "epochs_to_cache": 1,
+    "epochs_to_cache": 3,
     "vocab_length": 30400,
-    "projection_serialization_steps": 2,
-    "use_default_available_memory_proportion": true,
-    "disable_fully_connected_pass": true,
-    "engine_cache": "__pretrain_base_128",
+    "projection_serialization_steps": 5,
+    "engine_cache": "__pretrain_large_128",
     "shuffle": true,
     "execution_mode": "PIPELINE",
-    "checkpoint_dir": "checkpoints/pretrain_base",
+    "checkpoint_dir": "checkpoints/pretrain_large",
     "no_validation": true
 }

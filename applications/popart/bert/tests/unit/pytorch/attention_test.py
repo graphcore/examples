@@ -50,13 +50,13 @@ def test_attention_fwd(custom_ops):
 
     input_info = popart.TensorInfo(config.popart_dtype, [config.batch_size * config.sequence_length, config.hidden_size])
     input_tensor = builder.addInputTensor(input_info)
-    mask_info = popart.TensorInfo("INT32", [config.batch_size])
+    mask_info = popart.TensorInfo("UINT32", [config.batch_size])
     mmask_tensor = builder.addInputTensor(mask_info)
     smask_tensor = builder.addInputTensor(mask_info)
     data = {
         input_tensor: np.random.normal(0, 0.02, input_info.shape()).astype(config.dtype),
-        mmask_tensor: np.random.randint(0, config.mask_tokens + 1, (config.batch_size,)).astype(np.int32),
-        smask_tensor: np.random.randint(config.mask_tokens, config.sequence_length + 1, (config.batch_size,)).astype(np.int32)
+        mmask_tensor: np.random.randint(0, config.mask_tokens + 1, (config.batch_size,)).astype(np.uint32),
+        smask_tensor: np.random.randint(config.mask_tokens, config.sequence_length + 1, (config.batch_size,)).astype(np.uint32)
     }
 
     output = popart_model.attention(input_tensor, [mmask_tensor, smask_tensor])
@@ -123,13 +123,13 @@ def test_attention_bwd(custom_ops):
 
     input_info = popart.TensorInfo(config.popart_dtype, [config.batch_size * config.sequence_length, config.hidden_size])
     input_tensor = builder.addInputTensor(input_info)
-    mask_info = popart.TensorInfo("INT32", [config.batch_size])
+    mask_info = popart.TensorInfo("UINT32", [config.batch_size])
     mmask_tensor = builder.addInputTensor(mask_info)
     smask_tensor = builder.addInputTensor(mask_info)
     data = {
         input_tensor: np.random.normal(0, 0.02, input_info.shape()).astype(config.dtype),
-        mmask_tensor: np.random.randint(0, config.mask_tokens + 1, (config.batch_size,)).astype(np.int32),
-        smask_tensor: np.random.randint(config.mask_tokens, config.sequence_length + 1, (config.batch_size,)).astype(np.int32)
+        mmask_tensor: np.random.randint(0, config.mask_tokens + 1, (config.batch_size,)).astype(np.uint32),
+        smask_tensor: np.random.randint(config.mask_tokens, config.sequence_length + 1, (config.batch_size,)).astype(np.uint32)
     }
 
     output = popart_model.attention(input_tensor, [mmask_tensor, smask_tensor])
