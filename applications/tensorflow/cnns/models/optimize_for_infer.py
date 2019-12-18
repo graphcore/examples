@@ -353,17 +353,18 @@ def fold_batch_norms(input_graph_def):
         bias_add_op.attr["T"].CopyFrom(conv_op.attr["T"])
         bias_add_op.attr["data_format"].CopyFrom(conv_op.attr["data_format"])
         bias_add_op.input.extend([new_conv_op.name, offset_op.name])
-        new_ops.extend([scaled_weights_op, new_conv_op, offset_op, bias_add_op])
+        new_ops.append([scaled_weights_op, new_conv_op, offset_op, bias_add_op])
 
     result_graph_def = graph_pb2.GraphDef()
     for node in input_graph_def.node:
         if node.name in nodes_to_skip:
+            if len(new_ops):
+                result_graph_def.node.extend(new_ops.pop(0))
             continue
         new_node = node_def_pb2.NodeDef()
         new_node.CopyFrom(node)
         result_graph_def.node.extend([new_node])
 
-    result_graph_def.node.extend(new_ops)
     return result_graph_def
 
 

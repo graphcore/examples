@@ -43,6 +43,7 @@ def run(benchmark, opts):
             dataset = tf.data.Dataset \
                 .range((opts.steps + 2) * opts.batches_per_step) \
                 .map(lambda i: benchmark.inputs(opts, i)) \
+                .repeat() \
                 .prefetch(opts.batches_per_step)
 
         if opts.batches_per_step > 1:

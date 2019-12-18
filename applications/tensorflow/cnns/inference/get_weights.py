@@ -48,7 +48,7 @@ def get_weights(save_dir: Path, model_name: str, dtype: str) -> str:
         save_dir: Path to where checkpoint must be downloaded.
         model_name: Type of image classification model, must be one of
         ("GoogleNet", "InceptionV1", "MobileNet", "MobileNetV2", "NASNetMobile", "DenseNet121",
-         "ResNet50", "Xception", "InceptionV3")
+         "ResNet50", "Xception", "InceptionV3") in all lower case.
         dtype: Data type of the network.
 
     Returns: Path to checkpoint file.
@@ -63,7 +63,7 @@ def get_weights(save_dir: Path, model_name: str, dtype: str) -> str:
         if model_name == "mobilenet":
             MobileNet(weights='imagenet')
             saver = tf.train.Saver()
-        elif model_name == "mobilenetV2":
+        elif model_name == "mobilenetv2":
             MobileNetV2(weights='imagenet')
             saver = tf.train.Saver()
         elif model_name == "nasnetmobile":

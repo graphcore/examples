@@ -161,6 +161,7 @@ def bert_session_options(args, model):
         options.enableEngineCaching = True
         options.cachePath = args.engine_cache
     if args.gc_profile:
+        options.enableEngineCaching = False
         options.reportOptions = {
             "showVarStorage": "true",
             "showPerIpuMemoryUsage": "true",
@@ -525,28 +526,33 @@ def get_timing_end_anchor(end_times):
     return max(end_times, key=lambda k: end_times[k][-1])
 
 
-def create_callback_stepio(data, anchors, start_times, end_times):
+def create_callback_stepio(data, anchors, start_times, end_times, batches_per_step):
+
+    micro_batch_indices = defaultdict(int)
 
     # Input callback is called when the data is needed:
     def input_callback(id, is_prefetch: bool):
         if is_prefetch:
             input_time = time.perf_counter()
             start_times[id].append(input_time)
-        return data[id]
+
+        return data[id][micro_batch_indices[id]]
 
     # Called after the input buffer has been consumed by the device:
     def input_complete_callback(id):
+        micro_batch_indices[id] = (micro_batch_indices[id] + 1) % batches_per_step
         return
 
     # Output callback is called when a buffer is needed for the result:
     def output_callback(id):
-        return anchors[id]
+        return anchors[id][micro_batch_indices[id]]
 
     # Complete callback is called when the output buffer has
     # been filled (result is ready to be consumed by the host):
     def output_complete_callback(id):
         output_time = time.perf_counter()
         end_times[id].append(output_time)
+        micro_batch_indices[id] = (micro_batch_indices[id] + 1) % batches_per_step
 
     stepio = popart.PyStepIOCallback(input_callback,
                                      input_complete_callback,
@@ -665,7 +671,8 @@ def bert_infer_loop(args, session,
     start_times = defaultdict(list)
     end_times = defaultdict(list)
     if args.low_latency_inference and args.task == "SQUAD":
-        stepio = create_callback_stepio(static_data, anchors, start_times, end_times)
+        stepio = create_callback_stepio(static_data, anchors, start_times, end_times,
+                                        args.batches_per_step)
     else:
         stepio = None
 

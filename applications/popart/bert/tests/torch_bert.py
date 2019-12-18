@@ -774,6 +774,9 @@ def load_tf_weights_in_bert(model, config, tf_checkpoint_path):
         try:
             if pointer is None or pointer.shape is None:
                 continue
+            if m_name == "word_embeddings" and pointer.shape != array.shape:
+                logger.warn(f"Cropping the vocabulary for torch load: From {array.shape[0]} to {config.vocab_length}")
+                array = np.array(array[:config.vocab_length, :])
             assert pointer.shape == array.shape
         except AssertionError as e:
             e.args += (pointer.shape, array.shape)

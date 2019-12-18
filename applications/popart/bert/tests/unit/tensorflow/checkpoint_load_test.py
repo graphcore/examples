@@ -9,17 +9,105 @@ from tests.torch_bert import (
     BertForMaskedLM as TorchModel,
     load_tf_weights_in_bert,
 )
+import random
+import torch
 import math
+import onnx
 from bert_model import BertConfig, Bert
-from bert_tf_loader import load_model_from_tf, load_bert_config_tf
-from tests.utils import run_fwd_model, run_py, check_tensors
+from bert_tf_loader import load_model_from_tf
+from tests.utils import run_fwd_model, run_py, check_tensors, check_model
+from tests.unit.pytorch.full_graph_utils import get_mapping, get_transform
+
+np.random.seed(1984)
+random.seed(1984)
+torch.manual_seed(1984)
+
+
+def load_bert_config_tf(config_path, override_vocab=None):
+    """
+    Load the bert config data from Google Research's checkpoint format
+    into the Popart Bert config format.
+    """
+    import json
+    with open(config_path, "r") as fh:
+        config_data = json.load(fh)
+
+    config = BertConfig(
+        vocab_length=config_data["vocab_size"] if override_vocab is None else override_vocab,
+        hidden_size=config_data["hidden_size"],
+        sequence_length=config_data["max_position_embeddings"],
+        max_positional_length=config_data["max_position_embeddings"],
+        ff_size__=config_data["intermediate_size"],
+        attention_heads=config_data["num_attention_heads"],
+        num_layers=config_data["num_hidden_layers"],
+        # TODO: Read the rest of these in from a GC config?
+        projection_serialization_steps=4,
+        batch_size=1,
+        popart_dtype="FLOAT",
+        no_dropout=True,
+        inference=True,
+        activation_type="relu",
+        custom_ops=["gather", "attention"]
+    )
+
+    return config
+
+
+def run_models(config, proto, indices, positions, segments, output, popart_model, torch_model):
+    onnx_proto = onnx.load_model_from_string(proto)
+    check_model(torch_model, onnx_proto, get_mapping(config), get_transform(config))
+
+    # Run the models
+    popart_inputs = {
+        indices: np.random.randint(
+            0, config.vocab_length,
+            (config.batch_size * config.sequence_length)
+        ).astype(np.uint32),
+        positions: np.random.randint(
+            0,
+            config.sequence_length,
+            (config.batch_size * config.sequence_length),
+        ).astype(np.uint32),
+        segments: np.random.randint(
+            0,
+            2,
+            (config.batch_size * config.sequence_length),
+        ).astype(np.uint32),
+    }
+
+    popart_outputs, post_proto = run_py(
+        proto,
+        popart_inputs,
+        output,
+        ipus=math.ceil(config.num_layers / config.layers_per_ipu) + popart_model.layer_offset,
+    )
+
+    torch_inputs = {
+        "input_ids": popart_inputs[indices].reshape(
+            config.batch_size, config.sequence_length
+        ),
+        "position_ids": popart_inputs[positions].reshape(
+            config.batch_size, config.sequence_length
+        ),
+        "token_type_ids": popart_inputs[segments].reshape(
+            config.batch_size, config.sequence_length
+        ),
+    }
+
+    torch_model.eval()
+    torch_outputs = run_fwd_model(torch_inputs, torch_model)
+
+    check_model(torch_model, post_proto, get_mapping(config), get_transform(config))
+    check_tensors(torch_outputs, popart_outputs)
+    print("Test succeeded")
 
 
 @pytest.mark.requires_frozen
 @pytest.mark.requires_config
 @pytest.mark.requires_chkpt
 def test_load_from_frozen(config_path, chkpt_path, frozen_path, custom_ops):
-    config = load_bert_config_tf(config_path)
+    # Vocab-size override is not required, but allows the test to run more quickly
+    config = load_bert_config_tf(config_path, override_vocab=9728)
 
     builder = popart.Builder(
         opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}
@@ -40,7 +128,6 @@ def test_load_from_frozen(config_path, chkpt_path, frozen_path, custom_ops):
         )
     )
 
-    torch_model.eval()
     torch_model = load_tf_weights_in_bert(torch_model, config, chkpt_path)
 
     # Load Popart model
@@ -49,44 +136,13 @@ def test_load_from_frozen(config_path, chkpt_path, frozen_path, custom_ops):
 
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
+    segments = builder.addInputTensor(sequence_info)
 
-    popart_model, proto, output = load_from_tf(
-        frozen_path, False, config, indices, positions, builder=builder
+    popart_model, proto, output = load_model_from_tf(
+        frozen_path, False, config, indices, positions, segments, builder=builder
     )
 
-    # Run the models
-    popart_inputs = {
-        indices: np.random.randint(
-            0, config.vocab_length,
-            (config.batch_size * config.sequence_length)
-        ).astype(np.uint32),
-        positions: np.random.randint(
-            0,
-            config.sequence_length,
-            (config.batch_size * config.sequence_length),
-        ).astype(np.uint32),
-    }
-
-    torch_inputs = {
-        "input_ids": popart_inputs[indices].reshape(
-            config.batch_size, config.sequence_length
-        ),
-        "position_ids": popart_inputs[positions].reshape(
-            config.batch_size, config.sequence_length
-        ),
-    }
-
-    torch_outputs = run_fwd_model(torch_inputs, torch_model)
-
-    popart_outputs, post_proto = run_py(
-        proto,
-        popart_inputs,
-        output,
-        ipus=math.ceil(config.num_layers / config.layers_per_ipu) + 1,
-    )
-
-    check_tensors(torch_outputs, popart_outputs)
-    print("Test succeeded")
+    run_models(config, proto, indices, positions, segments, output, popart_model, torch_model)
 
 
 @pytest.mark.requires_config
@@ -99,7 +155,8 @@ def test_load_from_chkpt(config_path, chkpt_path, custom_ops):
         - Load tf weights into BERT using popart impl -> run fwd model
         - Compare output tensors
     """
-    config = load_bert_config_tf(config_path)
+    # Vocab-size override is not required, but allows the test to run more quickly
+    config = load_bert_config_tf(config_path, override_vocab=9728)
 
     builder = popart.Builder(
         opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}
@@ -120,7 +177,6 @@ def test_load_from_chkpt(config_path, chkpt_path, custom_ops):
         )
     )
 
-    torch_model.eval()
     torch_model = load_tf_weights_in_bert(torch_model, config, chkpt_path)
 
     # Load Popart model
@@ -129,41 +185,10 @@ def test_load_from_chkpt(config_path, chkpt_path, custom_ops):
 
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
+    segments = builder.addInputTensor(sequence_info)
 
-    popart_model, proto, output = load_from_tf(
-        chkpt_path, True, config, indices, positions, builder=builder
+    popart_model, proto, output = load_model_from_tf(
+        chkpt_path, True, config, indices, positions, segments, builder=builder
     )
 
-    # Run the models
-    popart_inputs = {
-        indices: np.random.randint(
-            0, config.vocab_length,
-            (config.batch_size * config.sequence_length)
-        ).astype(np.uint32),
-        positions: np.random.randint(
-            0,
-            config.sequence_length,
-            (config.batch_size * config.sequence_length),
-        ).astype(np.uint32),
-    }
-
-    torch_inputs = {
-        "input_ids": popart_inputs[indices].reshape(
-            config.batch_size, config.sequence_length
-        ),
-        "position_ids": popart_inputs[positions].reshape(
-            config.batch_size, config.sequence_length
-        ),
-    }
-
-    torch_outputs = run_fwd_model(torch_inputs, torch_model)
-
-    popart_outputs, post_proto = run_py(
-        proto,
-        popart_inputs,
-        output,
-        ipus=math.ceil(config.num_layers / config.layers_per_ipu) + 1,
-    )
-
-    check_tensors(torch_outputs, popart_outputs)
-    print("Test succeeded")
+    run_models(config, proto, indices, positions, segments, output, popart_model, torch_model)

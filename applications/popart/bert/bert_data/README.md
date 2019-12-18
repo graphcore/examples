@@ -147,8 +147,7 @@ Get Google's SQuaD 1.1 training files as described in the README file here:
 Use this command:
 
 ```bash
-mkdir -p data/squad
-curl -L https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json -o data/squad/train-v1.1.json
+curl --create-dirs -L https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json -o data/squad/train-v1.1.json
 ```
 
 **2) Pre-trained weights**
@@ -157,3 +156,21 @@ Get Google's pre-trained weights (or produce your own by pre-training on the IPU
 
 `curl --create-dirs -L https://storage.googleapis.com/bert_models/2018_10_18/cased_L-12_H-768_A-12.zip -o data/ckpts/cased_L-12_H-768_A-12.zip`
 
+Unzip the weights with:
+
+`unzip data/ckpts/cased_L-12_H-768_A-12.zip -d data/ckpts`
+
+## SQuAD inference data
+
+**1) SQuAD Inference files**
+
+Get Google's SQuaD 1.1 inference files as described in the README file here:
+
+ https://github.com/google-research/bert
+
+Use this command:
+
+```bash
+curl --create-dirs -L https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json -o data/squad/dev-v1.1.json
+curl -L https://raw.githubusercontent.com/allenai/bi-att-flow/master/squad/evaluate-v1.1.py -o data/squad/evaluate-v1.1.py
+```

@@ -47,33 +47,6 @@ def get_tf_mapping(config):
     return tf_to_onnx
 
 
-def load_bert_config_tf(config_path):
-    """
-    Load the bert config data from Google Research's checkpoint format
-    into the Popart Bert config format.
-    """
-    with open(config_path, "r") as fh:
-        config_data = json.load(fh)
-
-    config = BertConfig(
-        vocab_length=config_data["vocab_size"],
-        hidden_size=config_data["hidden_size"],
-        sequence_length=config_data["max_position_embeddings"],
-        max_positional_length=config_data["max_position_embeddings"],
-        ff_size__=config_data["intermediate_size"],
-        attention_heads=config_data["num_attention_heads"],
-        num_layers=config_data["num_hidden_layers"],
-        # TODO: Read the rest of these in from a GC config?
-        projection_serialization_steps=2,
-        batch_size=1,
-        popart_dtype="FLOAT",
-        no_dropout=True,
-        custom_ops=["gather", "attention"]
-    )
-
-    return config
-
-
 def generate_initializers(mapping, config, map_names, load_data):
     """
     Generate a graph initializer dictionary from the tensor names and
@@ -246,75 +219,3 @@ def load_model_from_tf(
     output_tensor = popart_model.build_graph(indices, positions, segments)
     proto = builder.getModelProto()
     return popart_model, proto, output_tensor
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group(required=True)
-    # Required parameters
-    group.add_argument(
-        "--tf-checkpoint-path",
-        default=None,
-        type=str,
-        help="Path to the TensorFlow checkpoint path.",
-    )
-    group.add_argument(
-        "--tf-frozen-path",
-        default=None,
-        type=str,
-        help="Path to the TensorFlow frozen graph (*.pb) path.",
-    )
-    parser.add_argument(
-        "--bert-config-file",
-        default=None,
-        type=str,
-        required=True,
-        help="The config json file for the pre-trained BERT model.\n"
-        "This specifies the model architecture.",
-    )
-    parser.add_argument(
-        "--model-output-path",
-        default=None,
-        type=str,
-        required=False,
-        help="Path to the output PyTorch model.",
-    )
-    args = parser.parse_args()
-
-    config = load_bert_config_tf(args.bert_config_file)
-
-    # For now, the underlying model requires onnx9 slice, so a non-standard
-    # builder is required.
-    builder = popart.Builder(
-        opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}
-    )
-
-    # Create the input tensors which will be needed to build the graph later
-    sequence_info = popart.TensorInfo(
-        "INT32", [config.batch_size * config.sequence_length]
-    )
-
-    indices = builder.addInputTensor(sequence_info)
-    positions = builder.addInputTensor(sequence_info)
-    segments = builder.addInputTensor(sequence_info)
-
-    is_checkpoint = args.tf_checkpoint_path is not None
-    input_filename = (
-        args.tf_checkpoint_path if is_checkpoint else args.tf_frozen_path
-    )
-
-    popart_model, proto, output_tensor = load_model_from_tf(
-        input_filename,
-        is_checkpoint,
-        config,
-        indices,
-        positions,
-        segments,
-        builder=builder,
-    )
-
-    logger.info("Graph parsed successfully.")
-
-    if args.model_output_path is not None:
-        onnx_proto = onnx.load_model_from_string(proto)
-        onnx.save_model(onnx_proto, args.model_output_path)

@@ -7,7 +7,7 @@
     "gather",
     "attention"
   ],
-  "batches_per_step": 118,
+  "batches_per_step": 64,
   "epochs": 150,
   "epochs_per_save": -1,
   "input_files": [

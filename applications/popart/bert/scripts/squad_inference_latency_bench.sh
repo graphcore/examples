@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Install dependencies:
+sudo apt -y install datamash
+
 # Run SQUAD inference benchmarks. These use configs optimised for low latency.
 # This script also uses the real-time scheduling option to increase determinism.
 # Requires sudo to be runable in non-interactive mode for the real-time

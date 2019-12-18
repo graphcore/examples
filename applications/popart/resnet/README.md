@@ -75,9 +75,10 @@ See <https://arxiv.org/abs/1804.07612> for more details.
 
 `--batch-size` the batch size. Must be a multiple of num-ipus
 
-`--num-ipus` the number of ipus to use. The graph will be replicated on each
-ipu and executed in parallel. The number of samples processed on each ipu will be
-(batch-size / num-ipus).
+`--replication-factor` specifies the number of replicas to execute in parallel. The number of samples processed on each ipu will be
+(batch-size / replication-factor).  Note that the number of ipus must be a multiple of the replication factor.
+
+`--num-ipus` the number of ipus to use. 
 
 `--no-prng` disables stochastic rounding.
 

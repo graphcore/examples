@@ -29,9 +29,9 @@ class TestPipeliningPopART(object):
         parsed_report = json.loads(session.getExecutionReport())
         pytest.no_pipelining_cycles = parsed_report['simulation']['cycles']
 
-    def test_pipelining_at_least_10_percents_faster_than_without(self):
+    def test_pipelining_faster_than_without(self):
 
-        assert (pytest.pipelining_cycles < pytest.no_pipelining_cycles * 0.9)
+        assert (pytest.pipelining_cycles < pytest.no_pipelining_cycles)
 
 
 if __name__ == '__main__':

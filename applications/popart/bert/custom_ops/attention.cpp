@@ -20,6 +20,8 @@
 #include <popops/ElementWise.hpp>
 #include <popnn/NonLinearity.hpp>
 
+#include "compile_time_version.h"
+
 namespace CustomOperators {
   const popart::OperatorIdentifier Attention = {"ai.graphcore", "Attention", 1};
 } // namespace CustomOperators

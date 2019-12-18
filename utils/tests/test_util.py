@@ -88,14 +88,54 @@ def _verify_model_numbers(iter_tolerance, iterations,
 
 
 def _verify_model_accuracies(accuracies, expected_accuracy, acc_tolerance):
-    for (acc, exp_acc) in zip(accuracies, expected_accuracy):
+    """Asserts a list of accuracies is within a list of expected accuracies
+       with a tolerance applied.
+
+    Args:
+        accuracies: A list of floats representing the accuracies (%) produced
+            by the model at each step.
+        expected_accuracy: A list of floats representing the expected
+            accuracies (%) produced by the model at each step.
+        acc_tolerance: A float representing a percentage tolerance applied on
+            top of the expected accuracies that the accuracies produced by
+            the model should sit within.
+
+    Raises:
+        Assertion Error: Accuracy produced by the model are not within
+            the expected limits.
+    """
+
+    for iter_num in range(len(accuracies)):
+        exp_acc = expected_accuracy[iter_num]
+        exp_acc_str = (
+            "{0} = {1} +- {2} = [{3:.{5}f}, {4:.{5}f}]".format(
+                "Expected accuracy (%)".ljust(22),
+                exp_acc,
+                acc_tolerance,
+                exp_acc - acc_tolerance,
+                exp_acc + acc_tolerance,
+                2
+            )
+        )
+        acc = accuracies[iter_num]
+        acc_str = "{} = {:.{}f}".format(
+            "Accuracy (%)".ljust(22),
+            acc,
+            2
+        )
+        full_acc_str = "{}\n{}".format(acc_str, exp_acc_str)
         if acc < exp_acc - acc_tolerance:
-            raise AssertionError("The step accuracy has regressed below"
-                                 " the tolerance minimum: " +
-                                 str(exp_acc - acc_tolerance))
+            raise AssertionError(
+                "After iteration {}, the model is less accurate"
+                " than expected.\n"
+                "{}".format(iter_num + 1, full_acc_str)
+            )
         elif acc > exp_acc + acc_tolerance:
-            raise AssertionError("Step accuracy was suspiciously high. Please"
-                                 " verify the model is operating correctly")
+            raise AssertionError(
+                "After iteration {}, the model is producing an accuracy"
+                " that is suspiciously high and should be reviewed.\n"
+                "{}".format(iter_num + 1, full_acc_str)
+            )
 
 
 def assert_result_equals_tensor_value(output, tensor):

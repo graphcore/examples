@@ -120,6 +120,3 @@ To benchmark across 16 devices with default learning rates of 2^{-12.5, ..., -20
 python3 autoencoder_benchmark.py --training-data-file netflix_data/3m_train.txt
 ```
 
-## Reference inference examples
-
-How to run other reference inference examples is described [here](https://support.graphcore.ai/hc/en-us/articles/360010410573-Running-Reference-Examples?flash_digest=715d255ebbc6824975df90d11f8368d304282189&flash_digest=83caf6ef6df62b62c5b12570655760ce505f9d96) on the Graphcore support portal (support.graphcore.ai). 

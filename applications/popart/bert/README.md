@@ -122,7 +122,7 @@ python bert_data/create_pretraining_data.py \
   --do-lower-case \
   --sequence-length 128 \
   --mask-tokens 20 \
-  --duplication-factor 10
+  --duplication-factor 6
 ```
 
 **NOTE:** `--input-file/--output-file` can take multiple arguments if you want to split your dataset between files.
@@ -145,8 +145,8 @@ For the sample text a configuration has been created -  `configs/demo.json`. It 
     "attention",
     "projection"
   ],
-  # The data generation should have created 118 samples. Therefore, we will do an epoch per session.run
-  "batches_per_step": 118,
+  # The data generation should have created 64 samples. Therefore, we will do an epoch per session.run
+  "batches_per_step": 64,
   "epochs": 150,
   # Here we specify the file we created in the previous step.
   "input_files": [
@@ -203,3 +203,18 @@ View the JSON files in configs for detailed parameters.
 
 `bert.py` has many different options. Run with `-h/--help` to view them. Any options used on the command line will overwrite those specified in the configuration file.
 
+## Inference
+
+Before running inference you should run fine tuning or acquire fine-tuned weights in order to obtain accurate results.  Without fine-tuned weights the inference performance will be poor.
+
+How to get the SQuAD 1.1 files required for inference is described in `bert_data/README`.
+
+To run SQuAD BERT Base inference:
+
+`python bert.py --config configs/squad_base_inference.json`
+
+and for BERT Large:
+
+`python bert.py --config configs/squad_large_inference.json`
+
+View the JSON files in configs for detailed parameters.

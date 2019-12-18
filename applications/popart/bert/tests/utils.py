@@ -343,6 +343,9 @@ def check_model(torch_model: nn.Module,
 
 def run_fwd_model(inputs: Union[Iterable[np.ndarray], Mapping[str, np.ndarray]], torch_model: nn.Module) -> Iterable[np.ndarray]:
     def np_to_torch(np_arr: np.ndarray):
+        if np_arr.dtype == np.uint32:
+            np_arr = np_arr.astype(np.int32)
+
         torch_input = torch.from_numpy(np_arr)
         if np_arr.dtype == np.int32:
             torch_input = torch_input.long()

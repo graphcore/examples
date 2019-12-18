@@ -103,12 +103,12 @@ def main(args):
             model_path.write(model_proto)
 
     # Session options
-    opts = popart.SessionOptionsCore()
+    opts = popart.SessionOptions()
     opts.enablePipelining = False if args.no_pipelining else True
     opts.virtualGraphMode = popart.VirtualGraphMode.Manual
     opts.reportOptions = {"showExecutionSteps": "true"}
     opts.engineOptions = {"debug.instrument": "true"}
-    pipeline_depth = 8
+    pipeline_depth = 64
     num_ipus = 2
 
     # Create session
