@@ -4,6 +4,6 @@ tensorboard==1.14.0
 torch==1.2.0
 nltk==3.4.5
 future==0.17.1
-tensorflow==1.14.0
+tensorflow==1.15.2
 onnx==1.5.0
 tqdm
