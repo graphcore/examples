@@ -22,27 +22,27 @@ def launch_resnext_subprocess(i, f):
     # parse flags into list of strings to pass through to subprocesses
     # give the i_th process the i_th dataset
     data_sub_dir = FLAGS.data_dir + f"{i}"
+    micro_batch_size = int(FLAGS.batch_size/FLAGS.num_ipus)
+    micro_batch_size = str(micro_batch_size)
     args = FLAGS.flags_into_string().split('\n')
+    command = ["python3", "resnext101.py", "--data_sub_dir", data_sub_dir, "--micro_batch_size", micro_batch_size] + args
     print(f"\n\nRunning subprocess {i}: \t ")
-    print(" ".join(["python3", "resnext101.py",
-                    "--data_sub_dir", data_sub_dir] + args))
-    return subprocess.Popen(["python3", "resnext101.py", "--data_sub_dir", data_sub_dir] + args, stdout=f, stderr=f)
+    print(" ".join(command))
+    return subprocess.Popen(command, stdout=f, stderr=f)
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("batch_size", 6, "Batch size (per device)")
+flags.DEFINE_integer("batch_size", 48, "Overall size of batch (across all devices).")
 flags.DEFINE_integer(
-    "num_ipus", 8, "Number of IPUs to be used. One IPU runs one compute process.")
+    "num_ipus", 8, "Number of IPUs to be used. One IPU runs one compute process and processes a fraction of the batch of samples.")
 flags.DEFINE_string("data_dir", "datasets/",
-                    "Parent directory containing subdirectory dataset(s). Number of subdirs should equal num_ipus")
-flags.DEFINE_integer("num_workers", 12, "Number of threads per dataloader")
+                    "Parent directory containing subdirectory dataset(s). The number of sub directories should equal num_ipus")
+flags.DEFINE_integer("num_workers", 12, "Number of threads per dataloader. There is one dataloader per IPU.")
 flags.DEFINE_integer("batches_per_step", 1500,
                      "Number of batches to fetch on the host ready for streaming onto the device, reducing host IO")
-flags.DEFINE_boolean(
-    "profile", False, "Saves a GCProfile memory report. Use for debugging")
 flags.DEFINE_string("model_name", "resnext101_32x4d",
                     "model name. Used to locate ONNX protobuf in models/")
-flags.DEFINE_bool("synthetic", False, "Use synthetic data created on the IPU for inference")
+flags.DEFINE_bool("synthetic", False, "Use synthetic data created on the IPU.")
 flags.DEFINE_integer(
     "iterations", 1, "Number of iterations to run if using synthetic data. Each iteration uses one `batches_per_step` x `batch_size` x `H` x `W` x `C` sized input tensor.")
 
@@ -58,10 +58,11 @@ def main(argv):
     print(log_str)
     procs = []
     log_files = []
-    timestamp = datetime.now().strftime("%H-%M-%S")
+
+    timestamp = datetime.now().strftime("%d-%b-%Y (%H:%M:%S.%f)")
     if not os.path.exists("logs"):
         os.mkdir("logs")
-    os.mkdir(f"logs/{timestamp}")
+    os.mkdir(os.path.join("logs", timestamp))    #WHY DOES THIS HAVE STRING QUOTES?
 
     for i in range(FLAGS.num_ipus):
         f = open(f"logs/{timestamp}/log_{i}", "w")

@@ -22,9 +22,9 @@ with tf.device("cpu"):
     pc = tf.placeholder(np.float32, [2], name="c")
 
 
-# Put part of the compuation on shard 1 and part on shard 2.
+# Put part of the computation on shard 1 and part on shard 2.
 # Sharding is automatically enabled on detection of nodes
-# placed with 'ipu.ops.ipu_shard(...)':
+# placed with 'scopes.ipu_shard(...)':
 def manual_sharding(pa, pb, pc):
     with scopes.ipu_shard(0):
         o1 = pa + pb
@@ -46,29 +46,26 @@ def auto_sharding(pa, pb, pc):
 
 
 def my_graph(pa, pb, pc):
-    # To use sharding the graph does not explicitly need to
-    # be within an XLA compile.
-    with tf.device("/device:IPU:0"):
-        if opts.autoshard:
-            result = auto_sharding(pa, pb, pc)
-            # The first argument to automatic_sharding is the number
-            # of shards.  The second argument is the tensor closest to
-            # the input data source in the graph.  In this case it
-            # could be pa, pb or pc.  The third argument is the
-            # tensor closest to the loss of the graph.  There is no
-            # loss function, thus the output of the graph is the
-            # closest.  By defining the extremities of the graph
-            # the automatic sharding mechanism can calculate which
-            # edges it can split across.
-            autoshard.automatic_sharding(NUM_SHARDS, pa, result)
-        else:
-            result = manual_sharding(pa, pb, pc)
+    if opts.autoshard:
+        result = auto_sharding(pa, pb, pc)
+        # The first argument to automatic_sharding is the number
+        # of shards.  The second argument is the tensor closest to
+        # the input data source in the graph.  In this case it
+        # could be pa, pb or pc.  The third argument is the
+        # tensor closest to the loss of the graph.  There is no
+        # loss function, thus the output of the graph is the
+        # closest.  By defining the extremities of the graph
+        # the automatic sharding mechanism can calculate which
+        # edges it can split across.
+        autoshard.automatic_sharding(NUM_SHARDS, pa, result)
+    else:
+        result = manual_sharding(pa, pb, pc)
+    return result
 
-        return result
+# Create the IPU section of the graph
+with scopes.ipu_scope("/device:IPU:0"):
+    out = ipu_compiler.compile(my_graph, [pa, pb, pc])
 
-
-# Construct the graph using the builder functions:
-out = my_graph(pa, pb, pc)
 # Define the feed_dict input data
 fd = {pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]}
 # Configure an IPU device that has NUM_SHARDS devices that we will
@@ -76,6 +73,7 @@ fd = {pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]}
 cfg = utils.create_ipu_config(profiling=True)
 cfg = utils.auto_select_ipus(cfg, NUM_SHARDS)
 utils.configure_ipu_system(cfg)
+
 with tf.Session() as sess:
-    result = [sess.run(out, fd)]
+    result = sess.run(out, fd)
     print(result)

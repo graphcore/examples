@@ -58,7 +58,6 @@ def get_report(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation, ou
 
     """
     # Set compile and device options
-    os.environ["TF_POPLAR_FLAGS"] += " --use_ipu_model"
     use_poplar_text_report = report_mode == 'text'
     opts = ipu_utils.create_ipu_config(profiling=True, use_poplar_text_report=use_poplar_text_report,
                                        profile_execution=True)
@@ -277,14 +276,13 @@ def construct_graph(network_class: Type[InferenceNetwork], config: Path, checkpo
     return loop_op, infeed_queue.initializer, outfeed_dequeue
 
 
-def main(model_arch: str, ipu_model: bool, image_dir: Path, batch_size: int,
+def main(model_arch: str, image_dir: Path, batch_size: int,
          batches_per_step: int, loop: bool, num_iterations: int, num_ipus: int, mode: str, data: str,
          available_memory_proportion: float, gen_report: bool) -> None:
     """Run inference on chosen model.
 
     Args:
         model_arch: Type of image classification model
-        ipu_model: Flag to run on IPU model and generate report.
         image_dir: Path to directory of images to run inference on.
         batch_size: Batch size per forward pass.
         batches_per_step: Number of batches to run per step.
@@ -298,10 +296,10 @@ def main(model_arch: str, ipu_model: bool, image_dir: Path, batch_size: int,
         gen_report: Generate a report after 1 iteration.
 
     """
-    if (not ipu_model) and (model_arch == "densenet121") and (mode != "sharded"):
+    if (model_arch == "densenet121") and (mode != "sharded"):
         raise ValueError(f'{model_arch} requires sharding over at-least two ipus.')
 
-    if (not ipu_model) and (model_arch == "xception") and (mode != "sharded"):
+    if (model_arch == "xception") and (mode != "sharded"):
         raise ValueError(f'{model_arch} requires sharding over at-least four ipus.')
 
     if (available_memory_proportion <= 0.05) or (available_memory_proportion > 1):
@@ -320,8 +318,10 @@ def main(model_arch: str, ipu_model: bool, image_dir: Path, batch_size: int,
     config = Path(f'configs/{model_arch}.yml')
 
     # Check if image dir exists
-    # Even if generating a report, image_dir is required to include the infeed ops in the graph.
-    image_filenames = glob.glob(image_dir.as_posix() + "/*.jpg")
+    if data == 'synthetic':
+        image_filenames = ['dummy.jpg']
+    else:
+        image_filenames = glob.glob(image_dir.as_posix() + "/*.jpg")
     if len(image_filenames) == 0:
         raise ValueError(('Image directory: %s does not have images,'
                           'please run `get_images.sh` '
@@ -334,20 +334,14 @@ def main(model_arch: str, ipu_model: bool, image_dir: Path, batch_size: int,
                                                               image_filenames, loop,
                                                               model_cls.preprocess_method(), num_ipus, mode)
     # Run on model or device
-    if ipu_model:
-        # Set compile and device options
-        os.environ["TF_POPLAR_FLAGS"] += " --use_ipu_model"
+    if gen_report:
         get_report(loop_op, infeed_initializer, outfeed_op, f"{config.stem}_report.txt",
                    available_memory_proportion=available_memory_proportion)
     else:
-        if gen_report:
-            get_report(loop_op, infeed_initializer, outfeed_op, f"{config.stem}_report.txt",
-                       available_memory_proportion=available_memory_proportion)
-        else:
-            ground_truth = tuple([Path(filename).stem for filename in image_filenames])
-            run_inference(loop_op, infeed_initializer, outfeed_op, batch_size, batches_per_step, config.stem,
-                          model_cls.decode_method(), ground_truth, num_iterations, num_ipus, mode, data,
-                          available_memory_proportion=available_memory_proportion)
+        ground_truth = tuple([Path(filename).stem for filename in image_filenames])
+        run_inference(loop_op, infeed_initializer, outfeed_op, batch_size, batches_per_step, config.stem,
+                      model_cls.decode_method(), ground_truth, num_iterations, num_ipus, mode, data,
+                      available_memory_proportion=available_memory_proportion)
 
 
 if __name__ == "__main__":
@@ -358,10 +352,8 @@ if __name__ == "__main__":
                                  "inceptionv3", "resnet50", "densenet121", "xception", "efficientnet-s",
                                  "efficientnet-m", "efficientnet-l"],
                         help="Type of image classification model.")
-    parser.add_argument('image_dir', type=str, default="",
+    parser.add_argument('--image_dir', type=str, default="",
                         help="Path to directory of images to run inference on.")
-    parser.add_argument('--ipu-model', dest='ipu_model', action='store_true',
-                        help="Run on IPU model and generate report.")
     parser.add_argument('--loop', dest='loop', action='store_true',
                         help="Run inference on device in a loop for `num_iterations` steps.", default=True)
     parser.add_argument('--batch-size', dest='batch_size', type=int, default=1,
@@ -383,7 +375,6 @@ if __name__ == "__main__":
                              "memory for matmul and convolutions execution (default:0.6 and 0.2 for Mobilenetv2)")
     parser.add_argument('--gen-report', dest='gen_report', action='store_true', help="Generate report.")
 
-    parser.set_defaults(ipu_model=False)
     args = parser.parse_args()
 
     if (args.mode == 'single_ipu') and (args.num_ipus > 1):
@@ -400,5 +391,5 @@ if __name__ == "__main__":
         else:
             args.available_mem_prop = 0.6
 
-    main(args.model_arch, args.ipu_model, Path(args.image_dir), args.batch_size, args.batches_per_step, args.loop,
+    main(args.model_arch, Path(args.image_dir), args.batch_size, args.batches_per_step, args.loop,
          args.num_iterations, args.num_ipus, args.mode, args.data, args.available_mem_prop, args.gen_report)

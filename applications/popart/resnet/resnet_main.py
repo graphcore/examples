@@ -311,7 +311,8 @@ def train_process(opts):
                 else:
                     next_drop = np.inf
                 training_session.updateOptimizer(popart.SGD({
-                    "defaultLearningRate": (current_lr, False)}))
+                    "defaultLearningRate": (current_lr, False),
+                    "defaultWeightDecay": (opts.weight_decay, True)}))
                 training_session.optimizerFromHost()
                 print("Learning_rate change to {}".format(current_lr))
 

@@ -98,7 +98,7 @@ def run(benchmark, opts):
         print("Duration: {:.3f} seconds\n".format(duration))
 
         # Cycle Report
-        if opts.cycle_report:
+        if opts.report:
             rep = sess.run(report)
             return extract_runtimes_from_report(rep, opts, display=True)  # Only run once if producing cycle report
 
@@ -126,16 +126,14 @@ def parse_opts(benchmark, arg_string=None):
     # Default Arguments
     parser.add_argument('--use-data', action="store_true",
                         help="Add data transfer ops. Models execution with IO but unbounded by the CPU pipeline.")
-    parser.add_argument('--cycle-report', action="store_true",
-                        help="Generate Cycle Report when run on hardware")
     parser.add_argument('--batches-per-step', type=int, default=1,
                         help="Number of batches to run per step (on the device)")
     parser.add_argument('--steps', type=int, default=1,
                         help="Number of steps to run (on the host)")
     parser.add_argument('--save-graph', action="store_true",
                         help="Save default graph to 'logs' directory (used by TensorBoard)")
-    parser.add_argument('--tile-activity-report', action="store_true",
-                        help="Save a tile activity csv")
+    parser.add_argument('--report', action="store_true",
+                        help="Save execution and compilation reports as JSON")
     parser.add_argument('--convolution-options', type=str,
                         help='Set convolution options as a JSON string.')
     parser.add_argument('--shards', type=int, default=0,
@@ -159,10 +157,7 @@ def parse_opts(benchmark, arg_string=None):
         else:
             os.environ["TF_POPLAR_FLAGS"] = "--use_synthetic_data --synthetic_data_initializer=" + initType
 
-    if opts.tile_activity_report:
-        opts.cycle_report = True
-
-    if opts.cycle_report:
+    if opts.report:
         opts.batches_per_step = 1
 
     # Should change this to a dictionary
@@ -171,7 +166,7 @@ def parse_opts(benchmark, arg_string=None):
 
 def get_config(opts):
     """Builds ipu_options"""
-    profile = opts.cycle_report
+    profile = opts.report
 
     config = utils.create_ipu_config(profiling=profile,
                                      profile_execution=profile,
@@ -255,17 +250,4 @@ def extract_runtimes_from_report(raw_report, opts, start_time=0, display=True):
             f.write(execution_report)
         print("\nWritten to file: graph.json, execution.json")
 
-    if opts.tile_activity_report:
-        generate_tile_activity(raw_report)
-
     return {"graph": graph_report, "execution": execution_report}, start_time
-
-
-def generate_tile_activity(report):
-    activity = utils.extract_execution_state_timing_list_from_events(report)[0][1]
-
-    if not activity:
-        raise Exception("Could not parse report for activity")
-
-    with open('activity.csv', 'w') as file:
-        file.write(activity)

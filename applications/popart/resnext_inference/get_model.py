@@ -9,7 +9,7 @@ import argparse
 
 """
 Downloads the model in Pytorch format and converts to ONNX.
-Creates copies with different batch size dimensions.
+Creates copies with different (micro) batch size dimensions.
 """
 
 
@@ -38,14 +38,15 @@ def get_model(opts):
 
     model_path = path + filename
     onnx_model = onnx.load(model_path)
-    onnx_model.graph.input[0].type.tensor_type.shape.dim[0].dim_value = opts.batch_size
+    onnx_model.graph.input[0].type.tensor_type.shape.dim[0].dim_value = opts.micro_batch_size
     print(
-        f"Converting model to batch size {opts.batch_size} and saving to {path + 'model_' + str(opts.batch_size) + '.onnx'}")
-    onnx.save(onnx_model, path + f"model_{opts.batch_size}.onnx")
+        f"Converting model to batch size {opts.micro_batch_size} and saving to {path + 'model_' + str(opts.micro_batch_size) + '.onnx'}")
+    onnx.save(onnx_model, path + f"model_{opts.micro_batch_size}.onnx")
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--batch-size", type=int, default=1)
+parser.add_argument("--micro-batch-size", type=int, default=1, help="""Batch size per device.
+    Larger batches can be run with this model by launching the app with resnext_inference_launch.py and passing in a value > 1 for num_ipus """)
 parser.add_argument("--model-name", type=str, default='resnext101_32x4d',
                     help="pretrained model name, according to `pretrainedmodels` Python package")
 

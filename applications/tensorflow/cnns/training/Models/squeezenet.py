@@ -2,10 +2,10 @@
 """
 SqueezeNet
 
-A Convolutional ineural network with relatively few parameters (~1.25M) but equivalent
+A Convolutional Neural Network with relatively few parameters (~1.25M) but equivalent
 accuracy to AlexNet.
 
-Architecture originally described in Caffe. Implemented here in Tensorflow for the IPU.
+Architecture originally described in Caffe. Implemented here in TensorFlow for the IPU.
 
 
 SQUEEZENET: ALEXNET-LEVEL ACCURACY WITH
@@ -25,52 +25,60 @@ fp32 with --precision 32.32. In this case, you will need to run over two IPUs.
 """
 
 import tensorflow as tf
-from functools import partial
-import base as BASE
-import validation as VALID
-from tensorflow.contrib.ipu.python.poprand import dropout
 
 
 class SqueezeNet:
     def __init__(self, opts, is_training=True):
         self.is_training = is_training
-        self.num_classes = 1000
+        # Apply dataset specific changes
+        if opts["dataset"] == "imagenet":
+            self.num_classes = 1000
+        elif opts["dataset"] == "cifar-10":
+            self.num_classes = 10
+        elif opts["dataset"] == "cifar-100":
+            self.num_classes = 100
+        else:
+            raise ValueError("Unknown Dataset {}".format(opts["dataset"]))
+        self.use_bypass = opts.get("use_bypass")
 
-    def _build_graph(self, image):
+    def _build_graph(self, image, use_bypass):
         """Classifies a batch of ImageNet images
 
         Returns:
         A logits Tensor with shape [<batch_size>, self.num_classes]
         """
+        pool_size, strides = (3, 2)
         image = _conv1(image, name="initialconv")
-        x = tf.compat.v1.layers.max_pooling2d(image, pool_size=3, strides=2)
-        x = _fire(x, 16, 64, 64, name="fire2")
-        x = _fire(x, 16, 64, 64, name="fire3")
-        x = _fire(x, 32, 128, 128, name="fire4")
+        x = tf.compat.v1.layers.max_pooling2d(image, pool_size=pool_size, strides=strides)
+        x = _fire(x, 16, 64, name="fire2")
+        x = _fire(x, 16, 64, name="fire3", use_bypass=use_bypass)
+        x = _fire(x, 32, 128, name="fire4")
         # maxpool4
-        x = tf.compat.v1.layers.max_pooling2d(x, pool_size=3, strides=2)
-        x = _fire(x, 32, 128, 128, name="fire5")
-        x = _fire(x, 48, 192, 192, name="fire6")
-        x = _fire(x, 48, 192, 192, name="fire7")
-        x = _fire(x, 64, 256, 256, name="fire8")
+        x = tf.compat.v1.layers.max_pooling2d(x, pool_size=pool_size, strides=strides)
+        x = _fire(x, 32, 128, name="fire5", use_bypass=use_bypass)
+        x = _fire(x, 48, 192, name="fire6")
+        x = _fire(x, 48, 192, name="fire7", use_bypass=use_bypass)
+        x = _fire(x, 64, 256, name="fire8")
         # maxpool8
-        x = tf.compat.v1.layers.max_pooling2d(x, pool_size=3, strides=2)
-        x = _fire(x, 64, 256, 256, name="fire9")
+        x = tf.compat.v1.layers.max_pooling2d(x, pool_size=pool_size, strides=strides)
+        x = _fire(x, 64, 256, name="fire9", use_bypass=use_bypass)
         x = tf.nn.dropout(
-            x, keep_prob=0.5 if self.is_training else 0.0, name="drop9")
-        image = _conv10(x, name="finalconv")
-        avgpool = tf.layers.average_pooling2d(
-            image, pool_size=13, strides=1, name="final_pool")
-        logits = tf.layers.flatten(avgpool)
-        return logits
+            x, rate=0.5 if self.is_training else 0.0, name="drop9")
+        if self.num_classes == 1000:
+            x = _conv10(x, name="finalconv", num_classes=self.num_classes)
+            x = tf.layers.average_pooling2d(
+                x, pool_size=13, strides=1, name="final_pool")
+            x = tf.layers.flatten(x)
+        else:
+            x = tf.layers.flatten(x)
+            x = tf.layers.dense(units=self.num_classes*2, inputs=x, activation=tf.nn.relu)
+        return x
 
     def __call__(self, x):
         shape = x.get_shape().as_list()
         if len(shape) != 4:
             raise ValueError("Input size must be [batch,height,width,channels]")
-        if shape[1] < 224 or shape[2] < 224:
-            raise ValueError("Input image must be at least 224x224")
-        return self._build_graph(x)
+        return self._build_graph(x, self.use_bypass)
 
 
 def Model(opts, training, image):
@@ -96,7 +104,7 @@ def _conv1(inputs, name):
         return inputs
 
 
-def _conv10(inputs, name):
+def _conv10(inputs, name, num_classes):
     """The first layer of squeezenet
     Convolution then average pooling
 
@@ -106,44 +114,44 @@ def _conv10(inputs, name):
         The output tensor of the block.
     """
     with tf.variable_scope(name):
-        inputs = conv(inputs, ksize=1, stride=1, filters_out=1000,
-                      kernel_initializer=tf.initializers.truncated_normal(
-                          mean=0.0, stddev=0.01),
-                      bias=False)
+        init = tf.initializers.truncated_normal(mean=0.0, stddev=0.01)
+        inputs = conv(inputs, ksize=1, stride=1, filters_out=num_classes,
+                      kernel_initializer=init, bias=False)
         return inputs
 
 
-def _fire(inputs, s_1, e_1, e_3, name):
+def _fire(inputs, squeeze, expand, name, use_bypass=False):
     """Fire module:
     A 'squeeze' convolution layer, which has only 1x1 filters, feeding
     into an 'expand' layer, that has a mix of 1x1 and 3x3 filters.
 
-    s_1: The number of 1x1 filters in the squeeze layer
-    e_1: The number of 1x1 filters in the expand layer
-    e_3: The number of 3x3 filters in the expand layer
+    squeeze: The number of 1x1 filters in the squeeze layer
+    expand: The number of 1x1 and 3x3 filters in the expand layer
     name: a string name for the tensor output of the block layer.
     """
     with tf.variable_scope(name):
         # squeeze layer
         with tf.variable_scope(name+"s_1"):
-            inputs = conv(inputs, ksize=1, stride=1, filters_out=s_1,
-                          kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
-                          bias=False)
-            s1_out = tf.nn.relu(inputs)
+            x = conv(inputs, ksize=1, stride=1, filters_out=squeeze,
+                     kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
+                     bias=False)
+            s1_out = tf.nn.relu(x)
         # expand layer
         with tf.variable_scope(name+"e_1"):
-            e1_out = conv(s1_out, ksize=1, stride=1, filters_out=e_1,
+            e1_out = conv(s1_out, ksize=1, stride=1, filters_out=expand,
                           kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
                           bias=False)
             e1_out = tf.nn.relu(e1_out)
         # expand layer
         with tf.variable_scope(name+"e_3"):
-            e3_out = conv(s1_out, ksize=3, stride=1, filters_out=e_3,
+            e3_out = conv(s1_out, ksize=3, stride=1, filters_out=expand,
                           kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
                           bias=False)
             e3_out = tf.nn.relu(e3_out)
-        inputs = tf.concat([e1_out, e3_out], axis=3, name='concat')
-        return inputs
+        x = tf.concat([e1_out, e3_out], axis=3, name='concat')
+        if use_bypass:
+            x = inputs + x
+        return x
 
 
 ###########################################
@@ -165,25 +173,58 @@ def conv(x, ksize, stride, filters_out, kernel_initializer, bias=True):
 
 
 def add_arguments(parser):
+    group = parser.add_argument_group('SqueezeNet')
+    group.add_argument('--use-bypass', action='store_true', help="Use bypass in the fire module.")
     return parser
 
 
 def set_defaults(opts):
     opts['summary_str'] += "SqueezeNet\n"
 
-    if opts['dataset'] == 'imagenet':
-        opts['shortcut_type'] = 'B'
-    elif 'cifar' in opts['dataset']:
-        opts['shortcut_type'] = 'A'
+    if not opts.get("lr_schedule"):
+        opts['lr_schedule'] = 'polynomial_decay_lr'
 
-#    opts['dataset'] = 'imagenet'
-    opts['lr_schedule'] = 'polynomial_decay_lr'
+    # set ImageNet specific defaults
+    if opts["dataset"] == "imagenet":
+        if not opts.get("weight_decay"):
+            # value taken from tf_official_resnet - may not be appropriate for
+            # small batch sizes
+            opts["weight_decay"] = 1e-4
+        if not opts.get("base_learning_rate"):
+            if opts["optimiser"] == "SGD":
+                opts["base_learning_rate"] = -8
+            elif opts["optimiser"] == "momentum":
+                opts["base_learning_rate"] = -11
+        if not opts.get("learning_rate_schedule"):
+            opts["learning_rate_schedule"] = [0.3, 0.6, 0.8, 0.9]
+        if not opts.get("learning_rate_decay"):
+            opts["learning_rate_decay"] = [1.0, 0.1, 0.01, 0.001, 1e-4]
+        if opts.get("warmup") is None:
+            # warmup on by default for ImageNet
+            opts["warmup"] = True
+        if not opts.get("batch_size"):
+            opts['batch_size'] = 2
+        # exclude beta and gamma from weight decay calculation
+        opts["wd_exclude"] = ["beta", "gamma"]
+
+    # set CIFAR specific defaults
+    elif "cifar" in opts["dataset"]:
+        if not opts.get("weight_decay"):
+            # based on sweep with CIFAR-10
+            opts["weight_decay"] = 1e-6
+        if not opts.get("base_learning_rate"):
+            opts["base_learning_rate"] = -10
+        if not opts.get("epochs") and not opts.get("iterations"):
+            opts["epochs"] = 160
+        if not opts.get("learning_rate_schedule"):
+            opts["learning_rate_schedule"] = [0.5, 0.75]
+        if not opts.get("learning_rate_decay"):
+            opts["learning_rate_decay"] = [1.0, 0.1, 0.01]
+        if not opts.get("batch_size"):
+            opts['batch_size'] = 128
 
     if not opts.get('epochs') and not opts.get('iterations'):
         opts['epochs'] = 100
-
-    if not opts.get("batch_size"):
-        opts['batch_size'] = 4
 
     if (opts['precision'] == '32.32') and not opts.get("shards"):
         opts['shards'] = 2

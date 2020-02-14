@@ -76,6 +76,7 @@ Create a virtualenv and install the required packages:
 virtualenv venv -p python3.6
 source venv/bin/activate
 pip install -r requirements.txt
+pip install <path to gc_tensorflow.whl>
 ```
 
 ##### 3) Install Boost and compile `custom_ops`

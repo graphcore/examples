@@ -1,26 +1,27 @@
 # Copyright 2019 Graphcore Ltd.
 
 '''
-Code Example showing how to use pipelining in PopART on a very simple model
-consisting of two dense layers. Run one pipeline length and compute loss.
+Code Example showing how to use recomputing in PopART
+on a very simple model consisting of four dense layers.
 '''
 
 import numpy as np
 import popart
 import argparse
 
-# ------------ Model Definition ---------------------------------------
-#  <------------ ipu0 --------><---------- ipu1 --------------------->
-#
-#  d0 --|-- Gemm --|-- Relu --|-- Gemm--|-- Relu --><--Softmax --> Out
-#  w0 --|                          w1 --|
-#  b0 --|                          b1 --|
+
+# Model
+#  < -------------------- ipu0 -------------------------------------------->
+#  x0 | Gemm| Relu | Gemm | Relu | Gemm | Relu | Gemm | Relu | Softmax | Out
+#  w0 |                w1 |         w2  |         w3  |
+#  b0 |                b1 |         b2  |         b3  |
 
 
-def create_pipelined_model(
+def create_model(
         num_features,
         num_classes,
-        batch_size):
+        batch_size,
+        force_recompute=False):
 
     builder = popart.Builder()
 
@@ -45,29 +46,51 @@ def create_pipelined_model(
     W0 = builder.addInitializedInputTensor(
         init_weights(num_features, 512))
     b0 = builder.addInitializedInputTensor(init_biases(512))
-
-    with builder.virtualGraph(0):
-        x1 = builder.aiOnnx.gemm([x0, W0, b0], debugPrefix="gemm_x1")
-        x2 = builder.aiOnnx.relu([x1], debugPrefix="relu_x2")
+    x = builder.aiOnnx.gemm([x0, W0, b0], debugPrefix="gemm_1")
+    if force_recompute:
+        builder.recomputeOutputInBackwardPass(x)
+    x = builder.aiOnnx.relu([x], debugPrefix="relu_1")
+    if force_recompute:
+        builder.recomputeOutputInBackwardPass(x)
 
     #  Dense 2
-    W1 = builder.addInitializedInputTensor(init_weights(512, num_classes))
-    b1 = builder.addInitializedInputTensor(init_biases(num_classes))
+    W1 = builder.addInitializedInputTensor(init_weights(512, 512))
+    b1 = builder.addInitializedInputTensor(init_biases(512))
+    x = builder.aiOnnx.gemm([x, W1, b1], debugPrefix="gemm_2")
+    if force_recompute:
+        builder.recomputeOutputInBackwardPass(x)
+    x = builder.aiOnnx.relu([x], debugPrefix="relu_2")
+    if force_recompute:
+        builder.recomputeOutputInBackwardPass(x)
 
-    with builder.virtualGraph(1):
-        x3 = builder.aiOnnx.gemm([x2, W1, b1], debugPrefix="gemm_x3")
-        x4 = builder.aiOnnx.relu([x3], debugPrefix="relu_x4")
+    #  Dense 3
+    W2 = builder.addInitializedInputTensor(init_weights(512, 512))
+    b2 = builder.addInitializedInputTensor(init_biases(512))
+    x = builder.aiOnnx.gemm([x, W2, b2], debugPrefix="gemm_3")
+    if force_recompute:
+        builder.recomputeOutputInBackwardPass(x)
+    x = builder.aiOnnx.relu([x], debugPrefix="relu_3")
+    if force_recompute:
+        builder.recomputeOutputInBackwardPass(x)
+
+    #  Dense 4
+    W3 = builder.addInitializedInputTensor(init_weights(512, num_classes))
+    b3 = builder.addInitializedInputTensor(init_biases(num_classes))
+    x = builder.aiOnnx.gemm([x, W3, b3], debugPrefix="gemm_4")
+    if force_recompute:
+        builder.recomputeOutputInBackwardPass(x)
+    out = builder.aiOnnx.relu([x], debugPrefix="relu_4")
+    if force_recompute:
+        builder.recomputeOutputInBackwardPass(out)
 
     # Outputs
-    with builder.virtualGraph(1):
-        output_probs = builder.aiOnnx.softmax(
-            [x4], axis=1, debugPrefix="softmax_output")
+    output_probs = builder.aiOnnx.softmax(
+        [out], axis=1, debugPrefix="softmax_output")
 
     builder.addOutputTensor(output_probs)
 
     # Loss
     loss = popart.NllLoss(output_probs, labels, "loss")
-    loss.virtualGraph(1)
 
     # Anchors
     art = popart.AnchorReturnType("ALL")
@@ -87,15 +110,16 @@ def main(args):
     input_rows = 28
     input_columns = 28
     num_classes = 10
-    batch_size = 8
+    batch_size = 2048
     input_shape = [batch_size, input_rows * input_columns]
     labels_shape = [batch_size]
 
     # Create model
-    x0, labels, model_proto, anchor_map, loss = create_pipelined_model(
+    x0, labels, model_proto, anchor_map, loss = create_model(
         num_features=input_columns * input_rows,
         num_classes=num_classes,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        force_recompute=True if args.recomputing == 'ON' else False)
 
     # Save model (optional)
     if args.export:
@@ -103,18 +127,18 @@ def main(args):
             model_path.write(model_proto)
 
     # Session options
+    num_ipus = 1
     opts = popart.SessionOptions()
-    opts.enablePipelining = False if args.no_pipelining else True
-    opts.virtualGraphMode = popart.VirtualGraphMode.Manual
     opts.reportOptions = {"showExecutionSteps": "true"}
     opts.engineOptions = {"debug.instrument": "true"}
-    pipeline_depth = 64
-    num_ipus = 2
+
+    if args.recomputing == 'AUTO':
+        opts.autoRecomputation = popart.RecomputationType.Standard
 
     # Create session
     session = popart.TrainingSession(
         fnModel=model_proto,
-        dataFeed=popart.DataFlow(pipeline_depth, anchor_map),
+        dataFeed=popart.DataFlow(1, anchor_map),
         losses=[loss],
         optimizer=popart.ConstSGD(0.01),
         userOptions=opts,
@@ -122,11 +146,6 @@ def main(args):
 
     anchors = session.initAnchorArrays()
     session.prepareDevice()
-
-    # Extra data feed for pipeline
-    if pipeline_depth > 1:
-        labels_shape.insert(0, pipeline_depth)
-        input_shape.insert(0, pipeline_depth)
 
     # Synthetic data input
     data_in = np.random.uniform(
@@ -157,10 +176,18 @@ if __name__ == "__main__":
     parser.add_argument('--export', help='export model', metavar='FILE')
     parser.add_argument('--report', action='store_true',
                         help='save execution report')
-    parser.add_argument('--no_pipelining', action='store_true',
-                        help='deactivate pipelining')
     parser.add_argument('--test', action='store_true', help='test mode')
+    parser.add_argument(
+        '--recomputing',
+        help='deactivate recompute',
+        metavar='STATUS',
+        default='ON')
+    parser.add_argument('--show-logs', help='show execution logs', action='store_true')
     args = parser.parse_args()
+
+    # (Optional) Logs
+    if args.show_logs:
+        popart.getLogger().setLevel("DEBUG")
 
     # Run
     main(args)

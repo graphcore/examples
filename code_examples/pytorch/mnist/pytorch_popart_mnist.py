@@ -10,14 +10,14 @@ trains it on the MNIST data set using the popart library.
 import argparse
 import numpy as np
 import popart
-import struct
-import sys
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as func
 from torchvision import datasets, transforms
 from typing import Tuple
 from collections import namedtuple
+from time import time
+import tempfile
 
 # Constants for the MNIST dataset
 IMAGE_WIDTH = 28
@@ -54,17 +54,19 @@ class Net(nn.Module):
             Softmax output probabilities per class.
         """
         x = self.fc(x)
-        return F.softmax(x, dim=1)
+        return func.softmax(x, dim=1)
 
 
-def create_model(batch_size: int) -> Tuple[str, str, str]:
+def create_model(
+    batch_size: int, temp_file: tempfile.NamedTemporaryFile
+) -> Tuple[str, str]:
     """Create Pytorch model and export as an ONNX protobuf.
 
     Args:
         batch_size : Batch size of the model.
+        temp_file : To hold the model
 
     Returns:
-        Filename of onnx binary protobuf file,
         image_input name, output_name
     """
     net = Net()
@@ -74,46 +76,25 @@ def create_model(batch_size: int) -> Tuple[str, str, str]:
         "learned_%d" % i for i, _ in enumerate(net.parameters())
     ]
     dummy_input = torch.randn(batch_size, IMAGE_WIDTH * IMAGE_HEIGHT)
-    protobuf_file = "net.onnx"
     torch.onnx.export(
-        net, dummy_input, protobuf_file, input_names=input_names, output_names=[output]
+        net,
+        dummy_input,
+        temp_file.name,
+        input_names=input_names,
+        output_names=[output],
     )
-    return protobuf_file, image_input, output
+    return image_input, output
 
 
-def get_data_loader(
-    batch_size: int, batches_per_step: int, is_train: bool
-) -> torch.utils.data.DataLoader:
-    """Get dataloader for training/testing.
-
-    Args:
-        batch_size: Number of samples in one batch.
-        batches_per_step: Number of mini-batches to process before returning to the host.
-        is_train: Flag is True if training.
-
-    Returns:
-        Dataloader for the split requested.
-    """
-
-    return torch.utils.data.DataLoader(
-        datasets.MNIST(
-            "../data",
-            train=is_train,
-            download=True,
-            transform=transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0,), (1,))]),),
-        batch_size=batch_size * batches_per_step,
-        shuffle=is_train,
-    )
-
-
-def convert_model(batch_size: int, protobuf_file: str, output_name: str) -> Tuple[bytes, str, popart.NllLoss]:
+def convert_model(
+    batch_size: int, protobuf_file: str, output_name: str
+) -> Tuple[bytes, str, popart.NllLoss]:
     """Create popart builder and loss for model.
 
     Args:
         batch_size : Batch size per inference.
         protobuf_file : ONNX binary protobuf filename.
-        output_name: Name of the output Tensor using which loss must be computed.
+        output_name: Name of the output Tensor using which loss must be computed
 
     Returns:
         Modelproto, label and loss.
@@ -132,7 +113,56 @@ def convert_model(batch_size: int, protobuf_file: str, output_name: str) -> Tupl
     return proto, label, loss
 
 
-def preprocess_data(data: torch.Tensor, label: torch.Tensor) -> Tuple[np.ndarray, np.ndarray]:
+def get_data_loader(
+    cl_opts: argparse.Namespace, is_train: bool
+) -> torch.utils.data.DataLoader:
+    """Get dataloader for training/testing.
+
+    Args:
+        cl_opts: The command line arguments
+        is_train: Flag is True if training.
+
+    Returns:
+        Dataloader for the split requested.
+    """
+    if cl_opts.syn_data_type in ["random_normal", "zeros"]:
+        print(
+            "Loading FAKE data {}".format(
+                "for training" if is_train else "for inference"
+            )
+        )
+        data_set = datasets.FakeData(
+            size=cl_opts.batch_size * cl_opts.batches_per_step,
+            image_size=(1, 28, 28),
+            num_classes=NUM_CLASSES,
+            transform=transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0,), (1,))]
+            ),
+        )
+    else:
+        print(
+            "Loading MNIST data {}".format(
+                "for training" if is_train else "for inference"
+            )
+        )
+        data_set = datasets.MNIST(
+            "../data",
+            train=is_train,
+            download=True,
+            transform=transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0,), (1,))]
+            ),
+        )
+    return torch.utils.data.DataLoader(
+        data_set,
+        batch_size=cl_opts.batch_size * cl_opts.batches_per_step,
+        shuffle=is_train,
+    )
+
+
+def preprocess_data(
+    data: torch.Tensor, label: torch.Tensor
+) -> Tuple[np.ndarray, np.ndarray]:
     """Preprocess data from data loader.
 
     Args:
@@ -149,30 +179,34 @@ def preprocess_data(data: torch.Tensor, label: torch.Tensor) -> Tuple[np.ndarray
     return data, label
 
 
-def train(opts) -> None:
-    """Train MNIST model using command line args."""
+def train(opts, temp_file) -> None:
+    """
+    Train MNIST model using command line args.
 
-    # Limit batches_per_step so the test set isn't evaluated more than once.
-    max_value = NUM_TEST_SAMPLES // opts.batch_size
-    if max_value < opts.batches_per_step:
-        print("(batches-per-step * batch-size) is larger than test set!\n"
-              " Reduced batches-per-step to: {}\n".format(max_value))
-        opts.batches_per_step = max_value
+    Args:
+        opts: The command line options
+        temp_file: Temporary file for holding the model
+
+    """
+    if not opts.test_mode:
+        max_value = NUM_TEST_SAMPLES // opts.batch_size
+        if max_value < opts.batches_per_step:
+            print(
+                "(batches-per-step * batch-size) is larger than test set!\n"
+                " Reduced batches-per-step to: {}\n".format(max_value)
+            )
+            opts.batches_per_step = max_value
 
     # Construct MNIST data loaders
-    train_loader = get_data_loader(
-        opts.batch_size, opts.batches_per_step, is_train=True
-    )
+    train_loader = get_data_loader(opts, is_train=True)
 
-    test_loader = get_data_loader(
-        opts.batch_size, opts.batches_per_step, is_train=False
-    )
-
+    test_loader = get_data_loader(opts, is_train=False)
     print("Creating ONNX model.")
-    proto_filename, data_in, output = create_model(opts.batch_size)
-
+    data_in, output = create_model(opts.batch_size, temp_file)
     print("Converting model.")
-    proto, label_in, loss = convert_model(opts.batch_size, proto_filename, output)
+    proto, label_in, loss = convert_model(
+        opts.batch_size, temp_file.name, output
+    )
 
     # Describe how to run the model
     anchor_desc = {
@@ -180,7 +214,7 @@ def train(opts) -> None:
         loss.output(0): popart.AnchorReturnType("ALL"),
     }
     dataFlow = popart.DataFlow(opts.batches_per_step, anchor_desc)
-    optimizer = popart.SGD(0.01)
+    optimizer = popart.ConstSGD(0.01)
 
     # Options
     userOpts = popart.SessionOptions()
@@ -188,20 +222,39 @@ def train(opts) -> None:
     # Ensure weight tensors in the validation model are not modified by the IR
     userOpts.constantWeights = False
 
+    # If requested, setup synthetic data
+    if opts.syn_data_type in ["random_normal", "zeros"]:
+        print(
+            "Running with Synthetic Data Type '{}'".format(opts.syn_data_type)
+        )
+        if opts.syn_data_type == "random_normal":
+            userOpts.syntheticDataMode = popart.SyntheticDataMode.RandomNormal
+        elif opts.syn_data_type == "zeros":
+            userOpts.syntheticDataMode = popart.SyntheticDataMode.Zeros
+
     # Select a device
     deviceManager = popart.DeviceManager()
     if opts.simulation:
-        options = {"compileIPUCode": True, "numIPUs": 1,
-                   "tilesPerIPU": TILES_PER_IPU}
+        print("Running using IPU MODEL")
+        options = {
+            "compileIPUCode": True,
+            "numIPUs": 1,
+            "tilesPerIPU": TILES_PER_IPU,
+        }
         device = deviceManager.createIpuModelDevice(options)
     else:
+        print("Running using Hardware")
         device = deviceManager.acquireAvailableDevice()
         if device is None:
             print("Failed to acquire IPU. Exiting.")
             return
+        if opts.test_mode:
+            print(" IPU IDs: {}".format(device.driverIds))
 
-    def init_session(proto, loss, dataFlow, userOpts, device, training):
+    def init_session(proto, loss, dataFlow, userOpts, device, training, opts):
         # Create a session to compile and execute the graph
+        if opts.test_mode:
+            userOpts.instrumentWithHardwareCycleCounter = True
         if training:
             session = popart.TrainingSession(
                 fnModel=proto,
@@ -209,7 +262,7 @@ def train(opts) -> None:
                 optimizer=optimizer,
                 dataFeed=dataFlow,
                 userOptions=userOpts,
-                deviceInfo=device
+                deviceInfo=device,
             )
         else:
             session = popart.InferenceSession(
@@ -217,53 +270,89 @@ def train(opts) -> None:
                 losses=[loss],
                 dataFeed=dataFlow,
                 userOptions=userOpts,
-                deviceInfo=device
+                deviceInfo=device,
             )
 
-        print("Compiling the {} graph.".format("training" if training else "validation"))
+        print(
+            "Compiling the {} graph.".format(
+                "training" if training else "validation"
+            )
+        )
         session.prepareDevice()
 
         # Create buffers to receive results from the execution
         anchors = session.initAnchorArrays()
 
-        Session = namedtuple('Session', ['session', 'anchors'])
+        Session = namedtuple("Session", ["session", "anchors"])
         return Session(session, anchors)
 
-    training = init_session(proto, loss, dataFlow, userOpts, device, training=True)
-    validation = init_session(proto, loss, dataFlow, userOpts, device, training=False)
+    training = init_session(proto, loss, dataFlow, userOpts, device, True, opts)
+    validation = init_session(
+        proto, loss, dataFlow, userOpts, device, False, opts
+    )
 
-    print("Running training loop.")
     inputs_per_step = opts.batch_size * opts.batches_per_step
     for i in range(opts.epochs):
         # Training
         if i > 0:
-            training.session.resetHostWeights('ckpt.onnx')
+            training.session.resetHostWeights("ckpt.onnx")
         training.session.weightsFromHost()
         training.session.optimizerFromHost()
         for data, label in train_loader:
             if len(label) != inputs_per_step:
                 continue
             data, label = preprocess_data(data, label)
-            stepio = popart.PyStepIO({data_in: data, label_in: label}, training.anchors)
+            stepio = popart.PyStepIO(
+                {data_in: data, label_in: label}, training.anchors
+            )
+            if opts.test_mode == "training":
+                start = time()
             training.session.run(stepio)
-
+            if opts.test_mode == "training":
+                duration = time() - start
+                report_string = "{:<8.3} sec/itr.".format(duration)
+                report_string += "   " + iteration_report(opts, duration)
+                print(report_string)
+                print(
+                    "Hardware cycle count per 'run':",
+                    training.session.getCycleCount(),
+                )
+                print("Total time: {}".format(duration))
         # Evaluation
         aggregated_loss = 0
         num_correct = 0
 
-        training.session.modelToHost('ckpt.onnx')
-        validation.session.resetHostWeights('ckpt.onnx')
+        training.session.modelToHost("ckpt.onnx")
+        validation.session.resetHostWeights("ckpt.onnx")
         validation.session.weightsFromHost()
 
         for data, label in test_loader:
             if len(label) != inputs_per_step:
                 continue
+
             data, label = preprocess_data(data, label)
-            stepio = popart.PyStepIO({data_in: data, label_in: label}, validation.anchors)
+            stepio = popart.PyStepIO(
+                {data_in: data, label_in: label}, validation.anchors
+            )
+            if opts.test_mode == "inference":
+                start = time()
             validation.session.run(stepio)
+            if opts.test_mode == "inference":
+                duration = time() - start
+                report_string = "{:<8.3} sec/itr.".format(duration)
+                report_string += "   " + iteration_report(opts, duration)
+                print(report_string)
+                print(
+                    "Hardware cycle count per 'run':",
+                    validation.session.getCycleCount(),
+                )
+                print("Total time: {}".format(duration))
             aggregated_loss += np.mean(validation.anchors[loss.output(0)])
             results = np.argmax(
-                validation.anchors[output].reshape([inputs_per_step, NUM_CLASSES]), 1
+                validation.anchors[output].reshape(
+                    [inputs_per_step, NUM_CLASSES]
+                ),
+                1,
             )
             score = results == label.reshape([inputs_per_step])
             num_correct += np.sum(score)
@@ -276,18 +365,26 @@ def train(opts) -> None:
         print("   Accuracy={0:.2f}%".format(accuracy * 100))
 
 
+def iteration_report(opts, time):
+    return "{:5f} images/sec.".format(
+        opts.batch_size * opts.batches_per_step / time
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="MNIST training in PyTorch with popart backend.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--batch-size", type=int, default=32, help="Set the Batch size")
+    parser.add_argument(
+        "--batch-size", type=int, default=32, help="Set the Batch size"
+    )
     parser.add_argument(
         "--batches-per-step",
         type=int,
         default=100,
-        help="Number of minibatches to perform on the Device before returning to the Host."
-        " This will be capped so the Device returns each epoch.",
+        help="Number of minibatches to perform on the Device before returning t"
+        "o the Host. This will be capped so the Device returns each epoch.",
     )
     parser.add_argument(
         "--epochs", type=int, default=10, help="Number of epochs to train for."
@@ -302,10 +399,51 @@ if __name__ == "__main__":
         action="store_true",
         help="Turn on ir logging to display the graph's ops.",
     )
+    parser.add_argument(
+        "--test-mode",
+        type=str,
+        help="Output extra performance information, specify wit"
+        "h either 'training' or 'inference'",
+    )
+
+    parser.add_argument(
+        "--syn-data-type",
+        type=str,
+        default="off",
+        help="Specify to use synthetic data with either 'random"
+        "_normal' or 'zeros'",
+    )
+
     opts = parser.parse_args()
 
-    # Set logging
-    popart.getLogger('ir').setLevel('TRACE' if opts.log_graph_trace else 'CRITICAL')
-    popart.getLogger('devicex').setLevel('CRITICAL')
+    # Validate synthetic data argument given
+    if opts.syn_data_type:
+        valids = ["random_normal", "zeros", "off"]
+        if opts.syn_data_type not in valids:
+            raise ValueError(
+                "'--syn-data-type' must be one of {}".format(valids)
+            )
+    # Validate test mode given
+    if opts.test_mode:
+        valids = ["training", "inference"]
+        if opts.test_mode not in valids:
+            raise ValueError("'--test-mode' must be one of {}".format(valids))
 
-    train(opts)
+    # Validate the given batch size and batches per step
+    total = opts.batch_size * opts.batches_per_step
+    if NUM_TEST_SAMPLES < total or total < 1:
+        raise ValueError(
+            "'--batch-size' ({}) multiplied by '--batches-per-step"
+            "' ({}) comes to {} which is not in the range of avail"
+            "able images ({})".format(
+                opts.batch_size, opts.batches_per_step, total, NUM_TEST_SAMPLES
+            )
+        )
+    # Set logging
+    popart.getLogger("ir").setLevel(
+        "TRACE" if opts.log_graph_trace else "CRITICAL"
+    )
+    popart.getLogger("devicex").setLevel("CRITICAL")
+
+    with tempfile.NamedTemporaryFile() as temp_file:
+        train(opts, temp_file)

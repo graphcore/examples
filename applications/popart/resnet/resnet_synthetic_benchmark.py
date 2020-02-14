@@ -137,7 +137,7 @@ if __name__ == '__main__':
             opts.size,
             {"infer": "Inference", "eval": "Evaluation", "train": "Training"}[opts.mode],
             opts.batch_size,
-            opts.batches_per_step if not opts.cycle_report else "n/a",
-            opts.steps if not opts.cycle_report else "n/a"))
+            opts.batches_per_step if not opts.report else "n/a",
+            opts.steps if not opts.report else "n/a"))
     np.random.seed(42)
     benchmark.run(module, opts)

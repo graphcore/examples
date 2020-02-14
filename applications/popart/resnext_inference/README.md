@@ -8,7 +8,7 @@ ResNeXt is a simple, highly modularized network architecture for image classific
 
 ## ResNeXt101 model
 
-The ResNeXt101 model is taken from the research paper Aggregated Residual Transformations for Deep Neural Networks: https://arxiv.org/abs/1611.05431. The simple design results in a homogeneous, multi-branch architecture that has only a few hyper-parameters to set. This strategy exposes a new dimension, cardinality (the size of the set of transformations). 
+The ResNeXt101 model is taken from the research paper Aggregated Residual Transformations for Deep Neural Networks: https://arxiv.org/abs/1611.05431. The simple design results in a homogeneous, multi-branch architecture that has only a few hyper-parameters to set. This strategy exposes a new dimension, cardinality, which is the size of the set of transformations. 
 
 ## Datasets
 
@@ -16,7 +16,7 @@ This benchmark uses the COCO dataset (COCOval2014) which can be downloaded from 
 
 ## Running the model
 
-This runs resnext101_32d.onnx for inference over 8 IPUs. Each IPU runs a single PopART inference session, and receives one portion of the total dataset.
+This application runs resnext101_32d.onnx for inference over 8 IPUs. Each IPU runs a single PopART inference session, and receives one portion of the total dataset.
 
 The following files are provided for running the ResNeXt benchmark. 
 
@@ -58,26 +58,26 @@ Download the the COCO dataset (COCOval2014) from here: http://images.cocodataset
 
 **2) Partition the dataset** 
 
-Assuming you are running on 8 IPUs, this dataset should be partitioned into 8 distinct directories so each one can be read and streamed onto an IPU by a different process. To set the dataset partition up, make a directory to contain the data subsets, and then run `partition_dataset.py` as follows:
-
-Set `data-dir` to the location of the COCO dataset.
+Assuming you are running on 8 IPUs, the COCO dataset should be partitioned into 8 distinct directories so each one can be read and streamed onto an IPU by a different process. To set the dataset partition up, make a directory to contain the data subsets, and then run `partition_dataset.py` as follows:
 
 ```
 (popart) $ mkdir datasets
 (popart) $ python partition_dataset.py --data-dir /localdata/datasets/coco/val2014 --partitions 8 --output datasets
 ```
 
+Where `data-dir` is the location of the COCO dataset.
+
 ### Running the model
 
 **1) Download the model**
 
-To download the pretrained ResNext101 model from Cadene’s pretrained models repository (https://github.com/Cadene/pretrained-models.pytorch#resnext), convert to ONNX, and create a copy with chosen batch size (in this example a batch size of 6), run:
+To download the pretrained ResNext101 model from Cadene’s pretrained models repository (https://github.com/Cadene/pretrained-models.pytorch#resnext), convert it to ONNX format, and create a copy with chosen batch size (in this example a batch size of 6), run:
 
 ```
 (popart) $ python get_model.py --batch-size 6
 ```
 
-This will populate `models/resnext101_32x4d/`. Rerun to create additional ONNX protobufs for every batch size you intend to use.
+This will populate `models/resnext101_32x4d/`. Rerun this script to create additional ONNX protobufs for every batch size you intend to use.
 
 **2) Run the model**
 
@@ -87,7 +87,7 @@ Now you can run the model on the partitioned data.
 (popart) $ python resnext_inference_launch.py --batch_size 6
 ```
 
-Logging data, including throughput, is written per subprocess in `logs/`. Outputs are fetched but not written to file. This can be changed in 'resnext101.py', where outputs are saved as `results`.
+Logging data, including throughput, is written per subprocess in `logs/` and aggregated over all subprocesses in stdout. Outputs are fetched but not written to file. This can be changed in 'resnext101.py', where outputs are saved as `results`.
 
 
 ## Options
@@ -118,8 +118,6 @@ resnext_inference_launch.py:
   --num_workers: Number of threads per dataloader
     (default: '12')
     (an integer)
-  --[no]profile: Saves a GCProfile memory report. Use for debugging
-    (default: 'false')
   --[no]synthetic: Use synthetic data created on the IPU for inference
     (default: 'false')
 ```

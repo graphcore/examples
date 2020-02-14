@@ -106,7 +106,7 @@ if __name__ == '__main__':
               opts.size,
               "Training" if opts.train else "Inference",
               opts.batch_size,
-              opts.batches_per_step if not opts.cycle_report else "n/a",
-              opts.steps if not opts.cycle_report else "n/a"))
+              opts.batches_per_step if not opts.report else "n/a",
+              opts.steps if not opts.report else "n/a"))
 
     benchmark.run(module, opts)

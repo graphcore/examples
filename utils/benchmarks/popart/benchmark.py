@@ -32,7 +32,7 @@ def run(benchmark, opts):
     options.ignoreData = not opts.use_data
     options.instrumentWithHardwareCycleCounter = opts.report_hw_cycle_count
     options.engineOptions = {
-        "debug.instrumentCompute": "true" if opts.cycle_report else "false"
+        "debug.instrumentCompute": "true" if opts.report else "false"
     }
     if opts.convolution_options:
         options.convolutionOptions = json.loads(opts.convolution_options)
@@ -105,7 +105,7 @@ def run(benchmark, opts):
         session.run(stepio)
         duration = time.time() - start
 
-        if opts.cycle_report:
+        if opts.report:
             return save_reports(opts, session)
 
         average_batches_per_sec += (opts.batches_per_step /
@@ -128,8 +128,8 @@ def parse_opts(benchmark, arg_string=None):
                         help='Which graph to run: infer/eval/train')
     parser.add_argument('--use-data', action="store_true",
                         help="Add data transfer ops. Models execution with IO but unbounded by the CPU pipeline.")
-    parser.add_argument('--cycle-report', action="store_true",
-                        help="Generate Cycle Report when run on hardware")
+    parser.add_argument('--report', action="store_true",
+                        help="Generate Graph and Execution Reports")
     parser.add_argument('--batches-per-step', type=int, default=1,
                         help="Number of batches to run per step (on the device)")
     parser.add_argument('--steps', type=int, default=1,
@@ -146,8 +146,6 @@ def parse_opts(benchmark, arg_string=None):
                         help="Run the program on the IPU Model")
     parser.add_argument('--save-graph', action="store_true",
                         help="Save default graph to model.onnx")
-    parser.add_argument('--tile-activity-report', action="store_true",
-                        help="Save a tile activity csv")
     parser.add_argument('--tensor-tile-mapping', action="store_true",
                         help="Save a tensor tile mapping JSON file")
     parser.add_argument('--use-zero-values', action="store_true",
@@ -159,10 +157,7 @@ def parse_opts(benchmark, arg_string=None):
 
     opts = parser.parse_args(arg_string)
 
-    if opts.tile_activity_report:
-        opts.cycle_report = True
-
-    if opts.cycle_report:
+    if opts.report:
         opts.batches_per_step = 1
 
     # Should change this to a dictonary

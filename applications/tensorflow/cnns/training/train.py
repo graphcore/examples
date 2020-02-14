@@ -528,8 +528,7 @@ def set_ipu_defaults(opts):
     opts['summary_str'] += ' IPU\n'
     opts['poplar_version'] = os.popen('popc --version').read()
     opts['summary_str'] += ' {poplar_version}'
-    if opts['select_ipu'] == 'AUTO':
-        opts['select_ipu'] = -1
+    opts['select_ipu'] = -1 if opts['select_ipu'].lower() == 'auto' else int(opts['select_ipu'])
 
     opts['hostname'] = gethostname()
     opts['datetime'] = str(datetime.datetime.now())

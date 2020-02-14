@@ -43,7 +43,7 @@ CIFAR-100 dataset is here https://www.cs.toronto.edu/~kriz/cifar-100-binary.tar.
 | `ipu_utils.py`  | IPU specific utilities |
 | `log.py`        | Module containing functions for logging results |
 | `Datasets/`     | Code for using different datasets. Currently CIFAR-10, CIFAR-100 and ImageNet are supported |
-| `Models/`       | Code for neural networks<br/>- `resnet.py`: A ResNet description based on code from Graphcore's Customer Engineering team and well optimised for the IPU.
+| `Models/`       | Code for neural networks<br/>- `resnet.py`: A ResNet description based on code from Graphcore's Customer Engineering team and well optimised for the IPU.<br/>- `resnext.py`: Definition for ResNeXt model.<br/>- `squeezenet.py`: Definition for SqueezeNet model.
 | `LR_Schedules/` | Different LR schedules<br/> - `stepped.py`: A stepped learning rate schedule with optional warmup<br/>- `cosine.py`: A cosine learning rate schedule with optional warmup
 | `test/`         | Test files |
 
@@ -87,6 +87,10 @@ four stage pipeline model is:
 
 
 # Training Options
+
+`--model`: By default this is set to `resnet`, and this document is focused on ResNet 
+training, but other examples such as `squeezenet` and `resnext` are available in the
+`Models/` directory.
 
 ## ResNet model options
 

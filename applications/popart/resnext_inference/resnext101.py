@@ -27,29 +27,28 @@ def load_dataset(tensors):
 
     loader = dataloader.DataLoader(
         dataset,
-        batch_size=FLAGS.batch_size*FLAGS.batches_per_step,
+        batch_size=FLAGS.micro_batch_size*FLAGS.batches_per_step,
         tensor_type=tensor_type,
         shuffle=True, num_workers=FLAGS.num_workers,
         drop_last=True)  # In the case there is not sufficient data in last batch drop it
 
     return DataSet(
         tensors,
-        FLAGS.batch_size,
+        FLAGS.micro_batch_size,
         FLAGS.batches_per_step,
-        FLAGS.samples_per_device,
-        FLAGS.replication_factor,
         loader,
         np.float16)
 
 
 def graph_builder():
-    proto = f"models/{FLAGS.model_name}/model_{FLAGS.samples_per_device}.onnx"
+    proto = f"models/{FLAGS.model_name}/model_{FLAGS.micro_batch_size}.onnx"
     builder = popart.Builder(
         proto, opsets={"ai.onnx": 10, "ai.onnx.ml": 1, "ai.graphcore": 1})
     input_id = builder.getInputTensorIds()[0]
+
     if FLAGS.synthetic:
 
-        input_shape = [FLAGS.samples_per_device, 3, 224, 224]
+        input_shape = [int(FLAGS.micro_batch_size), 3, 224, 224]
         data = {
             input_id: np.random.normal(0, 1, input_shape).astype(np.float16)
         }
@@ -82,8 +81,9 @@ def graph_builder():
 
 def main(argv):
     FLAGS = flags.FLAGS
-    FLAGS.samples_per_device = int(FLAGS.batch_size / FLAGS.replication_factor)
-
+    print(f"micro batch size is {FLAGS.micro_batch_size}")
+    print(f"batch size is {FLAGS.batch_size}")
+    print(f"batches_per_step is {FLAGS.batches_per_step}")
     proto, data, outputs, output_id = graph_builder()
     print(f"Model: {FLAGS.model_name}")
     if not FLAGS.synthetic:
@@ -94,14 +94,12 @@ def main(argv):
     print(f"num_workers: {FLAGS.num_workers}")
     print(f"batches per step: {FLAGS.batches_per_step}")
     dataFlow = popart.DataFlow(FLAGS.batches_per_step, outputs)
+    
     # Create a session to compile and execute the graph
     options = popart.SessionOptions()
     if FLAGS.synthetic:
         options.ignoreData = True
-    options.engineOptions = {
-        "debug.instrument": "true" if FLAGS.profile else "false",
-        "target.syncMethod": "polling"
-    }
+
     # Select a device
     deviceManager = popart.DeviceManager()
     device = deviceManager.acquireAvailableDevice(1)
@@ -140,7 +138,7 @@ def main(argv):
             report_string += "   Compute {:<8.3} sec ({:4.3}%).".format(
                 compute_duration, 100 * (compute_duration/duration))
         report_string += "   {:5f} images/sec.".format(
-            int(FLAGS.batch_size * FLAGS.batches_per_step / duration))
+            int(FLAGS.micro_batch_size * FLAGS.batches_per_step / duration))
         print(report_string)
     print("Executing...")
     average_batches_per_sec = 0
@@ -182,13 +180,10 @@ def main(argv):
             start = time.time()
         duration = np.mean(durations)
 
-    if FLAGS.profile:
-        import gcprofile
-        return gcprofile.save_popart_report(session)
-
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("batch_size", 6, "Batch size (across all devices)")
+flags.DEFINE_integer("micro_batch_size", 6, "Batch size per device")
+flags.DEFINE_integer("batch_size", 48, "Overall size of batch (across all devices).")
 flags.DEFINE_integer(
     "num_ipus", 8, "Number of IPUs to be used. One IPU runs one compute process.")
 flags.DEFINE_string("data_sub_dir", "datasets/",
@@ -196,12 +191,6 @@ flags.DEFINE_string("data_sub_dir", "datasets/",
 flags.DEFINE_integer("num_workers", 6, "Number of threads per dataloader")
 flags.DEFINE_integer("batches_per_step", 1400,
                      "Number of batches of images to fetch on the host ready for streaming onto the device, reducing host IO")
-flags.DEFINE_boolean(
-    "profile", False, "Saves a GCProfile memory report. Use for debugging")
-flags.DEFINE_integer("samples_per_device", None,
-                     "Samples processed on one device, per batch")
-flags.DEFINE_integer("replication_factor", 1,
-                     "Replicate one model over multiple IPUs")
 flags.DEFINE_string("data_dir", "datasets/",
                     "Parent directory containing subdirectory dataset(s). Number of subdirs should equal num_ipus")
 flags.DEFINE_string("model_name", "resnext101_32x4d",

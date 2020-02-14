@@ -15,7 +15,7 @@ def get_config(prng=False,
     """Builds ipu_options"""
     config = utils.create_ipu_config(max_cross_replica_sum_buffer_size=max_cross_replica_buffer_size,
                                      merge_infeed_io_copies=merge_infeed_io_copies,
-                                     always_rearrange_copies_on_the_host=True)
+                                     always_rearrange_copies_on_the_host=False)
     if ipu_id == -1:
         config = utils.auto_select_ipus(config, number_of_replicas*shards)
     else:

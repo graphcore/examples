@@ -18,7 +18,7 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 DATA_FOLDER = os.path.realpath(os.path.join(script_path, "..", "data"))
 
 fake = Faker()
-fake.seed(230517)
+Faker.seed(230517)
 random.seed(230517)
 
 FORMATS = ['short',

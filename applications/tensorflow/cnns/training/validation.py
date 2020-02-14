@@ -112,7 +112,7 @@ def validation_run(valid, filepath, i, epoch, first_run, opts):
                 ('val_time', val_time),
                 ('img_per_sec', (opts["validation_iterations"] *
                                  opts["validation_batches_per_step"] *
-                                 opts['total_batch_size']) / val_time),
+                                 opts['validation_total_batch_size']) / val_time),
             ])
     logging.print_to_file_and_screen(valid_format.format(**stats), opts)
     logging.write_to_csv(stats, first_run, False, opts)
@@ -180,10 +180,10 @@ def set_validation_defaults(opts):
     if not opts['validation']:
         opts['summary_str'] += "No Validation\n"
     else:
-        opts['total_batch_size'] = opts['batch_size']*opts['shards']*opts['replicas']
-        opts['summary_str'] += "Validation\n Batch Size: {}\n".format("{total_batch_size}")
+        opts['validation_total_batch_size'] = opts['batch_size']*opts['shards']*opts['replicas']
+        opts['summary_str'] += "Validation\n Batch Size: {}\n".format("{validation_total_batch_size}")
         opts["validation_iterations"] = int(DATASET_CONSTANTS[opts['dataset']]['NUM_VALIDATION_IMAGES'] /
-                                            opts["total_batch_size"])
+                                            opts["validation_total_batch_size"])
         if opts["batches_per_step"] < opts["validation_iterations"]:
             opts["validation_batches_per_step"] = int(opts["validation_iterations"] //
                                                       int(round(opts["validation_iterations"] / opts['batches_per_step'])))
