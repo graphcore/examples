@@ -104,11 +104,13 @@ class BertDataTransform(object):
     '''
     Masks the indices that are larger than the vocab_length
     '''
-    def __init__(self, dataloader, vocab_length, sequence_length, is_training=True):
+    def __init__(self, dataloader, vocab_length, sequence_length, embedding_dict,  positional_dict, is_training=True):
         self.dataloader = dataloader
         self.vocab_length = vocab_length
         self.sequence_length = sequence_length
         self.is_training = is_training
+        self.embedding_dict = embedding_dict
+        self.positional_dict = positional_dict
 
     def __len__(self):
         return len(self.dataloader)
@@ -131,7 +133,10 @@ class BertDataTransform(object):
         for i in range(len(items)):
             if self.is_training or i < 4:
                 items[i] = items[i].astype(np.uint32)
-
+        if self.embedding_dict is not None:
+            items[0] = np.take(self.embedding_dict, items[0], 0)
+        if self.positional_dict is not None:
+            items[1] = np.take(self.positional_dict, items[1], 0)
         return items
 
 
@@ -290,6 +295,8 @@ def get_bert_dataset(tensor_shapes,
                      vocab_length,
                      batch_size,
                      batches_per_step,
+                     embedding_dict,
+                     positional_dict,
                      replication_factor=1,
                      accumulation_factor=1,
                      shuffle=True,
@@ -341,6 +348,8 @@ def get_bert_dataset(tensor_shapes,
         dl,
         vocab_length,
         sequence_length,
+        embedding_dict,
+        positional_dict,
         is_training=is_training)
 
     if not is_training:

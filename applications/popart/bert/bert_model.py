@@ -26,7 +26,8 @@ class BertConfig(NamedTuple):
 
     # Choices: "DEFAULT", "TRANSFORMER", "SIMPLIFIED"
     positional_embedding_init_fn: str = "DEFAULT"
-
+    # Look up embedding on CPU
+    host_embedding: bool = False
     # PRETRAINING Only
     mask_tokens: int = 20
 
@@ -180,6 +181,12 @@ class Model(object):
         self.pipeline_stage_tensors = defaultdict(list)
 
     def normal_init_tensor(self, dtype, shape, mean, std_dev, debug_name=""):
+        data = self.normal_init_data(dtype, shape, mean, std_dev, debug_name)
+        tensor = self.builder.addInitializedInputTensor(data, debug_name)
+        self._add_to_tensor_map(tensor)
+        return tensor
+
+    def normal_init_data(self, dtype, shape, mean, std_dev, debug_name=""):
         data = self.initializers.get(
             self.builder.getNameScope(debug_name), None)
         if data is None:
@@ -187,6 +194,7 @@ class Model(object):
             data = truncnorm.rvs(-2, 2, loc=mean,
                                  scale=std_dev, size=np.prod(shape))
             data = data.reshape(shape).astype(dtype)
+            self.initializers[self.builder.getNameScope(debug_name)] = data
         else:
             if np.any(data.shape != np.array(shape)):
                 if np.all(data.T.shape == np.array(shape)):
@@ -195,9 +203,7 @@ class Model(object):
                 else:
                     raise RuntimeError(f"Initializer {self.builder.getNameScope(debug_name)} does not match shapes. \n"
                                        f" Provided {data.shape}. Required {shape}")
-        tensor = self.builder.addInitializedInputTensor(data, debug_name)
-        self._add_to_tensor_map(tensor)
-        return tensor
+        return data
 
     def constant_init_tensor(self, dtype, shape, scalar, debug_name="", is_const=False):
         data = self.initializers.get(
@@ -479,10 +485,10 @@ class Bert(Model):
             [np.sin(scaled_time), np.cos(scaled_time)], axis=1)
         return signal
 
-    def embedding_init_tensor(self, dtype, shape, init_fn, debug_name=""):
+    def get_embedding_data(self, dtype, shape, init_fn, debug_name=""):
         # Unless specifcally set, fall back to normal tensor initialisation
         if init_fn not in ("TRANSFORMER", "SIMPLIFIED"):
-            return self.normal_init_tensor(dtype, shape, 0, 0.02, debug_name)
+            return self.normal_init_data(dtype, shape, 0, 0.02, debug_name)
 
         data = self.initializers.get(self.builder.getNameScope(debug_name), None)
         if data is None:
@@ -494,9 +500,30 @@ class Bert(Model):
             if np.any(data.shape != np.array(shape)):
                 raise RuntimeError(f"Initializer {self.builder.getNameScope(debug_name)} does not match shapes. \n"
                                    f" Provided {data.shape}. Required {shape}")
+        return data
+
+    def embedding_init_tensor(self, dtype, shape, init_fn, debug_name=""):
+        # Unless specifcally set, fall back to normal tensor initialisation
+        data = self.get_embedding_data(dtype, shape, init_fn, debug_name)
         tensor = self.builder.addInitializedInputTensor(data, debug_name)
         self._add_to_tensor_map(tensor)
         return tensor
+
+
+    def get_model_embeddings(self):
+        embedding_dict = None
+        positional_dict = None
+        if self.config.host_embedding:
+            embedding_dict = self.get_embedding_data(self.config.dtype,
+                                                     (self.config.vocab_length, self.config.hidden_size),
+                                                     "DEFAULT",
+                                                     "Embedding_Dict")
+            positional_dict = self.get_embedding_data(self.config.dtype,
+                                                      (self.config.max_positional_length, self.config.hidden_size),
+                                                      self.config.positional_embedding_init_fn,
+                                                      "Positional_Dict")
+        return embedding_dict, positional_dict
+
 
     def embedding(self, indices, positions, segments):
         embedding_fn = self.embedding_onnx
@@ -562,6 +589,8 @@ class Bert(Model):
 
 
     def embedding_onnx(self, indices, embedding_size, name, init_fn="DEFAULT"):
+        if (name == "Embedding_Dict" or name == "Positional_Dict") and self.config.host_embedding:
+            return indices
         embedding_dict = self.embedding_init_tensor(self.config.dtype,
                                                     (embedding_size, self.config.hidden_size),
                                                     init_fn,

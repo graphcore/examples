@@ -132,6 +132,7 @@ def parse_bert_args(args_string=None):
     group = parser.add_argument_group("Model Config")
     parser_from_NamedTuple(group, BertConfig, args={
         "batch_size": "Set the micro batch-size",
+        "host_embedding": "Look up embedding on CPU. Otherwise, the lookup is done on the IPU",
         "sequence_length": "Set the max sequence length",
         "mask_tokens": "Set the max number of masked tokens in a sequence (PRETRAINING only)",
         "vocab_length": "Set the size of the vocabulary",
@@ -372,8 +373,7 @@ def parse_bert_args(args_string=None):
     # Append datetime string to checkpoints path and create the subdirectory
     args.checkpoint_dir = os.path.join(args.checkpoint_dir,
                                        datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S"))
-    os.makedirs(args.checkpoint_dir)
-
+    os.makedirs(args.checkpoint_dir, exist_ok=True)
     save_args(args)
     return args
 

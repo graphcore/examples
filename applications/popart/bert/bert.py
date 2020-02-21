@@ -37,8 +37,15 @@ def bert_config_from_args(args):
 def bert_add_inputs(args, model):
     sequence_info = popart.TensorInfo(
         "UINT32", [args.batch_size * args.sequence_length])
-    indices = model.builder.addInputTensor(sequence_info, "indices")
-    positions = model.builder.addInputTensor(sequence_info, "positions")
+    if args.host_embedding:
+        expanded_sequence_info = popart.TensorInfo(
+            "FLOAT16", [args.batch_size * args.sequence_length, args.hidden_size])
+        indices = model.builder.addInputTensor(expanded_sequence_info, "indices_expanded")
+        positions = model.builder.addInputTensor(expanded_sequence_info, "pos_expanded")
+    else:
+        indices = model.builder.addInputTensor(sequence_info, "indices")
+        positions = model.builder.addInputTensor(sequence_info, "positions")
+
     segments = model.builder.addInputTensor(sequence_info, "segments")
     labels = []
     masks = []
@@ -293,7 +300,7 @@ def bert_writer(args):
     return writer
 
 
-def get_bert_dataset(model, args, inputs):
+def get_bert_dataset(model, args, inputs, embedding_dict = None, positional_dict = None):
     config = model.config
     shapeOf = model.builder.getTensorShape
     # The inputs after the first three (ind, pos, seg) are always lists
@@ -327,6 +334,8 @@ def get_bert_dataset(model, args, inputs):
             vocab_length=config.vocab_length,
             batch_size=config.batch_size,
             batches_per_step=args.batches_per_step,
+            embedding_dict=embedding_dict,
+            positional_dict=positional_dict,
             accumulation_factor=args.gradient_accumulation_factor,
             replication_factor=args.replication_factor,
             shuffle=args.shuffle,
@@ -729,6 +738,7 @@ def acquire_device(args, request_ipus):
 
 def bert_pretrained_initialisers(config, args):
     if args.synthetic_data:
+        logger.info("Initialising from synthetic_data")
         return None
     if args.onnx_checkpoint:
         logger.info(f"Initialising from ONNX checkpoint: {args.onnx_checkpoint}")
@@ -755,6 +765,7 @@ def main(args):
                  initializers=initializers,
                  execution_mode=args.execution_mode)
 
+    # If config.host_embedding is enabled, indices and positions will have the matrices instead of the index vector.
     indices, positions, segments, masks, labels = bert_add_inputs(args, model)
     logits = bert_logits_graph(model, indices, positions, segments, masks)
 
@@ -768,7 +779,9 @@ def main(args):
         outputs = bert_add_validation_outputs(model, predictions, losses)
         writer = bert_writer(args)
 
-    dataset = get_bert_dataset(model, args, [indices, positions, segments, masks, labels])
+    embedding_dict, positional_dict = model.get_model_embeddings()
+
+    dataset = get_bert_dataset(model, args, [indices, positions, segments, masks, labels], embedding_dict, positional_dict)
     logger.info(f"Dataset length: {len(dataset)}")
 
     data_flow = popart.DataFlow(dataset.batches_per_step, outputs)
