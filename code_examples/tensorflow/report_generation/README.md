@@ -1,13 +1,12 @@
-
 # Graphcore
 ---
 ## Generate a Poplar report from a Tensorflow Graph
 
 ### Run the example
 
-See `report-generation-example.py` script for a simple example. In order to run it, you'll first need to install the poplar-sdk (>=0.8.0) following the README provided. Make sure to run the enable.sh scripts and activate a Python virtualenv with gc_tensorflow installed. Then:
+See `report_generation_example.py` script for a simple example. In order to run it, you'll first need to install the poplar-sdk (>=0.8.0) following the README provided. Make sure to run the enable.sh scripts and activate a Python virtualenv with gc_tensorflow installed. Then:
 
-`python report-generation-example.py`
+`python report_generation_example.py`
 
 If everything has been set up correctly, a report.txt file should have been created in the same directory.
 

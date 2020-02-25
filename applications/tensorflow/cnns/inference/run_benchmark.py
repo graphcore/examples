@@ -8,7 +8,7 @@ import os
 import time
 import warnings
 from pathlib import Path
-from typing import Callable, Optional, Tuple, Type
+from typing import Callable, List, Optional, Tuple, Type
 
 import numpy as np
 import tensorflow as tf
@@ -141,6 +141,11 @@ def run_inference(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation,
                                                                                                         fps[-1],
                                                                                                         batch_size,
                                                                                                         iter_count))
+            duration = stop - start
+            report_string = "{:<7.3} sec/itr.".format(duration)
+            report_string += "   {:5f} images/sec.".format(fps[-1])
+            print(report_string)
+            print("Total time: {}".format(duration))
 
             # Decode a random prediction per step to check functional correctness.
             if data == 'real':
@@ -161,20 +166,28 @@ def run_inference(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation,
     print("-------------------------------------------------------------------------------------------")
     fps = fps[20:]
     print("Throughput at bs={}, data_mode={}, data_type={}, mode={},"
-          " num_ipus={}, of {}: min={}, max={}, mean={}, std={}.".format(
-            batch_size, data, predictions.dtype, mode,
-            num_ipus,
-            network_name,
-            min(fps),
-            max(fps),
-            np.mean(fps),
-            np.std(fps)))
+          " num_ipus={}, of {}: min={}, max={}, mean={}, std={}.".format(batch_size,
+                                                                         data,
+                                                                         predictions.dtype,
+                                                                         mode,
+                                                                         num_ipus,
+                                                                         network_name,
+                                                                         min(fps),
+                                                                         max(fps),
+                                                                         np.mean(fps),
+                                                                         np.std(fps)))
 
 
-def construct_graph(network_class: Type[InferenceNetwork], config: Path, checkpoint_dir: str, batch_size: int,
-                    batches_per_step: int, image_filenames: Tuple[str], loop: bool,
-                    preprocess_fn: Callable, num_ipus: int, mode: str) -> Tuple[
-                    tf.Operation, tf.Operation, tf.Operation]:
+def construct_graph(network_class: Type[InferenceNetwork],
+                    config: Path, checkpoint_dir: str,
+                    batch_size: int,
+                    batches_per_step: int,
+                    image_filenames: Tuple[str],
+                    loop: bool,
+                    preprocess_fn: Callable,
+                    num_ipus: int,
+                    mode: str,
+                    save_graph_pb: bool) -> Tuple[tf.Operation, tf.Operation, tf.Operation]:
     """Create inference graph on the device, set up in-feeds and out-feeds, connect dataset iterator to the graph.
 
     This function also exports the frozen graph into an event file, to be viewed in Tensorboard in `network_name_graph`
@@ -191,6 +204,7 @@ def construct_graph(network_class: Type[InferenceNetwork], config: Path, checkpo
         preprocess_fn: Pre-process function to apply to the image before feeding into the graph.
         num_ipus: Number of ipus.
         mode: Inference mode.
+        save_graph_pb: If true, export frozen graph to event file to view in Tensorboard
 
     Returns: Compiled loop operator to run repeated inference over the dataset, infeed_queue intitializer, outfeed op.
 
@@ -213,15 +227,16 @@ def construct_graph(network_class: Type[InferenceNetwork], config: Path, checkpo
                             config=config_dict,
                             checkpoint_dir=checkpoint_dir)
 
-    # Export frozen graph to event file to view in Tensorboard
-    log_dir = Path(f"{config_dict['network_name']}_graph")
-    graph_filename = f"{log_dir}/{config_dict['network_name']}_graph.pb"
-    if not log_dir.exists():
-        log_dir.mkdir()
-    with tf.io.gfile.GFile(graph_filename, "wb") as f:
-        f.write(network.optimized_graph.SerializeToString())
-    logging.info("%d ops in the final graph." % len(network.optimized_graph.node))
-    import_to_tensorboard(graph_filename, log_dir=log_dir.as_posix())
+    # Export frozen graph to event file to view in Tensorboard"
+    if save_graph_pb:
+        log_dir = Path(f"{config_dict['network_name']}_graph")
+        graph_filename = f"{log_dir}/{config_dict['network_name']}_graph.pb"
+        if not log_dir.exists():
+            log_dir.mkdir()
+        with tf.io.gfile.GFile(graph_filename, "wb") as f:
+            f.write(network.optimized_graph.SerializeToString())
+        logging.info("%d ops in the final graph." % len(network.optimized_graph.node))
+        import_to_tensorboard(graph_filename, log_dir=log_dir.as_posix())
 
     # Reset graph before creating one on the IPU
     tf.reset_default_graph()
@@ -276,14 +291,14 @@ def construct_graph(network_class: Type[InferenceNetwork], config: Path, checkpo
     return loop_op, infeed_queue.initializer, outfeed_dequeue
 
 
-def main(model_arch: str, image_dir: Path, batch_size: int,
+def main(model_arch: str, images: List, batch_size: int,
          batches_per_step: int, loop: bool, num_iterations: int, num_ipus: int, mode: str, data: str,
-         available_memory_proportion: float, gen_report: bool) -> None:
+         available_memory_proportion: float, gen_report: bool, save_graph_pb: bool) -> None:
     """Run inference on chosen model.
 
     Args:
         model_arch: Type of image classification model
-        image_dir: Path to directory of images to run inference on.
+        images: List of images to run inference on.
         batch_size: Batch size per forward pass.
         batches_per_step: Number of batches to run per step.
         loop: Run inference on device in a loop for num_iterations steps.
@@ -294,6 +309,7 @@ def main(model_arch: str, image_dir: Path, batch_size: int,
         available_memory_proportion: Proportion of tile memory available as
          temporary memory for matmul and convolution execution
         gen_report: Generate a report after 1 iteration.
+        save_graph_pb: If true, export frozen graph to event file to view in Tensorboard
 
     """
     if (model_arch == "densenet121") and (mode != "sharded"):
@@ -306,8 +322,16 @@ def main(model_arch: str, image_dir: Path, batch_size: int,
         raise ValueError('Invalid "availableMemoryProportion" value: must be a float >=0.05'
                          ' and <=1 (default value is 0.6)')
 
+    if "TF_POPLAR_FLAGS" in os.environ:
+        os.environ["TF_POPLAR_FLAGS"] += " --log_cycle_count=0"
+    else:
+        os.environ["TF_POPLAR_FLAGS"] = "--log_cycle_count=0"
+
     if data == "synthetic":
-        os.environ["TF_POPLAR_FLAGS"] = "--use_synthetic_data --synthetic_data_initializer=random"
+        if "TF_POPLAR_FLAGS" in os.environ:
+            os.environ["TF_POPLAR_FLAGS"] += " --use_synthetic_data --synthetic_data_initializer=random"
+        else:
+            os.environ["TF_POPLAR_FLAGS"] = "--use_synthetic_data --synthetic_data_initializer=random"
     else:
         os.environ["TF_POPLAR_FLAGS"] = ""
 
@@ -317,28 +341,19 @@ def main(model_arch: str, image_dir: Path, batch_size: int,
         model_arch = 'inceptionv1'
     config = Path(f'configs/{model_arch}.yml')
 
-    # Check if image dir exists
-    if data == 'synthetic':
-        image_filenames = ['dummy.jpg']
-    else:
-        image_filenames = glob.glob(image_dir.as_posix() + "/*.jpg")
-    if len(image_filenames) == 0:
-        raise ValueError(('Image directory: %s does not have images,'
-                          'please run `get_images.sh` '
-                          'to download sample imagenet images' % image_dir.as_posix()))
-
     # Create graph and data iterator
     loop_op, infeed_initializer, outfeed_op = construct_graph(model_cls, config,
                                                               f"./checkpoints/{model_arch}/",
                                                               batch_size, batches_per_step,
-                                                              image_filenames, loop,
-                                                              model_cls.preprocess_method(), num_ipus, mode)
+                                                              images, loop,
+                                                              model_cls.preprocess_method(), num_ipus,
+                                                              mode, save_graph_pb)
     # Run on model or device
     if gen_report:
         get_report(loop_op, infeed_initializer, outfeed_op, f"{config.stem}_report.txt",
                    available_memory_proportion=available_memory_proportion)
     else:
-        ground_truth = tuple([Path(filename).stem for filename in image_filenames])
+        ground_truth = tuple([Path(filename).stem for filename in images])
         run_inference(loop_op, infeed_initializer, outfeed_op, batch_size, batches_per_step, config.stem,
                       model_cls.decode_method(), ground_truth, num_iterations, num_ipus, mode, data,
                       available_memory_proportion=available_memory_proportion)
@@ -352,7 +367,7 @@ if __name__ == "__main__":
                                  "inceptionv3", "resnet50", "densenet121", "xception", "efficientnet-s",
                                  "efficientnet-m", "efficientnet-l"],
                         help="Type of image classification model.")
-    parser.add_argument('--image_dir', type=str, default="",
+    parser.add_argument('image_dir', type=str, default="", nargs='?',
                         help="Path to directory of images to run inference on.")
     parser.add_argument('--loop', dest='loop', action='store_true',
                         help="Run inference on device in a loop for `num_iterations` steps.", default=True)
@@ -374,6 +389,8 @@ if __name__ == "__main__":
                         help="Float between 0.05 and 1.0: Proportion of tile memory available as temporary " +
                              "memory for matmul and convolutions execution (default:0.6 and 0.2 for Mobilenetv2)")
     parser.add_argument('--gen-report', dest='gen_report', action='store_true', help="Generate report.")
+    parser.add_argument('--save-graph-pb', dest='save_graph_pb', type=bool, default=False,
+                        help="Export frozen graph to event file to view in Tensorboard")
 
     args = parser.parse_args()
 
@@ -391,5 +408,19 @@ if __name__ == "__main__":
         else:
             args.available_mem_prop = 0.6
 
-    main(args.model_arch, Path(args.image_dir), args.batch_size, args.batches_per_step, args.loop,
-         args.num_iterations, args.num_ipus, args.mode, args.data, args.available_mem_prop, args.gen_report)
+    # Check if image dir exists
+    if args.data == 'synthetic':
+        image_filenames = ['dummy.jpg']
+    elif not args.image_dir:
+        raise ValueError('When running inference with real data, image directory must be '
+                         'supplied as positional argument after the model name.')
+    else:
+        image_filenames = glob.glob(Path(args.image_dir).as_posix() + "/*.jpg")
+    if len(image_filenames) == 0:
+        raise ValueError(('Image directory: %s does not have images,'
+                          'please run `get_images.sh` '
+                          'to download sample imagenet images' % Path(args.image_dir).as_posix()))
+
+    main(args.model_arch, image_filenames, args.batch_size, args.batches_per_step, args.loop,
+         args.num_iterations, args.num_ipus, args.mode, args.data, args.available_mem_prop,
+         args.gen_report, args.save_graph_pb)

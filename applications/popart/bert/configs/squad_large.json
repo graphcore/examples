@@ -7,9 +7,7 @@
     "sequence_length": 128,
     "popart_dtype": "FLOAT16",
     "stochastic_rounding": true,
-    "custom_ops": [
-        "gather"
-    ],
+    "custom_ops": [],
     "batches_per_step": 8192,
     "epochs": 3,
     "aggregate_epochs_over_steps": 1,

@@ -281,7 +281,8 @@ def get_bert_dataset(tensor_shapes,
         sample_sizes=data_file_format(sequence_length, mask_tokens),
         batch_size=batch_size * batches_per_step * replication_factor * accumulation_factor,
         duplication_factor=duplication_factor,
-        start_data_at_epoch=start_data_at_epoch
+        start_data_at_epoch=start_data_at_epoch,
+        shuffle=shuffle
     )
     if synthetic:
         dl = SyntheticDataLoader(**data_loader_args,

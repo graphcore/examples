@@ -179,13 +179,14 @@ def preprocess_data(
     return data, label
 
 
-def train(opts, temp_file) -> None:
+def train(opts, model_file, ckpt_file) -> None:
     """
     Train MNIST model using command line args.
 
     Args:
         opts: The command line options
-        temp_file: Temporary file for holding the model
+        model_file: Temporary file for holding the model
+        ckpt_file: Temporary file for holding the weights
 
     """
     if not opts.test_mode:
@@ -202,10 +203,10 @@ def train(opts, temp_file) -> None:
 
     test_loader = get_data_loader(opts, is_train=False)
     print("Creating ONNX model.")
-    data_in, output = create_model(opts.batch_size, temp_file)
+    data_in, output = create_model(opts.batch_size, model_file)
     print("Converting model.")
     proto, label_in, loss = convert_model(
-        opts.batch_size, temp_file.name, output
+        opts.batch_size, model_file.name, output
     )
 
     # Describe how to run the model
@@ -295,7 +296,7 @@ def train(opts, temp_file) -> None:
     for i in range(opts.epochs):
         # Training
         if i > 0:
-            training.session.resetHostWeights("ckpt.onnx")
+            training.session.resetHostWeights(ckpt_file.name)
         training.session.weightsFromHost()
         training.session.optimizerFromHost()
         for data, label in train_loader:
@@ -322,8 +323,8 @@ def train(opts, temp_file) -> None:
         aggregated_loss = 0
         num_correct = 0
 
-        training.session.modelToHost("ckpt.onnx")
-        validation.session.resetHostWeights("ckpt.onnx")
+        training.session.modelToHost(ckpt_file.name)
+        validation.session.resetHostWeights(ckpt_file.name)
         validation.session.weightsFromHost()
 
         for data, label in test_loader:
@@ -445,5 +446,6 @@ if __name__ == "__main__":
     )
     popart.getLogger("devicex").setLevel("CRITICAL")
 
-    with tempfile.NamedTemporaryFile() as temp_file:
-        train(opts, temp_file)
+    with tempfile.NamedTemporaryFile() as model_file:
+        with tempfile.NamedTemporaryFile() as ckpt_file:
+            train(opts, model_file, ckpt_file)

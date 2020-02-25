@@ -3,7 +3,7 @@
 ### File structure
 
 * `unit/` - Testing the functional correctness of components of the model vs a PyTorch version. The implementation of the component will be the best performing, custom_op or ONNX.
-* `regression` - Testing the performance, accuracy and throughput, of the model when training.
+* `regression` - Testing the performance, accuracy and throughput, of the model during training and inference.
 
 ### How to run the tests demo
 

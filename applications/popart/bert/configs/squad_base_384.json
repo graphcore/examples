@@ -38,10 +38,7 @@
     "pipeline_momentum_scaling_offset": 0.1,
     "loss_scaling": 20.0,
     "stochastic_rounding": true,
-    "custom_ops": [
-        "gather",
-        "attention"
-    ],
+    "custom_ops": [],
     "batches_per_step": 2048,
     "epochs": 3,
     "epochs_per_save": 2,
@@ -54,10 +51,10 @@
     "do_lower_case": true,
     "shuffle": true,
     "execution_mode": "PIPELINE",
-    "no_outlining": true,
     "checkpoint_dir": "ckpts/squad_base_384",
-    "engine_cache": "__squad_base_384",
-    "split_linear_layers": true,
+    "split_linear_layers": false,
+    "no_outlining": true,
+    "use_default_available_memory_proportion": true,
     "validation_config": {
         "sequence_length": 384,
         "layers_per_ipu": 6,

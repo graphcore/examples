@@ -90,7 +90,6 @@
     "epochs_to_cache": 3,
     "vocab_length": 30400,
     "projection_serialization_steps": 5,
-    "engine_cache": "__pretrain_large_128",
     "shuffle": true,
     "execution_mode": "PIPELINE",
     "checkpoint_dir": "checkpoints/pretrain_large",

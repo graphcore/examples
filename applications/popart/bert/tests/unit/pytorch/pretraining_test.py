@@ -71,7 +71,8 @@ def test_pretraining_bwd(custom_ops):
                         popart_dtype="FLOAT",
                         activation_type="relu",
                         no_dropout=True,
-                        custom_ops=["gather", "attention"])
+                        custom_ops=["gather", "attention"],
+                        update_embedding_dict=False)
     popart_model = Bert(config, builder=builder)
 
     #  ------------------- PyTorch -------------------------

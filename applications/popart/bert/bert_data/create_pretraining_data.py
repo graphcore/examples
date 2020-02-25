@@ -69,7 +69,7 @@ class TrainingInstance(object):
 
 
 def write_instance_to_example_files(instances, tokenizer, max_seq_length,
-                                    mask_tokens, output_files, max_samples=-1):
+                                    mask_tokens, output_files, pad_position_value, max_samples=-1):
   """Create Binary files from `TrainingInstance`s."""
   writers = []
   for output_file in output_files:
@@ -97,10 +97,11 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     masked_lm_ids = tokenizer.convert_tokens_to_ids(instance.masked_lm_labels)
     masked_lm_weights = [1.0] * len(masked_lm_ids)
 
-    while len(masked_lm_positions) < mask_tokens:
-      masked_lm_positions.append(0)
-      masked_lm_ids.append(0)
-      masked_lm_weights.append(0.0)
+    # Removing this makes sure that the logic below doesn't mask the CLS token as idx of CLS == 0.
+    # while len(masked_lm_positions) < mask_tokens:
+    #   masked_lm_positions.append(0)
+    #   masked_lm_ids.append(0)
+    #   masked_lm_weights.append(0.0)
 
     next_sentence_label = 1 if instance.is_random_next else 0
 
@@ -117,7 +118,7 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     # Main Change to original script. This handles the re-arranging of samples to put mask_tokens at the start.
 
     formatted_input = [0] * max_seq_length
-    formatted_pos = [max_seq_length + 1] * max_seq_length
+    formatted_pos = [pad_position_value] * max_seq_length
     formatted_seg = [0] * max_seq_length
     formatted_label = [0] * mask_tokens
     current_mask_idx = 0
@@ -466,7 +467,7 @@ def main(args):
     print(f"  {output_file}")
 
   write_instance_to_example_files(instances, tokenizer, args.sequence_length,
-                                  args.mask_tokens, output_files, args.max_samples)
+                                  args.mask_tokens, output_files, args.pad_position_value, args.max_samples)
 
 
 if __name__ == "__main__":
@@ -483,5 +484,7 @@ if __name__ == "__main__":
   parser.add_argument("--mlm-prob", type=float, default=0.15)
   parser.add_argument("--short-seq-prob", type=float, default=0.1)
   parser.add_argument("--max-samples", type=int, default=-1)
+  parser.add_argument("--pad-position-value", type=int, default=384,
+                      help="Value in the positional input for [PAD] tokens")
   args = parser.parse_args()
   main(args)

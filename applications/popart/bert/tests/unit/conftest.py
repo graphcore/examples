@@ -32,6 +32,13 @@ def pytest_addoption(parser):
         action="store",
         help="Path to the frozen graph file.")
 
+    parser.addoption(
+        "--chkpt-task",
+        type="choice",
+        choices=("PRETRAINING, SQUAD"),
+        default="PRETRAINING",
+        help="Checkpoint task - Pretraining or SQuAD.")
+
 
 def pytest_configure(config):
     config.addinivalue_line(
@@ -50,6 +57,11 @@ def config_path(request):
 @pytest.fixture
 def chkpt_path(request):
     return request.config.getoption("--chkpt-path")
+
+
+@pytest.fixture
+def chkpt_task(request):
+    return request.config.getoption("--chkpt-task")
 
 
 @pytest.fixture

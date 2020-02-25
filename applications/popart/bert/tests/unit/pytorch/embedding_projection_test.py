@@ -95,12 +95,11 @@ def test_embedding_projection_fwd(custom_ops):
     }
 
     x = popart_model.embedding_custom(
-        indices, config.vocab_length, "Embedding_Dict", detach=True)
+        indices, config.vocab_length, "Embedding_Dict")
     x = popart_model.norm(x)
     x = popart_model.dropout(x)
-    # FIXME: T11914
-    # with popart_model.device_scope(nameScope="CLS"):
-    #     x = popart_model.lm_prediction_head(x)
+    with popart_model.builder.nameScope("CLS"):
+        x = popart_model.lm_prediction_head(x)
     output = popart_model.projection(x)
 
     proto = builder.getModelProto()
@@ -147,7 +146,11 @@ def test_embedding_projection_bwd(custom_ops):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['gather'])
+                        custom_ops=['gather'],
+                        # Currently updating embedding dict with projection is only
+                        # available with momentum. And PopART != Pytorch momentum
+                        # due to a bootstrapping step on iter 0.
+                        update_embedding_dict=False)
     popart_model = Bert(config, builder=builder)
 
     sequence_info = popart.TensorInfo(
@@ -161,12 +164,11 @@ def test_embedding_projection_bwd(custom_ops):
     }
 
     x = popart_model.embedding_custom(
-        indices, config.vocab_length, "Embedding_Dict", detach=True)
+        indices, config.vocab_length, "Embedding_Dict")
     x = popart_model.norm(x)
     x = popart_model.dropout(x)
-    # FIXME: T11914
-    # with popart_model.device_scope(nameScope="CLS"):
-    #     x = popart_model.lm_prediction_head(x)
+    with popart_model.device_scope(nameScope="CLS"):
+        x = popart_model.lm_prediction_head(x)
     output = popart_model.projection(x)
 
     proto = builder.getModelProto()

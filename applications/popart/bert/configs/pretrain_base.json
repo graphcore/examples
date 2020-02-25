@@ -94,7 +94,6 @@
     "projection_serialization_steps": 2,
     "use_default_available_memory_proportion": true,
     "disable_fully_connected_pass": true,
-    "engine_cache": "__pretrain_base_128",
     "shuffle": true,
     "execution_mode": "PIPELINE",
     "checkpoint_dir": "checkpoints/pretrain_base",

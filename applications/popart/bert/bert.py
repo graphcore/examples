@@ -42,7 +42,7 @@ def bert_add_inputs(args, model):
     segments = model.builder.addInputTensor(sequence_info, "segments")
     labels = []
     masks = []
-    mask_info = popart.TensorInfo("UINT32", [args.batch_size])
+    mask_info = popart.TensorInfo("UINT32", [args.batch_size, 1])
     if args.task == "PRETRAINING":
         masks.append(model.builder.addInputTensor(mask_info, "mask_tokens_mask_idx"))
         masks.append(model.builder.addInputTensor(mask_info, "sequence_mask_idx"))
@@ -82,14 +82,14 @@ def bert_infer_graph(model, logits):
     elif model.config.task == "PRETRAINING":
         with model.nsp_scope:
             nsp_predictions = model.builder.aiOnnx.argmax(
-                [logits[1]], axis=1, keepdims=0, debugPrefix="NSP/ArgMax")
+                [logits[1]], axis=1, keepdims=0, debugPrefix="ArgMax")
             nsp_probs = model.builder.aiOnnx.softmax(
-                [logits[1]], axis=1, debugPrefix="NSP/Softmax")
+                [logits[1]], axis=1, debugPrefix="Softmax")
         with model.mlm_scope:
             mlm_predictions = model.builder.aiOnnx.argmax(
-                [logits[0]], axis=2, keepdims=0, debugPrefix="MLM/ArgMax")
+                [logits[0]], axis=2, keepdims=0, debugPrefix="ArgMax")
             mlm_probs = model.builder.aiOnnx.softmax(
-                [logits[0]], axis=2, debugPrefix="MLM/Softmax")
+                [logits[0]], axis=2, debugPrefix="Softmax")
         predictions = [mlm_predictions, nsp_predictions]
         probs = [mlm_probs, nsp_probs]
     return predictions, probs
@@ -137,6 +137,7 @@ def bert_add_validation_outputs(model, predictions, losses):
 
 
 def bert_session_options(args, model):
+    engine_options = {}
     options = popart.SessionOptions()
     options.enableVirtualGraphs = True
     options.virtualGraphMode = popart.VirtualGraphMode.Manual
@@ -178,9 +179,8 @@ def bert_session_options(args, model):
         logger.debug(f"No copy merge size limit applied")
     else:
         logger.warning(f"Workaround for T11642: copy merge size limit set to {args.max_copy_merge_size}")
-        options.engineOptions = {
-            "opt.maxCopyMergeSize": str(args.max_copy_merge_size),
-        }
+        engine_options["opt.maxCopyMergeSize"] = str(args.max_copy_merge_size)
+
     # Adding {"fullyConnectedPass", "TRAINING_BWD"} to some matmuls causes large
     # transposes before operations.
     # WARNING: This causes SQuAD 384 12-layer to go OOM
@@ -196,6 +196,10 @@ def bert_session_options(args, model):
     if args.variable_weights_inference:
         options.constantWeights = False
 
+    if args.deterministic_workers:
+        engine_options["target.deterministicWorkers"] = "true"
+
+    options.engineOptions = engine_options
     return options
 
 
@@ -295,6 +299,7 @@ def get_bert_dataset(model, args, inputs):
     # The inputs after the first three (ind, pos, seg) are always lists
     inputs = reduce(chain, inputs[3:], inputs[:3])
     tensor_shapes = [(tensorId, shapeOf(tensorId)) for tensorId in inputs]
+
     if config.task == "PRETRAINING":
         return get_pretraining_dataset(
             tensor_shapes,
@@ -311,8 +316,9 @@ def get_bert_dataset(model, args, inputs):
             synthetic=args.synthetic_data,
             epochs_to_cache=args.epochs_to_cache,
             start_data_at_epoch=args.continue_training_from_epoch)
+
     if config.task == "SQUAD":
-        return get_squad_dataset(
+        ds = get_squad_dataset(
             tensor_shapes,
             input_file=args.input_files[0],
             output_dir=args.squad_results_dir,
@@ -331,6 +337,9 @@ def get_bert_dataset(model, args, inputs):
             synthetic=args.synthetic_data,
             do_lower_case=args.do_lower_case,
             max_pipeline_stage=model.total_pipeline_stages if args.execution_mode == "PIPELINE" else 1)
+        if args.no_drop_remainder and not args.synthetic_data:
+            args.batches_per_step = ds.batches_per_step  # Keep args up to date
+        return ds
 
 
 def bert_output_stats(labels, anchors, losses, predictions, ignore_index=None):
@@ -357,7 +366,7 @@ def bert_output_stats(labels, anchors, losses, predictions, ignore_index=None):
     for pred, label, mask in zip(map(lambda p: anchors[p], predictions),
                                  labels,
                                  padding_masks):
-        equal = pred == label
+        equal = pred.reshape(label.shape) == label
         total_correct += np.sum(equal[mask])
     total_attempted = np.sum(num_losses)
     step_accuracy = total_correct / total_attempted
@@ -561,7 +570,7 @@ def create_callback_stepio(data, anchors, start_times, end_times, batches_per_st
     return stepio
 
 
-def compute_latency(args, start_times, end_times):
+def compute_latency(args, start_times, end_times, durations):
     mean_latency = None
     min_latency = None
     max_latency = None
@@ -570,15 +579,19 @@ def compute_latency(args, start_times, end_times):
         # two anchors most separated in time:
         start_id = get_timing_start_anchor(start_times)
         end_id = get_timing_end_anchor(end_times)
-        rtts = list(map(lambda v: v[1]-v[0], zip(start_times[start_id], end_times[end_id])))
+        rtts = list(map(lambda v: v[1] - v[0], zip(start_times[start_id], end_times[end_id])))
         if len(rtts) != args.batches_per_step:
             raise RuntimeError("Number of timings doesn't match items in the batch. Something is wrong.")
-        mean_latency = (sum(rtts))/args.batches_per_step
+        mean_latency = (sum(rtts)) / args.batches_per_step
         min_latency = min(rtts)
         max_latency = max(rtts)
         if (logging.getLogger().isEnabledFor(logging.DEBUG)):
             for i, v in enumerate(rtts):
                 logging.debug(f"LATENCY: {i} {v}")
+    else:
+        mean_latency = np.average(durations)
+        min_latency = min(durations)
+        max_latency = max(durations)
     return mean_latency, min_latency, max_latency
 
 
@@ -600,7 +613,7 @@ def bert_process_infer_data(args, session, data, anchors,
 
     iteration.durations.append(duration)
 
-    mean_latency, min_latency, max_latency = compute_latency(args, start_times, end_times)
+    mean_latency, min_latency, max_latency = compute_latency(args, start_times, end_times, iteration.durations)
 
     if (iteration.count % iteration.steps_per_log) == 0:
         status_string = \
@@ -633,7 +646,7 @@ def bert_train_loop(args, session, writer,
             if args.steps_per_save > 0 and (iteration.count % args.steps_per_save) == 0:
                 save_model_and_stats(args, session, writer, iteration.count, iteration.epoch, True)
 
-        if args.epochs_per_save > 0 and ((iteration.epoch) % iteration.epochs_per_save) == 0:
+        if args.epochs_per_save > 0 and ((iteration.epoch + 1) % iteration.epochs_per_save) == 0:
             save_model_and_stats(args, session, writer, iteration.count, iteration.epoch + 1)
 
     save_model_and_stats(args, session, writer, iteration.count)
@@ -658,7 +671,7 @@ def disable_realtime_scheduling(args):
 
 
 def bert_infer_loop(args, session,
-                    dataset, logits, anchors,
+                    dataset, inputs, logits, anchors,
                     iteration):
     save_results = args.task == "SQUAD" and not args.synthetic_data
 
@@ -672,7 +685,7 @@ def bert_infer_loop(args, session,
     end_times = defaultdict(list)
     if args.low_latency_inference and args.task == "SQUAD":
         stepio = create_callback_stepio(static_data, anchors, start_times, end_times,
-                                        args.batches_per_step)
+                                        dataset.batches_per_step)
     else:
         stepio = None
 
@@ -680,7 +693,7 @@ def bert_infer_loop(args, session,
 
     for iteration.epoch in range(repeat_count):
         for data in dataset:
-            static_data.update(data)
+            static_data.update({t: data[t] for t in inputs})
             result = bert_process_infer_data(args, session, static_data, anchors,
                                              logits, iteration,
                                              start_times, end_times, stepio)
@@ -698,7 +711,10 @@ def bert_infer_loop(args, session,
 
 def acquire_device(args, request_ipus):
     if args.use_ipu_model:
-        device = popart.DeviceManager().createIpuModelDevice({"numIPUs": request_ipus})
+        model_opts = {"numIPUs": request_ipus}
+        if args.ipu_model_version is not None:
+            model_opts["ipuVersion"] = args.ipu_model_version
+        device = popart.DeviceManager().createIpuModelDevice(model_opts)
     else:
         sync_pattern = popart.SyncPattern.Full
         device = popart.DeviceManager().acquireAvailableDevice(
@@ -719,7 +735,7 @@ def bert_pretrained_initialisers(config, args):
         return utils.load_initializers_from_onnx(args.onnx_checkpoint)
     if args.tf_checkpoint:
         logger.info(f"Initialising from TF checkpoint: {args.tf_checkpoint}")
-        return load_initializers_from_tf(args.tf_checkpoint, True, config)
+        return load_initializers_from_tf(args.tf_checkpoint, True, config, args.task)
     return None
 
 
@@ -771,8 +787,9 @@ def main(args):
     if args.inference:
         session, anchors = bert_inference_session(model, args, data_flow, losses, device)
         logger.info("Inference Started")
+        inputs = [indices, positions, segments, *masks]
         bert_infer_loop(args, session,
-                        dataset, logits, anchors,
+                        dataset, inputs, logits, anchors,
                         iteration)
         device.detach()
     else:
@@ -824,7 +841,7 @@ if __name__ == "__main__":
         main(args)
 
     # If this was a training session and validation isn't disabled; validate.
-    if not args.inference and not args.no_validation:
+    if not args.inference and not args.no_validation and not args.no_model_save:
         logger.info("Doing Validation")
         main(utils.get_validation_args(args))
 

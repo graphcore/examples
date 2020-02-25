@@ -38,13 +38,13 @@ def save_model_statistics(model_path, writer, i=0):
 
 
 def str_to_bool(value):
-    if isinstance(value, bool):
+    if isinstance(value, bool) or value is None:
         return value
     if value.lower() in {'false', 'f', '0', 'no', 'n'}:
         return False
     elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
         return True
-    raise ValueError(f'{value} is not a valid boolean value')
+    raise argparse.ArgumentTypeError(f'{value} is not a valid boolean value')
 
 
 def parser_from_NamedTuple(parser, ntuple, args={}):
@@ -85,7 +85,6 @@ def parser_from_NamedTuple(parser, ntuple, args={}):
 
 class ScheduleArgumentParser(argparse.Action):
     def __init__(self, option_strings, dest, nargs=None, **kwargs):
-        self._nargs = nargs
         super(ScheduleArgumentParser, self).__init__(
             option_strings, dest, nargs=nargs, **kwargs)
         self.default_input = kwargs['default']
@@ -171,15 +170,17 @@ def parse_bert_args(args_string=None):
                             same IPUs as the first and last tranformer layers respectively",
         "no_mask": "Don't apply padding masks to the attention scores",
         "projection_serialization_steps": "Split the final MLM projection into this many steps",
-        "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on matmuls."
+        "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on matmuls.",
+        "update_embedding_dict": "Include the sparse update to the word Embedding_Dict."
     })
     group.add_argument("--use-ipu-model", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Target the IpuModel (acquires a real IPU device by default). \
                              WARNING: The custom ops do not have validated cycle estimates \
                              so do not rely on the model's cycle report.")
-
+    group.add_argument("--ipu-model-version", type=str, default=None,
+                       help="Choose IPU version for use with IPUModel (passed to Popart as 'ipuVersion').")
     group = parser.add_argument_group("Pretraining Config")
-    group.add_argument("--projection-lr-scale", type=float, default=8.0,
+    group.add_argument("--projection-lr-scale", type=float, default=1.0,
                        help="Scale the learning rate of the projection/embedding variable. \
                              This aids training as the variable is not updated from the embedding.")
 
@@ -282,10 +283,14 @@ def parse_bert_args(args_string=None):
     group.add_argument("--epochs-to-cache", type=int, default=0,
                        help="Number of epochs of data to load into memory during PRETRAINING. Default is to load input files as needed.")
 
-    group = parser.add_argument_group("Execution Config")
-
-    group.add_argument("--pipeline", action="store_const", const="PIPELINE", dest="execution_mode",
+    group = parser.add_argument_group("Execution Mode")
+    emode = group.add_mutually_exclusive_group()
+    emode.add_argument("--virtual-graph", type=str_to_bool, nargs="?", const=True, default=None,
+                       help="Build and execute the graph with only VirtualGraph annotations.")
+    emode.add_argument("--pipeline", type=str_to_bool, nargs="?", const=True, default=None,
                        help="Build and execute the graph with Pipeline annotations.")
+
+    group = parser.add_argument_group("Execution Config")
     group.add_argument("--batches-per-step", type=int, default=250,
                        help="Set the number of batches (weight updates) to execute before returning to the Host")
     group.add_argument("--floating-point-exceptions", type=str_to_bool, nargs="?", const=True, default=False,
@@ -302,7 +307,7 @@ def parse_bert_args(args_string=None):
                         help='Report the number of cycles each "session.run" takes.')
     group.add_argument("--no-outlining", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Disable PopART outlining optimisations. This will increase memory for a small throughput improvement.")
-    group.add_argument("--engine-cache", type=str,
+    group.add_argument("--engine-cache", type=lambda arg: None if not arg else arg,
                        help="Path to store a cache of the engine compilation.")
     group.add_argument("--variable-weights-inference", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Force the weights to be variables during inference. Required for loading weights from a checkpoint when using a cached engine.")
@@ -338,6 +343,9 @@ def parse_bert_args(args_string=None):
     group.add_argument("--disable-fully-connected-pass", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Adding fully connected pass to some matmuls causes large transposes before operations during training. "
                        "Note: This will improve throughput at the cost of memory.")
+    group.add_argument("--deterministic-workers", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Force a deterministic mapping of vertices to worker threads. Slower, but allows "
+                       "for repeatability within results, particularly when using stochastic rounding.")
     group.add_argument("--log-level", type=str, default='INFO',
                        choices=['NOTSET', 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'],
                        help="Set the logging level")
@@ -355,12 +363,26 @@ def parse_bert_args(args_string=None):
 
     args = parser.parse_args(remaining_argv)
 
+    set_execution_mode(args)
+
+    # Invalidate incompatible options
+    if args.no_drop_remainder and args.task != "SQUAD":
+        raise RuntimeError(f"--no-drop-remainder is only compatible with SQUAD and not with {args.task}, aborting")
+
     # Append datetime string to checkpoints path and create the subdirectory
     args.checkpoint_dir = os.path.join(args.checkpoint_dir,
                                        datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S"))
     os.makedirs(args.checkpoint_dir)
 
     save_args(args)
+    return args
+
+
+def set_execution_mode(args):
+    if args.pipeline:
+        args.execution_mode = "PIPELINE"
+    elif args.virtual_graph or args.execution_mode == "PIPELINE" and args.pipeline is False:
+        args.execution_mode = "DEFAULT"
     return args
 
 

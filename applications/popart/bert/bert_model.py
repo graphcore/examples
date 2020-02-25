@@ -9,7 +9,10 @@ from functools import reduce
 from contextlib import contextmanager, ExitStack
 from collections import defaultdict
 from enum import Enum
+import logging
 import math
+
+logger = logging.getLogger(__name__)
 
 so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                        "custom_ops.so")
@@ -89,7 +92,11 @@ class BertConfig(NamedTuple):
     def qkv_length(self):
         return self.hidden_size / self.attention_heads
 
+    # In PRETRAINING this sets how many steps to serialise both the
+    # embedding and projection
     projection_serialization_steps: int = 5
+
+    update_embedding_dict: bool = True
 
     use_default_available_memory_proportion: bool = False
 
@@ -101,7 +108,10 @@ class BertConfig(NamedTuple):
         meaning other operations cannot be scheduled between the serialised steps.
         BERT uses setSerializeMatMul so VarUpdate can execute between steps thus freeing the required gradient memory'''
         if self.inference:
-            max_matmul_memory = 104858
+            if self.squeeze_model and self.sequence_length == 384:
+                max_matmul_memory = 45000
+            else:
+                max_matmul_memory = 104858
         elif self.sequence_length < 128:
             max_matmul_memory = 40000
         elif self.sequence_length <= 256:
@@ -179,8 +189,12 @@ class Model(object):
             data = data.reshape(shape).astype(dtype)
         else:
             if np.any(data.shape != np.array(shape)):
-                raise RuntimeError(f"Initializer {self.builder.getNameScope(debug_name)} does not match shapes. \n"
-                                   f" Provided {data.shape}. Required {shape}")
+                if np.all(data.T.shape == np.array(shape)):
+                    data = data.T.copy()
+                    logger.warn(f"Initializer for {self.builder.getNameScope(debug_name)} was provided transposed.")
+                else:
+                    raise RuntimeError(f"Initializer {self.builder.getNameScope(debug_name)} does not match shapes. \n"
+                                       f" Provided {data.shape}. Required {shape}")
         tensor = self.builder.addInitializedInputTensor(data, debug_name)
         self._add_to_tensor_map(tensor)
         return tensor
@@ -225,9 +239,6 @@ class Bert(Model):
 
         # This is the TensorId for the shared embedding & projection
         self.embedding_dict = None
-        self.projection_split = 4
-        if (self.config.vocab_length % 5) == 0:
-            self.projection_split = 5
 
         # This dict[ipu,TensorId] reuses any mask already generated on an IPU/pipeline stage
         # TODO: Should recompute instead?
@@ -239,7 +250,7 @@ class Bert(Model):
         ''' Create a DeviceScope for each layer, ie Embedding, SQUAD, NSP
         '''
         self.layer_offset = 1
-        if self.config.task == "PRETRAINING":
+        if not self.config.inference:
             self.layer_offset += 1
         if self.config.squeeze_model:
             self.layer_offset -= 1
@@ -253,6 +264,7 @@ class Bert(Model):
         # Task Layers
         if self.config.task in ("NSP", "PRETRAINING"):
             self.nsp_scope = self.device_scope(self.embedding_split_scope.virtualGraph, pipeline_stage, "NSP")
+            self.cls_scope = self.device_scope(self.embedding_split_scope.virtualGraph, pipeline_stage, "CLS")
         if self.config.task == "PRETRAINING":
             if (self.layer_offset - 1) != 0:
                 pipeline_stage += 1
@@ -268,6 +280,22 @@ class Bert(Model):
 
     def encoder_scope(self, layer_index):
         ipu = (layer_index // self.config.layers_per_ipu) + self.layer_offset
+
+        if self.config.squeeze_model and self.config.inference and self.config.hidden_size == 1024:
+            # Special case to help squeeze BERT LARGE 128 inference onto 4 IPUs instead of 7
+            # by moving some of the transformer layers around. New intended split is:
+            # 3 Encoders -> IPU0
+            # 7 Encoders -> IPU1
+            # 7 Encoders -> IPU2
+            # 7 Encoders -> IPU3
+            if layer_index in [3, 4, 5]:
+                ipu = 1
+            if layer_index in [10, 11]:
+                ipu = 2
+            if layer_index in [17]:
+                ipu = 3
+
+        logger.debug(f"Encoder Layer {layer_index} -> IPU {ipu}")
         return self.device_scope(ipu, ipu, f"Layer{layer_index}")
 
     def build_graph(self, indices, positions, segments, masks=None):
@@ -291,11 +319,10 @@ class Bert(Model):
                 outputs.append(self.nsp_head(x))
 
         if self.config.task == "PRETRAINING":
-            # FIXME: T11914
-            # with self.nsp_scope, self.builder.nameScope("CLS"):
-            #     predictions = self.lm_prediction_head(x)
+            with self.cls_scope:
+                predictions = self.lm_prediction_head(x)
             with self.mlm_scope:
-                outputs = [self.projection(x)] + outputs
+                outputs = [self.projection(predictions)] + outputs
 
         # Fine Tuning tasks
         if self.config.task == "SQUAD":
@@ -477,13 +504,12 @@ class Bert(Model):
             embedding_fn = self.embedding_custom
 
         with self.embedding_scope:
-            x = embedding_fn(indices, self.config.vocab_length, "Embedding_Dict", detach=True)
+            x = embedding_fn(indices, self.config.vocab_length, "Embedding_Dict")
 
         with self.embedding_split_scope:
             x_pos = embedding_fn(positions,
                                  self.config.max_positional_length,
                                  "Positional_Dict",
-                                 detach=False,
                                  init_fn=self.config.positional_embedding_init_fn)
 
             segments_onehot = self.builder.aiOnnx.onehot([
@@ -498,23 +524,29 @@ class Bert(Model):
 
             x = self.builder.aiOnnx.add([x, x_pos])
             x = self.builder.aiOnnx.add([x, x_seg])
+
+            # When outlining is enabled, under certain situations, the `add` above resolves
+            # to an AddLhsInPlace, which then causes the output to be laid out incorrectly
+            # for SQuAD. This workaround ensures it stays as an AddRhsInPlace.
+            self.builder.setInplacePreferences(x, {"AddRhsInplace": 1000.0})
+
             x = self.norm(x)
             x = self.dropout(x)
         return x
 
 
-    def embedding_custom(self, indices, embedding_size, name, detach=False, init_fn="DEFAULT"):
+    def embedding_custom(self, indices, embedding_size, name, init_fn="DEFAULT"):
         embedding_dict = self.embedding_init_tensor(self.config.dtype,
                                                     (self.config.hidden_size, embedding_size),
                                                     init_fn,
                                                     name)
         attrs = {}
-        # TODO: Whats the best layout if there is no projection?
-        if name == "Embedding_Dict":
-            attrs = {'split': [2, self.projection_split]}
+        if name == "Embedding_Dict" and self.config.task == "PRETRAINING":
+            attrs = {
+                'split': [2, self.config.projection_serialization_steps],
+                'embedding_tensor_id': embedding_dict
+            }
             self.embedding_dict = embedding_dict
-
-        if detach:
             embedding_dict = self.detach(embedding_dict)
 
         x = self.builder.customOp(opName="EmbeddingGather",
@@ -522,21 +554,27 @@ class Bert(Model):
                                   domain="ai.graphcore",
                                   inputs=[embedding_dict, indices],
                                   attributes=attrs)[0]
+
+        if name == "Embedding_Dict" and not self.config.update_embedding_dict:
+            x = self.detach(x)
+
         return x
 
 
-    def embedding_onnx(self, indices, embedding_size, name, detach=False, init_fn="DEFAULT"):
+    def embedding_onnx(self, indices, embedding_size, name, init_fn="DEFAULT"):
         embedding_dict = self.embedding_init_tensor(self.config.dtype,
                                                     (embedding_size, self.config.hidden_size),
                                                     init_fn,
                                                     name)
-        if name == "Embedding_Dict":
+        if name == "Embedding_Dict" and self.config.task == "PRETRAINING":
             self.embedding_dict = embedding_dict
-
-        if detach:
             embedding_dict = self.detach(embedding_dict)
+            logger.warn("Pretraining with the non-custom op gather will not update Embeddding_Dict with gradients from the gather.")
 
         x = self.builder.aiOnnx.gather([embedding_dict, indices])
+
+        if name == "Embedding_Dict" and not self.config.update_embedding_dict:
+            x = self.detach(x)
         return x
 
     def attention_mask(self, masks):
@@ -582,6 +620,10 @@ class Bert(Model):
                 [final_mask, self.constant_tensor(1.0, self.config.dtype)])
             final_mask = self.builder.aiOnnx.mul(
                 [final_mask, self.constant_tensor(1000.0, self.config.dtype)])
+            final_mask = self.builder.reshape_const(
+                self.builder.aiOnnx,
+                [final_mask],
+                [self.config.batch_size, 1, 1, self.config.sequence_length])
             # TODO: This shouldn't be needed. No Variables on this path.
             final_mask = self.detach(final_mask)
             self.masks[mask_idx] = final_mask
@@ -739,11 +781,11 @@ class Bert(Model):
 
     def pooler(self, pooler_input):
         """
-        Take the first token [CLS] as a sentence embedding (assuming it's already been
+        Take the [CLS] token as a sentence embedding (assuming it's already been
         fine-tuned), then run a FC layer with tanh activation
         """
         pooler_input = self.builder.aiOnnxOpset9.slice(
-            [pooler_input], axes=[1], starts=[0], ends=[1]
+            [pooler_input], axes=[1], starts=[self.config.mask_tokens], ends=[self.config.mask_tokens + 1]
         )
 
         # This reshape is doing the job of a squeeze, but allows for in-place operation.
@@ -785,7 +827,7 @@ class Bert(Model):
                                                0.02,
                                                "LMPredictionW")
 
-        dense_bias = self.constant_init_tensor(self.config.dtype, [self.config.hidden_size], 0, "LMPredictionB")
+        dense_bias = self.constant_init_tensor(self.config.dtype, (self.config.hidden_size,), 0, "LMPredictionB")
 
         x = self.builder.aiOnnx.gemm([input_x, dense_weight, dense_bias])
 

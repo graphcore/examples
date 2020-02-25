@@ -16,7 +16,7 @@ Tests the full squad graph.
 '''
 
 
-def test_squad_fwd(custom_ops):
+def test_squad_fwd():
     #  ------------------- PopART --------------------
     builder = popart.Builder(opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1})
     config = BertConfig(task="SQUAD",
@@ -28,7 +28,7 @@ def test_squad_fwd(custom_ops):
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=["gather", "attention"],
+                        custom_ops=[],
                         inference=True)
     popart_model = Bert(config, builder=builder)
 
@@ -60,7 +60,7 @@ def test_squad_fwd(custom_ops):
               })
 
 
-def test_squad_bwd(custom_ops):
+def test_squad_bwd():
     #  ------------------- PopART --------------------
     builder = popart.Builder(opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1})
     config = BertConfig(task="SQUAD",
@@ -72,7 +72,8 @@ def test_squad_bwd(custom_ops):
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=["gather", "attention"])
+                        custom_ops=[],
+                        update_embedding_dict=False)
     popart_model = Bert(config, builder=builder)
 
     #  ------------------- PyTorch -------------------------

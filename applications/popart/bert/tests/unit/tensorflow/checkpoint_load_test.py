@@ -6,7 +6,8 @@ import numpy as np
 import popart
 from tests.torch_bert import (
     BertConfig as TorchBertConfig,
-    BertForMaskedLM as TorchModel,
+    BertForMaskedLM as TorchModelPreTraining,
+    BertForQuestionAnswering as TorchModelSquad,
     load_tf_weights_in_bert,
 )
 import random
@@ -23,7 +24,7 @@ random.seed(1984)
 torch.manual_seed(1984)
 
 
-def load_bert_config_tf(config_path, override_vocab=None):
+def load_bert_config_tf(config_path, override_vocab=None, chkpt_task="PRETRAINING"):
     """
     Load the bert config data from Google Research's checkpoint format
     into the Popart Bert config format.
@@ -47,7 +48,8 @@ def load_bert_config_tf(config_path, override_vocab=None):
         no_dropout=True,
         inference=True,
         activation_type="relu",
-        custom_ops=["gather", "attention"]
+        custom_ops=["gather", "attention"],
+        task=chkpt_task
     )
 
     return config
@@ -105,15 +107,16 @@ def run_models(config, proto, indices, positions, segments, output, popart_model
 @pytest.mark.requires_frozen
 @pytest.mark.requires_config
 @pytest.mark.requires_chkpt
-def test_load_from_frozen(config_path, chkpt_path, frozen_path, custom_ops):
+def test_load_from_frozen(config_path, chkpt_path, chkpt_task, frozen_path, custom_ops):
     # Vocab-size override is not required, but allows the test to run more quickly
-    config = load_bert_config_tf(config_path, override_vocab=9728)
+    config = load_bert_config_tf(config_path, override_vocab=9728, chkpt_task=chkpt_task)
 
     builder = popart.Builder(
         opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}
     )
 
     # Load Torch version
+    TorchModel = TorchModelPreTraining if chkpt_task == "PRETRAINING" else TorchModelSquad
     torch_model = TorchModel(
         TorchBertConfig(
             config.vocab_length,
@@ -139,7 +142,7 @@ def test_load_from_frozen(config_path, chkpt_path, frozen_path, custom_ops):
     segments = builder.addInputTensor(sequence_info)
 
     popart_model, proto, output = load_model_from_tf(
-        frozen_path, False, config, indices, positions, segments, builder=builder
+        frozen_path, False, config, indices, positions, segments, chkpt_task, builder=builder
     )
 
     run_models(config, proto, indices, positions, segments, output, popart_model, torch_model)
@@ -147,7 +150,7 @@ def test_load_from_frozen(config_path, chkpt_path, frozen_path, custom_ops):
 
 @pytest.mark.requires_config
 @pytest.mark.requires_chkpt
-def test_load_from_chkpt(config_path, chkpt_path, custom_ops):
+def test_load_from_chkpt(config_path, chkpt_path, chkpt_task, custom_ops):
     """
     Compare the model loaded into our popart model against the modified
     PyTorch model:
@@ -156,13 +159,14 @@ def test_load_from_chkpt(config_path, chkpt_path, custom_ops):
         - Compare output tensors
     """
     # Vocab-size override is not required, but allows the test to run more quickly
-    config = load_bert_config_tf(config_path, override_vocab=9728)
+    config = load_bert_config_tf(config_path, override_vocab=9728, chkpt_task=chkpt_task)
 
     builder = popart.Builder(
         opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}
     )
 
     # Load Torch version
+    TorchModel = TorchModelPreTraining if chkpt_task == "PRETRAINING" else TorchModelSquad
     torch_model = TorchModel(
         TorchBertConfig(
             config.vocab_length,
@@ -188,7 +192,7 @@ def test_load_from_chkpt(config_path, chkpt_path, custom_ops):
     segments = builder.addInputTensor(sequence_info)
 
     popart_model, proto, output = load_model_from_tf(
-        chkpt_path, True, config, indices, positions, segments, builder=builder
+        chkpt_path, True, config, indices, positions, segments, chkpt_task, builder=builder
     )
 
     run_models(config, proto, indices, positions, segments, output, popart_model, torch_model)

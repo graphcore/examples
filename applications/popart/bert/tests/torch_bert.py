@@ -416,7 +416,7 @@ class BertLMPredictionHead(nn.Module):
     def __init__(self, config):
         super(BertLMPredictionHead, self).__init__()
         self.mask_tokens = config.mask_tokens
-        # self.transform = BertPredictionHeadTransform(config)
+        self.transform = BertPredictionHeadTransform(config)
 
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
@@ -428,7 +428,7 @@ class BertLMPredictionHead(nn.Module):
         # self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
     def forward(self, hidden_states):
-        # hidden_states = self.transform(hidden_states)
+        hidden_states = self.transform(hidden_states)
 
         # MAJOR CHANGE. We move the masked tokens to the front. As such we only need to project the first max_mask_tokens in the output layer.
         hidden_states = hidden_states[:, :self.mask_tokens, :]
@@ -442,11 +442,13 @@ class BertPooler(nn.Module):
         super(BertPooler, self).__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.activation = nn.Tanh()
+        # Major change - we've moved the CLS token to be at position mask_tokens.
+        self.cls_position = config.mask_tokens
 
     def forward(self, hidden_states):
         # We "pool" the model by simply taking the hidden state corresponding
         # to the first token.
-        first_token_tensor = hidden_states[:, 0]
+        first_token_tensor = hidden_states[:, self.cls_position]
         pooled_output = self.dense(first_token_tensor)
         pooled_output = self.activation(pooled_output)
         return pooled_output
@@ -741,7 +743,7 @@ def load_tf_weights_in_bert(model, config, tf_checkpoint_path):
         name = name.split('/')
         # adam_v and adam_m are variables used in AdamWeightDecayOptimizer to calculated m and v
         # which are not required for using pretrained model
-        if any(n in ["adam_v", "adam_m", "global_step", "cls"] for n in name):
+        if any(n in ["adam_v", "adam_m", "global_step"] for n in name):
             logger.info("Skipping {}".format("/".join(name)))
             continue
         pointer = model
@@ -750,14 +752,25 @@ def load_tf_weights_in_bert(model, config, tf_checkpoint_path):
                 l = re.split(r'_(\d+)', m_name)
             else:
                 l = [m_name]
+            if l[0] == 'cls' and 'squad' in name:
+                logger.info("Skipping the cls term to match the torch SQuAD implementation: {}".format("/".join(name)))
+                continue
             if l[0] == 'kernel' or l[0] == 'gamma':
                 pointer = getattr(pointer, 'weight')
             elif (l[0] == 'output_bias' or l[0] == 'beta') and hasattr(pointer, 'bias'):
                 pointer = getattr(pointer, 'bias')
+            elif (l[0] == 'output_bias' or l[0] == 'beta'):
+                # Ignore the biases that aren't used here
+                pointer = None
+                continue
+            elif (l[0] == 'seq_relationship' and not hasattr(pointer, "seq_relationship")):
+                # If we're in the LM model, and NSP head is not also there, don't load the NSP weights
+                pointer = None
+                break
             elif l[0] == 'output_weights':
                 pointer = getattr(pointer, 'weight')
             elif l[0] == 'squad':
-                pointer = getattr(pointer, 'classifier')
+                pointer = getattr(pointer, 'qa_outputs')
             else:
                 try:
                     pointer = getattr(pointer, l[0])
@@ -772,7 +785,11 @@ def load_tf_weights_in_bert(model, config, tf_checkpoint_path):
         elif m_name == 'kernel':
             array = np.transpose(array)
         try:
+            if pointer is not None and not hasattr(pointer, 'shape'):
+                logger.info("Skipping due to unknown ptr {}".format("/".join(name)))
+                continue
             if pointer is None or pointer.shape is None:
+                logger.info("Skipping due to null ptr {}".format("/".join(name)))
                 continue
             if m_name == "word_embeddings" and pointer.shape != array.shape:
                 logger.warn(f"Cropping the vocabulary for torch load: From {array.shape[0]} to {config.vocab_length}")

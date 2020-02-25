@@ -61,7 +61,6 @@
     "pipeline_momentum_scaling": true,
     "pipeline_momentum_scaling_offset": 0.1,
     "stochastic_rounding": true,
-    "no_outlining": true,
     "custom_ops": [
         "gather",
         "attention"
@@ -91,9 +90,10 @@
     "duplication_factor": 6,
     "epochs_to_cache": 1,
     "vocab_length": 30400,
-    "projection_serialization_steps": 5,
-    "split_linear_layers": true,
-    "engine_cache": "__pretrain_base_384",
+    "projection_serialization_steps": 4,
+    "no_outlining": true,
+    "split_linear_layers": false,
+    "use_default_available_memory_proportion": true,
     "shuffle": true,
     "execution_mode": "PIPELINE",
     "checkpoint_dir": "checkpoints/pretrain_base_384",

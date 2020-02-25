@@ -334,7 +334,8 @@ def get_bert_dataset(tensor_shapes,
     dl = SquadDataLoader(
         features,
         sequence_length=sequence_length,
-        batch_size=samples_per_step,)
+        batch_size=samples_per_step,
+        shuffle=shuffle)
 
     bert_ds = BertDataTransform(
         dl,

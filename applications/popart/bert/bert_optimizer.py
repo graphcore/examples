@@ -82,9 +82,17 @@ class BaseOptimizerFactory():
                 specific_parameters["learningRate"] = (default_lr * self.pipeline_stage_lr_scaling[stage], lr_is_const)
             if self.momentum_scaling:
                 # Momentum values are scaled inverse to the pipeline_stage
-                momentum = 1 - ((1 - self.option_values["defaultMomentum"]) * self.pipeline_stage_momentum_scaling[stage])
+                if self.option_values["defaultMomentum"] != 0:
+                    # This arithmetic will create FP rounding errors if momentum == 0.
+                    momentum = 1 - ((1 - self.option_values["defaultMomentum"]) * self.pipeline_stage_momentum_scaling[stage])
+                else:
+                    momentum = 0
                 specific_parameters["momentum"] = (momentum, True)
-                dampening = 1 - ((1 - self.option_values["defaultDampening"]) * self.pipeline_stage_dampening_scaling[stage])
+
+                if self.option_values["defaultDampening"] != 0:
+                    dampening = 1 - ((1 - self.option_values["defaultDampening"]) * self.pipeline_stage_dampening_scaling[stage])
+                else:
+                    dampening = 0
                 specific_parameters["dampening"] = (dampening, True)
             for tensor_id in self.pipeline_stage_tensors[stage]:
                 # Special case for embedding/projection variable.

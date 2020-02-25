@@ -16,18 +16,35 @@ from bert_model import BertConfig, Bert
 logger = getLogger(__name__)
 
 
-def get_tf_mapping(config):
-    tf_to_onnx = {
-        "bert/embeddings/word_embeddings": "Embedding/Embedding_Dict",
-        "bert/embeddings/position_embeddings": "Embedding/Positional_Dict",
-        "bert/embeddings/token_type_embeddings": "Embedding/Segment_Dict",
-        "bert/embeddings/LayerNorm/gamma": "Embedding/Gamma",
-        "bert/embeddings/LayerNorm/beta": "Embedding/Beta",
+def get_tf_mapping(config, task="PRETRAINING"):
+
+    squad_mapping = {
+        "cls/squad/output_weights": "Squad/SquadW",
+        "cls/squad/output_bias": "Squad/SquadB"
+    }
+
+    nsp_mapping = {
+        "bert/pooler/dense/kernel": "NSP/PoolW",
+        "bert/pooler/dense/bias": "NSP/PoolB",
+        "cls/seq_relationship/output_weights": "NSP/NspW",
+        "cls/seq_relationship/output_bias": "NSP/NspB"
+    }
+
+    lm_mapping = {
         "cls/predictions/transform/dense/kernel": "CLS/LMPredictionW",
         "cls/predictions/transform/dense/bias": "CLS/LMPredictionB",
         "cls/predictions/transform/LayerNorm/gamma": "CLS/Gamma",
         "cls/predictions/transform/LayerNorm/beta": "CLS/Beta"
     }
+
+    tf_to_onnx = {
+        "bert/embeddings/word_embeddings": "Embedding/Embedding_Dict",
+        "bert/embeddings/position_embeddings": "Embedding/Positional_Dict",
+        "bert/embeddings/token_type_embeddings": "Embedding/Segment_Dict",
+        "bert/embeddings/LayerNorm/gamma": "Embedding/Gamma",
+        "bert/embeddings/LayerNorm/beta": "Embedding/Beta"
+    }
+
     for i in range(config.num_layers):
         layer = {
             f"bert/encoder/layer_{i}/attention/self/query/kernel": f"Layer{i}/Attention/QKV",
@@ -44,10 +61,33 @@ def get_tf_mapping(config):
             f"bert/encoder/layer_{i}/output/LayerNorm/beta": f"Layer{i}/FF/Beta",
         }
         tf_to_onnx.update(**layer)
+
+    if task == "PRETRAINING":
+        tf_to_onnx.update(**lm_mapping)
+        tf_to_onnx.update(**nsp_mapping)
+    elif task == "SQUAD":
+        tf_to_onnx.update(**squad_mapping)
+
     return tf_to_onnx
 
 
-def generate_initializers(mapping, config, map_names, load_data):
+def get_tf_transform(config, task="PRETRAINING"):
+    # Some of the head weights are stored transposed in the Google Research checkpoint
+    # compared to the Popart model.
+    tf_to_onnx_tform = {}
+    if task == "PRETRAINING":
+        tf_to_onnx_tform.update(**{
+            "cls/seq_relationship/output_weights": np.transpose
+        })
+    elif task == "SQUAD":
+        tf_to_onnx_tform.update(**{
+            "cls/squad/output_weights": np.transpose
+        })
+
+    return tf_to_onnx_tform
+
+
+def generate_initializers(config, map_names, load_data, mapping, transform={}):
     """
     Generate a graph initializer dictionary from the tensor names and
     data loaded from either a checkpoint or frozen graph using one of
@@ -88,6 +128,9 @@ def generate_initializers(mapping, config, map_names, load_data):
             initializers[mapping[name]][:, start_idx:end_idx] = array
             logger.debug(f"Initialising QKV component {name}[{start_idx}:{end_idx}] from checkpoint")
             continue
+
+        if name in transform:
+            array = transform[name](array)
 
         if mapping[name] == "Embedding/Embedding_Dict":
             tf_vocab_length = array.shape[0]
@@ -166,6 +209,9 @@ def load_tf_ckpt_data(tf_checkpoint_path, mapping):
     init_vars = tf.train.list_variables(tf_path)
 
     map_names = [name for name, shape in init_vars if name in mapping.keys()]
+    for name in (n for n, _ in init_vars if n not in mapping.keys()):
+        logger.debug(f"Skipping load of {name} - Not in mapping")
+
     load_data = [tf.train.load_variable(tf_path, name) for name in map_names]
 
     return map_names, load_data
@@ -175,6 +221,7 @@ def load_initializers_from_tf(
     file_path,
     is_checkpoint,
     config,
+    task
 ):
     """
     Loads weights, etc. from Tensorflow files into a dictionary of Numpy Arrays.
@@ -182,14 +229,15 @@ def load_initializers_from_tf(
     Can read either checkpoint files, or frozen graphs, according to the
     `is_checkpoint` flag, passed in as the second argument.
     """
-    mapping = get_tf_mapping(config)
+    mapping = get_tf_mapping(config, task=task)
+    transform = get_tf_transform(config, task=task)
 
     if is_checkpoint:
         names, data = load_tf_ckpt_data(file_path, mapping)
     else:
         names, data = load_tf_frozen_data(file_path, mapping)
 
-    return generate_initializers(mapping, config, names, data)
+    return generate_initializers(config, names, data, mapping, transform)
 
 
 def load_model_from_tf(
@@ -199,6 +247,7 @@ def load_model_from_tf(
     indices,
     positions,
     segments,
+    task,
     builder=popart.Builder(),
 ):
     """
@@ -213,7 +262,7 @@ def load_model_from_tf(
     The user can optionally pass in a builder object (e.g. for compatibility
     with an older ONNX version). If not provided, a default builder is created.
     """
-    initializers = load_initializers_from_tf(file_path, is_checkpoint, config)
+    initializers = load_initializers_from_tf(file_path, is_checkpoint, config, task)
     popart_model = Bert(config, builder=builder, initializers=initializers)
 
     output_tensor = popart_model.build_graph(indices, positions, segments)

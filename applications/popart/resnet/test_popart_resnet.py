@@ -36,7 +36,7 @@ class TestPopARTResnetImageClassification(unittest.TestCase):
                                             '--no-prng': '',
                                             '--data-dir': './',
                                             '--num-workers': 0})
-        expected_accuracy = [41.0, 53.6, 59.0, 62.0, 62.7]
+        expected_accuracy = [44.1, 53.6, 61.6, 64.6, 66.1]
         tu.parse_results_for_accuracy(out, expected_accuracy, 2)
 
     def test_resnet8_bs4_4ipus_pipeline(self):

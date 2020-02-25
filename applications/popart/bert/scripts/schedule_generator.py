@@ -2,11 +2,19 @@
 import numpy as np
 import argparse
 import sys
+import json
 
 
-def exponential_decay(s, args):
+def continuous_exponential_decay(s, args):
     p = args.parameters
     return p[0] * np.exp(-p[1]*s)
+
+
+def discrete_exponential_decay(s, args):
+    p = args.parameters
+    s2 = max(s - args.start, 0)
+    j = s2 // args.interval
+    return p[0] * (1 - p[1]) ** j
 
 
 def linear_interp(s, args):
@@ -43,19 +51,46 @@ def plot(s, fs, title, logscale, file_name):
     plt.savefig(file_name, bbox_inches='tight', dpi=100)
 
 
-if __name__ == "__main__":
-    func_dict = {
-        "exp": [exponential_decay, 2, "scale, exponent"],
-        "linear": [linear_interp, 2, "first-value, last-value"],
-        "cyclic-decay": [cyclic_exponential_decay, 4, "max-LR, step-period, exponent, scale"]
-    }
+def generate_schedule(args):
+    func = func_dict[args.function][0]
 
-    parser = argparse.ArgumentParser(description='Parameter Schedule Config Generator')
+    func_input = []
+    func_output = []
+
+    for s in range(args.start, args.end + args.interval, args.interval):
+        func_input.append(s)
+        func_output.append(func(s, args))
+
+    return func_input, func_output
+
+
+def generate_output_dict(args, func_input, func_output):
+    output_dict = {"lr_schedule_by_step": {}}
+    for s, fs in zip(func_input, func_output):
+        output_dict["lr_schedule_by_step"][s] = fs
+
+    if args.add_argument_comment:
+        comment = ' '.join(str(x) for x in sys.argv[1:])
+        output_dict["_comment"] = f'# Schedule Generator Arguments: {comment}'
+    return output_dict
+
+
+func_dict = {
+    "exp": [continuous_exponential_decay, 2, "scale, exponent"],
+    "discrete-exp": [discrete_exponential_decay, 2, "scale, exponent"],
+    "linear": [linear_interp, 2, "first-value, last-value"],
+    "cyclic-decay": [cyclic_exponential_decay, 4, "max-LR, step-period, exponent, scale"]
+}
+
+
+def main(arg_list=None):
+    parser = argparse.ArgumentParser(
+        description='Parameter Schedule Config Generator')
     parser.add_argument('--start', help='Starting step.',
                         type=int, default=0)
     parser.add_argument('--end', help='Ending step.',
                         type=int, default=21000)
-    parser.add_argument('--interval', help='Step increment.',
+    parser.add_argument('--interval', help='Number of steps between each sample taken from the schedule.',
                         type=int, default=512)
     parser.add_argument('--function', help='Function used to generate schedule',
                         type=str,
@@ -66,9 +101,13 @@ if __name__ == "__main__":
                         type=float,
                         nargs='+',
                         default=[])
+    parser.add_argument('--output-path', help='Path into which to store the schedule JSON. Leave as None '
+                        'to print to stdout.', type=str, default=None)
     parser.add_argument('--plot', help='Plot the schedule to a file', type=str, default=None)
     parser.add_argument('--logscale', help='Use a logarithmic scale when plotting.', action='store_true')
-    args = parser.parse_args()
+    parser.add_argument('--add-argument-comment', action="store_true",
+                        help="Add a comment field into the JSON with the command args in it.")
+    args = parser.parse_args(arg_list)
 
     # Check parameter count:
     expected_count = func_dict[args.function][1]
@@ -78,20 +117,18 @@ if __name__ == "__main__":
             f"Generator function '{args.function}' requires {expected_count} "
             f"parameters ({expected_description}).")
 
-    func = func_dict[args.function][0]
+    func_input, func_output = generate_schedule(args)
+    output_dict = generate_output_dict(args, func_input, func_output)
 
-    input = []
-    output = []
-    for s in range(args.start, args.end + args.interval, args.interval):
-        input.append(s)
-        output.append(func(s, args))
-
-    comment = ' '.join(str(x) for x in sys.argv[1:])
-    print(f'# Schedule Generator Arguments: {comment}')
-    print('"lr_schedule_by_step": {')
-    for s, fs in zip(input, output):
-        print(f'    "{s}": {fs},')
-    print('}')
+    if args.output_path is None:
+        print(json.dumps(output_dict, indent=4))
+    else:
+        with open(args.output_path, 'w') as fh:
+            json.dump(output_dict, fh, indent=4)
 
     if args.plot:
-        plot(input, output, comment, args.logscale, args.plot)
+        plot(func_input, func_output, comment, args.logscale, args.plot)
+
+
+if __name__ == "__main__":
+    main()

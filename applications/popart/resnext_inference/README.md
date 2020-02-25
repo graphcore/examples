@@ -34,10 +34,10 @@ The following files are provided for running the ResNeXt benchmark.
 
 ### Prepare the environment
 
-**1) Download the Poplar SDK **
+**1) Download the Poplar SDK**
 
   Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-  scripts for poplar, gc_drivers (if running on hardware) and popART.
+  scripts for Poplar, gc_drivers (if running on hardware) and PopART.
 
 ##### 2) Python
 
@@ -69,25 +69,29 @@ Where `data-dir` is the location of the COCO dataset.
 
 ### Running the model
 
+This application can run over multiple IPUs. It does this by creating multiple PopART `inference Session`s, each of which uses one ONNX model and processes a fraction of the total batch of data. The size of the data that is used by one model is called the `micro batch size`. The total batch size used will therefore be `micro-batch-size * num-ipus`.
+
 **1) Download the model**
 
-To download the pretrained ResNext101 model from Cadene’s pretrained models repository (https://github.com/Cadene/pretrained-models.pytorch#resnext), convert it to ONNX format, and create a copy with chosen batch size (in this example a batch size of 6), run:
+To download the pretrained ResNext101 model from Cadene’s pretrained models repository (https://github.com/Cadene/pretrained-models.pytorch#resnext), convert it to ONNX format, and create a copy with chosen micro batch size (in this example a micro batch size of 6), run:
 
 ```
-(popart) $ python get_model.py --batch-size 6
+(popart) $ python get_model.py --micro-batch-size 6
 ```
 
-This will populate `models/resnext101_32x4d/`. Rerun this script to create additional ONNX protobufs for every batch size you intend to use.
+This will add the configured model to the directory `models/resnext101_32x4d/`.
+
 
 **2) Run the model**
 
-Now you can run the model on the partitioned data.
+Now you have set up the data and created the model you can run the model on the partitioned data. The entry point is `resnext_inference_launch.py`. This takes the batch size, which is the sum of all micro batch sizes over all the IPUs you are using.
+
 
 ```
-(popart) $ python resnext_inference_launch.py --batch_size 6
+(popart) $ python resnext_inference_launch.py --batch_size 48 --num_ipus 8
 ```
 
-Logging data, including throughput, is written per subprocess in `logs/` and aggregated over all subprocesses in stdout. Outputs are fetched but not written to file. This can be changed in 'resnext101.py', where outputs are saved as `results`.
+Logging data, including throughput, is written per subprocess in `logs/` and aggregated over all subprocesses in stdout. Inference results are fetched but not written to file. This can be changed in 'resnext101.py', where outputs are saved as `results`.
 
 
 ## Options
@@ -99,25 +103,25 @@ python resnext_inference_launch.py -help
 flags:
 
 resnext_inference_launch.py:
-  --batch_size: Batch size (per device)
-    (default: '6')
+  --batch_size: Overall size of batch (across all devices).
+    (default: '48')
     (an integer)
   --batches_per_step: Number of batches to fetch on the host ready for streaming onto the device, reducing host IO
     (default: '1500')
     (an integer)
-  --data_dir: Parent directory containing subdirectory dataset(s). Number of subdirs should equal num_ipus
+  --data_dir: Parent directory containing subdirectory dataset(s). The number of sub directories should equal num_ipus
     (default: 'datasets/')
   --iterations: Number of iterations to run if using synthetic data. Each iteration uses one `batches_per_step` x `batch_size` x `H` x `W` x `C` sized input tensor.
     (default: '1')
     (an integer)
   --model_name: model name. Used to locate ONNX protobuf in models/
     (default: 'resnext101_32x4d')
-  --num_ipus: Number of IPUs to be used. One IPU runs one compute process.
+  --num_ipus: Number of IPUs to be used. One IPU runs one compute process and processes a fraction of the batch of samples.
     (default: '8')
     (an integer)
-  --num_workers: Number of threads per dataloader
+  --num_workers: Number of threads per dataloader. There is one dataloader per IPU.
     (default: '12')
     (an integer)
-  --[no]synthetic: Use synthetic data created on the IPU for inference
+  --[no]synthetic: Use synthetic data created on the IPU.
     (default: 'false')
 ```

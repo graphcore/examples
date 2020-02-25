@@ -25,7 +25,8 @@ def test_embedding_fwd(custom_ops):
         "ai.onnx.ml": 1,
         "ai.graphcore": 1
     })
-    config = BertConfig(vocab_length=9728,
+    config = BertConfig(task="SQUAD",
+                        vocab_length=9728,
                         batch_size=1,
                         hidden_size=768,
                         sequence_length=128,
@@ -110,14 +111,16 @@ def test_embedding_bwd(custom_ops):
         "ai.onnx.ml": 1,
         "ai.graphcore": 1
     })
-    config = BertConfig(vocab_length=9728,
+    config = BertConfig(task="SQUAD",
+                        vocab_length=9728,
                         batch_size=1,
                         hidden_size=768,
                         sequence_length=128,
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['gather'])
+                        custom_ops=['gather'],
+                        update_embedding_dict=False)
     popart_model = Bert(config, builder=builder)
     # Prevent virtualGraph attributes being added to the ops.
     popart_model.embedding_scope = popart_model.device_scope(None, None)

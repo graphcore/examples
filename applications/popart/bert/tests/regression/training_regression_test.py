@@ -61,8 +61,6 @@ TESTS = [
     config("demo.json", False, ["--pipeline"], "demo_pipelined"),
     config("squad_base.json", True),
     config("squad_large.json", True),
-    config("squad_base_inference.json", True),
-    config("squad_large_inference.json", True),
     config("squad_base_384.json", True)
 ]
 
@@ -71,9 +69,9 @@ TESTS = [
     "bert_config_file,synthetic,extra_args,uid",
     TESTS,
     ids=list(map(lambda test: test[3], TESTS)))
-def test_bert_regression(custom_ops, output_path,
-                         bert_config_file, synthetic, extra_args, uid,
-                         synthetic_steps=100):
+def test_bert_training_regression(custom_ops, output_path,
+                                  bert_config_file, synthetic, extra_args, uid,
+                                  synthetic_steps=100):
     """
     Run a pretraining pass of BERT up to the specified number of epochs.
 
