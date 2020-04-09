@@ -1,10 +1,16 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
+import sys
 import tarfile
 import urllib.request
 from functools import partial
+from pathlib import Path
 from typing import Dict
 
 import tensorflow as tf
+
+# Add models module to path
+models_path = Path(Path(__file__).absolute().parent.parent)
+sys.path.append(str(models_path))
 from models.official_keras.densenet_base import DenseNet
 from models.official_keras.inceptionv1_base import InceptionV1
 from models.official_keras.inceptionv3_base import InceptionV3

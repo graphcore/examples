@@ -23,6 +23,7 @@ onnx_torch_mapping = {
 }
 
 onnx_torch_tform = {
+    "bert.embeddings.word_embeddings.weight": np.transpose,
     "cls.transform.dense.weight": np.transpose,
 }
 
@@ -40,7 +41,7 @@ def test_pretraining_fwd(custom_ops):
                         popart_dtype="FLOAT",
                         activation_type="relu",
                         no_dropout=True,
-                        custom_ops=["gather", "attention"],
+                        custom_ops=[],
                         inference=True)
     popart_model = Bert(config, builder=builder)
 
@@ -71,7 +72,7 @@ def test_pretraining_bwd(custom_ops):
                         popart_dtype="FLOAT",
                         activation_type="relu",
                         no_dropout=True,
-                        custom_ops=["gather", "attention"],
+                        custom_ops=[],
                         update_embedding_dict=False)
     popart_model = Bert(config, builder=builder)
 

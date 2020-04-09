@@ -70,11 +70,13 @@ def run_py(proto: onnx.ModelProto,
            outputs: Optional[Union[str, Iterable[str]]],
            loss: Optional[Union[popart.Loss, Iterable[popart.Loss]]] = None,
            optimizer: Optional[popart.Optimizer] = None,
+           patterns: Optional[popart.Patterns] = None,
            return_stats: bool = False,
            log_dir: Optional[str] = None,
            ipus: Optional[int] = None,
            batches_per_step: int = 1,
-           user_options: Optional[Mapping[str, Any]] = None):
+           user_options: Optional[Mapping[str, Any]] = None,
+           skip_execution: bool = False):
     outputs = make_tuple(outputs)
     if loss is not None:
         loss = make_tuple(loss)
@@ -127,12 +129,17 @@ def run_py(proto: onnx.ModelProto,
                                          dataFeed=data_flow,
                                          userOptions=options,
                                          losses=loss,
-                                         optimizer=optimizer)
+                                         optimizer=optimizer,
+                                         passes=patterns)
     else:
         session = popart.InferenceSession(fnModel=proto,
                                           deviceInfo=device,
                                           dataFeed=data_flow,
-                                          userOptions=options)
+                                          userOptions=options,
+                                          passes=patterns)
+
+    if skip_execution:
+        return session
 
     # Compile the Poplar Graph. If it fails, return the memory stats
     try:

@@ -1,21 +1,18 @@
 #!/usr/bin/python
-# Copyright 2019 Graphcore Ltd.
-
-import inspect
+# Copyright 2020 Graphcore Ltd.
 import os
-import sys
-import pytest
 import unittest
 
-import utils.tests.test_util as test_util
+# NOTE: The import below is dependent on 'pytest.ini' in the root of
+# the repository
+from tests.test_util import run_python_script_helper
 
 
 def run_ipu_estimator_cnn(**kwargs):
     """Helper function to run ipu_estimator_cnn tensorflow python script with
        command line arguments"""
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-    out = test_util.run_python_script_helper(
-        cwd, "ipu_estimator_cnn.py", **kwargs
+    out = run_python_script_helper(
+        os.path.dirname(__file__), "ipu_estimator_cnn.py", **kwargs
     )
     return out
 
@@ -60,7 +57,3 @@ class TestIPUEstimatorCNN(unittest.TestCase):
             py_args[kwargadj] = kwargs[kwarg]
 
         run_ipu_estimator_cnn(**py_args)
-
-
-if __name__ == "__main__":
-    unittest.main()

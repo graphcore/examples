@@ -1,18 +1,20 @@
-# Copyright 2019 Graphcore Ltd.
-import inspect
-import os
+# Copyright 2020 Graphcore Ltd.
 import sys
-import tensorflow as tf
+from pathlib import Path
 
+import tensorflow as tf
 from tensorflow.python.ipu import utils
 
-# Add path with models and benchmarks folder to pythonpath
-cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-sys.path.insert(1, os.path.join(cwd, '..'))
-sys.path.insert(1, os.path.join(cwd, '..', '..', '..', '..', 'utils',
-                                'benchmarks', 'tensorflow'))
+# Add model module to path
+models_path = Path(Path(__file__).absolute().parent.parent)
+sys.path.append(str(models_path))
+from models.resnet import TensorflowResNet
 
-from models import TensorflowResNet
+# Add utils module to path
+bench_path = Path(Path(__file__).absolute().parent.parent.parent.parent.parent,
+                  'utils')
+sys.path.append(str(bench_path))
+from benchmarks.tensorflow.benchmark import Benchmark, parse_opts, run
 
 
 class OptimizedResNet(TensorflowResNet):
@@ -78,9 +80,7 @@ def iteration_report(opts, time):
 
 
 if __name__ == '__main__':
-    import benchmark
-
-    module = benchmark.Benchmark(
+    module = Benchmark(
         graph_builder,
         inputs,
         initializer,
@@ -88,7 +88,7 @@ if __name__ == '__main__':
         iteration_report
     )
 
-    opts = benchmark.parse_opts(module, False)
+    opts = parse_opts(module, False)
 
     if opts.shards > 0:
         raise NotImplementedError("--shards option has not been implemented with this example")
@@ -109,4 +109,4 @@ if __name__ == '__main__':
               opts.batches_per_step if not opts.report else "n/a",
               opts.steps if not opts.report else "n/a"))
 
-    benchmark.run(module, opts)
+    run(module, opts)

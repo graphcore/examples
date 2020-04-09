@@ -45,9 +45,9 @@ The `classify_images.py` script has a few options. Use the `-h` flag or examine 
 To endlessly loop through all the images use `--loop`.
 
 #### Running on IPU Model
-To run the inference demo on the Graphcore IPU Model, run with `TF_POPLAR_FORCE_IPU_MODEL="true"`:
+To run the inference demo on the Graphcore IPU Model, run with `TF_POPLAR_FLAGS="--use_ipu_model"`:
 
-         TF_POPLAR_FORCE_IPU_MODEL="true" python classify_images.py images/zebra.jpg
+         TF_POPLAR_FLAGS="--use_ipu_model" python classify_images.py images/zebra.jpg
 
 #### Interactive use
 The module can also be used in a Python interactive session. For example:

@@ -63,7 +63,6 @@
     "stochastic_rounding": true,
     "no_outlining": true,
     "custom_ops": [
-        "gather",
         "attention"
     ],
     "batches_per_step": 8192,

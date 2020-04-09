@@ -1,5 +1,4 @@
-# Copyright 2019 Graphcore Ltd.
-import tensorflow as tf
+# Copyright 2020 Graphcore Ltd.
 from tensorflow.python.ipu import utils
 
 

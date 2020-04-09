@@ -1,22 +1,25 @@
 #!/usr/bin/python
-# Copyright 2019 Graphcore Ltd.
-
-import inspect
+# Copyright 2020 Graphcore Ltd.
 import os
-import pexpect
 import re
-from statistics import mean
 import sys
 import unittest
+from statistics import mean
 
-import tests.test_util as test_util
+import pexpect
+# NOTE: The import below is dependent on 'pytest.ini' in the root of
+# the repository
+from tests.test_util import run_python_script_helper, run_test_helper, \
+    get_minimum_with_tolerance, get_maximum_with_tolerance, \
+    check_data_exists, parse_results_with_regex
 
 
 def run_tensorflow_nmt(**kwargs):
     """Helper function to run nmt tensorflow python script with
        command line arguments"""
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-    out = test_util.run_python_script_helper(cwd, "nmt-tf.py", **kwargs)
+    out = run_python_script_helper(os.path.dirname(__file__),
+                                   "nmt-tf.py",
+                                   **kwargs)
     return out
 
 
@@ -26,7 +29,7 @@ class TestTensorflowNmtSequenceModelling(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        file_path = os.path.dirname(os.path.realpath(__file__))
+        file_path = os.path.dirname(__file__)
         generate_data(os.path.join(file_path, "data"))
         cls.generic_arguments = {
             "--attention": "luong",
@@ -87,15 +90,15 @@ class TestTensorflowNmtSequenceModelling(unittest.TestCase):
         py_args = self.generic_arguments.copy()
         for arg in args:
             py_args[arg] = ""
-        test_util.run_test_helper(run_tensorflow_nmt, **py_args)
+        run_test_helper(run_tensorflow_nmt, **py_args)
 
     def _interaction_argument_test_helper(self):
         """Helper function that starts the model in interactive mode and
            inputs a value"""
         py_version = "python{}".format(sys.version_info[0])
-        model_path = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
         p = pexpect.spawn(
-            "{} nmt-tf.py --interact".format(py_version), cwd=model_path
+            "{} nmt-tf.py --interact".format(py_version),
+            cwd=os.path.dirname(__file__)
         )
         p.logfile = sys.stdout.buffer
         p.expect("Enter a human date: ", timeout=240)
@@ -145,7 +148,7 @@ def train_and_infer_helper(
             previously measured values with the tolerance applied
     """
 
-    out = test_util.run_test_helper(
+    out = run_test_helper(
         run_tensorflow_nmt,
         total_run_time=last_measured_train_time,
         **py_args
@@ -156,37 +159,37 @@ def train_and_infer_helper(
     )
 
     if last_measured_loss:
-        loss_minimum = test_util.get_minimum_with_tolerance(
+        loss_minimum = get_minimum_with_tolerance(
             last_measured_loss, 0.2
         )
-        loss_maximum = test_util.get_maximum_with_tolerance(
+        loss_maximum = get_maximum_with_tolerance(
             last_measured_loss, 0.2
         )
         assert average_loss >= loss_minimum
         assert average_loss <= loss_maximum
 
     if last_measured_items_per_sec:
-        items_per_sec_minimum = test_util.get_minimum_with_tolerance(
+        items_per_sec_minimum = get_minimum_with_tolerance(
             last_measured_items_per_sec, time_tolerances
         )
-        items_per_sec_maximum = test_util.get_maximum_with_tolerance(
+        items_per_sec_maximum = get_maximum_with_tolerance(
             last_measured_items_per_sec, time_tolerances
         )
         assert average_items_per_sec >= items_per_sec_minimum
         assert average_items_per_sec <= items_per_sec_maximum
 
     if last_measured_tokens_per_sec:
-        tokens_per_sec_minimum = test_util.get_minimum_with_tolerance(
+        tokens_per_sec_minimum = get_minimum_with_tolerance(
             last_measured_tokens_per_sec, time_tolerances
         )
-        tokens_per_sec_maximum = test_util.get_maximum_with_tolerance(
+        tokens_per_sec_maximum = get_maximum_with_tolerance(
             last_measured_tokens_per_sec, time_tolerances
         )
         assert average_tokens_per_sec >= tokens_per_sec_minimum
         assert average_tokens_per_sec <= tokens_per_sec_maximum
 
     py_args["--infer"] = ""
-    test_util.run_test_helper(
+    run_test_helper(
         run_tensorflow_nmt,
         total_run_time=last_measured_infer_time,
         **py_args
@@ -198,17 +201,16 @@ def generate_data(path_to_generation_script):
 
     files_to_generate = ["training.csv", "validation.csv"]
 
-    if test_util.check_data_exists(
+    if check_data_exists(
         path_to_generation_script,
         files_to_generate
     ):
         print("Data already generated, skipping...")
         return
 
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-    test_util.run_python_script_helper(cwd, "data_gen/generate.py")
+    run_python_script_helper(os.path.dirname(__file__), "data_gen/generate.py")
 
-    if not test_util.check_data_exists(
+    if not check_data_exists(
         path_to_generation_script,
         files_to_generate
     ):
@@ -227,14 +229,10 @@ def get_results(output):
         r"Items/sec ([\d.]+). Tokens/sec ([\d.]+)"
     )
 
-    results = test_util.parse_results_with_regex(output, line_regex)
+    results = parse_results_with_regex(output, line_regex)
 
     avg_loss_list = results[0]
     items_sec_list = results[1]
     tokens_sec_list = results[2]
 
     return avg_loss_list[-1], mean(items_sec_list), mean(tokens_sec_list)
-
-
-if __name__ == "__main__":
-    unittest.main()

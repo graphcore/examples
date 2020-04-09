@@ -77,12 +77,13 @@ def validation_graph(model, opts):
                              fp_exceptions=opts["fp_exceptions"],
                              xla_recompute=opts["xla_recompute"],
                              seed=opts["seed"],
+                             profile = opts['profile'],
                              availableMemoryProportion=globalAMP)
     ipu.utils.configure_ipu_system(ipu_options)
 
     valid_sess = tf.Session(graph=valid_graph, config=tf.ConfigProto())
 
-    return train.GraphOps(valid_graph, valid_sess, valid_init, [accuracy], None, valid_iterator, None, valid_saver)
+    return train.GraphOps(valid_graph, valid_sess, valid_init, [accuracy], None, valid_iterator, None, valid_saver, None)
 
 
 def validation_run(valid, filepath, i, epoch, first_run, opts):

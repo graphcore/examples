@@ -11,11 +11,14 @@ def get_config(prng=False,
                fp_exceptions=True,
                xla_recompute=False,
                seed=None,
+               profile=False,
                availableMemoryProportion=None):
     """Builds ipu_options"""
     config = utils.create_ipu_config(max_cross_replica_sum_buffer_size=max_cross_replica_buffer_size,
                                      merge_infeed_io_copies=merge_infeed_io_copies,
-                                     always_rearrange_copies_on_the_host=False)
+                                     always_rearrange_copies_on_the_host=False,
+                                     profiling=profile,
+                                     profile_execution=profile)
     if ipu_id == -1:
         config = utils.auto_select_ipus(config, number_of_replicas*shards)
     else:

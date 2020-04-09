@@ -1,20 +1,29 @@
-# Copyright 2019 Graphcore Ltd.
-# coding=utf-8
+# Copyright 2020 Graphcore Ltd.
 """
 Generic functionality for generative modelling experiments
 """
-import datetime as dt
-from functools import partial
-import numpy as np         # Necessary for parsing dtypes
 import os
-import tensorflow as tf    # Necessary for parsing dtypes
+import sys
+from functools import partial
+from pathlib import Path
+
+import numpy as np       # Necessary for parsing dtypes
+import tensorflow as tf  # Necessary for parsing dtypes
 
 from machinable.dot_dict import DotDict
 from machinable.observer import Observer
+
+# Add models module to path
+models_path = Path(Path(__file__).absolute().parent.parent)
+sys.path.append(str(models_path))
 from models.vae.vcd_vae import VCDVAE
 from utils.data_utils import download_dataset, make_iterator_from_np, preprocess_np_inputs, split_xy_array
 
 DEFAULT_BATCH_SIZE = 100
+
+# For parsing dtype from string in config
+TF_DTYPES = {'tf.float16': tf.float16, 'tf.float32': tf.float32}
+NP_DTYPES = {'np.float16': np.float16, 'np.float32': np.float32}
 
 
 class Generative(object):
@@ -34,8 +43,8 @@ class Generative(object):
         self.on_execute()
 
     def on_create(self):
-        self.dtype = eval(self.config.data.formats.tf)
-        self.dtype_np = eval(self.config.data.formats.np)
+        self.dtype = TF_DTYPES[self.config.data.formats.tf]
+        self.dtype_np = NP_DTYPES[self.config.data.formats.np]
         self.idx_train_validation = None
 
     def on_execute(self):

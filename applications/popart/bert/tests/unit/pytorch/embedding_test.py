@@ -17,6 +17,14 @@ from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tens
 Tests the embedding with no projection. This is the case for SQUAD.
 '''
 
+TORCH_TO_ONNX = {
+    "word_embeddings.weight": "Embedding_Dict",
+    "position_embeddings.weight": "Positional_Dict",
+    "token_type_embeddings.weight": "Segment_Dict",
+    "LayerNorm.weight": "Gamma",
+    "LayerNorm.bias": "Beta"
+}
+
 
 def test_embedding_fwd(custom_ops):
     #  ------------------- PopART --------------------
@@ -33,7 +41,6 @@ def test_embedding_fwd(custom_ops):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['gather'],
                         inference=True)
     popart_model = Bert(config, builder=builder)
     # Prevent virtualGraph attributes being added to the ops.
@@ -60,31 +67,16 @@ def test_embedding_fwd(custom_ops):
                               np.uint32)
     }
 
-    # Use the custom embedding for layout
     output = popart_model.embedding(indices, positions, segments)
 
     proto = builder.getModelProto()
 
-    outputs, post_proto = run_py(proto, data, output,
-                                 user_options={"enableStochasticRounding": True})
+    outputs, post_proto = run_py(proto, data, output)
 
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
     inputs = [data[t].reshape(config.batch_size, config.sequence_length).astype(np.int32) for t in [indices, positions, segments]]
-
-    torch_to_onnx = {
-        "word_embeddings.weight": "Embedding_Dict",
-        "position_embeddings.weight": "Positional_Dict",
-        "token_type_embeddings.weight": "Segment_Dict",
-        "LayerNorm.weight": "Gamma",
-        "LayerNorm.bias": "Beta"
-    }
-
-    transposed_weights = {
-        "word_embeddings.weight": np.transpose,
-        "position_embeddings.weight": np.transpose,
-    }
 
     #  ------------------- PyTorch -------------------------
     torch_model = BertEmbeddings(
@@ -94,8 +86,7 @@ def test_embedding_fwd(custom_ops):
                         layer_norm_eps=config.layer_norm_eps))
     torch_model.eval()
 
-    copy_weights_to_torch(torch_model, proto, torch_to_onnx,
-                          transposed_weights)
+    copy_weights_to_torch(torch_model, proto, TORCH_TO_ONNX, {})
 
     torch_outputs = run_fwd_model(inputs, torch_model)
 
@@ -165,19 +156,6 @@ def test_embedding_bwd(custom_ops):
 
     inputs = [data[t].reshape(config.batch_size, config.sequence_length).astype(np.int32) for t in [indices, positions, segments]]
 
-    torch_to_onnx = {
-        "word_embeddings.weight": "Embedding_Dict",
-        "position_embeddings.weight": "Positional_Dict",
-        "token_type_embeddings.weight": "Segment_Dict",
-        "LayerNorm.weight": "Gamma",
-        "LayerNorm.bias": "Beta"
-    }
-
-    transposed_weights = {
-        "word_embeddings.weight": np.transpose,
-        "position_embeddings.weight": np.transpose,
-    }
-
     #  ------------------- PyTorch -------------------------
 
     torch_model = BertEmbeddings(
@@ -188,10 +166,7 @@ def test_embedding_bwd(custom_ops):
     # Turn off dropout
     torch_model.eval()
 
-    copy_weights_to_torch(torch_model,
-                          proto,
-                          torch_to_onnx,
-                          transform=transposed_weights)
+    copy_weights_to_torch(torch_model, proto, TORCH_TO_ONNX, {})
 
     optim = torch.optim.SGD(torch_model.parameters(),
                             0.01,
@@ -209,5 +184,5 @@ def test_embedding_bwd(custom_ops):
 
     check_model(torch_model,
                 post_proto,
-                torch_to_onnx,
-                transform=transposed_weights)
+                TORCH_TO_ONNX,
+                {})

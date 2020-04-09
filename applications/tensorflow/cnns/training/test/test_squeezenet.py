@@ -1,10 +1,16 @@
 # Copyright 2019 Graphcore Ltd.
-
+"""
+Tests covering SqueezeNet training.
+"""
+import pytest
 import unittest
 import statistics
+
 from test_common import get_csv, run_train, cifar10_data_dir
 
 
+@pytest.mark.category2
+@pytest.mark.ipus(1)
 class TestCifar10SqueezeNetTraining(unittest.TestCase):
     """Testing some basic training parameters"""
 
@@ -38,6 +44,8 @@ class TestCifar10SqueezeNetTraining(unittest.TestCase):
         self.assertEqual(round(self.training['epoch'][-1]), 10)
 
 
+@pytest.mark.category3
+@pytest.mark.ipus(1)
 class TestCifar10SqueezeNetFullTraining(unittest.TestCase):
     """Fast training of Cifar-10 to good accuracy"""
 

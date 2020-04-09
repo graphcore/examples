@@ -13,6 +13,7 @@ import datetime
 import random
 from socket import gethostname
 from collections import deque, OrderedDict, namedtuple
+from contextlib import ExitStack
 from functools import partial
 import numpy as np
 import sys
@@ -21,6 +22,7 @@ import validation
 import log as logging
 from tensorflow.python import ipu
 from ipu_utils import get_config
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.ipu.autoshard import automatic_sharding
 from tensorflow.python.ipu import loops, ipu_infeed_queue, ipu_outfeed_queue, ipu_compiler
 from tensorflow.python.ipu.ipu_optimizer import CrossReplicaOptimizer
@@ -41,7 +43,8 @@ GraphOps = namedtuple(
                  'placeholders',
                  'iterator',
                  'outfeed',
-                 'saver'])
+                 'saver',
+                 'profile'])
 
 pipeline_schedule_options = [str(p).split(".")[-1] for p in list(pipelining_ops.PipelineSchedule)]
 
@@ -151,6 +154,19 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
                                    name="Pipeline")
 
 
+def distributed_per_replica(function):
+    """Run the function with the distribution strategy (if any) in a per-replica context."""
+    def wrapper(*arguments):
+        if tf.distribute.has_strategy():
+            strategy = tf.distribute.get_strategy()
+            return strategy.experimental_run_v2(function, args=arguments)
+        else:
+            return function(*arguments)
+
+    return wrapper
+
+
+@distributed_per_replica
 def training_step_with_infeeds_and_outfeeds(train_iterator, outfeed, model, opts, learning_rate, iterations_per_step=1):
     """
     Training step that uses an infeed loop with outfeeds. This runs 'iterations_per_step' steps per session call. This leads to
@@ -189,10 +205,42 @@ def training_step_with_infeeds_and_outfeeds(train_iterator, outfeed, model, opts
         return ipu_compiler.compile(compiled_fn, [])
 
 
-def training_graph(model, opts, iterations_per_step=1):
+def configure_distribution(opts, sess_config):
+    """
+    Creates the distribution strategy, updates the given session configuration
+    accordingly, and starts a distributed server that allows the workers to connect.
+    Returns the strategy, the session target address and the updated session configuration.
+    """
 
+    cluster = tf.distribute.cluster_resolver.SimpleClusterResolver(
+        cluster_spec=tf.train.ClusterSpec(opts['distributed_cluster']),
+        task_id=opts['distributed_worker_index'],
+        task_type="worker")
+
+    strategy = ipu.ipu_multi_worker_strategy.IPUMultiWorkerStrategy(cluster)
+    sess_config = strategy.update_config_proto(sess_config)
+    server = tf.distribute.Server(cluster.cluster_spec(),
+                                  job_name=cluster.task_type,
+                                  task_index=cluster.task_id,
+                                  protocol=cluster.rpc_layer,
+                                  config=sess_config)
+
+    return strategy, server.target, sess_config
+
+
+def training_graph(model, opts, iterations_per_step=1):
     train_graph = tf.Graph()
-    with train_graph.as_default():
+    sess_config = tf.ConfigProto()
+    sess_target = None
+    strategy = None
+
+    if opts['distributed_cluster']:
+        strategy, sess_target, sess_config = configure_distribution(opts, sess_config)
+
+    with train_graph.as_default(), ExitStack() as stack:
+        if strategy:
+            stack.enter_context(strategy.scope())
+
         placeholders = dict()
         datatype = tf.float16 if opts["precision"].split('.') == '16' else tf.float32
         placeholders['learning_rate'] = tf.placeholder(datatype, shape=[])
@@ -211,13 +259,18 @@ def training_graph(model, opts, iterations_per_step=1):
                                                             opts, learning_rate, iterations_per_step)
 
         outfeed = outfeed_queue.dequeue()
+        if strategy:
+            # Take the mean of all the outputs across the distributed workers
+            outfeed = [strategy.reduce(tf.distribute.ReduceOp.MEAN, v) for v in outfeed]
 
         logging.print_trainable_variables(opts)
 
         train_saver = tf.train.Saver(max_to_keep=999999)
-
-        ipu.utils.move_variable_initialization_to_cpu()
+        with tf.device('cpu'):
+            profile_report = gen_ipu_ops.ipu_event_trace()
+        ipu.utils.move_variable_initialization_to_cpu(graph=None)
         train_init = tf.global_variables_initializer()
+
 
     globalAMP = None
     if opts["available_memory_proportion"] and len(opts["available_memory_proportion"]) == 1:
@@ -231,12 +284,13 @@ def training_graph(model, opts, iterations_per_step=1):
                              fp_exceptions=opts["fp_exceptions"],
                              xla_recompute=opts["xla_recompute"],
                              seed=opts["seed"],
+                             profile=opts['profile'],
                              availableMemoryProportion=globalAMP)
 
     ipu.utils.configure_ipu_system(ipu_options)
-    train_sess = tf.Session(graph=train_graph, config=tf.ConfigProto())
+    train_sess = tf.Session(graph=train_graph, config=sess_config, target=sess_target)
 
-    return GraphOps(train_graph, train_sess, train_init, [train], placeholders, train_iterator, outfeed, train_saver)
+    return GraphOps(train_graph, train_sess, train_init, [train], placeholders, train_iterator, outfeed, train_saver, profile_report)
 
 
 def training_step(train, e, learning_rate):
@@ -326,9 +380,10 @@ def train_process(model, LR_Class, opts):
         log_this_step = ((i // log_freq) < ((i + iterations_per_step) // log_freq) or
                          (i == 0) or
                          ((i + (2 * iterations_per_step)) >= iterations))
-        ckpt_this_step = ((i // iterations_per_ckpt) < ((i + iterations_per_step) // iterations_per_ckpt) or
+        ckpt_this_step = (opts["ckpts_per_epoch"] and
+                          ((i // iterations_per_ckpt) < ((i + iterations_per_step) // iterations_per_ckpt) or
                           (i == 0) or
-                          ((i + (2 * iterations_per_step)) >= iterations))
+                          ((i + (2 * iterations_per_step)) >= iterations)))
         valid_this_step = (opts['validation'] and
                            ((i // iterations_per_valid) < ((i + iterations_per_step) // iterations_per_valid) or
                            (i == 0) or
@@ -396,6 +451,11 @@ def train_process(model, LR_Class, opts):
 
         i += iterations_per_step
 
+    # ------------ COLLECT PROFILE -----------
+    if opts["profile"]:
+        from gcprofile import save_tf_report
+        save_tf_report(train.session.run(train.profile))
+
     # ------------ RUN VALIDATION ------------
     if 'validation_points' in locals() and opts['validation']:
         for iteration, epoch, first_run, filepath in validation_points:
@@ -446,7 +506,7 @@ def add_training_arguments(parser):
     tr_group.add_argument('--shards', type=int, default=1,
                           help="Number of IPU shards for training graph")
     tr_group.add_argument('--replicas', type=int, default=1,
-                          help="Replicate graph over N workers to increase batch to batch-size*N")
+                          help="Replicate graph N times to increase batch to batch-size*N")
     tr_group.add_argument('--max-cross-replica-buffer-size', type=int, default=10*1024*1024,
                           help="""The maximum number of bytes that can be waiting before a cross
                                 replica sum op is scheduled. [Default=10*1024*1024]""")
@@ -461,6 +521,10 @@ def add_training_arguments(parser):
                           help="Optimiser")
     tr_group.add_argument('--momentum', type=float, default=0.9,
                           help="Momentum coefficient")
+
+    tr_group.add_argument('--distributed', action="store_true",
+                          help="Use distributed multi-worker training")
+
     return parser
 
 
@@ -468,7 +532,7 @@ def set_training_defaults(opts):
     if int(opts['pipeline_depth']) > 1:
         opts['gradients_to_accumulate'] = 1
 
-    opts['total_batch_size'] = opts['batch_size']*opts['gradients_to_accumulate']*opts['pipeline_depth']*opts['replicas']
+    opts['total_batch_size'] = opts['batch_size']*opts['gradients_to_accumulate']*opts['pipeline_depth']*opts['replicas']*opts['distributed_worker_count']
     opts['summary_str'] += "Training\n"
     opts['summary_str'] += " Batch Size: {total_batch_size}\n"
     if opts['pipeline_depth'] > 1:
@@ -476,7 +540,7 @@ def set_training_defaults(opts):
     elif opts['gradients_to_accumulate'] > 1:
         opts['summary_str'] += "  Accumulated over {gradients_to_accumulate} fwds/bwds passes \n"
     if opts['replicas'] > 1:
-        opts['summary_str'] += "  Training on {replicas} workers \n"
+        opts['summary_str'] += "  Training on {replicas} replicas \n"
     opts['summary_str'] += (" Base Learning Rate: 2**{base_learning_rate}\n"
                             " Weight Decay: {weight_decay}\n"
                             " Loss Scaling: {loss_scaling}\n")
@@ -515,10 +579,38 @@ def add_ipu_arguments(parser):
     group.add_argument('--xla-recompute', action="store_true",
                        help="Allow recomputation of activations to reduce memory usage")
     group.add_argument('--seed', default=None, help="Seed for randomizing training")
+    group.add_argument('--gc-profile', action="store_true", dest='profile', default=False,
+                       help="Generate profile reports")
     group.add_argument('--available-memory-proportion', default=None, nargs='+',
                        help="Proportion of memory which is available for convolutions. Use a value of less than 0.6 "
                             "to reduce memory usage.")
     return parser
+
+
+def set_distribution_defaults(opts):
+    if opts['distributed']:
+        if opts['batches_per_step'] > 1:
+            raise ValueError("--batches-per-step must be 1 with distribution")
+
+        # Read the cluster config from the `TF_CONFIG` environment variable
+        cluster = tf.distribute.cluster_resolver.TFConfigClusterResolver()
+
+        # Allow `mpirun` to override the task index
+        cluster.task_id = os.getenv("OMPI_COMM_WORLD_RANK")
+        cluster.task_type = "worker"
+
+        opts['distributed_worker_count'] = cluster.cluster_spec().num_tasks("worker")
+        opts['distributed_worker_index'] = cluster.task_id
+        opts['distributed_cluster'] = cluster.cluster_spec().as_dict()
+
+        opts['summary_str'] += 'Distribution\n'
+        opts['summary_str'] += ' Worker count: {distributed_worker_count}\n'
+        opts['summary_str'] += ' Worker index: {distributed_worker_index}\n'
+        opts['summary_str'] += ' Cluster: {distributed_cluster}\n'
+    else:
+        opts['distributed_worker_count'] = 1
+        opts['distributed_worker_index'] = 0
+        opts['distributed_cluster'] = None
 
 
 def set_ipu_defaults(opts):
@@ -564,6 +656,7 @@ def set_defaults(model, LR, opts):
     set_main_defaults(opts)
     dataset.set_defaults(opts)
     model.set_defaults(opts)
+    set_distribution_defaults(opts)
     set_training_defaults(opts)
     LR.set_defaults(opts)
     validation.set_validation_defaults(opts)

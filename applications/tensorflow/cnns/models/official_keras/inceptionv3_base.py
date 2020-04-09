@@ -1,12 +1,10 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 from typing import Optional, Tuple, Union
 
 import numpy as np
 import tensorflow as tf
-
-from models import tf_layers as layers
-from models.tf_layers import conv_norm_relu, max_pool, avg_pool
-
+from models.tf_layers import conv_norm_relu, max_pool, avg_pool, concat, \
+    squeeze, fully_connected, softmax
 
 ImageNetBlockType = Tuple[int, int, int, int]
 CifarBlockType = Tuple[int, int, int]
@@ -67,7 +65,7 @@ class InceptionV3(object):
 
         branch_pool = avg_pool(x, 3, strides=1, padding='SAME')
         branch_pool = conv_norm_relu(branch_pool, 32, 1)
-        x = layers.concat(
+        x = concat(
             [branch1x1, branch5x5, branch3x3dbl, branch_pool],
             axis=-1,
             name='mixed0')
@@ -84,7 +82,7 @@ class InceptionV3(object):
 
         branch_pool = avg_pool(x, 3, strides=1, padding='SAME')
         branch_pool = conv_norm_relu(branch_pool, 64, 1)
-        x = layers.concat(
+        x = concat(
             [branch1x1, branch5x5, branch3x3dbl, branch_pool],
             axis=-1,
             name='mixed1')
@@ -101,7 +99,7 @@ class InceptionV3(object):
 
         branch_pool = avg_pool(x, 3, strides=1, padding='SAME')
         branch_pool = conv_norm_relu(branch_pool, 64, 1)
-        x = layers.concat(
+        x = concat(
             [branch1x1, branch5x5, branch3x3dbl, branch_pool],
             axis=-1,
             name='mixed2')
@@ -114,7 +112,7 @@ class InceptionV3(object):
         branch3x3dbl = conv_norm_relu(branch3x3dbl, 96, 3, strides=2, padding='VALID')
 
         branch_pool = max_pool(x, 3, 2)
-        x = layers.concat(
+        x = concat(
             [branch3x3, branch3x3dbl, branch_pool],
             axis=-1,
             name='mixed3')
@@ -134,7 +132,7 @@ class InceptionV3(object):
 
         branch_pool = avg_pool(x, 3, strides=1, padding='SAME')
         branch_pool = conv_norm_relu(branch_pool, 192, 1, 1)
-        x = layers.concat(
+        x = concat(
             [branch1x1, branch7x7, branch7x7dbl, branch_pool],
             axis=-1,
             name='mixed4')
@@ -155,7 +153,7 @@ class InceptionV3(object):
 
             branch_pool = avg_pool(x, 3, strides=1, padding='SAME')
             branch_pool = conv_norm_relu(branch_pool, 192, 1, 1)
-            x = layers.concat(
+            x = concat(
                 [branch1x1, branch7x7, branch7x7dbl, branch_pool],
                 axis=-1,
                 name='mixed' + str(5 + i))
@@ -175,7 +173,7 @@ class InceptionV3(object):
 
         branch_pool = avg_pool(x, 3, strides=1, padding='SAME')
         branch_pool = conv_norm_relu(branch_pool, 192, 1, 1)
-        x = layers.concat(
+        x = concat(
             [branch1x1, branch7x7, branch7x7dbl, branch_pool],
             axis=-1,
             name='mixed7')
@@ -192,7 +190,7 @@ class InceptionV3(object):
             branch7x7x3, 192, 3, 3, strides=2, padding='VALID')
 
         branch_pool = max_pool(x, 3, strides=2)
-        x = layers.concat(
+        x = concat(
             [branch3x3, branch7x7x3, branch_pool],
             axis=-1,
             name='mixed8')
@@ -204,7 +202,7 @@ class InceptionV3(object):
             branch3x3 = conv_norm_relu(x, 384, 1, 1)
             branch3x3_1 = conv_norm_relu(branch3x3, 384, 1, 3)
             branch3x3_2 = conv_norm_relu(branch3x3, 384, 3, 1)
-            branch3x3 = layers.concat(
+            branch3x3 = concat(
                 [branch3x3_1, branch3x3_2],
                 axis=-1,
                 name='mixed9_' + str(i))
@@ -213,20 +211,20 @@ class InceptionV3(object):
             branch3x3dbl = conv_norm_relu(branch3x3dbl, 384, 3, 3)
             branch3x3dbl_1 = conv_norm_relu(branch3x3dbl, 384, 1, 3)
             branch3x3dbl_2 = conv_norm_relu(branch3x3dbl, 384, 3, 1)
-            branch3x3dbl = layers.concat([branch3x3dbl_1, branch3x3dbl_2], axis=-1)
+            branch3x3dbl = concat([branch3x3dbl_1, branch3x3dbl_2], axis=-1)
 
             branch_pool = avg_pool(x, 3, strides=1, padding='SAME')
             branch_pool = conv_norm_relu(branch_pool, 192, 1, 1)
-            x = layers.concat(
+            x = concat(
                 [branch1x1, branch3x3, branch3x3dbl, branch_pool],
                 axis=-1,
                 name='mixed' + str(9 + i))
 
         # Classification block
-        x = layers.avg_pool(x, kernel_size=8, strides=1, name='avg_pool')
-        x = layers.squeeze(x, axis=[1, 2], name='squeeze')
-        x = layers.fully_connected(x, self.num_classes, name='predictions')
-        x = layers.softmax(x, name='output-prob')
+        x = avg_pool(x, kernel_size=8, strides=1, name='avg_pool')
+        x = squeeze(x, axis=[1, 2], name='squeeze')
+        x = fully_connected(x, self.num_classes, name='predictions')
+        x = softmax(x, name='output-prob')
 
         return x
 

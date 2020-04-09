@@ -7,6 +7,7 @@
 #include <popart/tensor.hpp>
 #include <popart/tensorinfo.hpp>
 #include <popart/logging.hpp>
+#include <popart/op/gather.hpp>
 #include <popart/op/matmul.hpp>
 #include <popart/op/sgd1accumulate.hpp>
 #include <popart/op/sgd1varupdate.hpp>
@@ -14,7 +15,7 @@
 
 #include "attempt_regroup.cpp"
 #include "detach.cpp"
-#include "embeddingGather.hpp"
+#include "sparse_sgd1_accumulate.cpp"
 #include "utils.cpp"
 
 // This pattern inserts attemptRegroupOp before: 
@@ -66,11 +67,11 @@ class AttemptRegroupPattern : public popart::PreAliasPattern {
 public:
     bool matches(popart::Op *op) const override {
         if (op->isConvertibleTo<popart::SGD1AccumulateOp>()) {
-            return weight_consumed_by<EmbeddingGatherGradOp>(op->input->tensor(popart::SGD1AccumulateOp::getVarToUpdateInIndex())) && 
+            return weight_consumed_by<SparseSGD1AccumulateOp>(op->input->tensor(popart::SGD1AccumulateOp::getVarToUpdateInIndex())) && 
                    look_for_matmul(op);
         }
         if (op->isConvertibleTo<popart::SGD1VarUpdateOp>()) {
-            return !weight_consumed_by<EmbeddingGatherOp>(op->input->tensor(popart::SGD1VarUpdateOp::getVarToUpdateInIndex())) &&
+            return !weight_consumed_by<popart::GatherOp>(op->input->tensor(popart::SGD1VarUpdateOp::getVarToUpdateInIndex())) &&
                    look_for_matmul(op);
         }
         return false;

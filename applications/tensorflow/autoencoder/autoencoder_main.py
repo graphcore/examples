@@ -1,29 +1,23 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 # Original paper:
 # Training Deep AutoEncoders for Collaborative Filtering
 # By Oleksii Kuchaiev and Boris Ginsburg
 # https://arxiv.org/pdf/1708.01715.pdf
 
-import tensorflow as tf
-import sys
+import argparse
 import os
 import time
-import argparse
-import random
-import copy
-import numpy as np
 from collections import namedtuple, deque
 
+import numpy as np
+import tensorflow as tf
+import util
+from autoencoder_data import AutoencoderData
+from autoencoder_model import AutoencoderModel
+from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu import loops, ipu_infeed_queue
 from tensorflow.python.ipu import utils as ipu_utils
-from tensorflow.python.ipu import ipu_compiler
-from tensorflow.python.ipu.autoshard import automatic_sharding
-from tensorflow.python.ipu.scopes import ipu_scope, ipu_shard
-
-from autoencoder_model import AutoencoderModel
-from autoencoder_data import AutoencoderData
-
-import util
+from tensorflow.python.ipu.scopes import ipu_scope
 
 
 def graph_builder(

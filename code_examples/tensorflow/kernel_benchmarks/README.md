@@ -25,9 +25,9 @@ The structure of the repo is as follows:
 | `hmc.py`           | Benchmark HMC steps in isolation                         |
 | `lstm.py`          | Benchmark program for 1 LSTM layer                       |
 | `rnn.py`           | Benchmark program for 1 RNN layer                        |
-| `dense.py`           | Benchmark program for 1 Dense layer                        |
-| `test_tf_lstm.py`  | Program that runs `lstm.py` with multiple configurations |
+| `dense.py`         | Benchmark program for 1 Dense layer                      |
 | `README.md`        | This file                                                |
+| `test/`            | Test code that can be run via pytest                     |
 
 
 

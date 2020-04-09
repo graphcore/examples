@@ -41,7 +41,7 @@ def test_nsp_fwd(custom_ops):
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=["gather", "attention"],
+                        custom_ops=[],
                         inference=True)
     popart_model = Bert(config, builder=builder)
 
@@ -76,7 +76,7 @@ def test_nsp_bwd(custom_ops):
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=["gather", "attention"])
+                        custom_ops=[])
     popart_model = Bert(config, builder=builder)
 
     #  ------------------- PyTorch -------------------------

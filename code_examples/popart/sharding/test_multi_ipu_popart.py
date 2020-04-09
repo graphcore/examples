@@ -1,21 +1,19 @@
-# Copyright 2019 Graphcore Ltd.
-import inspect
-import unittest
+# Copyright 2020 Graphcore Ltd.
 import os
-import sys
 import subprocess
-from contextlib import contextmanager
+import sys
+import unittest
 
-import tests.test_util as tu
+import pytest
 
 
 def run_multi_ipu(shards, batch_size, batches_per_step):
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
     py_version = "python" + str(sys.version_info[0])
     cmd = [py_version, "multi_ipu.py",
            "--shards", str(shards),
            "--batch-size", str(batch_size),
            "--batches-per-step", str(batches_per_step)]
+    cwd = os.path.dirname(__file__)
     out = subprocess.check_output(cmd, cwd=cwd).decode("utf-8")
     print(out)
     return out
@@ -30,9 +28,7 @@ class TestMultiIPUPopART(unittest.TestCase):
 
     # Multi-IPU tests
 
+    @pytest.mark.ipus(2)
+    @pytest.mark.category1
     def test_multi_ipu_2_10(self):
         out = run_multi_ipu(shards=2, batch_size=10, batches_per_step=100000)
-
-
-if __name__ == '__main__':
-    unittest.main()

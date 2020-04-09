@@ -134,7 +134,7 @@ def make_iterator_from_np(np_arrays, batch_size, shuffle=True, shuffle_buffer=50
         return i, tf.cast(runif <= x_batch, x_batch.dtype), y_batch
 
     # Zip index of training examples, which will be shuffled consistently with data
-    tf_data = tf.data.Dataset.from_tensor_slices((np.arange(0, np_arrays['x'].shape[0]),
+    tf_data = tf.data.Dataset.from_tensor_slices((np.arange(0, np_arrays['x'].shape[0], dtype=np.int32),
                                                   np_arrays['x'],
                                                   np_arrays['y']))
 

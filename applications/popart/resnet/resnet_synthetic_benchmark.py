@@ -1,12 +1,16 @@
-# Copyright 2019 Graphcore Ltd.
-import inspect
-import numpy as np
-import os
-import popart
+# Copyright 2020 Graphcore Ltd.
 import sys
-from collections import namedtuple
+from pathlib import Path
 
+import numpy as np
+import popart
 from resnet_builder import PopartBuilderResNet
+
+# Add benchmark module to path
+bench_path = Path(Path(__file__).absolute().parent.parent.parent.parent,
+                  'utils')
+sys.path.append(str(bench_path))
+from benchmarks.popart.benchmark import Benchmark, parse_opts, run
 
 
 class OptimizedResNet(PopartBuilderResNet):
@@ -112,19 +116,13 @@ def iteration_report(opts, time):
 
 
 if __name__ == '__main__':
-    # Add benchmark module to path
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-    sys.path.insert(1, os.path.join(cwd, '..', '..', '..', 'utils',
-                                    'benchmarks', 'popart'))
-    import benchmark
-
-    module = benchmark.Benchmark(
+    module = Benchmark(
         graph_builder,
         add_args,
         iteration_report
     )
 
-    opts = benchmark.parse_opts(module)
+    opts = parse_opts(module)
 
     opts.train = opts.mode == "train"
 
@@ -140,4 +138,4 @@ if __name__ == '__main__':
             opts.batches_per_step if not opts.report else "n/a",
             opts.steps if not opts.report else "n/a"))
     np.random.seed(42)
-    benchmark.run(module, opts)
+    run(module, opts)

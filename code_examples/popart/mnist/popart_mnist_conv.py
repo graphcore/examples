@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 
 """
 A simple program that uses the PopART library ONNX builder to create
 a model and then trains it on the MNIST data set.
 """
+import argparse
+import os
+import struct
+import tempfile
+from collections import namedtuple
 
 import numpy as np
 import popart
-import struct
-import argparse
-from collections import namedtuple
 
 Session = namedtuple('Session', ['session', 'anchors'])
 
@@ -236,15 +238,18 @@ def train(opts):
     validation = init_session(proto, loss, dataFlow,
                               userOpts, device, training=False)
 
+    # Make weight transfer file
+    _, onnx_file_name = tempfile.mkstemp()
+
     training.session.weightsFromHost()
     training.session.optimizerFromHost()
-    training.session.modelToHost('mnist_untrained.onnx')
+    training.session.modelToHost(onnx_file_name)
 
     print('Running training loop.')
     for i in range(opts.epochs):
         # Training
         if i > 0:
-            training.session.resetHostWeights('mnist.onnx')
+            training.session.resetHostWeights(onnx_file_name)
         training.session.weightsFromHost()
         for data, labels in training_set:
             stepio = popart.PyStepIO(
@@ -254,8 +259,8 @@ def train(opts):
         aggregated_loss = 0
         aggregated_accuracy = 0
 
-        training.session.modelToHost('mnist.onnx')
-        validation.session.resetHostWeights('mnist.onnx')
+        training.session.modelToHost(onnx_file_name)
+        validation.session.resetHostWeights(onnx_file_name)
         validation.session.weightsFromHost()
 
         # Evaluation
@@ -278,6 +283,9 @@ def train(opts):
         print('Epoch #{}'.format(i + 1))
         print('   Loss={0:.4f}'.format(aggregated_loss))
         print('   Accuracy={0:.2f}%'.format(aggregated_accuracy * 100))
+
+    # Remove weight transfer file
+    os.remove(onnx_file_name)
 
 
 if __name__ == '__main__':

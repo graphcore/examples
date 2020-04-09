@@ -1,6 +1,7 @@
 # Copyright 2019 Graphcore Ltd.
 import unittest
 import callbacks
+import pytest
 
 
 class TestPopARTLSTMSyntheticBenchmarks(unittest.TestCase):
@@ -10,6 +11,7 @@ class TestPopARTLSTMSyntheticBenchmarks(unittest.TestCase):
     def setUpClass(cls):
         pass
 
+    @pytest.mark.category1
     def test_example_runs(self):
         rtts = callbacks.build_and_run_graph(1000)
         print(rtts)

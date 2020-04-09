@@ -1,4 +1,4 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 """
 SSD implementation based on Vgg-16 entry network as originally published by Liu et al.
 
@@ -18,34 +18,29 @@ file included in this directory.
 """
 
 
-import numpy as np
+import logging
 import os
 import time
-import logging
-import matplotlib.pyplot as plt
-from PIL.JpegImagePlugin import JpegImageFile
-
-import tensorflow as tf
-import h5py
 from typing import Tuple, Union
 
+import h5py
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
 # Layer imports
 import tf_layers as layers
-from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-from tensorflow.python import ipu
-
-# IPU TF Imports
-from tensorflow.python.ipu import ops as ipu_ops
-from tensorflow.python.ipu import utils
-from gcprofile import save_tf_report
-
+from PIL.JpegImagePlugin import JpegImageFile
+from gcprofile import \
+    save_tf_report  # FIXME This depends on the user having installed the Toolshed .whl file (which requires checking out the repo, firing the make script to get the whl)
 # Custom Keras Imports
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
-
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 # General Keras Imports
 from tensorflow.keras.preprocessing import image
-
+from tensorflow.python import ipu
+# IPU TF Imports
+from tensorflow.python.ipu import utils
 # Weight loading dictionary
 from trained_weights.LoadWeights import hdf5_key_list
 

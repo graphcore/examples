@@ -1,15 +1,15 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 """Helper utility to download imagenet weights for Densenet model."""
+
+from pathlib import Path
+from typing import List
 
 import numpy as np
 import tensorflow as tf
-
-
-from typing import List
-from pathlib import Path
+from tensorflow.contrib.framework.python.framework.checkpoint_utils import \
+    list_variables, load_variable
 from tensorflow.python.keras import backend as keras_backend
 from tensorflow.python.keras.applications.densenet import DenseNet121
-from tensorflow.contrib.framework.python.framework.checkpoint_utils import list_variables, load_variable
 
 keras_backend.set_floatx('float16')
 
@@ -51,7 +51,3 @@ def load_fp32_weights_into_fp16_vars(checkpoint_path: Path) -> List:
             weights = tf.cast(var, tf.float16) if var.dtype == np.float32 else var
             tf.add_to_collection('restore_ops', graph_var.assign(weights))
     return tf.get_collection('restore_ops')
-
-
-if __name__ is "__main__":
-    get_densenet_weights(Path("./densenet_weights_fp16"))

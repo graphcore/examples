@@ -392,7 +392,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     random.seed(args.seed)
-
+    tf.set_random_seed(args.seed)
     if args.interact:
         args.batch_size = 1
         args.infer = True

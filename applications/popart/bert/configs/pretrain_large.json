@@ -62,7 +62,6 @@
     "pipeline_momentum_scaling_offset": 0.1,
     "stochastic_rounding": true,
     "custom_ops": [
-        "gather"
     ],
     "batches_per_step": 8192,
     "epochs": 6,
@@ -87,7 +86,7 @@
         "data/wikipedia/AA/sequence_128/wiki_13_tokenised"
     ],
     "duplication_factor": 6,
-    "epochs_to_cache": 3,
+    "epochs_to_cache": 1,
     "vocab_length": 30400,
     "projection_serialization_steps": 5,
     "shuffle": true,

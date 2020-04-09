@@ -68,7 +68,23 @@ The following files are provided for running the BERT benchmarks.
   Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
   scripts for poplar, gc_drivers (if running on hardware) and popART.
 
-##### 2) Python
+##### 2) Install Boost and compile `custom_ops`
+
+Install Boost:
+
+```bash
+apt-get update; apt-get install libboost-all-dev
+```
+
+Compile custom_ops:
+
+```bash
+make
+```
+
+This should create `custom_ops.so`.
+
+##### 3) Python
 
 Create a virtualenv and install the required packages:
 
@@ -79,21 +95,7 @@ pip install -r requirements.txt
 pip install <path to gc_tensorflow.whl>
 ```
 
-##### 3) Install Boost and compile `custom_ops`
-
-To install Boost run:
-
-```bash
-apt-get update; apt-get install libboost-dev
-```
-
-To compile custom_ops run:
-
-```bash
-make
-```
-
-This should create `custom_ops.so`.
+Note: TensorFlow is required by `bert_tf_loader.py`. You can use the standard TensorFlow version for this BERT example, however using the Graphcore TensorFlow version allows this virtual environment to be used for other TensorFlow programs targeting the IPU.
 
 ### Generate pre-training data (small sample)
 

@@ -55,11 +55,6 @@ def get_transform(config, init=None):
     def v_transform(arr):
         return arr[:, config.hidden_size * 2:config.hidden_size * 3].T
 
-    embedding_proj = {
-        "bert.embeddings.word_embeddings.weight": np.transpose,
-        "bert.embeddings.position_embeddings.weight": np.transpose,
-    } if "gather" in config.custom_ops else {}
-    init.update(**embedding_proj)
     for i in range(config.num_layers):
         layer = {
             f"bert.encoder.layer.{i}.attention.self.query.weight": q_transform,

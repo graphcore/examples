@@ -10,7 +10,6 @@ import numpy as np
 import onnx
 from logging import getLogger
 from onnx import TensorProto, numpy_helper
-
 from bert_model import BertConfig
 
 logger = getLogger(__name__)
@@ -166,12 +165,12 @@ def parse_bert_args(args_string=None):
             choices=["gather", "attention"],
             help="Use Custom Operators"
         ),
-        "split_linear_layers": "Memory Optimisation to serialise MatMul Operations. Required for large sequence_length",
+        "split_linear_layers": "Memory Optimisation to serialise MatMul Operations. Required for Large 384.",
         "squeeze_model": "Try to use fewer IPUs by placing the input embedding and loss onto the \
                             same IPUs as the first and last tranformer layers respectively",
         "no_mask": "Don't apply padding masks to the attention scores",
         "projection_serialization_steps": "Split the final MLM projection into this many steps",
-        "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on matmuls.",
+        "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on the encoder matmuls.",
         "update_embedding_dict": "Include the sparse update to the word Embedding_Dict."
     })
     group.add_argument("--use-ipu-model", type=str_to_bool, nargs="?", const=True, default=False,
@@ -347,9 +346,18 @@ def parse_bert_args(args_string=None):
     group.add_argument("--deterministic-workers", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Force a deterministic mapping of vertices to worker threads. Slower, but allows "
                        "for repeatability within results, particularly when using stochastic rounding.")
+    group.add_argument("--reduce-stack-size", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Reduces the worker stack size to 128. This provides a small memory saving, however could cause stack overflow "
+                            "if set too low.")
     group.add_argument("--log-level", type=str, default='INFO',
                        choices=['NOTSET', 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'],
                        help="Set the logging level")
+    group = parser.add_argument_group("Distribution Config")
+    group.add_argument("--mpi-distributed", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Enable distributed training with MPI backend. Distributed training with MPI is currently in preview."
+                       "Full support for distributed training will be coming in a future release.")
+    group.add_argument("--mpi-rank", type=int, default=0, help="Input the MPI rank of this process. This value will be overwritten by the rank determined by the MPI controller")
+    group.add_argument("--mpi-size", type=int, default=1, help="Input the MPI size. This value will be overwritten by the size determined by the MPI controller")
     # This is here only for the help message
     group.add_argument("--config", type=str,
                        help="Path to preset config")
@@ -365,6 +373,8 @@ def parse_bert_args(args_string=None):
     args = parser.parse_args(remaining_argv)
 
     set_execution_mode(args)
+
+    set_mpi_args(args)
 
     # Invalidate incompatible options
     if args.no_drop_remainder and args.task != "SQUAD":
@@ -416,9 +426,10 @@ def save_args(args):
 def get_validation_args(args):
     validation_kwargs = dict(
         inference=True,
-        tf_checkpoint=None,
-        onnx_checkpoint=os.path.join(args.checkpoint_dir, "model.onnx"),
+        tf_checkpoint=None
     )
+    if not args.no_training:
+        validation_kwargs["onnx_checkpoint"] = os.path.join(args.checkpoint_dir, "model.onnx")
     if args.engine_cache:
         validation_kwargs["engine_cache"] = args.engine_cache + "val"
     if args.validation_config is not None:
@@ -427,3 +438,32 @@ def get_validation_args(args):
     args = vars(args)
     args.update(**validation_kwargs)
     return argparse.Namespace(**args)
+
+
+def set_mpi_args(args):
+    if not args.mpi_distributed:
+        return
+
+    logger.warn("Distributed training with MPI is currently in preview."
+                "Full support for distributed training will be coming in a future release.")
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    mpi_size = comm.Get_size()
+    mpi_rank = comm.Get_rank()
+    if args.mpi_rank != mpi_rank and args.mpi_rank != 0:
+        logger.warn(f"Overwriting the MPI rank provided {args.mpi_rank} to {mpi_rank}")
+    args.mpi_rank = mpi_rank
+
+    if args.mpi_size != mpi_size and args.mpi_size > 1:
+        logger.warn(f"Overwriting the MPI size provided {args.mpi_size} to {mpi_size}")
+    args.mpi_size = mpi_size
+
+    is_distributed = mpi_size > 1
+    if is_distributed:
+        if args.inference:
+            raise RuntimeError("Distributed execution only supported for training")
+        if args.task != "SQUAD":
+            raise RuntimeError("Distributed training only supported with SQUAD")
+
+    if is_distributed:
+        args.checkpoint_dir = args.checkpoint_dir + "_rank_" + str(args.mpi_rank)

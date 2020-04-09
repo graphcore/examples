@@ -1,3 +1,4 @@
+// Copyright 2020 Graphcore Ltd.
 #include <popart/tensor.hpp>
 #include <popart/tensors.hpp>
 #include <popart/tensorindex.hpp>
@@ -9,14 +10,14 @@
 #include <queue>
 
 template <class T>
-static popart::Op *search_producers_for(popart::Tensor *t, int max_depth=-1) {
+static T *search_producers_for(popart::Tensor *t, int max_depth=-1) {
     // Searched as far as we can without success
     if (t->tensorType() == popart::TensorType::Variable || !t->hasProducer()) {
         return nullptr;
     }
     auto op = t->getProducer();
     if (op->isConvertibleTo<T>()) {
-        return op;
+        return dynamic_cast<T *>(op);
     }
 
     if (op->input->n() < 1) {
@@ -58,14 +59,19 @@ static popart::Tensor *get_variable(popart::Tensor *t) {
 
 // Attempts to find T by searching through consumers.
 template <class T>
-static popart::Op *search_consumers_for(popart::Tensor *w, std::queue<popart::Tensor *> &q) {
+static T *search_consumers_for(popart::Tensor *w, std::queue<popart::Tensor *> &q) {
     for (auto consumer : w->consumers.getOps()) {
         if (consumer->isConvertibleTo<T>()) {
-            return consumer;
+            return reinterpret_cast<T *>(consumer);
         }
 
         // TODO: Have whitelist of traversable ops.
-        if (consumer->isConvertibleTo<DetachOp>() || consumer->isConvertibleTo<popart::DropoutGradOp>()) {
+        if (consumer->isConvertibleTo<popart::DropoutGradOp>()) {
+            q.push(consumer->output->tensor(popart::DropoutGradOp::getGradInIndex()));
+        }
+
+        // TODO: Improve this as it's too general. Most ops that have one input and one output are view changing.
+        if (consumer->input->n() == 1 && consumer->output->n() == 1) {
             q.push(consumer->output->tensor(0));
         }
     }
@@ -77,16 +83,49 @@ static popart::Op *search_consumers_for(popart::Tensor *w, std::queue<popart::Te
     return search_consumers_for<T>(w, q);
 }
 template <class T>
-static popart::Op *search_consumers_for(popart::Tensor *w) {
+static T *search_consumers_for(popart::Tensor *w) {
     std::queue<popart::Tensor *> q;
     return search_consumers_for<T>(w, q);
 }
 
 template <class T>
-static bool weight_consumed_by(popart::Tensor *w) {
+static T *weight_consumed_by(popart::Tensor *w) {
     w = get_variable(w);
     if (w) {
-        return search_consumers_for<T>(w) != nullptr;
+        return search_consumers_for<T>(w);
     }
-    return false;
+    return nullptr;
 }
+
+template <class T>
+static void find_all_consumers(popart::Tensor *w, std::queue<popart::Tensor *> &q, std::vector<T *> &result) {
+    for (auto consumer : w->consumers.getOps()) {
+        if (std::find(result.begin(), result.end(), consumer) == result.end()) {
+            if (consumer->isConvertibleTo<T>()) {
+                T *op = reinterpret_cast<T *>(consumer);
+                result.push_back(op);
+            }
+            if (consumer->isConvertibleTo<popart::MatMulOp>()) {
+                q.push(consumer->output->tensor(popart::MatMulOp::getOutIndex()));
+            }
+            // Most ops that have one input and one output are view changing.
+            if (consumer->input->n() == 1 && consumer->output->n() == 1) {
+                q.push(consumer->output->tensor(0));
+            }
+        }
+    }
+    if (q.size() < 1) {
+        return;
+    }
+    w = q.front();
+    q.pop();
+    return find_all_consumers<T>(w, q, result);
+}
+template <class T>
+static std::vector<T *> find_all_consumers(popart::Tensor *w) {
+    std::queue<popart::Tensor *> q;
+    std::vector<T *> result;
+    find_all_consumers(w, q, result);
+    return result;
+}
+

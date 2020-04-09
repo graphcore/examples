@@ -1,3 +1,4 @@
+// Copyright 2020 Graphcore Ltd.
 #include <iostream>
 #include "compile_time_version.h"
 

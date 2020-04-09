@@ -128,7 +128,6 @@ class BaseOptimizerFactory():
         return {stage: abs(scale_factor * stage + offset) for stage in stages}
 
 
-
 class Schedule(object):
     def __init__(self, mode, schedule, param, default_value):
         self.mode = mode
@@ -173,6 +172,15 @@ class Schedule(object):
             return iteration.epoch
         return None
 
+    def fast_forward(self, iteration):
+        target_criterion = self._read_schedule_criterion(iteration)
+
+        diffs = {(target_criterion - k): k for k in self.schedule.keys() if k <= target_criterion}
+        closest_key = diffs[min(diffs)]
+
+        self.current_value = self.schedule[closest_key]
+        return self.current_value
+
     @staticmethod
     def from_args(param, schedule_arg_epoch, schedule_arg_steps, default_value):
         # Epoch and step arguments are in a mutually exclusive group in argparse
@@ -202,12 +210,18 @@ class Schedule(object):
 class ScheduledOptimizerFactory(BaseOptimizerFactory):
     def __init__(self, args, iteration, tensors={}):
         super().__init__(args, iteration, tensors)
+
         self._schedules = {}
         self.awaiting_update = []
 
         self.current_critereon = 0
 
         self._create_schedules(args)
+
+        # Since the step count is set > 0 if we start from a given epoch,
+        # this will catch either step or epoch start states
+        if iteration.count > 0:
+            self._fast_forward()
 
     def should_update(self, iteration):
         self.awaiting_update = [p for p, s in self._schedules.items() if s.should_update(iteration)]
@@ -243,6 +257,11 @@ class ScheduledOptimizerFactory(BaseOptimizerFactory):
             logger.debug(f"Schedule[{schedule.param} | {str(schedule.mode)}]")
             for key, value in schedule.schedule.items():
                 logger.debug(f"\t{key:>6}: {value}")
+
+    def _fast_forward(self):
+        for param_name in self._schedules.keys():
+            self.option_values[param_name] = self._schedules[param_name].fast_forward(self.iteration)
+
 
 
 class LinearStepOptimizerFactory(BaseOptimizerFactory):
@@ -302,3 +321,6 @@ class LinearStepOptimizerFactory(BaseOptimizerFactory):
             total_steps = self.iteration.total_steps
 
         return step, total_steps
+
+if __name__ == "__main__":
+    pytest.main(args=[__file__, '-vv', '-s'])

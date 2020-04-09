@@ -15,16 +15,17 @@ Creates copies with different (micro) batch size dimensions.
 
 def get_model(opts):
 
-    path = "models/" + opts.model_name + "/"
+    path = "{}/{}/".format(opts.model_path, opts.model_name)
+    log_path = "{}/".format(opts.log_path)
     filename = "model.onnx"
 
     if not os.path.exists(path):
         print("Creating models directory")
         os.makedirs(path)
 
-    if not os.path.exists("logs/"):
+    if not os.path.exists(log_path):
         print("Creating logs directory")
-        os.makedirs("logs/")
+        os.makedirs(log_path)
 
     # Get the model. If it doesn't exist it will be downloaded
     if not os.path.isfile(path + filename):
@@ -49,7 +50,20 @@ parser.add_argument("--micro-batch-size", type=int, default=1, help="""Batch siz
     Larger batches can be run with this model by launching the app with resnext_inference_launch.py and passing in a value > 1 for num_ipus """)
 parser.add_argument("--model-name", type=str, default='resnext101_32x4d',
                     help="pretrained model name, according to `pretrainedmodels` Python package")
-
+parser.add_argument(
+    "--model-path", type=str, default="models",
+    help=(
+        "If set, the model will be saved to this"
+        " specfic path, instead of models/"
+    )
+)
+parser.add_argument(
+    "--log-path", type=str, default="logs",
+    help=(
+        "If set, the logs will be saved to this"
+        " specfic path, instead of logs/"
+    )
+)
 
 # set up directory
 model_name = 'resnext101_32x4d'

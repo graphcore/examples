@@ -1,8 +1,8 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 import sys
+
 import numpy as np
 import popart
-from collections import namedtuple
 
 
 def graph_builder(opts):

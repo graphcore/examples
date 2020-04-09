@@ -1,20 +1,18 @@
 #!/usr/bin/python
-# Copyright 2019 Graphcore Ltd.
-
-import inspect
+# Copyright 2020 Graphcore Ltd.
 import os
-import pytest
 import unittest
 
-import tests.test_util as test_util
+# NOTE: The import below is dependent on 'pytest.ini' in the root of
+# the repository
+from tests.test_util import run_python_script_helper
 
 
 def run_simple_replication(**kwargs):
     """Helper function to run replication tensorflow python script with
        command line arguments"""
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-    out = test_util.run_python_script_helper(
-        cwd, "simple_replication.py", **kwargs
+    out = run_python_script_helper(
+        os.path.dirname(__file__), "simple_replication.py", **kwargs
     )
     return out
 
@@ -64,6 +62,3 @@ class TestSimpleReplicationModelling(unittest.TestCase):
 
         run_simple_replication(**py_args)
 
-
-if __name__ == "__main__":
-    unittest.main()

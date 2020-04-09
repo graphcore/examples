@@ -14,9 +14,6 @@ from bert_model import BertConfig, Bert
 from tests.torch_bert import BertConfig as TorchBertConfig, BertOutput, BertIntermediate
 from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tensors, check_model
 
-so_path = os.path.join(os.getcwd(), "custom_ops.so")
-ctypes.cdll.LoadLibrary(so_path)
-
 
 def simplified_gelu(x):
     return x * torch.sigmoid(1.702 * x)

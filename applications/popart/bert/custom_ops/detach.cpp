@@ -11,7 +11,7 @@ namespace CustomOperators {
   const popart::OperatorIdentifier Detach = {"ai.graphcore", "Detach", 1};
 } // namespace CustomOperators
 
-// An IdentityOp that doesn't return any grad ops. This allows you to disconnect the flow of gradients when creating the backwards pass
+// An InplaceIdentityOp that doesn't return any grad ops. This allows you to disconnect the flow of gradients when creating the backwards pass
 class DetachOp : public popart::Op {
 public:
   bool pass_through_creation = false;
@@ -67,7 +67,7 @@ public:
   }
 
   void grow(poplar::program::Sequence &prog) const final {
-    insert(outId(0), cloneNcopy(prog, getInTensor(0)));
+    insert(outId(0), getInTensor(0));
   }
 };
 

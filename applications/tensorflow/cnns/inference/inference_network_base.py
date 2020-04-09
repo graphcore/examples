@@ -1,9 +1,7 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 """Base class for setting up pre-trained Tensorflow inference network."""
 
-import inspect
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Callable, Union
@@ -13,9 +11,9 @@ from get_weights import get_weights
 from tensorflow.core.framework import graph_pb2
 from tensorflow.tools.graph_transforms import TransformGraph
 
-# Add path with models folder to pythonpath
-cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-sys.path.insert(1, os.path.join(cwd, '..'))
+# Add model module to path
+models_path = Path(Path(__file__).absolute().parent.parent)
+sys.path.append(str(models_path))
 from models.optimize_for_infer import fold_batch_norms  # noqa
 
 

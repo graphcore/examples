@@ -1,10 +1,12 @@
 # Copyright 2019 Graphcore Ltd.
+import pytest
 import sys
 import math
 import popart
 import numpy as np
 from typing import NamedTuple
 from bert_optimizer import ScheduledOptimizerFactory, LinearStepOptimizerFactory, Schedule
+from bert import Iteration
 
 
 class MockIteration:
@@ -50,7 +52,17 @@ class TestConfig(NamedTuple):
     pipeline_lr_scaling_offset: float = 0.1
     pipeline_momentum_scaling: bool = False
 
+    # Needed for iteration/optimizer integration test
+    continue_training_from_epoch: int = 0
+    epochs: int = 1
+    epochs_per_save: int = 1
+    steps_per_log: int = 1
+    batch_size: int = 1
+    gradient_accumulation_factor: int = 1
+    replication_factor: int = 1
 
+
+@pytest.mark.category1
 def test_scheduled_optimizer_factory():
 
     def test_case(config, iteration, epoch_truth={}, step_truth={}, option_name="defaultLearningRate"):
@@ -223,6 +235,7 @@ def test_scheduled_optimizer_factory():
               step_truth=step_truth, option_name="defaultLearningRate")
 
 
+@pytest.mark.category1
 def test_scheduled_optimiser_params_const_flag():
 
     def test_case(config):
@@ -262,6 +275,7 @@ def test_scheduled_optimiser_params_const_flag():
         test_case(config)
 
 
+@pytest.mark.category1
 def test_linear_optimizer_factory():
 
     def test(config, iteration, true_result):
@@ -404,6 +418,7 @@ def test_linear_optimizer_factory():
     })
 
 
+@pytest.mark.category1
 def test_schedule_key_parsing():
     """Tests the parser can handle variations of string, float and int representations"""
     iteration = MockIteration(1, 550)
@@ -448,6 +463,42 @@ def test_schedule_key_parsing():
     assert(all(equality))
 
 
+iteration_test_lr_schedule_by_step = {0: 1e-10,
+                                      25: 1e-9,
+                                      50: 1e-8,
+                                      75: 1e-8/2,
+                                      100: 1e-8/16}
+
+
+@pytest.mark.category1
+@pytest.mark.parametrize(
+    "start_epoch, steps_per_epoch, num_epochs, lr_schedule, expected",
+    [
+        (0, 10, 10, iteration_test_lr_schedule_by_step, iteration_test_lr_schedule_by_step[0]),
+        (1, 10, 10, iteration_test_lr_schedule_by_step, iteration_test_lr_schedule_by_step[0]),
+        (3, 10, 10, iteration_test_lr_schedule_by_step, iteration_test_lr_schedule_by_step[25]),
+        (5, 10, 10, iteration_test_lr_schedule_by_step, iteration_test_lr_schedule_by_step[50])])
+def test_schedule_with_continue_from_epoch(start_epoch, steps_per_epoch, num_epochs, lr_schedule, expected):
+
+    config = TestConfig(**{
+        "continue_training_from_epoch": start_epoch,
+        "epochs": num_epochs,
+        "lr_schedule_by_step": lr_schedule
+    })
+
+    iteration = Iteration(
+        config,
+        batches_per_step=10,
+        steps_per_epoch=steps_per_epoch,
+        writer=None,
+        recording_steps=1)
+
+    factory = ScheduledOptimizerFactory(config, iteration)
+    lr = factory.option_values["defaultLearningRate"]
+    assert(lr == expected)
+
+
+@pytest.mark.category1
 def test_per_tensor_lr():
 
     def expected_step_weights(iteration, config, layer_input, lr_scale):
@@ -620,6 +671,7 @@ def test_per_tensor_lr():
     test(config, iteration, true_scaling, test_case)
 
 
+@pytest.mark.category1
 def test_linear_optimiser_params_const_flag():
 
     iteration = MockIteration(20, 100)

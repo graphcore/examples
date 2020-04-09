@@ -3,6 +3,7 @@ import time
 import os
 import sys
 import math
+import ctypes
 import random
 import datetime
 from functools import reduce
@@ -22,6 +23,13 @@ from bert_optimizer import ScheduledOptimizerFactory
 import utils
 
 logger = logging.getLogger('BERT')
+
+so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                       "custom_ops.so")
+if os.path.exists(so_path):
+    ctypes.cdll.LoadLibrary(so_path)
+else:
+    logger.warn("Could not find custom_ops.so. Execute `make` before running this script.")
 
 
 def set_library_seeds(seed):
@@ -206,8 +214,18 @@ def bert_session_options(args, model):
     if args.deterministic_workers:
         engine_options["target.deterministicWorkers"] = "true"
 
+    if args.reduce_stack_size:
+        engine_options["target.workerStackSizeInBytes"] = "128"
+
     options.engineOptions = engine_options
     return options
+
+
+def bert_session_patterns(args):
+    patterns = popart.Patterns()
+    if args.task != "SQuAD":
+        patterns.enablePattern("DisableAttnDropoutBwdPattern", False)
+    return patterns
 
 
 def calc_required_ipus(args, model):
@@ -234,6 +252,8 @@ def compile_graph_checked(args, session):
 def bert_training_session(model, args, feed, losses, device, optimizer_factory):
     options = bert_session_options(args, model)
 
+    patterns = bert_session_patterns(args)
+
     proto = model.builder.getModelProto()
 
     optimizer = optimizer_factory.create()
@@ -244,6 +264,7 @@ def bert_training_session(model, args, feed, losses, device, optimizer_factory):
                                      deviceInfo=device,
                                      optimizer=optimizer,
                                      dataFeed=feed,
+                                     passes=patterns,
                                      userOptions=options)
 
     logger.info("Compiling Training Graph")
@@ -266,6 +287,8 @@ def bert_training_session(model, args, feed, losses, device, optimizer_factory):
 def bert_inference_session(model, args, feed, losses, device):
     options = bert_session_options(args, model)
 
+    patterns = bert_session_patterns(args)
+
     proto = model.builder.getModelProto()
 
     logger.info("Creating Session")
@@ -273,6 +296,7 @@ def bert_inference_session(model, args, feed, losses, device):
                                       losses=losses,
                                       deviceInfo=device,
                                       dataFeed=feed,
+                                      passes=patterns,
                                       userOptions=options)
 
     logger.info("Compiling Inference Graph")
@@ -345,7 +369,11 @@ def get_bert_dataset(model, args, inputs, embedding_dict = None, positional_dict
             evaluate_script=args.squad_evaluate_script,
             synthetic=args.synthetic_data,
             do_lower_case=args.do_lower_case,
-            max_pipeline_stage=model.total_pipeline_stages if args.execution_mode == "PIPELINE" else 1)
+            max_pipeline_stage=model.total_pipeline_stages if args.execution_mode == "PIPELINE" else 1,
+            seed=args.seed,
+            mpi_size=args.mpi_size,
+            mpi_rank=args.mpi_rank,
+            is_distributed= args.mpi_size > 1)
         if args.no_drop_remainder and not args.synthetic_data:
             args.batches_per_step = ds.batches_per_step  # Keep args up to date
         return ds

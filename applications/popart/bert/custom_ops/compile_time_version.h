@@ -1,3 +1,4 @@
+// Copyright 2020 Graphcore Ltd.
 #ifndef COMPILE_TIME_VERSION_H
 #define COMPILE_TIME_VERSION_H
 

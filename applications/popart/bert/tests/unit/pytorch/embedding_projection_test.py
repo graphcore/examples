@@ -16,7 +16,7 @@ from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tens
 '''
 Tests the embedding with a projection. This is the case for PRETRAINING.
 '''
-torch_to_onnx = {
+TORCH_TO_ONNX = {
     "embeddings.word_embeddings.weight": "Embedding_Dict",
     "embeddings.LayerNorm.weight": "Gamma",
     "embeddings.LayerNorm.bias": "Beta",
@@ -25,7 +25,7 @@ torch_to_onnx = {
     "cls.transform.LayerNorm.weight": "CLS/Gamma",
     "cls.transform.LayerNorm.bias": "CLS/Beta"
 }
-transposed_weights = {
+TRANSPOSE_WEIGHTS = {
     "embeddings.word_embeddings.weight": np.transpose,
     "cls.transform.dense.weight": np.transpose
 }
@@ -94,7 +94,7 @@ def test_embedding_projection_fwd(custom_ops):
                               np.uint32)
     }
 
-    x = popart_model.embedding_custom(
+    x = popart_model.gather(
         indices, config.vocab_length, "Embedding_Dict")
     x = popart_model.norm(x)
     x = popart_model.dropout(x)
@@ -120,8 +120,8 @@ def test_embedding_projection_fwd(custom_ops):
 
     torch_model.eval()
 
-    copy_weights_to_torch(torch_model, proto, torch_to_onnx,
-                          transposed_weights)
+    copy_weights_to_torch(torch_model, proto, TORCH_TO_ONNX,
+                          TRANSPOSE_WEIGHTS)
     torch_model.tie_weights()
 
     torch_outputs = run_fwd_model(inputs, torch_model)
@@ -146,7 +146,6 @@ def test_embedding_projection_bwd(custom_ops):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['gather'],
                         # Currently updating embedding dict with projection is only
                         # available with momentum. And PopART != Pytorch momentum
                         # due to a bootstrapping step on iter 0.
@@ -163,7 +162,7 @@ def test_embedding_projection_bwd(custom_ops):
                               np.uint32)
     }
 
-    x = popart_model.embedding_custom(
+    x = popart_model.gather(
         indices, config.vocab_length, "Embedding_Dict")
     x = popart_model.norm(x)
     x = popart_model.dropout(x)
@@ -198,8 +197,8 @@ def test_embedding_projection_bwd(custom_ops):
 
     copy_weights_to_torch(torch_model,
                           proto,
-                          torch_to_onnx,
-                          transform=transposed_weights)
+                          TORCH_TO_ONNX,
+                          transform=TRANSPOSE_WEIGHTS)
 
     optim = torch.optim.SGD(torch_model.parameters(),
                             0.01,
@@ -215,5 +214,5 @@ def test_embedding_projection_bwd(custom_ops):
 
     check_model(torch_model,
                 post_proto,
-                torch_to_onnx,
-                transform=transposed_weights)
+                TORCH_TO_ONNX,
+                transform=TRANSPOSE_WEIGHTS)

@@ -1,19 +1,13 @@
-# Copyright 2019 Graphcore Ltd.
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+# Copyright 2020 Graphcore Ltd.
 import argparse
-import numpy as np
-import tensorflow.compat.v1 as tf
 import time
 
+import tensorflow.compat.v1 as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.datasets import cifar10
-from tensorflow.keras.layers import Conv2D, MaxPooling2D
 from tensorflow.keras.layers import Activation, Dense, Dropout, Flatten
+from tensorflow.keras.layers import Conv2D, MaxPooling2D
 from tensorflow.python import ipu
-
 
 NUM_CLASSES = 10
 

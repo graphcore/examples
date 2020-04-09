@@ -1,8 +1,8 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
+import time
+
 import numpy as np
 import popart
-import time
-from functools import partial
 
 
 class PerfIntervalTimer:

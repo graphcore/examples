@@ -1,21 +1,19 @@
-# Copyright 2019 Graphcore Ltd.
-import inspect
-import unittest
+# Copyright 2020 Graphcore Ltd.
 import os
-import sys
 import subprocess
-from contextlib import contextmanager
-
-import tests.test_util as tu
+import sys
+import unittest
 
 
 def run_resnet(**kwargs):
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
     cmd = ["python" + str(sys.version_info[0]), 'resnet.py']
     # Flatten kwargs and convert to strings
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    out = subprocess.check_output(cmd, cwd=cwd).decode("utf-8")
+    cwd = os.path.dirname(__file__)
+    test_env = os.environ.copy()
+    test_env["LANG"] = "C.UTF-8"
+    out = subprocess.check_output(cmd, cwd=cwd, env=test_env).decode("utf-8")
     print(out)
     return out
 
@@ -39,7 +37,3 @@ class TestTensorFlowResNetSyntheticBenchmarks(unittest.TestCase):
 
     def test_resnet_50_inference_batch_size_8(self):
         out = run_resnet(**{'--size': 50, '--batch-size': 8})
-
-
-if __name__ == '__main__':
-    unittest.main()

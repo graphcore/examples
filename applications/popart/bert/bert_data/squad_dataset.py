@@ -11,6 +11,7 @@ from logging import getLogger
 from functools import reduce
 
 from .dataset import DataSet
+from .data_sampler import SequentialSampler, ShuffledSampler, DistributedDataSampler
 from .tokenization import FullTokenizer
 from .squad_utils import read_squad_examples, convert_examples_to_features, RawResult, write_predictions, InputFeatures
 
@@ -47,22 +48,22 @@ class SquadDataLoader(object):
                  sequence_length=None,
                  batch_size=1,
                  dtype=np.int32,
-                 shuffle=True):
+                 sampler=None):
         self.features = features
         self.batch_size = batch_size
         self.dtype = dtype
-        self.shuffle = shuffle
         self.sequence_length = sequence_length
 
-        self.len = len(features) // self.batch_size
+        self.sampler = sampler
+        if sampler is None:
+            self.sampler = SequentialSampler(features)
+        self.num_batches = len(self.sampler)//self.batch_size
 
     def __len__(self):
-        return self.len
+        return self.num_batches
 
     def __iter__(self):
-        if self.shuffle:
-            random.shuffle(self.features)
-        self.feature_iterator = iter(self.features)
+        self.feature_iterator = iter([self.features[idx] for idx in self.sampler])
         return self
 
     def __next__(self):
@@ -306,7 +307,11 @@ def get_bert_dataset(tensor_shapes,
                      evaluate_script=None,
                      synthetic=False,
                      do_lower_case=False,
-                     max_pipeline_stage=1):
+                     max_pipeline_stage=1,
+                     seed=0,
+                     mpi_size=1,
+                     mpi_rank=0,
+                     is_distributed=False):
     samples_per_step = batch_size * batches_per_step * \
         replication_factor * accumulation_factor
 
@@ -325,10 +330,20 @@ def get_bert_dataset(tensor_shapes,
             overwrite_cache=overwrite_cache,
             do_lower_case=do_lower_case)
 
+    if is_distributed:
+        sampler = DistributedDataSampler(
+            features, seed, shuffle,
+            mpi_size, mpi_rank, padding=False)
+    elif shuffle:
+        sampler = ShuffledSampler(features, seed)
+    else:
+        sampler = SequentialSampler(features)
+
+
     if no_drop_remainder and not synthetic:
         batches_per_step = no_drop_batches_per_step(
             batches_per_step,
-            len(features),
+            len(sampler),
             batch_size,
             replication_factor,
             accumulation_factor,
@@ -342,7 +357,8 @@ def get_bert_dataset(tensor_shapes,
         features,
         sequence_length=sequence_length,
         batch_size=samples_per_step,
-        shuffle=shuffle)
+        sampler=sampler
+        )
 
     bert_ds = BertDataTransform(
         dl,

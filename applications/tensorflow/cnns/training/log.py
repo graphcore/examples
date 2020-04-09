@@ -26,6 +26,13 @@ def add_arguments(parser):
     return parser
 
 
+def _extract_poplar_version(v):
+    prefix = "version "
+    start = v.index(prefix) + len(prefix)
+    end = v.index(" ", start)
+    return v[start:end]
+
+
 def set_defaults(opts):
     # Logs and checkpoint paths
     # Must be run last
@@ -36,8 +43,8 @@ def set_defaults(opts):
         name = name + "_" + opts["name_suffix"]
 
     if opts.get("poplar_version"):
-        v = opts['poplar_version']
-        name += "_v" + v[v.find("version ") + 8: v.rfind(' ')]
+        name += "_v" + _extract_poplar_version(opts['poplar_version'])
+
     # We want this to be random even if random seeds have been set so that we don't overwrite
     # when re-running with the same seed
     random_state = random.getstate()

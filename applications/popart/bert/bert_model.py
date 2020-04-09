@@ -14,10 +14,6 @@ import math
 
 logger = logging.getLogger(__name__)
 
-so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                       "custom_ops.so")
-ctypes.cdll.LoadLibrary(so_path)
-
 
 class BertConfig(NamedTuple):
     batch_size: int = 1
@@ -60,7 +56,7 @@ class BertConfig(NamedTuple):
     # Choices: PRETRAINING (MLM + NSP), SQUAD
     task: str = "PRETRAINING"
 
-    # Choices: gather, attention
+    # Choices: attention
     custom_ops: List[str] = []
 
     # This option serializes all matmul layers to multiples
@@ -187,21 +183,21 @@ class Model(object):
         return tensor
 
     def normal_init_data(self, dtype, shape, mean, std_dev, debug_name=""):
-        data = self.initializers.get(
-            self.builder.getNameScope(debug_name), None)
+        name = self.builder.getNameScope(debug_name)
+        data = self.initializers.get(name, None)
         if data is None:
             # Truncated random normal between 2 standard devations
             data = truncnorm.rvs(-2, 2, loc=mean,
                                  scale=std_dev, size=np.prod(shape))
             data = data.reshape(shape).astype(dtype)
-            self.initializers[self.builder.getNameScope(debug_name)] = data
+            self.initializers[name] = data
         else:
             if np.any(data.shape != np.array(shape)):
                 if np.all(data.T.shape == np.array(shape)):
                     data = data.T.copy()
-                    logger.warn(f"Initializer for {self.builder.getNameScope(debug_name)} was provided transposed.")
+                    logger.warn(f"Initializer for {name} was provided transposed.")
                 else:
-                    raise RuntimeError(f"Initializer {self.builder.getNameScope(debug_name)} does not match shapes. \n"
+                    raise RuntimeError(f"Initializer {name} does not match shapes. \n"
                                        f" Provided {data.shape}. Required {shape}")
         return data
 
@@ -282,6 +278,13 @@ class Bert(Model):
                 ipu = pipeline_stage
             self.squad_scope = self.device_scope(ipu, pipeline_stage, "Squad")
 
+        # Scope to place all IO on first IPU for inference:
+        if self.config.inference:
+            pipeline_stage += 1
+            self.output_scope = self.device_scope(self.embedding_scope.virtualGraph, pipeline_stage, "Output")
+        else:
+            self.output_scope = None
+
         self.total_pipeline_stages = pipeline_stage + 1
 
     def encoder_scope(self, layer_index):
@@ -309,6 +312,13 @@ class Bert(Model):
         with self.builder.nameScope("Embedding"):
             x = self.embedding(indices, positions, segments)
 
+        # This forces the masks to be streamed on to the IPU before the encoder layers.
+        # Allowing the communication to be better overlapped with compute as the
+        # compute dominant encoder IPUs will not participate in any streamCopies.
+        if masks is not None:
+            with self.embedding_split_scope:
+                masks = [self.detach(mask) for mask in masks]
+
         # Encoder Layers
         for i in range(self.config.num_layers):
             with self.encoder_scope(i):
@@ -333,7 +343,13 @@ class Bert(Model):
         # Fine Tuning tasks
         if self.config.task == "SQUAD":
             with self.squad_scope:
-                outputs += self.squad_projection(x)
+                squad_outputs = self.squad_projection(x)
+
+            if self.output_scope:
+                with self.output_scope:
+                    outputs += [self.detach(tensor) for tensor in squad_outputs]
+            else:
+                outputs += squad_outputs
 
         if self.config.task == "MRPC":
             # TODO: Implement this: T11026
@@ -514,30 +530,27 @@ class Bert(Model):
         embedding_dict = None
         positional_dict = None
         if self.config.host_embedding:
-            embedding_dict = self.get_embedding_data(self.config.dtype,
-                                                     (self.config.vocab_length, self.config.hidden_size),
-                                                     "DEFAULT",
-                                                     "Embedding_Dict")
-            positional_dict = self.get_embedding_data(self.config.dtype,
-                                                      (self.config.max_positional_length, self.config.hidden_size),
-                                                      self.config.positional_embedding_init_fn,
-                                                      "Positional_Dict")
+            with self.builder.nameScope("Embedding"):
+                embedding_dict = self.get_embedding_data(self.config.dtype,
+                                                         (self.config.vocab_length, self.config.hidden_size),
+                                                         "DEFAULT",
+                                                         "Embedding_Dict")
+                positional_dict = self.get_embedding_data(self.config.dtype,
+                                                          (self.config.max_positional_length, self.config.hidden_size),
+                                                          self.config.positional_embedding_init_fn,
+                                                          "Positional_Dict")
         return embedding_dict, positional_dict
 
 
     def embedding(self, indices, positions, segments):
-        embedding_fn = self.embedding_onnx
-        if 'gather' in self.config.custom_ops:
-            embedding_fn = self.embedding_custom
-
         with self.embedding_scope:
-            x = embedding_fn(indices, self.config.vocab_length, "Embedding_Dict")
+            x = self.gather(indices, self.config.vocab_length, "Embedding_Dict")
 
         with self.embedding_split_scope:
-            x_pos = embedding_fn(positions,
-                                 self.config.max_positional_length,
-                                 "Positional_Dict",
-                                 init_fn=self.config.positional_embedding_init_fn)
+            x_pos = self.gather(positions,
+                                self.config.max_positional_length,
+                                "Positional_Dict",
+                                init_fn=self.config.positional_embedding_init_fn)
 
             segments_onehot = self.builder.aiOnnx.onehot([
                 segments,
@@ -561,44 +574,24 @@ class Bert(Model):
             x = self.dropout(x)
         return x
 
-
-    def embedding_custom(self, indices, embedding_size, name, init_fn="DEFAULT"):
-        embedding_dict = self.embedding_init_tensor(self.config.dtype,
-                                                    (self.config.hidden_size, embedding_size),
-                                                    init_fn,
-                                                    name)
-        attrs = {}
-        if name == "Embedding_Dict" and self.config.task == "PRETRAINING":
-            attrs = {
-                'split': [2, self.config.projection_serialization_steps],
-                'embedding_tensor_id': embedding_dict
-            }
-            self.embedding_dict = embedding_dict
-            embedding_dict = self.detach(embedding_dict)
-
-        x = self.builder.customOp(opName="EmbeddingGather",
-                                  opVersion=1,
-                                  domain="ai.graphcore",
-                                  inputs=[embedding_dict, indices],
-                                  attributes=attrs)[0]
-
-        if name == "Embedding_Dict" and not self.config.update_embedding_dict:
-            x = self.detach(x)
-
-        return x
-
-
-    def embedding_onnx(self, indices, embedding_size, name, init_fn="DEFAULT"):
-        if (name == "Embedding_Dict" or name == "Positional_Dict") and self.config.host_embedding:
+    def gather(self, indices, embedding_size, name, init_fn="DEFAULT"):
+        if self.config.host_embedding and (name == "Embedding_Dict" or name == "Positional_Dict"):
             return indices
-        embedding_dict = self.embedding_init_tensor(self.config.dtype,
-                                                    (embedding_size, self.config.hidden_size),
-                                                    init_fn,
-                                                    name)
+
         if name == "Embedding_Dict" and self.config.task == "PRETRAINING":
+            # Important that the tied gather/matmul weight with transpose before the gather.
+            # This will ensure it matches the custom_ops/tied_gather_pattern.
+            embedding_dict = self.embedding_init_tensor(self.config.dtype,
+                                                        (self.config.hidden_size, embedding_size),
+                                                        init_fn,
+                                                        name)
             self.embedding_dict = embedding_dict
-            embedding_dict = self.detach(embedding_dict)
-            logger.warn("Pretraining with the non-custom op gather will not update Embeddding_Dict with gradients from the gather.")
+            embedding_dict = self.builder.aiOnnx.transpose([embedding_dict])
+        else:
+            embedding_dict = self.embedding_init_tensor(self.config.dtype,
+                                                        (embedding_size, self.config.hidden_size),
+                                                        init_fn,
+                                                        name)
 
         x = self.builder.aiOnnx.gather([embedding_dict, indices])
 
@@ -735,6 +728,8 @@ class Bert(Model):
         # Attention calculation
         with self.builder.nameScope('Z'):
             x = self.builder.aiOnnx.matmul([q, kt])
+            if not self.config.use_default_available_memory_proportion:
+                self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
 
             c = self.constant_tensor(
                 1 / np.sqrt(self.config.qkv_length), self.config.dtype)
@@ -751,6 +746,8 @@ class Bert(Model):
 
             # x[batch_size, attention_heads, sequence_length, sequence_length] * v[batch_size, attention_heads, sequence_length, qkv_length]
             z = self.builder.aiOnnx.matmul([x, v])
+            if not self.config.use_default_available_memory_proportion:
+                self.builder.setAvailableMemoryProportion(z, self.config.available_memory_proportion)
 
             # [batch_size, attention_heads, sequence_length, qkv_length] -> [batch_size, sequence_length, attention_heads, qkv_length]
             z = self.builder.aiOnnx.transpose([z], perm=[0, 2, 1, 3])
@@ -772,10 +769,6 @@ class Bert(Model):
         if weight in self.pipeline_stage_tensors[self.embedding_scope.pipelineStage]:
             self.pipeline_stage_tensors[self.embedding_scope.pipelineStage].remove(weight)
             self._add_to_tensor_map(weight)
-
-        # The non-custom embedding creates the embedding_dict for the gather. So it needs transposing
-        if 'gather' not in self.config.custom_ops:
-            weight = self.builder.aiOnnx.transpose([weight])
 
         x = self.builder.aiOnnx.matmul([x, weight])
         num_splits = self.config.projection_serialization_steps

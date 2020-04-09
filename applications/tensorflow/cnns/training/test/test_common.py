@@ -45,6 +45,17 @@ def run_train(**kwargs):
     return subprocess.check_output(cmd).decode('utf-8')
 
 
+def parse_csv(filepath):
+    with open(filepath) as csv:
+        lines = csv.read().split('\n')
+        items = [line.split(',') for line in lines if line]
+        results = {}  # dict with headers of csv as keys
+        for i in range(len(items[0])):
+            values = [float(v[i]) for v in items[1:]]
+            results[items[0][i]] = values
+    return results
+
+
 def get_csv(out, name):
     log_dir = None
     for line in out.split('\n'):
@@ -54,11 +65,4 @@ def get_csv(out, name):
     if not log_dir:
         raise ValueError("Couldn't find log directory from output")
 
-    with open(os.path.join(log_dir, name)) as csv:
-        lines = csv.read().split('\n')
-        items = [line.split(',') for line in lines if line]
-        results = {}  # dict with headers of csv as keys
-        for i in range(len(items[0])):
-            values = [float(v[i]) for v in items[1:]]
-            results[items[0][i]] = values
-    return results
+    return parse_csv(os.path.join(log_dir, name))

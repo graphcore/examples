@@ -1,2 +1,4 @@
 torch==1.4.0
 torchvision
+pytest==5.4.1
+pytest-pythonpath==0.7.3

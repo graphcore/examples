@@ -1,45 +1,83 @@
 #!/usr/bin/python
-# Copyright 2019 Graphcore Ltd.
-
-import inspect
+# Copyright 2020 Graphcore Ltd.
 import os
 import unittest
 
-import tests.test_util as test_util
+# NOTE: The import below is dependent on 'pytest.ini' in the root of
+# the repository
+from tests.test_util import run_python_script_helper, check_data_exists
 
 
-def run_report_generation():
+def run_report_generation(**kwargs):
     """Helper function to run report generation python script"""
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-    out = test_util.run_python_script_helper(cwd, "report_generation_example.py")
+    out = run_python_script_helper(
+        os.path.dirname(__file__), "report_generation_example.py", **kwargs
+    )
     return out
 
 
 class TestTensorflowReportGeneration(unittest.TestCase):
-    """Simple test for the report generation example"""
+    """Simple tests for the report generation example"""
 
-    def test_report_generation(self):
-        """Simple test runs the report generation python script and
-           verifies it has produced the correct file"""
-        run_report_generation()
-        self._check_file_exists_helper(
-            os.path.dirname(os.path.realpath(__file__))
-        )
+    def test_basic_usage(self):
+        """Run with default arguments"""
+        self._test_reports_helper({}, ["report.txt"])
 
-    def _check_file_exists_helper(self, path_to_file):
+    def test_execution_profiling(self):
+        """Run with execution profiling on"""
+        self._test_reports_helper({"--profile-execution": ""}, ["report.txt"])
+
+    def test_json_report(self):
+        """Run with option to generate json reports instead of text"""
+        self._test_reports_helper({"--json-report": ""}, ["report.json"])
+
+    def test_no_var_init(self):
+        """Run with option to generate reports for the main graph only"""
+        self._test_reports_helper({"--no-var-init-profiling": ""},
+                                  ["report.txt"])
+
+    def test_split_reports_no_execution(self):
+        """Run with option to split compile and execution reports,
+            but don't enable execution profiling"""
+        self._test_reports_helper({"--split-reports": ""}, ["compile.txt"])
+
+    def test_split_reports(self):
+        """Run with option to split compile and execution reports"""
+        self._test_reports_helper({"--split-reports": "",
+                                   "--profile-execution": ""},
+                                  ["compile.txt", "execution.txt"])
+
+    def _test_reports_helper(self, py_args, report_filenames):
+        """Helper function for running the tests: it removes existing reports
+           with the given names (if any), runs the script, checks that the
+           reports have been generated and finally removes them."""
+        report_path = os.path.dirname(os.path.realpath(__file__))
+        # Remove existing reports
+        for filename in report_filenames:
+            self._remove_any_existing_report(report_path, filename)
+        # Execute
+        run_report_generation(**py_args)
+        # Check expected reports exist
+        for filename in report_filenames:
+            self._check_file_exists_helper(report_path, filename)
+        # Clean up
+        for filename in report_filenames:
+            self._remove_any_existing_report(report_path, filename)
+
+    def _remove_any_existing_report(self, report_path, filename):
+        """Helper function to check whether filename exists in report_path.
+           If it does, the file is removed."""
+        if check_data_exists(report_path, [filename]):
+            os.remove(os.path.join(report_path, filename))
+
+    def _check_file_exists_helper(self, report_path, filename):
         """Helper function to check whether report_generation.md exists
-           in location path_to_file and raises an assertion error if it
-           doesn't exist"""
+           in location report_path and raises an assertion error if it
+           doesn't exist."""
 
-        files_to_generate = ["report.txt"]
-
-        if not test_util.check_data_exists(path_to_file, files_to_generate):
+        if not check_data_exists(report_path, [filename]):
             raise AssertionError(
-                "report.txt does not exist in location {}".format(
-                    path_to_file
+                "{} does not exist in location {}".format(
+                    filename, report_path
                 )
             )
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -1,4 +1,5 @@
 # Copyright 2019 Graphcore Ltd.
+from tensorflow import distribute
 from tensorflow.python.ipu import sharding
 from tensorflow.compiler.plugin.poplar.ops import gen_poputil_ops
 from tensorflow.python.framework import ops
@@ -59,6 +60,10 @@ class IPUOptimizer(optimizer.Optimizer):
                     # replication
                     if self._replicas > 1:
                         grad = gen_poputil_ops.ipu_replication_normalise(cross_replica_ops.cross_replica_sum(grad))
+
+                    # distribution
+                    if distribute.has_strategy():
+                        grad /= distribute.get_strategy().num_replicas_in_sync
 
                     grad = math_ops.cast(grad, var.dtype)
                     summed_grads_and_vars.append((grad, var))

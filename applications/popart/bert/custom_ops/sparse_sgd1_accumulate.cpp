@@ -48,8 +48,10 @@ public:
           initDpsf1(dpsf1),
           axis(axis) {}
 
-    static popart::InIndex getIndicesInIndex() { return 3; }
     static popart::InIndex getDpsf1InIndex() { return 2; }
+    static popart::InIndex getIndicesInIndex() { return 3; }
+    // Optional input of the original var. If present the accumulator will be created as a clone
+    static popart::InIndex getOriginalVarInIndex() { return 4; }
     float getSubgraphValue() const final { return getLowSubgraphValue(); }
 
     std::unique_ptr<popart::Op>
@@ -71,6 +73,7 @@ public:
         if (initDpsf1.isConst()) {
             os.appendAttribute("const dampening scale factor", initDpsf1.val());
         }
+        os.appendAttribute("axis", axis);
     }
 };
 
@@ -90,23 +93,32 @@ public:
             popart::popx::InputCreatorType::CANCREATE : popart::popx::Opx::getInputCreatorType(index0);
     }
 
-    std::vector<popart::TensorId> mustExistBeforeCreate(int) const { return {}; }
+    std::vector<popart::TensorId> mustExistBeforeCreate(int index0) const {
+        if (index0 == SparseSGD1AccumulateOp::getVarToUpdateInIndex() && hasInput(SparseSGD1AccumulateOp::getOriginalVarInIndex()))
+            return {inId(SparseSGD1AccumulateOp::getOriginalVarInIndex())};
+        return {}; 
+    }
 
     poplar::Tensor createInput(int index, const std::string &name) const {
         if (index != SparseSGD1AccumulateOp::getVarToUpdateInIndex()) {
             throw popart::error("SparseSGD1AccumulateOpx::createInput Cannot create input {}", index);
         }
 
-        auto info = inInfo(SparseSGD1AccumulateOp::getVarToUpdateInIndex());
-        const auto shape = info.shape_szt();
+        if (hasInput(SparseSGD1AccumulateOp::getOriginalVarInIndex())) {
+            auto w = getInTensor(SparseSGD1AccumulateOp::getOriginalVarInIndex());
+            return graph().clone(w, name);
+        }  else {
+            auto info = inInfo(SparseSGD1AccumulateOp::getVarToUpdateInIndex());
+            const auto shape = info.shape_szt();
 
-        // Perhaps should be a clone of the original weight tensor
-        return popops::createGatherInput(graph(),
-                                         popart::popx::popType(info),
-                                         shape,
-                                         static_cast<unsigned>(axis),
-                                         popops::GatherParams{},
-                                         name);
+            // Perhaps should be a clone of the original weight tensor
+            return popops::createGatherInput(graph(),
+                                             popart::popx::popType(info),
+                                             shape,
+                                             static_cast<unsigned>(axis),
+                                             popops::GatherParams{},
+                                             name);
+        }
     }
 
     void grow(poplar::program::Sequence &prog) const

@@ -5,7 +5,7 @@
 #include <popart/popx/opxmanager.hpp>
 #include <popart/popx/devicex.hpp>
 
-#include <poplin/ConvUtil.hpp>
+#include <popops/Rearrange.hpp>
 
 namespace CustomOperators {
   const popart::OperatorIdentifier AttemptRegroup = {"ai.graphcore", "AttemptRegroup", 1};
@@ -42,7 +42,7 @@ public:
   }
 
   void grow(poplar::program::Sequence &prog) const final {
-    auto out = poplin::regroupIfBeneficial(
+    auto out = popops::rearrange::regroupIfBeneficial(
         graph(),
         getInTensor(AttemptRegroupOp::getInTensorIndex()),
         getInTensor(AttemptRegroupOp::getRefTensorIndex()),

@@ -41,7 +41,11 @@ def load_dataset(tensors):
 
 
 def graph_builder():
-    proto = f"models/{FLAGS.model_name}/model_{FLAGS.micro_batch_size}.onnx"
+    model_path = (
+        "models" if not FLAGS.model_path else FLAGS.model_path
+    )
+    proto = f"{model_path}/{FLAGS.model_name}/model_{FLAGS.micro_batch_size}.onnx"
+
     builder = popart.Builder(
         proto, opsets={"ai.onnx": 10, "ai.onnx.ml": 1, "ai.graphcore": 1})
     input_id = builder.getInputTensorIds()[0]
@@ -99,6 +103,7 @@ def main(argv):
     options = popart.SessionOptions()
     if FLAGS.synthetic:
         options.ignoreData = True
+    options.instrumentWithHardwareCycleCounter = FLAGS.report_hw_cycle_count
 
     # Select a device
     deviceManager = popart.DeviceManager()
@@ -140,6 +145,9 @@ def main(argv):
         report_string += "   {:5f} images/sec.".format(
             int(FLAGS.micro_batch_size * FLAGS.batches_per_step / duration))
         print(report_string)
+        if FLAGS.report_hw_cycle_count:
+            print("Hardware cycle count per 'run':", session.getCycleCount())
+
     print("Executing...")
     average_batches_per_sec = 0
 
@@ -198,6 +206,32 @@ flags.DEFINE_string("model_name", "resnext101_32x4d",
 flags.DEFINE_bool("synthetic", False, "Use synthetic data created on the IPU for inference")
 flags.DEFINE_integer(
     "iterations", 1, "Number of iterations to run if using synthetic data. Each iteration uses one `batches_per_step` x `batch_size` x `H` x `W` x `C` sized input tensor")
+flags.DEFINE_bool(
+    "report_hw_cycle_count",
+    False,
+    "Report the number of cycles a 'run' takes."
+)
+flags.DEFINE_string(
+    "model_path", None,
+    (
+        "If set, the model will be saved to this"
+        " specfic path, instead of models/"
+    )
+)
+flags.DEFINE_string(
+    "log_path", None,
+    (
+        "If set, the logs will be saved to this"
+        " specfic path, instead of logs/"
+    )
+)
+flags.DEFINE_bool(
+    "hide_output", True,
+    (
+        "If set to true the subprocess that the model"
+        " is run with will hide output."
+    )
+)
 
 if __name__ == '__main__':
     app.run(main)

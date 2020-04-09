@@ -1,17 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 import logging
 import unittest
 from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.ipu import utils
-from tensorflow.python.keras.applications.densenet import preprocess_input, decode_predictions
-from tensorflow.python.keras.preprocessing import image
-
-from models.official_keras.densenet_base import DenseNet
 from models import optimize_for_infer
 from models.densenet_weights import get_densenet_weights
+from models.official_keras.densenet_base import DenseNet
+from tensorflow.python.ipu import utils
+from tensorflow.python.keras.applications.densenet import preprocess_input, \
+    decode_predictions
+from tensorflow.python.keras.preprocessing import image
 
 # Set up logging
 logging.basicConfig(format='%(asctime)s %(module)s - %(funcName)s: %(message)s',
@@ -96,7 +96,3 @@ class TestDensenet(unittest.TestCase):
         _, pred_label, pred_prob = decode_predictions(predictions, top=1)[0][0]
         assert Path(IMAGE_PATH).stem.lower() == pred_label.lower()
         assert pred_prob > 0.9
-
-
-if __name__ == '__main__':
-    unittest.main()

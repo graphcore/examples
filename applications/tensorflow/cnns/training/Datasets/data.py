@@ -3,6 +3,7 @@ import tensorflow as tf
 import os
 from . import imagenet_preprocessing
 from functools import partial
+from math import ceil
 
 DATASET_CONSTANTS = {
     'imagenet': {
@@ -68,13 +69,21 @@ def data(opts, is_training=True):
             preprocess_fn = partial(imagenet_preprocess, is_training=is_training,
                                     dtype=datatype, seed=opts['seed'])
             dataset_fn = tf.data.TFRecordDataset
-            dataset = tf.data.Dataset.list_files(filenames, shuffle=is_training, seed=opts['seed'])
+            if is_training and opts['distributed']:
+                # Shuffle after sharding
+                dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
+                dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
+                dataset = dataset.shuffle(ceil(len(filenames) / opts['distributed_worker_count']), seed=opts['seed'])
+            else:
+                dataset = tf.data.Dataset.list_files(filenames, shuffle=is_training, seed=opts['seed'])
             dataset = dataset.interleave(dataset_fn, cycle_length=cycle_length,
                                          block_length=cycle_length, num_parallel_calls=cycle_length)
         elif 'cifar' in opts["dataset"]:
             preprocess_fn = partial(cifar_preprocess, is_training=is_training, dtype=datatype,
                                     dataset=opts['dataset'], seed=opts['seed'])
             dataset = tf.data.FixedLengthRecordDataset(filenames, DATASET_CONSTANTS[opts['dataset']]['RECORD_BYTES'])
+            if is_training and opts['distributed']:
+                dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
         else:
             raise ValueError("Unknown Dataset {}".format(opts["dataset"]))
 

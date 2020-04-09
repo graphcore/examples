@@ -4,7 +4,6 @@
   "loss_scaling": 1.0,
   "stochastic_rounding": true,
   "custom_ops": [
-    "gather",
     "attention"
   ],
   "batches_per_step": 64,

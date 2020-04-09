@@ -1,16 +1,13 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright 2020 Graphcore Ltd.
 from typing import Optional, Tuple, Union
 
 import numpy as np
 import tensorflow as tf
-
-from models import tf_layers
+from models import tf_layers as layers
 
 ImageNetBlockType = Tuple[int, int, int, int]
 CifarBlockType = Tuple[int, int, int]
 TensorType = Union[tf.Tensor, np.ndarray, tf.placeholder]
-
-layers = tf_layers
 
 
 # This function is taken from the original tf repo.

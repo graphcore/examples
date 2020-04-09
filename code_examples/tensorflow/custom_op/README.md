@@ -13,7 +13,8 @@ is similar.
 * `custom_codelet.cpp` Custom codelet used in the custom op.
 * `Makefile` - Simple Makefile that builds the Poplar code and codelet (gp file).
 * `poplar_code.cpp` - Poplar code that builds the custom op.
-* `tf_code.py` Tensorflow program that uses the custom op. 
+* `tf_code.py` Tensorflow program that uses the custom op.
+* `test_custom_op.py` Script for testing this example.
 * `README.md` This file.
 
 ### How to use this demo

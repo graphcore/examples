@@ -12,11 +12,7 @@ import onnx
 import pytest
 from typing import Iterable, Tuple, Any, Union, Mapping, Callable, Optional, NamedTuple
 from bert_model import BertConfig, Bert
-from bert import bert_training_session
 from tests.utils import make_tuple
-
-so_path = os.path.join(os.getcwd(), "custom_ops.so")
-ctypes.cdll.LoadLibrary(so_path)
 
 
 def step(session, anchors, data, update_optimizer_lr=None):

@@ -25,10 +25,22 @@ def launch_resnext_subprocess(i, f):
     micro_batch_size = int(FLAGS.batch_size/FLAGS.num_ipus)
     micro_batch_size = str(micro_batch_size)
     args = FLAGS.flags_into_string().split('\n')
-    command = ["python3", "resnext101.py", "--data_sub_dir", data_sub_dir, "--micro_batch_size", micro_batch_size] + args
+    command = [
+        "python3",
+        "resnext101.py",
+        "--data_sub_dir",
+        data_sub_dir,
+        "--micro_batch_size",
+        micro_batch_size
+    ] + args
     print(f"\n\nRunning subprocess {i}: \t ")
     print(" ".join(command))
-    return subprocess.Popen(command, stdout=f, stderr=f)
+    kwargs = {"stdout": f, "stderr": f} if FLAGS.hide_output else {}
+    return subprocess.Popen(
+        command,
+        universal_newlines=True,
+        **kwargs
+    )
 
 
 FLAGS = flags.FLAGS
@@ -45,6 +57,32 @@ flags.DEFINE_string("model_name", "resnext101_32x4d",
 flags.DEFINE_bool("synthetic", False, "Use synthetic data created on the IPU.")
 flags.DEFINE_integer(
     "iterations", 1, "Number of iterations to run if using synthetic data. Each iteration uses one `batches_per_step` x `batch_size` x `H` x `W` x `C` sized input tensor.")
+flags.DEFINE_bool(
+    "report_hw_cycle_count",
+    False,
+    "Report the number of cycles a 'run' takes."
+)
+flags.DEFINE_string(
+    "model_path", None,
+    (
+        "If set, the model will be saved to this"
+        " specfic path, instead of models/"
+    )
+)
+flags.DEFINE_string(
+    "log_path", None,
+    (
+        "If set, the logs will be saved to this"
+        " specfic path, instead of logs/"
+    )
+)
+flags.DEFINE_bool(
+    "hide_output", True,
+    (
+        "If set to true the subprocess that the model"
+        " is run with will hide output."
+    )
+)
 
 
 def main(argv):
@@ -56,16 +94,17 @@ def main(argv):
             \t Number of batches prepared by the host at a time: {FLAGS.batches_per_step}
         """
     print(log_str)
+    log_path = "logs" if not FLAGS.log_path else FLAGS.log_path
     procs = []
     log_files = []
 
     timestamp = datetime.now().strftime("%d-%b-%Y (%H:%M:%S.%f)")
-    if not os.path.exists("logs"):
-        os.mkdir("logs")
-    os.mkdir(os.path.join("logs", timestamp))    #WHY DOES THIS HAVE STRING QUOTES?
+    if not os.path.exists(log_path):
+        os.mkdir(log_path)
+    os.mkdir(os.path.join(log_path, timestamp))
 
     for i in range(FLAGS.num_ipus):
-        f = open(f"logs/{timestamp}/log_{i}", "w")
+        f = open(f"{log_path}/{timestamp}/log_{i}", "w")
         p = launch_resnext_subprocess(i, f)
         # sleep to prevent race conditions on acquiring IPUs
         time.sleep(1)
@@ -81,25 +120,34 @@ def main(argv):
 
     regex_throughput = re.compile("Compute .* sec .* (.*) images/sec.")
     regex_latency = re.compile("Total (.*).* sec.   Preprocessing")
+    regex_cycle_counts = re.compile("Hardware cycle count per 'run': ([\d.]+)")
     throughputs = []
     latencies = []
+    cycle_counts = []
     for i in range(FLAGS.num_ipus):
         sub_throughputs = []
         sub_latencies = []
-        with open(f"logs/{timestamp}/log_{i}") as f:
+        sub_cycle_counts = []
+        with open(f"{log_path}/{timestamp}/log_{i}") as f:
             for line in f:
                 match = regex_throughput.search(line)
                 match_lat = regex_latency.search(line)
+                match_cycles = regex_cycle_counts.search(line)
                 if match:
                     res = match.group(1)
                     sub_throughputs.append(float(res))
                 if match_lat:
                     res = match_lat.group(1)
                     sub_latencies.append(float(res))
+                if match_cycles:
+                    res = match_cycles.group(1)
+                    sub_cycle_counts.append(float(res))
         throughputs.append(sub_throughputs)
         latencies.append(sub_latencies)
+        cycle_counts.append(sub_cycle_counts)
     sums_throughputs = [sum(l) for l in zip(*throughputs)]
     mean_latencies = [statistics.mean(l) for l in zip(*latencies)]
+    mean_cycle_counts = [statistics.mean(c) for c in zip(*cycle_counts)]
     stats = zip(mean_latencies, sums_throughputs)
     start = 2 if len(sums_throughputs) >= 4 else 0
     for (duration, through) in list(stats)[start:]:
@@ -110,6 +158,11 @@ def main(argv):
             duration, 95.)
         report_string += "   {:5f} images/sec.".format(int(through))
         print(report_string)
+    if FLAGS.report_hw_cycle_count:
+        print(
+            "Hardware cycle count per 'run':",
+            statistics.mean(mean_cycle_counts)
+        )
 
 
 if __name__ == '__main__':

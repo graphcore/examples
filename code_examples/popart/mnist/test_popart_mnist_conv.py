@@ -1,18 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
-import inspect
+# Copyright 2020 Graphcore Ltd.
 import os
-import subprocess
-import sys
 import unittest
 
-from test_popart_mnist import download_mnist
-import tests.test_util as test_util
+import pytest
+from common import download_mnist
+# NOTE: The import below is dependent on 'pytest.ini' in the root of
+# the repository
+from tests import test_util
 
 
 def run_popart_mnist_training(**kwargs):
-    cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
     out = test_util.run_python_script_helper(
-        cwd, "popart_mnist_conv.py", **kwargs
+        os.path.dirname(__file__), "popart_mnist_conv.py", **kwargs
     )
     return out
 
@@ -22,8 +21,7 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-        download_mnist(cwd)
+        download_mnist(os.path.dirname(__file__))
         cls.accuracy_tolerances = 3.0
         cls.generic_arguments = {
             "--batch-size": 4,
@@ -31,6 +29,8 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
             "--epochs": 10
         }
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_mnist_train(self):
         """Generic test on default arguments in training"""
         py_args = self.generic_arguments.copy()
@@ -45,6 +45,8 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
             out, expected_accuracy, self.accuracy_tolerances
         )
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_mnist_all_data(self):
         """Generic test using all the available data (10,000)"""
         py_args = self.generic_arguments.copy()
@@ -56,6 +58,8 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
             **py_args
         )
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_mnist_log_graph_trace(self):
         """Basic test with log-graph-trace argument"""
         py_args = self.generic_arguments.copy()
@@ -66,6 +70,7 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
             **py_args
         )
 
+    @pytest.mark.category2
     def test_mnist_conv_simulation(self):
         """Simulation test with basic arguments - This simulation takes
            around 838s (~14 minutes) complete"""
@@ -78,7 +83,3 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
             run_popart_mnist_training,
             **py_args
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

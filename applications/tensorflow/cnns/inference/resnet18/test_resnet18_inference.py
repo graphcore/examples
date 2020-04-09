@@ -1,55 +1,46 @@
-# Copyright 2019 Graphcore Ltd.
-import inspect
-import unittest
+# Copyright 2020 Graphcore Ltd.
 import os
-import sys
 
-from tests.resource_util import fetch_resources, captured_output
-from classify_images import ImageClassifier
+import pytest
+# NOTE: The import below is dependent on 'pytest.ini' in the root of
+# the repository
+from tests.test_util import SubProcessChecker
 
-
-def parse_results_for_matching_tag(output, image_tag):
-    """This function is extremely reliant on the output format of
-        resnet_18/classify_images.py"""
-    match = False
-    if image_tag in output:
-        top_match = output.split("\n")[1]
-        if image_tag in top_match:
-            match = True
-    return match
+working_path = os.path.dirname(__file__)
 
 
-class TestResnet18(unittest.TestCase):
+@pytest.mark.category1
+@pytest.mark.ipus(1)
+class TestResnet18Inference(SubProcessChecker):
+    """High-level integration tests for ResNet-18 inference"""
 
-    @classmethod
-    def setUpClass(cls):
-        cls.cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-        fetch_resources('get_images_and_weights.sh',
-                        os.path.join(cls.cwd, 'images', 'zebra.jpg'),
-                        cls.cwd)
-        cls.classify_img = ImageClassifier(os.path.join(cls.cwd, 'weights'))
+    def setUp(self):
+        self.run_command("./get_images_and_weights.sh",
+                         working_path,
+                         ["Fetching images224.tar.gz",
+                          "Unpacking ResNet18.tar.gz"])
 
+    def test_help(self):
+        self.run_command("python3 classify_images.py -h",
+                         working_path,
+                         "usage: classify_images.py")
 
-    def verify_image(self, image_name):
-        img = os.path.join(self.cwd, 'images', image_name + ".jpg")
-        with captured_output() as out:
-            self.classify_img.classify_image(img)
+    def test_single_image(self):
+        self.run_command("python3 classify_images.py images/zebra.jpg",
+                         working_path,
+                         "Class 340: zebra")
 
-        output = out.getvalue().strip()
-        self.assertTrue(parse_results_for_matching_tag(output, image_name))
+    def test_directory_of_images(self):
+        self.run_command("python3 classify_images.py images/",
+                         working_path,
+                         ["Class 409: analog clock",
+                          "Average images per second:",
+                          "Filename : gondola.jpg"])
 
-
-    def test_inference_zebra(self):
-        self.verify_image("zebra")
-
-
-    def test_inference_pelican(self):
-        self.verify_image("pelican")
-
-
-    def test_inference_castle(self):
-        self.verify_image("castle")
-
-
-if __name__ == '__main__':
-    unittest.main()
+    def test_ipu_model(self):
+        test_env = os.environ.copy()
+        test_env["TF_POPLAR_FLAGS"] = "--use_ipu_model"
+        self.run_command('python3 classify_images.py images/pelican.jpg',
+                         working_path,
+                         ["Class 144: pelican"],
+                         env=test_env)

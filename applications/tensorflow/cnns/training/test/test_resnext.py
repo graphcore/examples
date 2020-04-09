@@ -3,11 +3,14 @@
 Tests covering ResNeXt training.
 """
 
+import pytest
 import unittest
 import statistics
 from test_common import get_csv, run_train, cifar10_data_dir
 
 
+@pytest.mark.category2
+@pytest.mark.ipus(1)
 class TestCifar10ResNeXtTraining(unittest.TestCase):
     """Testing some basic training parameters"""
 
@@ -42,6 +45,8 @@ class TestCifar10ResNeXtTraining(unittest.TestCase):
         self.assertEqual(round(self.training['epoch'][-1]), 10)
 
 
+@pytest.mark.category3
+@pytest.mark.ipus(1)
 class TestCifar10ResNeXtFullTraining(unittest.TestCase):
     """Fast training of Cifar-10 to good accuracy"""
 
@@ -78,6 +83,8 @@ class TestCifar10ResNeXtFullTraining(unittest.TestCase):
         self.assertEqual(round(self.training['epoch'][-1]), 50)
 
 
+@pytest.mark.category2
+@pytest.mark.ipus(2)
 class TestShardedTraining(unittest.TestCase):
     """Example of sharding for model parallelism"""
 
@@ -97,6 +104,8 @@ class TestShardedTraining(unittest.TestCase):
         self.assertEqual(self.training['iteration'][-1], 5000)
 
 
+@pytest.mark.category2
+@pytest.mark.ipus(2)
 class TestPipelineResNeXt14(unittest.TestCase):
     """A simple pipelined model"""
 
@@ -120,6 +129,8 @@ class TestPipelineResNeXt14(unittest.TestCase):
         self.assertEqual(self.training['step'][-1], 2)
 
 
+@pytest.mark.category2
+@pytest.mark.ipus(2)
 class TestReplicatedTraining(unittest.TestCase):
     """Using replicas for data parallelism"""
 
@@ -146,6 +157,8 @@ class TestReplicatedTraining(unittest.TestCase):
         self.assertEqual(round(self.training['epoch'][-1]), 20)
 
 
+@pytest.mark.category2
+@pytest.mark.ipus(1)
 class TestLotsOfOptions(unittest.TestCase):
     """Testing lots of other options to check they are still available"""
 

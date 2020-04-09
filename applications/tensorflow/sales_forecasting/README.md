@@ -1,5 +1,5 @@
-# Graphcore benchmarks: sales forecasting
-This README describes how to run a sales forecasting machine learning model on Graphcore's IPUs. 
+# Graphcore example applications: sales forecasting
+This README describes how to run a sales forecasting machine learning model on Graphcore's IPUs.
 
 ## Overview
 
@@ -9,13 +9,15 @@ The model predicts the amount of sales on a particular day given a set of featur
 
 ## Running the model
 
-The following files are provided for running the sales forecasting model. 
+The following files are provided for running the sales forecasting model.
 
+* `NOTICE`      License conditions.
+* `README.md`   This file.
 * `main.py`     Main training and validation loop.
 * `data.py`     Data pipeline.
 * `model.py`    Model file.
 * `util.py`     Helper functions.
-* `README.md`   This file.
+* `test_model.py`   A test script. See below for how to run it.
 
 ## Quick start guide
 
@@ -23,8 +25,8 @@ The following files are provided for running the sales forecasting model.
 
 **1) Download the Poplar SDK**
 
-Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-scripts for poplar, gc_drivers (if running on hardware) and popART.
+Install the Poplar SDK following the README provided. Make sure to source the `enable.sh`
+scripts for poplar and gc_drivers (if running on hardware).
 
 ##### 2) Python
 
@@ -34,6 +36,7 @@ Create a virtualenv and install the required packages:
 bash
 virtualenv venv -p python3.6
 source venv/bin/activate
+pip install <path to the gc_tensorflow-1 whl file in the Poplar SDK>
 pip install -r requirements.txt
 ```
 
@@ -59,7 +62,7 @@ Run the program using `main.py`. Use the `--datafolder`/`-d` option to specify t
 
 Use `--help` to show the available options.
 
-`--replication-factor` will add data parallelism. IPU graph replication copies the graph to N IPUs, splits the data into N streams and trains the N graphs on the N streams in parallel. Periodically, the graphs' gradients are averaged and applied to all graphs. Set the number of replicas with this option. By default, no replication is done (i.e. this is 1). If validating with the `--multiprocessing` flag, this can be at max M/2, where M is the number of IPUs available in the chassis, as each process needs N IPUs.
+`--replication-factor` will add data parallelism. IPU graph replication copies the graph to N IPUs, splits the data into N streams and trains the N graphs on the N streams in parallel. Periodically, the graphs' gradients are averaged and applied to all graphs. Set the number of replicas with this option. By default, no replication is done (i.e. this is 1). If validating with the `--multiprocessing` flag, this can be at max M/2, where M is the number of IPUs available, as each process needs N IPUs.
 
 `--multiprocessing` is recommended if at least 2 IPUs are available. It will run the training and validation graphs in separate processes on separate IPUs, saving time loading and unloading programs from the device. By default, the same IPUs are shared for both training and validation, executed in sequence.
 
@@ -76,7 +79,7 @@ The dynamic scheduler has two features:
 
 `--base-learning-rate` specifies the exponent of the base learning rate. The learning rate is set by `lr = 2^blr * batch-size`. See <https://arxiv.org/abs/1804.07612> for more details.
 
-`--d`/`--datafolder` sets the directory of the data folder. Should contain a preprocessed Rossmann dataset of `train.csv` and `val.csv`
+`--d`/`--datafolder` sets the directory of the data folder. This should contain a preprocessed Rossmann dataset of `train.csv` and `val.csv`. Alternatively use `--use-synthetic-data` to use random data generated directly on the IPU as needed by the program, removing any host <-> IPU data transfers.
 
 `--log-dir` sets the directory for model logs. The model will log summaries and checkpoints.
 
@@ -105,3 +108,11 @@ The dynamic scheduler has two features:
 `--use-init` sets the initial weights of the model to be the same across separate runs.
 
 `--compiler-report` causes the model to generate a compilation report and then terminate.
+
+### Test script
+
+The test script performs basic tests. To run it you need add the `utils` directory at the top-level of this repository
+to your `PYTHONPATH` and also run `pip install pytest`. Then run
+
+    pytest test_main.py
+

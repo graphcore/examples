@@ -124,4 +124,10 @@ resnext_inference_launch.py:
     (an integer)
   --[no]synthetic: Use synthetic data created on the IPU.
     (default: 'false')
+  --model-path: Directory containing the saved model required to run the model.
+    (default: 'models/')
+  --log-path: The directory where the logs will be saved.
+    (default: 'logs/')
+  --hide-output: If set the stdout of the subprocess that runs the model will be hidden.
+    (default: 'false')
 ```
