@@ -27,7 +27,7 @@ class TestPopARTResnetImageClassification(unittest.TestCase):
         pass
 
     def test_resnet8_bs4_4ipus(self):
-        out = run_popart_resnet_training(**{'--size': 8,
+        out = run_popart_resnet_training(**{'--size': '8',
                                             '--batch-size': 4,
                                             '--norm-type': 'GROUP',
                                             '--num-ipus': 4,
@@ -35,11 +35,11 @@ class TestPopARTResnetImageClassification(unittest.TestCase):
                                             '--no-prng': '',
                                             '--data-dir': './',
                                             '--num-workers': 0})
-        expected_accuracy = [44.1, 53.6, 61.6, 64.6, 66.1]
-        parse_results_for_accuracy(out, expected_accuracy, 2)
+        expected_accuracy = [44.1, 53.6, 61.6, 64.6, 65.1]
+        parse_results_for_accuracy(out, expected_accuracy, 3)
 
     def test_resnet8_bs4_4ipus_pipeline(self):
-        out = run_popart_resnet_training(**{'--size': 8,
+        out = run_popart_resnet_training(**{'--size': '8',
                                             '--batch-size': 4,
                                             '--norm-type': 'GROUP',
                                             '--num-ipus': 4,
@@ -49,4 +49,4 @@ class TestPopARTResnetImageClassification(unittest.TestCase):
                                             '--data-dir': './',
                                             '--num-workers': 0})
         expected_accuracy = [42.2, 53.9, 60.7, 63.9, 65.6]
-        parse_results_for_accuracy(out, expected_accuracy, 2)
+        parse_results_for_accuracy(out, expected_accuracy, 3)

@@ -6,6 +6,7 @@ import numpy as np
 import popart
 from resnet_builder import PopartBuilderResNet
 
+
 # Add benchmark module to path
 bench_path = Path(Path(__file__).absolute().parent.parent.parent.parent,
                   'utils')
@@ -14,6 +15,7 @@ from benchmarks.popart.benchmark import Benchmark, parse_opts, run
 
 
 class OptimizedResNet(PopartBuilderResNet):
+
     def __init__(self, opts):
         if not opts.train and opts.norm_type == 'BATCH':
             # For inference, assume normalization on population parameters
@@ -98,7 +100,7 @@ def train_builder(opts):
 def add_args(parser):
     parser.add_argument('--batch-size', type=int, default=1,
                         help='Set batch size.')
-    parser.add_argument('--size', type=int, choices=[8, 14, 20, 32, 44, 56, 110, 18, 34, 50, 101, 152], default=18,
+    parser.add_argument('--size', type=str, choices=['8', '14', '20', '32', '44', '56', '110', '18', '34', '50', '101', '152', 'x50'], default=18,
                         help='Size of Resnet graph.')
     parser.add_argument('--norm-type', choices=["BATCH", "GROUP", "NONE"], default="BATCH",
                         help="Choose which normalization to use after each convolution")

@@ -25,29 +25,29 @@ class TestPopARTResNetSyntheticBenchmarks(unittest.TestCase):
 
     # Resnet inference
     def test_resnet_20_inference_batch_size_32(self):
-        out = run_resnet(**{'--size': 20,
+        out = run_resnet(**{'--size': "20",
                             '--batch-size': 32,
                             '--norm-type': 'BATCH',
                             '--shortcut-type': 'B',
                             '--use-data': ''})
 
     def test_resnet_18_inference_batch_size_1(self):
-        out = run_resnet(**{'--size': 18,
+        out = run_resnet(**{'--size': "18",
                             '--batch-size': 1,
                             '--norm-type': 'GROUP'})
 
     def test_resnet_18_inference_batch_size_16(self):
-        out = run_resnet(**{'--size': 18,
+        out = run_resnet(**{'--size': "18",
                             '--batch-size': 16,
                             '--norm-type': 'BATCH'})
 
     def test_resnet_50_inference_batch_size_8(self):
-        out = run_resnet(**{'--size': 50,
+        out = run_resnet(**{'--size': "50",
                             '--batch-size': 8,
                             '--norm-type': 'NONE'})
 
     def test_resnet_50_inference_batch_size_8_pipelined_4ipus(self):
-        out = run_resnet(**{'--size': 50,
+        out = run_resnet(**{'--size': "50",
                             '--batch-size': 8,
                             '--norm-type': 'NONE',
                             '--shards': 4,
@@ -55,13 +55,13 @@ class TestPopARTResNetSyntheticBenchmarks(unittest.TestCase):
 
     # ResNet training
     def test_resnet_18_train_batch_size_4(self):
-        out = run_resnet(**{'--size': 18,
+        out = run_resnet(**{'--size': "18",
                             '--batch-size': 4,
                             '--norm-type': 'GROUP',
                             '--mode': 'train'})
 
     def test_resnet_18_train_batch_size_4_pipelined_2ipus(self):
-        out = run_resnet(**{'--size': 18,
+        out = run_resnet(**{'--size': "18",
                             '--batch-size': 4,
                             '--norm-type': 'GROUP',
                             '--mode': 'train',
@@ -69,20 +69,20 @@ class TestPopARTResNetSyntheticBenchmarks(unittest.TestCase):
                             '--pipeline': ''})
 
     def test_resnet_50_train_batch_size_1(self):
-        out = run_resnet(**{'--size': 50,
+        out = run_resnet(**{'--size': "50",
                             '--batch-size': 1,
                             '--norm-type': 'GROUP',
                             '--mode': 'train'})
 
     def test_resnet_50_train_sharded(self):
-        out = run_resnet(**{'--size': 50,
+        out = run_resnet(**{'--size': "50",
                             '--batch-size': 2,
                             '--norm-type': 'GROUP',
                             '--mode': 'train',
                             '--shards': 2})
 
     def test_resnet_20_train_batch_size_32(self):
-        out = run_resnet(**{'--size': 20,
+        out = run_resnet(**{'--size': "20",
                             '--batch-size': 16,
                             '--norm-type': 'BATCH',
                             '--mode': 'train'})

@@ -24,43 +24,63 @@ class ResNet(object):
     def definitions(self):
         return {
             # Cifar10 sized filters
-            8:  ResNetDefinition(self.block2, 'A',
-                                 [1, 1, 1],
-                                 [16, 16, 32, 64]),
-            14:  ResNetDefinition(self.block2, 'A',
-                                  [2, 2, 2],
-                                  [16, 16, 32, 64]),
-            20:  ResNetDefinition(self.block2, 'A',
-                                  [3, 3, 3],
-                                  [16, 16, 32, 64]),
-            32:  ResNetDefinition(self.block2, 'A',
-                                  [5, 5, 5],
-                                  [16, 16, 32, 64]),
-            44:  ResNetDefinition(self.block2, 'A',
-                                  [7, 7, 7],
-                                  [16, 16, 32, 64]),
-            56:  ResNetDefinition(self.block2, 'A',
-                                  [9, 9, 9],
-                                  [16, 16, 32, 64]),
-            110:  ResNetDefinition(self.block2, 'A',
-                                   [18, 18, 18],
-                                   [16, 16, 32, 64]),
+            "8":  ResNetDefinition(
+                                    self.block2, 'A',
+                                    [1, 1, 1],
+                                    [16, 16, 32, 64]),
+            "14":  ResNetDefinition(
+                                    self.block2, 'A',
+                                    [2, 2, 2],
+                                    [16, 16, 32, 64]),
+            "20":  ResNetDefinition(
+                                    self.block2, 'A',
+                                    [3, 3, 3],
+                                    [16, 16, 32, 64]),
+            "32":  ResNetDefinition(
+                                    self.block2, 'A',
+                                    [5, 5, 5],
+                                    [16, 16, 32, 64]),
+            "44":  ResNetDefinition(
+                                    self.block2, 'A',
+                                    [7, 7, 7],
+                                    [16, 16, 32, 64]),
+            "56":  ResNetDefinition(
+                                    self.block2, 'A',
+                                    [9, 9, 9],
+                                    [16, 16, 32, 64]),
+            "110":  ResNetDefinition(
+                                    self.block2, 'A',
+                                    [18, 18, 18],
+                                    [16, 16, 32, 64]),
             # ImageNet sized filters
-            18: ResNetDefinition(self.block2, 'B',
-                                 [2, 2, 2, 2],
-                                 [64, 64, 128, 256, 512]),
-            34: ResNetDefinition(self.block2, 'B',
-                                 [3, 4, 6, 3],
-                                 [64, 64, 128, 256, 512]),
-            50: ResNetDefinition(self.block3, 'B',
-                                 [3, 4, 6, 3],
-                                 [64, (64, 256), (128, 512), (256, 1024), (512, 2048)]),
-            101: ResNetDefinition(self.block3, 'B',
-                                  [3, 4, 23, 3],
-                                  [64, (64, 256), (128, 512), (256, 1024), (512, 2048)]),
-            152: ResNetDefinition(self.block3, 'B',
-                                  [3, 8, 36, 3],
-                                  [64, (64, 256), (128, 512), (256, 1024), (512, 2048)])
+            "18": ResNetDefinition(
+                                    self.block2, 'B',
+                                    [2, 2, 2, 2],
+                                    [64, 64, 128, 256, 512]),
+            "34": ResNetDefinition(
+                                    self.block2, 'B',
+                                    [3, 4, 6, 3],
+                                    [64, 64, 128, 256, 512]),
+            "50": ResNetDefinition(
+                                    self.block3, 'B',
+                                    [3, 4, 6, 3],
+                                    [64, (64, 256), (128, 512),
+                                        (256, 1024), (512, 2048)]),
+            "101": ResNetDefinition(
+                                    self.block3, 'B',
+                                    [3, 4, 23, 3],
+                                    [64, (64, 256), (128, 512),
+                                        (256, 1024), (512, 2048)]),
+            "152": ResNetDefinition(
+                                    self.block3, 'B',
+                                    [3, 8, 36, 3],
+                                    [64, (64, 256), (128, 512),
+                                        (256, 1024), (512, 2048)]),
+            "x50": ResNetDefinition(
+                                    self.resnext_block, 'B',
+                                    [3, 4, 6, 3],
+                                    [64, (128, 256), (256, 512),
+                                        (512, 1024), (1024, 2048)])
 
         }
 
@@ -79,9 +99,10 @@ class ResNet(object):
         self.block = definition.block
         self.block_counts = definition.block_counts
         self.out_filters = definition.out_filters
-        self.residual = partial(self.residual,
-                                type=opts.shortcut_type if opts.shortcut_type is not None
-                                else definition.shortcut_type)
+        self.residual = partial(
+            self.residual,
+            type=opts.shortcut_type if opts.shortcut_type is not None
+            else definition.shortcut_type)
 
         # Apply dataset specific changes
         self.initial_k = 7
@@ -90,13 +111,21 @@ class ResNet(object):
 
         self.opts = opts
 
-
     def _build_graph(self, x):
-        x = self.initial_block(x, self.out_filters[0], ksize=self.initial_k, include_mp=self.initial_mp)
+        x = self.initial_block(
+                                x,
+                                self.out_filters[0],
+                                ksize=self.initial_k,
+                                include_mp=self.initial_mp)
 
         for n in range(len(self.block_counts)):
             first_stride = 1 if n is 0 else 2
-            x = self.block(x, first_stride, self.out_filters[n+1], self.block_counts[n], "b{}".format(n+1))
+            x = self.block(
+                            x,
+                            first_stride,
+                            self.out_filters[n+1],
+                            self.block_counts[n],
+                            "b{}".format(n+1))
 
         with self.namescope("classifier"):
             x = self.reduce_mean(x)
@@ -149,6 +178,32 @@ class ResNet(object):
             with self.namescope(debug_name + "/" + str(i) + "/2"):
                 # downsample on the 3x3 conv is ResNetv1.5
                 x = self.conv(x, 3, 1, filters[0])
+                x = self.norm(x)
+                x = self.relu(x)
+
+            with self.namescope(debug_name + "/" + str(i) + "/3"):
+                x = self.conv(x, 1, 1, filters[1])
+                x = self.norm(x)
+
+            with self.namescope(debug_name + "/" + str(i) + "/shortcut"):
+                x = self.residual(x, shortcut, filters[1], stride)
+
+        return x
+
+    def resnext_block(self, x, first_stride, filters, count, debug_name=''):
+        for i in range(count):
+            shortcut = x
+            stride = (first_stride if (i == 0) else 1)
+
+            with self.namescope(debug_name + "/" + str(i) + "/1"):
+                # downsample on the first 1x1 conv is ResNetv1
+                x = self.conv(x, 1, stride, filters[0])
+                x = self.norm(x)
+                x = self.relu(x)
+
+            with self.namescope(debug_name + "/" + str(i) + "/2"):
+                # downsample on the 3x3 conv is ResNetv1.5
+                x = self.conv(x, 3, 1, filters[0], 32)
                 x = self.norm(x)
                 x = self.relu(x)
 

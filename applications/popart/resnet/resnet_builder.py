@@ -9,7 +9,7 @@ import popart
 
 class PopartBuilderResNet(ResNet):
     def __init__(self, *args, **kwargs):
-        self.builder = popart.Builder()
+        self.builder = popart.Builder(opsets={"ai.onnx": 10, "ai.onnx.ml": 1, "ai.graphcore": 1})
         self.dtype = np.float16
         super(PopartBuilderResNet, self).__init__(*args, **kwargs)
 
@@ -43,11 +43,11 @@ class PopartBuilderResNet(ResNet):
     def relu(self, x):
         return self.builder.aiOnnx.relu([x])
 
-    def conv(self, x, ksize, stride, filters_out, bias=True):
+    def conv(self, x, ksize, stride, filters_out, group=1, bias=True):
         with self.namescope("conv"):
             filters_in = self.builder.getTensorShape(x)[1]
 
-            wshape = [filters_out, filters_in, ksize, ksize]
+            wshape = [filters_out, int(filters_in/group), ksize, ksize]
             init_weights = self.xavier_init(wshape, filters_in, filters_out)
             weights = self.builder.addInitializedInputTensor(init_weights, "weights")
 
@@ -65,8 +65,8 @@ class PopartBuilderResNet(ResNet):
                                          dilations=[1, 1],
                                          kernel_shape=[ksize, ksize],
                                          strides=[stride, stride],
+                                         group=group,
                                          pads=[pad, pad, pad, pad])
-
         return x
 
     def norm(self, x, type='BATCH', groups=32, training=False):
@@ -105,8 +105,6 @@ class PopartBuilderResNet(ResNet):
             wshape = [num_units_in, num_units_out]
             init_weights = self.xavier_init(wshape, num_units_in, num_units_out)
             weights = self.builder.addInitializedInputTensor(init_weights, "weights")
-
-            # x = self.builder.reshape_const(self.builder.aiOnnx, [x], [shape[0], shape[1]])
 
             x = self.builder.aiOnnx.matmul([x, weights])  # This could be a gemm with bias
 

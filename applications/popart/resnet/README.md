@@ -1,8 +1,11 @@
 # Graphcore
 
-## ResNet Training
+## ResNet and ResNeXt Training
 
-This directory contains the code to run ResNet training end-to-end.
+This directory contains the code to run ResNet and ResNeXt training end-to-end.
+
+You can train ResNets of all sizes, or a ResNeXt with 50 layers.
+To train a ResNext50 as opposed to a ResNet 50, pass in `x50` to the `--size` argument. 
 
 ### File structure
 
@@ -32,35 +35,25 @@ This directory contains the code to run ResNet training end-to-end.
 
   source venv/bin/activate
 
-4) Install pytorch
-
-  This example uses pytorch to prepare and load the data. To install with pip execute:
-  
-  pip install torch torchvision
-
-  Full instructions can be found at https://pytorch.org
-
-5) Install requirements
+4) Install requirements
 
   pip install -r requirements.txt
 
-  Note: You need torch version 1.1.0. The dataloader is not compatible with 1.0.0
-
-6) Run the training program. Use the `--data-dir` option to specify a path to
+5) Run the training program. Use the `--data-dir` option to specify a path to
    the data.
 
     python resnet_main.py --data-dir=./ [--help]
 
-7) To run parallel data training on two IPUS
-
-    python resnet_main.py --data-dir=./ --num-ipus=2 --batch-size=8
 
 ### Extra information
 
 #### Options
 
 
-Use `--help` to show the available options.
+Use `--help` to show the available options. Here are a few common options:
+
+`--size` (string representation of integer) specifies the size of the Resnet model. Prefix with `x` to instead a
+ ResNeXt model of that size, where one exists, e.g. `x50`.
 
 `--dataset` specifies which data set to use. Current options are `CIFAR-10` 
 or `IMAGENET`. The default is `CIFAR-10` 
@@ -78,7 +71,12 @@ See <https://arxiv.org/abs/1804.07612> for more details.
 `--replication-factor` specifies the number of replicas to execute in parallel. The number of samples processed on each ipu will be
 (batch-size / replication-factor).  Note that the number of ipus must be a multiple of the replication factor.
 
+`--gradient-accumulation-factor` specifies the number of gradients to accumulate before doing a weight update.
+
+`--recompute` will recompute activations rather than storing them. This allows you to work with much bigger effective batch sizes, where the effective batch size is the product of the batch size and the gradient accumulation factor, to increase throughput.
+
 `--num-ipus` the number of ipus to use. 
 
 `--no-prng` disables stochastic rounding.
 
+`--pipeline` runs the model over multiple IPUs using a pipelining technique for efficiency.
