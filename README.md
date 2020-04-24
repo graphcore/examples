@@ -36,9 +36,15 @@ The `applications/` folder contains example applications written in different fr
 
 The `code_examples/` folder contains small code examples showing you how to use various software features when developing for IPUs. See the READMEs in each folder for details.
 
+### Tutorials
+
+The `tutorials/` folder contains tutorials to help you get started using the Graphcore tools. Currently, this contains:
+
+* `tutorials/poplar` - A set of tutorials to introduce the Poplar framework and the Poplibs libraries.
+
 ### Utilities
 
 The `utils/` folder contains utilities libraries and scripts that are used across the other code examples. Currently this is split into:
 
-* `utils/tests` - Common python helper functions for the repo's unit tests.
-* `utils/benchmarks` - Common python helper functions for running benchmarks on the IPU in different frameworks.
+* `utils/tests` - Common Python helper functions for the repo's unit tests.
+* `utils/benchmarks` - Common Python helper functions for running benchmarks on the IPU in different frameworks.
