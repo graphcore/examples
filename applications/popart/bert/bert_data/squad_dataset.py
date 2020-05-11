@@ -105,13 +105,14 @@ class BertDataTransform(object):
     '''
     Masks the indices that are larger than the vocab_length
     '''
-    def __init__(self, dataloader, vocab_length, sequence_length, embedding_dict,  positional_dict, is_training=True):
+    def __init__(self, dataloader, vocab_length, sequence_length, embedding_dict,  positional_dict, merge_both_embeddings, is_training=True):
         self.dataloader = dataloader
         self.vocab_length = vocab_length
         self.sequence_length = sequence_length
         self.is_training = is_training
         self.embedding_dict = embedding_dict
         self.positional_dict = positional_dict
+        self.merge_both_embeddings = merge_both_embeddings
 
     def __len__(self):
         return len(self.dataloader)
@@ -137,7 +138,11 @@ class BertDataTransform(object):
         if self.embedding_dict is not None:
             items[0] = np.take(self.embedding_dict, items[0], 0)
         if self.positional_dict is not None:
-            items[1] = np.take(self.positional_dict, items[1], 0)
+            positional_expanded = np.take(self.positional_dict, items[1], 0)
+            if self.merge_both_embeddings:
+                items[0] += positional_expanded
+            else:
+                items[1] = positional_expanded
         return items
 
 
@@ -192,6 +197,7 @@ class SquadDataSet(DataSet):
                  output_dir=None,
                  evaluate_script=None,
                  do_lower_case=False,
+                 n_extra=0,
                  **kwargs):
         super().__init__(**kwargs)
 
@@ -215,6 +221,7 @@ class SquadDataSet(DataSet):
 
         self.results = []
         self.evaluate_script = evaluate_script
+        self.n_extra = n_extra
 
     def add_results(self, data, logits):
         # Results will be batched. Flatten to individual results
@@ -239,6 +246,7 @@ class SquadDataSet(DataSet):
         predictions_file = os.path.join(self.output_dir, f"predictions{suffix}.json")
         nbest_file = os.path.join(self.output_dir, f"nbest_predictions{suffix}.json")
         null_log_odds_file = os.path.join(self.output_dir, f"null_odds{suffix}.json")
+        self.results = self.results[:len(self.results) - self.n_extra]
         write_predictions(self.examples,
                           self.features,
                           self.results,
@@ -261,33 +269,6 @@ class SquadDataSet(DataSet):
             logger.info(status_string)
 
 
-def no_drop_batches_per_step(batches_per_step,
-                             dataset_size,
-                             batch_size,
-                             replication_factor=1,
-                             accumulation_factor=1,
-                             max_pipeline_stage=1,
-                             is_training=True):
-    fixed_factors = batch_size * replication_factor * accumulation_factor
-    if (dataset_size % fixed_factors) != 0:
-        raise RuntimeError(f"The batch_size * replication_factor * accumulation_factor does divide the dataset ({dataset_size} / {fixed_factors}). "
-                           "no_drop_remainder cannot adjust batches_per_step to use all the dataset.")
-    dataset_size = int(dataset_size // fixed_factors)
-    # Pipelining requires a minimum number of batches_per_step to make sure
-    # there is a enough data to fill the pipeline
-    if is_training:
-        min_batches_per_step = 2 * (max_pipeline_stage - 1) + 1
-    else:
-        min_batches_per_step = max_pipeline_stage
-    while batches_per_step > min_batches_per_step and (dataset_size % batches_per_step) != 0:
-        batches_per_step -= 1
-    if batches_per_step <= min_batches_per_step:
-        batches_per_step = min_batches_per_step
-        while (dataset_size % batches_per_step) != 0:
-            batches_per_step += 1
-    return batches_per_step
-
-
 def get_bert_dataset(tensor_shapes,
                      input_file,
                      output_dir,
@@ -298,6 +279,7 @@ def get_bert_dataset(tensor_shapes,
                      batches_per_step,
                      embedding_dict,
                      positional_dict,
+                     merge_both_embeddings=False,
                      replication_factor=1,
                      accumulation_factor=1,
                      shuffle=True,
@@ -315,6 +297,10 @@ def get_bert_dataset(tensor_shapes,
     samples_per_step = batch_size * batches_per_step * \
         replication_factor * accumulation_factor
 
+    div_factor = batch_size * replication_factor * accumulation_factor * batches_per_step
+
+    pad = 0
+
     if synthetic:
         features = generate_synthetic_features(
             sequence_length, vocab_length, samples_per_step)
@@ -330,28 +316,21 @@ def get_bert_dataset(tensor_shapes,
             overwrite_cache=overwrite_cache,
             do_lower_case=do_lower_case)
 
+    if no_drop_remainder and not synthetic:
+        # dataset will be padded to be divisible by batch-size and samples-per-step
+        pad = int(np.ceil(len(features)/div_factor)) * div_factor - len(features)
+
     if is_distributed:
         sampler = DistributedDataSampler(
             features, seed, shuffle,
-            mpi_size, mpi_rank, padding=False)
+            mpi_size, mpi_rank, padding=False, padding_sub=pad, div_factor=div_factor)
+        pad = sampler.get_subpadding_size()
     elif shuffle:
-        sampler = ShuffledSampler(features, seed)
+        sampler = ShuffledSampler(features, seed, pad)
     else:
-        sampler = SequentialSampler(features)
-
-
+        sampler = SequentialSampler(features, pad)
     if no_drop_remainder and not synthetic:
-        batches_per_step = no_drop_batches_per_step(
-            batches_per_step,
-            len(sampler),
-            batch_size,
-            replication_factor,
-            accumulation_factor,
-            max_pipeline_stage,
-            is_training)
-        logger.info(f"Adjusted Batches Per Step to: {batches_per_step}")
-        samples_per_step = batch_size * batches_per_step * \
-            replication_factor * accumulation_factor
+        logger.info(f"no_drop_remainder: Dataset padded by {pad} samples")
 
     dl = SquadDataLoader(
         features,
@@ -366,6 +345,7 @@ def get_bert_dataset(tensor_shapes,
         sequence_length,
         embedding_dict,
         positional_dict,
+        merge_both_embeddings,
         is_training=is_training)
 
     if not is_training:
@@ -383,6 +363,7 @@ def get_bert_dataset(tensor_shapes,
         output_dir,
         evaluate_script,
         do_lower_case=do_lower_case,
+        n_extra=pad,
         loader=bert_ds,
         tensor_shapes=tensor_shapes,
         batches_per_step=batches_per_step,

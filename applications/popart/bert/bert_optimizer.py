@@ -1,7 +1,6 @@
 # Copyright 2019 Graphcore Ltd.
 import enum
 import popart
-import sys
 import logging
 
 logger = logging.getLogger(__name__)
@@ -33,13 +32,16 @@ class BaseOptimizerFactory():
         self.projection_lr_scale = args.projection_lr_scale
 
         self.lr_scaling = args.pipeline_lr_scaling
+        self.weight_decay = args.weight_decay
         self.momentum_scaling = args.pipeline_momentum_scaling
+        self.execution_mode = args.execution_mode
+        self.tensors = tensors
+        self.pipeline_stage_lr_scaling = []
 
         # If pipelining is enabled, we want to scale the parameters for different
         # pipeline stages. If not, don't perform scaling.
         # Note: This calculates the scale factors, not the absolute values
-        if args.execution_mode == "PIPELINE" and (self.lr_scaling or self.momentum_scaling):
-            self.pipeline_stage_tensors = tensors
+        if self.execution_mode == "PIPELINE" and (self.lr_scaling or self.momentum_scaling):
             if self.lr_scaling:
                 offset = args.pipeline_lr_scaling_offset
                 self.pipeline_stage_lr_scaling = self._pipeline_stage_parameter_scaling(offset, tensors)
@@ -49,9 +51,6 @@ class BaseOptimizerFactory():
                 if args.pipeline_dampening_scaling_offset is not None:
                     offset = args.pipeline_dampening_scaling_offset
                 self.pipeline_stage_dampening_scaling = self._pipeline_stage_parameter_scaling(offset, tensors)
-        else:
-            self.pipeline_stage_tensors = {}
-            self.pipeline_stage_lr_scaling = []
 
     @property
     def optimizer_options(self):
@@ -64,6 +63,13 @@ class BaseOptimizerFactory():
     def learning_rate(self):
         return self.option_values["defaultLearningRate"]
 
+    def include_for_weight_decay(self, tensor_id):
+        """ Do not include bias and norms for weight decay."""
+
+        return self.weight_decay > 0 and not tensor_id.endswith(
+            'B') and not tensor_id.endswith('Beta') and not tensor_id.endswith(
+                'Gamma')
+
     def update_and_create(self, iteration):
         self.update(iteration)
         return self.create()
@@ -74,42 +80,63 @@ class BaseOptimizerFactory():
         optimizer = popart.SGD(self.optimizer_options)
 
         projection_scale_added = False
+        weight_decay_tensor_list = []
 
-        for stage in self.pipeline_stage_tensors:
-            specific_parameters = {}
-            if self.lr_scaling:
-                default_lr, lr_is_const = self.optimizer_options["defaultLearningRate"]
-                specific_parameters["learningRate"] = (default_lr * self.pipeline_stage_lr_scaling[stage], lr_is_const)
-            if self.momentum_scaling:
-                # Momentum values are scaled inverse to the pipeline_stage
-                if self.option_values["defaultMomentum"] != 0:
-                    # This arithmetic will create FP rounding errors if momentum == 0.
-                    momentum = 1 - ((1 - self.option_values["defaultMomentum"]) * self.pipeline_stage_momentum_scaling[stage])
-                else:
-                    momentum = 0
-                specific_parameters["momentum"] = (momentum, True)
+        if self.execution_mode == "PIPELINE":
+            for stage in self.tensors:
 
-                if self.option_values["defaultDampening"] != 0:
-                    dampening = 1 - ((1 - self.option_values["defaultDampening"]) * self.pipeline_stage_dampening_scaling[stage])
-                else:
-                    dampening = 0
-                specific_parameters["dampening"] = (dampening, True)
-            for tensor_id in self.pipeline_stage_tensors[stage]:
-                # Special case for embedding/projection variable.
-                if self.projection_lr_scaling and "Embedding_Dict" in tensor_id:
-                    lr = specific_parameters.get("learningRate", self.optimizer_options["defaultLearningRate"])
-                    params = specific_parameters.copy()
-                    params["learningRate"] = (lr[0] * self.projection_lr_scale, lr[1])
-                    optimizer.insertSpecific(tensor_id, params)
-                    projection_scale_added = True
-                else:
+                specific_parameters = {}
+
+                if self.lr_scaling:
+                    default_lr, lr_is_const = self.optimizer_options["defaultLearningRate"]
+                    specific_parameters["learningRate"] = (default_lr * self.pipeline_stage_lr_scaling[stage], lr_is_const)
+
+                if self.momentum_scaling:
+                    # Momentum values are scaled inverse to the pipeline_stage
+                    if self.option_values["defaultMomentum"] != 0:
+                        # This arithmetic will create FP rounding errors if momentum == 0.
+                        momentum = 1 - ((1 - self.option_values["defaultMomentum"]) * self.pipeline_stage_momentum_scaling[stage])
+                    else:
+                        momentum = 0
+                    specific_parameters["momentum"] = (momentum, True)
+
+                    if self.option_values["defaultDampening"] != 0:
+                        dampening = 1 - ((1 - self.option_values["defaultDampening"]) * self.pipeline_stage_dampening_scaling[stage])
+                    else:
+                        dampening = 0
+                    specific_parameters["dampening"] = (dampening, True)
+
+                for tensor_id in self.tensors[stage]:
+
+                    if self.include_for_weight_decay(tensor_id):
+                        specific_parameters["weightDecay"] = (self.weight_decay, True)
+                        weight_decay_tensor_list.append(tensor_id)
+
+                    # Special case for embedding/projection variable
+                    if self.projection_lr_scaling and "Embedding_Dict" in tensor_id:
+                        lr = specific_parameters.get("learningRate", self.optimizer_options["defaultLearningRate"])
+                        params = specific_parameters.copy()
+                        params["learningRate"] = (lr[0] * self.projection_lr_scale, lr[1])
+                        optimizer.insertSpecific(tensor_id, params)
+                        projection_scale_added = True
+                    else:
+                        optimizer.insertSpecific(tensor_id, specific_parameters)
+
+            if self.projection_lr_scaling and not projection_scale_added:
+                lr = self.optimizer_options["defaultLearningRate"]
+                optimizer.insertSpecific(
+                    "Embedding/Embedding_Dict",
+                    {"learningRate": (lr[0] * self.projection_lr_scale, lr[1])})
+
+        else:
+            for tensor_id in self.tensors[0]:
+                if self.include_for_weight_decay(tensor_id):
+                    specific_parameters = {"weightDecay": (self.weight_decay, True)}
+                    weight_decay_tensor_list.append(tensor_id)
                     optimizer.insertSpecific(tensor_id, specific_parameters)
 
-        if self.projection_lr_scaling and not projection_scale_added:
-            lr = self.optimizer_options["defaultLearningRate"]
-            optimizer.insertSpecific(
-                "Embedding/Embedding_Dict",
-                {"learningRate": (lr[0] * self.projection_lr_scale, lr[1])})
+        if len(weight_decay_tensor_list) != 0:
+            logger.info(f" Weight decay of {self.weight_decay} applied to: {weight_decay_tensor_list}")
 
         return optimizer
 
@@ -262,65 +289,6 @@ class ScheduledOptimizerFactory(BaseOptimizerFactory):
         for param_name in self._schedules.keys():
             self.option_values[param_name] = self._schedules[param_name].fast_forward(self.iteration)
 
-
-
-class LinearStepOptimizerFactory(BaseOptimizerFactory):
-    def __init__(self, args, iteration, tensors={}):
-        super().__init__(args, iteration, tensors)
-
-        self.lr_option_name = "defaultLearningRate"
-
-        self.target_lr = args.learning_rate
-
-        self.enable_warmup = args.enable_warmup
-        self.warmup_steps = args.warmup_steps
-        self.warmup_init_lr = args.warmup_init_lr
-        self.steps_per_warmup_update = args.steps_per_warmup_update
-
-        self.enable_lr_decay = args.enable_lr_decay
-        self.steps_per_decay_update = args.steps_per_decay_update
-
-        self.option_values[self.lr_option_name] = self.warmup_init_lr if self.enable_warmup else self.target_lr
-        self._non_const_options.add(self.lr_option_name)
-
-
-    def should_update(self, iteration):
-        warmup = self.in_warmup(iteration.count) and iteration.count % self.steps_per_warmup_update == 0
-        decay = not self.in_warmup(iteration.count) and iteration.count % self.steps_per_decay_update == 0
-        return warmup or decay
-
-    def update(self, iteration):
-        if self.in_warmup(iteration.count):
-            self.option_values[self.lr_option_name] = self._warmup_learning_rate(iteration.count)
-        elif self.enable_lr_decay:
-            # We'll assume linear LR decay for now
-            self.option_values[self.lr_option_name] = self._decayed_learning_rate(iteration.count)
-        else:
-            self.option_values[self.lr_option_name] = self.target_lr
-
-    def in_warmup(self, step):
-        return self.enable_warmup and step < self.warmup_steps
-
-    def _warmup_learning_rate(self, step):
-        lr_per_step = (self.target_lr - self.warmup_init_lr) / self.warmup_steps
-        return lr_per_step * step + self.warmup_init_lr
-
-    def _decayed_learning_rate(self, step, power=1.0):
-        step, total_steps = self._adjust_steps_for_warmup(step)
-        decay = (1 - (step / total_steps))
-        if power != 1.0:
-            decay **= power
-        return self.target_lr * decay
-
-    def _adjust_steps_for_warmup(self, step):
-        # Adjust the step-count to consider warmup-steps if enabled
-        if self.enable_warmup:
-            step = step - self.warmup_steps
-            total_steps = self.iteration.total_steps - self.warmup_steps
-        else:
-            total_steps = self.iteration.total_steps
-
-        return step, total_steps
 
 if __name__ == "__main__":
     pytest.main(args=[__file__, '-vv', '-s'])

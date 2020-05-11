@@ -121,7 +121,7 @@ Data for the sample text is created by running:
 python bert_data/create_pretraining_data.py \
   --input-file bert_data/sample_text.txt \
   --output-file data/sample_text.bin \
-  --vocab-file uncased_L-12_H-768_A-12/vocab.txt \
+  --vocab-file data/ckpts/uncased_L-12_H-768_A-12/vocab.txt \
   --do-lower-case \
   --sequence-length 128 \
   --mask-tokens 20 \
@@ -131,6 +131,40 @@ python bert_data/create_pretraining_data.py \
 **NOTE:** `--input-file/--output-file` can take multiple arguments if you want to split your dataset between files.
 
 When creating data for your own dataset, make sure the text has been preprocessed as specified at https://github.com/google-research/bert. This means with one sentence per line and documents delimited by empty lines.
+
+### Quick-Start SQuAD Data Setup
+
+The supplied configs for SQuAD assume data has been set up in advance. In particular these are:
+
+- `data/ckpts/uncased_L-12_H-768_A-12/vocab.txt`: The vocabularly used in pre-training (included in the Google Checkpoint)
+- `data/squad/train-v1.1.json`: The training dataset for SQuAD v1.1
+- `data/squad/dev-v1.1.json`: The evaluation dataset for SQuAD v1.1
+- `data/squad/evaluate-v1.1.py`: The official SQuAD v1.1 evaluation script
+- `data/squad/results`: The results output path. This is created automatically by the `bert.py` script.
+
+A full guide for setting up the data is given in the [bert_data](bert_data) directory. The following serves as a quick-start guide to run the Bert Base SQuAD
+fine-tuning configurations with a pre-trained checkpoint.
+
+#### Pre-Trained Checkpoint
+
+Download pre-trained Base checkpoint containing the vocabulary from https://github.com/google-research/bert
+
+```bash
+$ cd <examples_repo>/applications/popart/bert
+$ curl --create-dirs -L https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip -o data/ckpts/uncased_L-12_H-768_A-12.zip
+$ unzip data/ckpts/uncased_L-12_H-768_A-12.zip -d data/ckpts
+```
+
+#### SQuAD 1.1 Dataset and Evaluation Script
+
+Download the SQuAD dataset (from https://github.com/rajpurkar/SQuAD-explorer):
+
+```bash
+$ cd <examples_repo>/applications/popart/bert
+$ curl --create-dirs -L https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json -o data/squad/dev-v1.1.json
+$ curl --create-dirs -L https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json -o data/squad/train-v1.1.json
+$ curl -L https://raw.githubusercontent.com/allenai/bi-att-flow/master/squad/evaluate-v1.1.py -o data/squad/evaluate-v1.1.py
+```
 
 ### Run the training loop for pre-training (small sample)
 

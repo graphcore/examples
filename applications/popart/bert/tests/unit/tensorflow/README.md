@@ -14,7 +14,7 @@ to installed in your environment.
 The checkpoint and config file can be downloaded from [Google Research's BERT
 github](https://github.com/google-research/bert): 
 
-https://storage.googleapis.com/bert_models/2018_10_18/cased_L-12_H-768_A-12.zip
+https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip
 
 To run the frozen-graph loading test, you'll need to produce the frozen graph from the check-point - see the "Creating the Frozen Graph" section for more information.
 

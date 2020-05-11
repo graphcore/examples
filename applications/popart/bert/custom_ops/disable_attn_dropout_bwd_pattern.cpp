@@ -17,8 +17,7 @@
 #include "utils.cpp"
 
 // Tests have found that disabling dropout in the backwards pass of the attention, just before the softmax,
-// can improve SQuAD fine-tuning by up to 0.6%. This pattern finds that op and sets the drop-probability to 0,
-// disabling dropout for that specific case.
+// can improve SQuAD fine-tuning. This pattern finds that op replaces it with an identity op.
 class DisableAttnDropoutBwdPattern : public popart::PreAliasPattern {
 public:
   bool matches(popart::Op *op) const override {

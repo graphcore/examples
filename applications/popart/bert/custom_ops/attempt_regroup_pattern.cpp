@@ -21,11 +21,11 @@
 // This pattern inserts attemptRegroupOp before: 
 // 1) SGD1AccumulateOp on the gradient input if:
 //   - that gradient comes from a matmul
-//   - The accumulator is also consumed by embeddingGatherGrad
+//   - The accumulator is also consumed by SparseSGD1AccumulateOp
 //
 // 2) SGD1UpdateOp on the accumulator input if:
 //   - that accumulator comes from a matmul
-//   - the weight is not also consumed by embeddingGather
+//   - the weight is not also consumed by GatherOp
 //
 // In both cases there is a scaledAddTo where the tile mapping 
 // of the operands does not match. Adding attemptRegroup should remove some

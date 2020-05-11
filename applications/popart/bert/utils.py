@@ -131,7 +131,14 @@ def parse_bert_args(args_string=None):
     group = parser.add_argument_group("Model Config")
     parser_from_NamedTuple(group, BertConfig, args={
         "batch_size": "Set the micro batch-size",
-        "host_embedding": "Look up embedding on CPU. Otherwise, the lookup is done on the IPU",
+        "host_embedding": dict(
+            choices=["NONE", "WORD", "ALL", "MERGE"],
+            help="Enable embedding lookup on CPU. Values: "
+            "NONE = use IPU; "
+            "WORD = use CPU for word embedding and IPU for position; "
+            "ALL: use CPU; "
+            "MERGE: use CPU and add word and position embedding together"
+        ),
         "sequence_length": "Set the max sequence length",
         "mask_tokens": "Set the max number of masked tokens in a sequence (PRETRAINING only)",
         "vocab_length": "Set the size of the vocabulary",
@@ -166,12 +173,18 @@ def parse_bert_args(args_string=None):
             help="Use Custom Operators"
         ),
         "split_linear_layers": "Memory Optimisation to serialise MatMul Operations. Required for Large 384.",
+        "max_matmul_memory": "This matmul option specifies the proportion of total tile memory the temporary values \
+                              can use. If the operation exceeds this value it will be serialized by poplibs. \
+                              Note: this is different to using PopART's setSerializeMatMul as the matmul will still be a single PopART Op \
+                              meaning other operations cannot be scheduled between the serialised steps. \
+                              BERT uses setSerializeMatMul so VarUpdate can execute between steps thus freeing the required gradient memory",
         "squeeze_model": "Try to use fewer IPUs by placing the input embedding and loss onto the \
                             same IPUs as the first and last tranformer layers respectively",
         "no_mask": "Don't apply padding masks to the attention scores",
         "projection_serialization_steps": "Split the final MLM projection into this many steps",
         "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on the encoder matmuls.",
-        "update_embedding_dict": "Include the sparse update to the word Embedding_Dict."
+        "update_embedding_dict": "Include the sparse update to the word Embedding_Dict.",
+        "no_cls_layer": "Don't include the CLS layer in pretraining. This layer comes after the encoders but before the projection for the MLM loss."
     })
     group.add_argument("--use-ipu-model", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Target the IpuModel (acquires a real IPU device by default). \
@@ -196,7 +209,8 @@ def parse_bert_args(args_string=None):
 
     group = parser.add_argument_group("Training Config")
     group.add_argument("--gradient-accumulation-factor", type=int, default=1,
-                       help="Set how many gradients to accumulate before updating the weights. (Note: This changes the effective batch size)")
+                       help="Set how many gradients to accumulate before updating the weights. \
+                            Note: This affects the calculation of effective batch size")
     group.add_argument("--replication-factor", type=int, default=1,
                        help="Replicates the graph by this factor across IPUs to achieve data parallel execution. (Note: This changes the effective batch size)")
     group.add_argument("--learning-rate", type=float, default=0.0008,
@@ -209,6 +223,7 @@ def parse_bert_args(args_string=None):
                        help="Set the velocity scaling. This helps prevent overflow when accumulating gradients.")
     group.add_argument("--loss-scaling", type=float, default=4.0,
                        help="Set the loss scaling. This helps prevent underflow during backpropagation.")
+    group.add_argument("--weight-decay", type=float, default=0, help="Set the weight decay, not used for bias and norms parameters")
     group.add_argument("--epochs", type=int, default=35,
                        help="Number of epochs to train for")
     group.add_argument("--stochastic-rounding", type=str_to_bool, nargs="?", const=True, default=False,

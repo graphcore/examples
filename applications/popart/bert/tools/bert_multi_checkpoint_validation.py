@@ -77,7 +77,7 @@ def run_inference_extract_result(args, session, dataset, inputs, logits, anchors
 
     result = None
     for line in log_contents.splitlines():
-        matches = re.search("F1 Score: ([\d\.]+) \| Exact Match: ([\d\.]+)", line)
+        matches = re.search(r"F1 Score: ([\d\.]+) \| Exact Match: ([\d\.]+)", line)
         if matches is not None:
             f1 = float(matches[1])
             exact_match = float(matches[2])
@@ -242,7 +242,7 @@ def main(arg_list=None):
     remaining_args += ["--checkpoint-dir", run_args.checkpoint_dir]
 
     # If no config is supplied, try to load the config that should have been saved with the ckpts.
-    if "--config" not in run_args:
+    if "--config" not in remaining_args:
         config_path = find_checkpoint_config(run_args.checkpoint_dir)
         remaining_args += ["--config", config_path]
 

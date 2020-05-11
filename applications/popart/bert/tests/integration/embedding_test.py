@@ -1,11 +1,8 @@
 # Copyright 2020 Graphcore Ltd.
-import os
-import ctypes
-import numpy as np
-from pathlib import Path
 import popart
 import numpy as np
 from collections import defaultdict
+import pytest
 
 from bert import (set_library_seeds,
                   bert_config_from_args,
@@ -21,7 +18,7 @@ from bert import (set_library_seeds,
                   enable_realtime_scheduling,
                   bert_process_infer_data,
                   disable_realtime_scheduling)
-from bert_model import Bert, BertConfig
+from bert_model import Bert
 from tests.utils import TestFailureError
 import logging
 import utils
@@ -31,25 +28,7 @@ Tests the Embedding and Positional Dict lookup on the host against the same on t
 Executes just the Embedding and Positional parts of the Embedding layer and compares the result.
 '''
 
-
 logger = logging.getLogger('BERT')
-
-
-def bert_embedding_only_graph(model, indices, positions):
-    with model.builder.nameScope("Embedding"):
-        with model.embedding_scope:
-            x = model.embedding_onnx(indices, model.config.vocab_length, "Embedding_Dict")
-
-        with model.embedding_split_scope:
-            x_pos = model.embedding_onnx(positions,
-                                         model.config.max_positional_length,
-                                         "Positional_Dict",
-                                         init_fn=model.config.positional_embedding_init_fn)
-
-            x = model.builder.aiOnnx.add([x, x_pos])
-            outputs = [x]
-            return tuple(outputs)
-    return None
 
 
 def run_embedding_layer(args):
@@ -70,7 +49,7 @@ def run_embedding_layer(args):
 
     # If config.host_embedding is enabled, indices and positions will have the matrices instead of the index vector.
     indices, positions, segments, masks, labels = bert_add_inputs(args, model)
-    logits = bert_embedding_only_graph(model, indices, positions)
+    logits = tuple([model.embedding(indices, positions, segments)])
 
     if args.inference:
         outputs = bert_add_infer_outputs(model, logits)
@@ -100,8 +79,6 @@ def run_embedding_layer(args):
                         dataset, inputs, logits, anchors,
                         iteration)"""
         save_results = args.task == "SQUAD" and not args.synthetic_data
-
-        repeat_count = 1
 
         start_times = defaultdict(list)
         end_times = defaultdict(list)
@@ -134,17 +111,19 @@ def run_embedding_layer(args):
     return None
 
 
+@pytest.mark.ipus(2)
+@pytest.mark.category1
 def test_host_embedding():
     args_string = ["--config",
                    'configs/squad_base_inference.json',
-                   '--host-embedding=true',
+                   '--host-embedding=ALL',
                    '--synthetic-data=true'
                    ]
     args = utils.parse_bert_args(args_string)
     args.shuffle = False
-    args.host_embedding = True
+    args.host_embedding = "ALL"
     host_embedding_outputs = np.array(run_embedding_layer(args), dtype=float)
-    args.host_embedding = False
+    args.host_embedding = "NONE"
     ipu_embedding_outputs = np.array(run_embedding_layer(args), dtype=float)
 
     if np.allclose(host_embedding_outputs, ipu_embedding_outputs, rtol=0.3):

@@ -11,6 +11,7 @@ from collections import deque
 from collections import defaultdict
 from itertools import chain
 import logging
+import socket
 
 import popart
 import numpy as np
@@ -42,25 +43,38 @@ def bert_config_from_args(args):
                          for k in BertConfig._fields if hasattr(args, k)})
 
 
+def bert_add_embedding_inputs(args, model, sequence_info):
+    if args.host_embedding == "NONE":
+        indices = model.builder.addInputTensor(sequence_info, "indices")
+        positions = model.builder.addInputTensor(sequence_info, "positions")
+    else:   # "ALL", "WORD", "MERGE"
+        expanded_sequence_info = popart.TensorInfo(
+            "FLOAT16", [args.batch_size * args.sequence_length, args.hidden_size])
+        indices = model.builder.addInputTensor(
+            expanded_sequence_info, "indices_expanded")
+        if args.host_embedding == "ALL":
+            positions = model.builder.addInputTensor(
+                expanded_sequence_info, "pos_expanded")
+        else:
+            positions = model.builder.addInputTensor(sequence_info, "positions")
+
+    return indices, positions
+
+
 def bert_add_inputs(args, model):
     sequence_info = popart.TensorInfo(
         "UINT32", [args.batch_size * args.sequence_length])
-    if args.host_embedding:
-        expanded_sequence_info = popart.TensorInfo(
-            "FLOAT16", [args.batch_size * args.sequence_length, args.hidden_size])
-        indices = model.builder.addInputTensor(expanded_sequence_info, "indices_expanded")
-        positions = model.builder.addInputTensor(expanded_sequence_info, "pos_expanded")
-    else:
-        indices = model.builder.addInputTensor(sequence_info, "indices")
-        positions = model.builder.addInputTensor(sequence_info, "positions")
+    indices, positions = bert_add_embedding_inputs(args, model, sequence_info)
 
     segments = model.builder.addInputTensor(sequence_info, "segments")
     labels = []
     masks = []
     mask_info = popart.TensorInfo("UINT32", [args.batch_size, 1])
     if args.task == "PRETRAINING":
-        masks.append(model.builder.addInputTensor(mask_info, "mask_tokens_mask_idx"))
-        masks.append(model.builder.addInputTensor(mask_info, "sequence_mask_idx"))
+        masks.append(
+            model.builder.addInputTensor(mask_info, "mask_tokens_mask_idx"))
+        masks.append(
+            model.builder.addInputTensor(mask_info, "sequence_mask_idx"))
         labels_info = popart.TensorInfo(
             "UINT32", [args.batch_size, args.mask_tokens])
         labels.append(model.builder.addInputTensor(labels_info, "mask_labels"))
@@ -70,8 +84,10 @@ def bert_add_inputs(args, model):
         if not args.inference:
             labels_info = popart.TensorInfo(
                 "UINT32", [args.batch_size])
-            labels.append(model.builder.addInputTensor(labels_info, "start_labels"))
-            labels.append(model.builder.addInputTensor(labels_info, "end_labels"))
+            labels.append(model.builder.addInputTensor(
+                labels_info, "start_labels"))
+            labels.append(model.builder.addInputTensor(
+                labels_info, "end_labels"))
     return indices, positions, segments, masks, labels
 
 
@@ -84,16 +100,19 @@ def bert_infer_graph(model, logits):
     if model.config.task == "SQUAD":
         with model.squad_scope:
             predictions = list(
-                model.builder.aiOnnx.argmax([logit], axis=1, keepdims=0, debugPrefix=f"{logit}/ArgMax")
+                model.builder.aiOnnx.argmax(
+                    [logit], axis=1, keepdims=0, debugPrefix=f"{logit}/ArgMax")
                 for logit in logits)
             probs = list(
-                model.builder.aiOnnx.softmax([logit], axis=1, debugPrefix=f"{logit}/Softmax")
+                model.builder.aiOnnx.softmax(
+                    [logit], axis=1, debugPrefix=f"{logit}/Softmax")
                 for logit in logits)
 
             # FIXME: There is currently an issue with Pipeline recomputation that causes in-place softmax
             # to corrupt in the backwards pass. Remove this when D16304 lands
             for prob in probs:
-                model.builder.setInplacePreferences(prob, {"SoftmaxInplace": -1})
+                model.builder.setInplacePreferences(
+                    prob, {"SoftmaxInplace": -1})
     elif model.config.task == "PRETRAINING":
         with model.nsp_scope:
             nsp_predictions = model.builder.aiOnnx.argmax(
@@ -119,7 +138,8 @@ def bert_loss_graph(model, probs, labels):
         elif 'nsp' in label:
             vGraph = model.nsp_scope.virtualGraph
             pStage = model.nsp_scope.pipelineStage
-            nllloss = popart.NllLoss(prob, label, f"{label}/loss", ignore_index=2)
+            nllloss = popart.NllLoss(
+                prob, label, f"{label}/loss", ignore_index=2)
         else:
             vGraph = model.mlm_scope.virtualGraph
             pStage = model.mlm_scope.pipelineStage
@@ -193,7 +213,8 @@ def bert_session_options(args, model):
     if args.max_copy_merge_size == -1:
         logger.debug(f"No copy merge size limit applied")
     else:
-        logger.warning(f"Workaround for T11642: copy merge size limit set to {args.max_copy_merge_size}")
+        logger.warning(
+            f"Workaround for T11642: copy merge size limit set to {args.max_copy_merge_size}")
         engine_options["opt.maxCopyMergeSize"] = str(args.max_copy_merge_size)
 
     # Adding {"fullyConnectedPass", "TRAINING_BWD"} to some matmuls causes large
@@ -201,7 +222,8 @@ def bert_session_options(args, model):
     # WARNING: This causes SQuAD 384 12-layer to go OOM
     if args.disable_fully_connected_pass:
         if args.task == "SQUAD" and args.sequence_length == 384:
-            logger.warning(f"Fully connected pass has been disabled. This may cause SQuAD 384 12-layer to go OOM.")
+            logger.warning(
+                f"Fully connected pass has been disabled. This may cause SQuAD 384 12-layer to go OOM.")
         options.enableFullyConnectedPass = False
 
     if args.inference and args.engine_cache is not None and not args.variable_weights_inference:
@@ -223,7 +245,7 @@ def bert_session_options(args, model):
 
 def bert_session_patterns(args):
     patterns = popart.Patterns()
-    if args.task != "SQuAD":
+    if args.task != "SQUAD":
         patterns.enablePattern("DisableAttnDropoutBwdPattern", False)
     return patterns
 
@@ -324,7 +346,7 @@ def bert_writer(args):
     return writer
 
 
-def get_bert_dataset(model, args, inputs, embedding_dict = None, positional_dict = None):
+def get_bert_dataset(model, args, inputs, embedding_dict=None, positional_dict=None, merge_both_embeddings=False):
     config = model.config
     shapeOf = model.builder.getTensorShape
     # The inputs after the first three (ind, pos, seg) are always lists
@@ -360,6 +382,7 @@ def get_bert_dataset(model, args, inputs, embedding_dict = None, positional_dict
             batches_per_step=args.batches_per_step,
             embedding_dict=embedding_dict,
             positional_dict=positional_dict,
+            merge_both_embeddings=merge_both_embeddings,
             accumulation_factor=args.gradient_accumulation_factor,
             replication_factor=args.replication_factor,
             shuffle=args.shuffle,
@@ -374,8 +397,7 @@ def get_bert_dataset(model, args, inputs, embedding_dict = None, positional_dict
             mpi_size=args.mpi_size,
             mpi_rank=args.mpi_rank,
             is_distributed= args.mpi_size > 1)
-        if args.no_drop_remainder and not args.synthetic_data:
-            args.batches_per_step = ds.batches_per_step  # Keep args up to date
+
         return ds
 
 
@@ -440,7 +462,8 @@ class Iteration:
         self.epochs = args.epochs
         self.epochs_per_save = args.epochs_per_save
         self.steps_per_log = args.steps_per_log
-        self.samples_per_step = batches_per_step * args.gradient_accumulation_factor * args.replication_factor * args.batch_size
+        self.samples_per_step = batches_per_step * \
+            args.gradient_accumulation_factor * args.replication_factor * args.batch_size
         self.steps_per_epoch = steps_per_epoch
         self.total_steps = self.steps_per_epoch * self.epochs
         self.writer = writer
@@ -544,7 +567,8 @@ def bert_process_data(args, session, labels, data, anchors,
         gcprofile.save_popart_report(session)
         sys.exit(0)
 
-    iteration.add_stats(duration, hw_cycles, labels_data, anchors, losses, predictions)
+    iteration.add_stats(duration, hw_cycles, labels_data,
+                        anchors, losses, predictions)
 
     if (iteration.count % iteration.steps_per_log) == 0:
         iteration.report_stats()
@@ -586,7 +610,8 @@ def create_callback_stepio(data, anchors, start_times, end_times, batches_per_st
 
     # Called after the input buffer has been consumed by the device:
     def input_complete_callback(id):
-        micro_batch_indices[id] = (micro_batch_indices[id] + 1) % batches_per_step
+        micro_batch_indices[id] = \
+            (micro_batch_indices[id] + 1) % batches_per_step
         return
 
     # Output callback is called when a buffer is needed for the result:
@@ -598,7 +623,8 @@ def create_callback_stepio(data, anchors, start_times, end_times, batches_per_st
     def output_complete_callback(id):
         output_time = time.perf_counter()
         end_times[id].append(output_time)
-        micro_batch_indices[id] = (micro_batch_indices[id] + 1) % batches_per_step
+        micro_batch_indices[id] = \
+            (micro_batch_indices[id] + 1) % batches_per_step
 
     stepio = popart.PyStepIOCallback(input_callback,
                                      input_complete_callback,
@@ -616,9 +642,11 @@ def compute_latency(args, start_times, end_times, durations):
         # two anchors most separated in time:
         start_id = get_timing_start_anchor(start_times)
         end_id = get_timing_end_anchor(end_times)
-        rtts = list(map(lambda v: v[1] - v[0], zip(start_times[start_id], end_times[end_id])))
+        rtts = list(
+            map(lambda v: v[1] - v[0], zip(start_times[start_id], end_times[end_id])))
         if len(rtts) != args.batches_per_step:
-            raise RuntimeError("Number of timings doesn't match items in the batch. Something is wrong.")
+            raise RuntimeError(
+                "Number of timings doesn't match items in the batch. Something is wrong.")
         mean_latency = (sum(rtts)) / args.batches_per_step
         min_latency = min(rtts)
         max_latency = max(rtts)
@@ -650,7 +678,8 @@ def bert_process_infer_data(args, session, data, anchors,
 
     iteration.durations.append(duration)
 
-    mean_latency, min_latency, max_latency = compute_latency(args, start_times, end_times, iteration.durations)
+    mean_latency, min_latency, max_latency = compute_latency(
+        args, start_times, end_times, iteration.durations)
 
     if (iteration.count % iteration.steps_per_log) == 0:
         status_string = \
@@ -673,7 +702,8 @@ def bert_train_loop(args, session, writer,
                     iteration, optimizer_factory):
     losses = [loss.output(0) for loss in losses]
 
-    save_model_and_stats(args, session, writer, iteration.count, iteration.epoch)
+    save_model_and_stats(args, session, writer,
+                         iteration.count, iteration.epoch)
 
     for iteration.epoch in range(iteration.start_epoch, args.epochs):
         for data in dataset:
@@ -681,10 +711,12 @@ def bert_train_loop(args, session, writer,
                               losses, predictions, iteration, optimizer_factory)
 
             if args.steps_per_save > 0 and (iteration.count % args.steps_per_save) == 0:
-                save_model_and_stats(args, session, writer, iteration.count, iteration.epoch, True)
+                save_model_and_stats(args, session, writer,
+                                     iteration.count, iteration.epoch, True)
 
         if args.epochs_per_save > 0 and ((iteration.epoch + 1) % iteration.epochs_per_save) == 0:
-            save_model_and_stats(args, session, writer, iteration.count, iteration.epoch + 1)
+            save_model_and_stats(args, session, writer,
+                                 iteration.count, iteration.epoch + 1)
 
     save_model_and_stats(args, session, writer, iteration.count)
 
@@ -712,9 +744,7 @@ def bert_infer_loop(args, session,
                     iteration):
     save_results = args.task == "SQUAD" and not args.synthetic_data
 
-    repeat_count = 1
-    if args.synthetic_data:
-        repeat_count = args.epochs
+    repeat_count = max(1, int(round(args.epochs)))
 
     # Create the stepio once outside of the inference loop:
     static_data = {}
@@ -734,7 +764,8 @@ def bert_infer_loop(args, session,
             result = bert_process_infer_data(args, session, static_data, anchors,
                                              logits, iteration,
                                              start_times, end_times, stepio)
-            if save_results:
+
+            if save_results and iteration.epoch == repeat_count - 1:
                 dataset.add_results(data, result)
             start_times.clear()
             end_times.clear()
@@ -769,7 +800,8 @@ def bert_pretrained_initialisers(config, args):
         logger.info("Initialising from synthetic_data")
         return None
     if args.onnx_checkpoint:
-        logger.info(f"Initialising from ONNX checkpoint: {args.onnx_checkpoint}")
+        logger.info(
+            f"Initialising from ONNX checkpoint: {args.onnx_checkpoint}")
         return utils.load_initializers_from_onnx(args.onnx_checkpoint)
     if args.tf_checkpoint:
         logger.info(f"Initialising from TF checkpoint: {args.tf_checkpoint}")
@@ -809,7 +841,12 @@ def main(args):
 
     embedding_dict, positional_dict = model.get_model_embeddings()
 
-    dataset = get_bert_dataset(model, args, [indices, positions, segments, masks, labels], embedding_dict, positional_dict)
+    dataset = get_bert_dataset(model,
+                               args,
+                               [indices, positions, segments, masks, labels],
+                               embedding_dict,
+                               positional_dict,
+                               config.host_embedding == "MERGE")
     logger.info(f"Dataset length: {len(dataset)}")
 
     data_flow = popart.DataFlow(dataset.batches_per_step, outputs)
@@ -826,7 +863,8 @@ def main(args):
     device = acquire_device(args, request_ipus)
 
     if args.inference:
-        session, anchors = bert_inference_session(model, args, data_flow, losses, device)
+        session, anchors = bert_inference_session(
+            model, args, data_flow, losses, device)
         logger.info("Inference Started")
         inputs = [indices, positions, segments, *masks]
         bert_infer_loop(args, session,
@@ -837,7 +875,7 @@ def main(args):
         if not args.no_training:
             optimizer_factory = ScheduledOptimizerFactory(args,
                                                           iteration,
-                                                          model.pipeline_stage_tensors)
+                                                          model.tensors)
 
             session, anchors = bert_training_session(model,
                                                      args,
@@ -873,9 +911,14 @@ def setup_logger(log_level):
 
 
 if __name__ == "__main__":
+
     args = utils.parse_bert_args()
+
     setup_logger(logging.getLevelName(args.log_level))
+
     logger.info("Program Start")
+    logger.info("Hostname: " + socket.gethostname())
+    logger.info("Command Executed: " + str(sys.argv))
 
     # Run the main inference/training session by default
     if args.inference or not args.no_training:

@@ -152,13 +152,13 @@ curl --create-dirs -L https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v
 
 **2) Pre-trained weights**
 
-Get Google's pre-trained weights (or produce your own by pre-training on the IPU). For example to get pre-trained weights for `BERT Base, cased`:
+Get Google's pre-trained weights (or produce your own by pre-training on the IPU). For example to get pre-trained weights for `BERT Base, uncased`:
 
-`curl --create-dirs -L https://storage.googleapis.com/bert_models/2018_10_18/cased_L-12_H-768_A-12.zip -o data/ckpts/cased_L-12_H-768_A-12.zip`
+`curl --create-dirs -L https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip -o data/ckpts/uncased_L-12_H-768_A-12.zip`
 
 Unzip the weights with:
 
-`unzip data/ckpts/cased_L-12_H-768_A-12.zip -d data/ckpts`
+`unzip data/ckpts/uncased_L-12_H-768_A-12.zip -d data/ckpts`
 
 ## SQuAD inference data
 

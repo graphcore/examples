@@ -1,40 +1,16 @@
 # BERT Testing
 
-### File structure
 
-* `unit/` - Testing the functional correctness of components of the model vs a PyTorch version. The implementation of the component will be the best performing, custom_op or ONNX.
-* `regression` - Testing the performance, accuracy and throughput, of the model during training and inference.
+First, the environment need to be prepared according to the instructions in the root README.
 
-### How to run the tests demo
+Then, the pytests packing need to be invoked from the root bert folder.
 
-#### Prepare the environment
-
-##### PopART
-
-Follow the instructions in the root README.
-
-##### Poplar
-
-Follow the instructions in the root README.
-
-##### Python
-
-Follow the instructions in the root README and Install pytest
-
+Run all tests:
 ```
-pip install pytest
+pytest
 ```
 
-#### Run the test
-
-###### Unit tests
-
+Run selected tests e.g. custom_ops unit tests only:
 ```
-pytest tests/unit
-```
-
-###### Regression tests
-
-```
-pytest tests/regression
+pytest tests/unit/custom_ops
 ```

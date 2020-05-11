@@ -23,7 +23,7 @@ def mock_infer_loop(f1, em, multiple_log_lines, correct_output, *params):
     dataset_logger = logging.getLogger("bert_data.squad_dataset")
     if multiple_log_lines:
         dataset_logger.error("log line 1")
-        dataset_logger.warn("log line 2")
+        dataset_logger.warning("log line 2")
         dataset_logger.info("log line 3")
         dataset_logger.debug("log line 4")
     if correct_output:

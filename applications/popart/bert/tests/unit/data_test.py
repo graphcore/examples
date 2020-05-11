@@ -4,9 +4,15 @@ import tempfile
 import numpy as np
 import struct
 import pytest
+import subprocess
+import zipfile
+import pickle
+import popart
 from functools import reduce
 from itertools import chain
 
+from bert import bert_add_inputs
+from bert_model import Bert, BertConfig
 from bert_data.dataset import DataSet
 from bert_data.pretraining_dataset import (
     BinaryDataLoader,
@@ -18,7 +24,7 @@ from bert_data.pretraining_dataset import (
 from bert_data.squad_dataset import (
     SquadDataLoader,
     generate_synthetic_features,
-    no_drop_batches_per_step
+    get_bert_dataset
 )
 
 
@@ -217,92 +223,84 @@ def test_dataset():
     assert(np.all(sample["labels"].flatten() == data[4].flatten()))
 
 
-def test_no_drop_remainder():
-    pipeline_stages = 14
-    # Prime number dataset
-    prime_dataset = 113
-    bps = no_drop_batches_per_step(
-        2,
-        prime_dataset,
-        1,
-        1,
-        1,
-        pipeline_stages,
-        True
-    )
-    assert prime_dataset == bps
+@pytest.fixture(scope="session")
+def get_squad(tmpdir_factory):
+    # Generate a synthetic features cache file to avoid using the real dataset
+        tmpdir = tmpdir_factory.mktemp("ndr_test_tmp_data")
+        input_file = str(tmpdir) + "/inputfile"
+        dataset_size = 3333
+        features = generate_synthetic_features(128, 30, dataset_size)
+        cache_file = input_file + f".{128}.cache"
+        with open(cache_file, "wb") as f:
+            pickle.dump(features, f)
+        print(cache_file)
+        return tmpdir
 
-    # gradient accumulation
-    gradient_accumulation = 16
-    bps = no_drop_batches_per_step(
-        2,
-        prime_dataset * gradient_accumulation,
-        1,
-        1,
-        gradient_accumulation,
-        pipeline_stages,
-        True
-    )
-    assert prime_dataset == bps
 
-    # batch_size
-    batch_size = 2
-    bps = no_drop_batches_per_step(
-        2,
-        prime_dataset * batch_size,
-        batch_size,
-        1,
-        1,
-        pipeline_stages,
-        True
-    )
-    assert prime_dataset == bps
+@pytest.mark.parametrize('batch_size', [1, 2, 8, 13])
+@pytest.mark.parametrize('shuffle,mpi_size', [(False, 1), (True, 1), (False, 2)])
+def test_no_drop_remainder(batch_size, shuffle, mpi_size, get_squad):
+    tmpdir = get_squad
+    batches_per_step = 128
 
-    # replication factor
-    replication_factor = 2
-    bps = no_drop_batches_per_step(
-        2,
-        prime_dataset * replication_factor,
-        1,
-        replication_factor,
-        1,
-        pipeline_stages,
-        True
-    )
-    assert prime_dataset == bps
+    class MockArgs():
+        def __init__(self, batches_per_step, batch_size, shuffle, mpi_size, tmpdir):
+            self.batches_per_step = batches_per_step
+            self.batch_size = batch_size
+            self.sequence_length = 128
+            self.hidden_size = 768
+            self.vocab_length = 30
+            self.host_embedding = "NONE"
+            self.task = "SQUAD"
+            self.inference = True
+            self.synthetic = False
+            self.input_files = str(tmpdir) + "/inputfile"
+            self.output_dir = None
+            self.vocab_file = None
+            self.accumulation_factor = 1
+            self.replication_factor = 1
+            self.shuffle = shuffle
+            self.mpi_size = mpi_size
 
-    bps = no_drop_batches_per_step(
-        2,
-        prime_dataset * replication_factor * batch_size * gradient_accumulation,
-        batch_size,
-        replication_factor,
-        gradient_accumulation,
-        pipeline_stages,
-        True
-    )
-    assert prime_dataset == bps
+    def create_dataset(args):
+        # a simple copy of main bert.py until the dataset creation
+        config = BertConfig()
+        model = Bert(config, builder=popart.Builder())
+        indices, positions, segments, masks, labels = bert_add_inputs(args, model)
+        inputs = [indices, positions, segments, masks, labels]
+        embedding_dict, positional_dict = model.get_model_embeddings()
+        shapeOf = model.builder.getTensorShape
+        inputs = reduce(chain, inputs[3:], inputs[:3])
+        tensor_shapes = [(tensorId, shapeOf(tensorId)) for tensorId in inputs]
+        dataset = get_bert_dataset(tensor_shapes,
+                                   input_file=args.input_files,
+                                   output_dir=args.output_dir,
+                                   sequence_length=args.sequence_length,
+                                   vocab_file=args.vocab_file,
+                                   vocab_length=args.vocab_length,
+                                   batch_size=args.batch_size,
+                                   batches_per_step=args.batches_per_step,
+                                   embedding_dict=embedding_dict,
+                                   positional_dict=positional_dict,
+                                   synthetic = args.synthetic,
+                                   is_training=False,
+                                   no_drop_remainder=True,
+                                   shuffle = args.shuffle,
+                                   mpi_size=args.mpi_size,
+                                   is_distributed=(args.mpi_size > 1))
+        return dataset
 
-    # Inference
-    bps = no_drop_batches_per_step(
-        6,
-        3*7,
-        1,
-        1,
-        1,
-        3,
-        False
-    )
-    assert 3 == bps
+    def test(ds, args):
+        datatransform = ds.loader
+        loader = datatransform.dataloader
+        sampler = loader.sampler
+        dataset_size = len(sampler)
+        div_factor = args.batch_size * args.replication_factor * args.accumulation_factor * args.batches_per_step
+        # The aim of the option is to make the dataset size divisible by div_factor
+        assert(dataset_size % div_factor == 0)
+        assert(ds.n_extra < div_factor)
 
-    # Failure
-    with pytest.raises(RuntimeError) as excinfo:
-        no_drop_batches_per_step(
-            6,
-            prime_dataset,
-            2,
-            2,
-            2,
-            3,
-            True
-        )
-    assert "no_drop_remainder cannot adjust batches_per_step" in str(excinfo.value)
+    # test
+    args = MockArgs(batches_per_step, batch_size, shuffle, mpi_size, tmpdir)
+    ds = create_dataset(args)
+    test(ds, args)

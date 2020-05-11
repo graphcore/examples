@@ -27,5 +27,6 @@
     "split_linear_layers": true,
     "use_default_available_memory_proportion": false,
     "low_latency_inference": true,
-    "max_copy_merge_size": -1
+    "max_copy_merge_size": -1,
+    "max_matmul_memory": 104858
 }

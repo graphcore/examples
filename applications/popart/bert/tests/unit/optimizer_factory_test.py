@@ -5,7 +5,7 @@ import math
 import popart
 import numpy as np
 from typing import NamedTuple
-from bert_optimizer import ScheduledOptimizerFactory, LinearStepOptimizerFactory, Schedule
+from bert_optimizer import ScheduledOptimizerFactory, Schedule
 from bert import Iteration
 
 
@@ -29,6 +29,7 @@ class TestConfig(NamedTuple):
     loss_scaling: float = 1.0
 
     momentum: float = 0.0
+    weight_decay: float = 0.0
     dampening: float = 0.0
     velocity_scaling: float = 1.0
 
@@ -276,149 +277,6 @@ def test_scheduled_optimiser_params_const_flag():
 
 
 @pytest.mark.category1
-def test_linear_optimizer_factory():
-
-    def test(config, iteration, true_result):
-        factory = LinearStepOptimizerFactory(config, iteration)
-        for step in range(iteration.total_steps):
-            if factory.should_update(iteration):
-                factory.update(iteration)
-
-            if step in true_result.keys():
-                assert(
-                    abs(true_result[step] - factory.learning_rate) < sys.float_info.epsilon)
-
-            iteration.count += 1
-
-    #  ==============================  No warmup, no decay  ===============================
-    iteration = MockIteration(1, 100)
-    config = TestConfig(enable_warmup=False,
-                        enable_lr_decay=False,
-                        learning_rate=1e-8,
-                        warmup_init_lr=0)
-
-    test(config, iteration, {
-        0: 1e-8,
-        25: 1e-8,
-        50: 1e-8,
-        99: 1e-8
-    })
-
-    #  ============================  Warmup 50 steps to 1e-8  =============================
-    iteration = MockIteration(1, 200)
-    config = TestConfig(enable_warmup=True,
-                        enable_lr_decay=False,
-                        learning_rate=1e-8,
-                        warmup_steps=50,
-                        warmup_init_lr=0)
-
-    test(config, iteration, {
-        0: 0,
-        10: 2e-9,
-        25: 5e-9,
-        50: 1e-8,
-        199: 1e-8
-    })
-
-    #  ============================  Warmup 100 steps to 1e-8  ============================
-    iteration = MockIteration(1, 200)
-    config = TestConfig(enable_warmup=True,
-                        enable_lr_decay=False,
-                        learning_rate=1e-8,
-                        warmup_steps=100,
-                        warmup_init_lr=0)
-
-    test(config, iteration, {
-        0: 0,
-        10: 1e-9,
-        25: 2.5e-9,
-        50: 5e-9,
-        100: 1e-8,
-        199: 1e-8
-    })
-
-    #  ===========================  Warmup 100 steps to 2e-8  =============================
-    iteration = MockIteration(1, 200)
-    config = TestConfig(enable_warmup=True,
-                        enable_lr_decay=False,
-                        learning_rate=2e-8,
-                        warmup_steps=100,
-                        warmup_init_lr=0)
-
-    test(config, iteration, {
-        0: 0,
-        10: 2e-9,
-        25: 5e-9,
-        50: 1e-8,
-        100: 2e-8,
-        199: 2e-8
-    })
-
-    #  ==================  No warmup, decay from 1e-8 over 100 steps  =====================
-    iteration = MockIteration(1, 100)
-    config = TestConfig(enable_warmup=False,
-                        enable_lr_decay=True,
-                        learning_rate=1e-8,
-                        warmup_init_lr=0)
-
-    test(config, iteration, {
-        0: 1e-8,
-        25: 7.5e-9,
-        50: 5e-9,
-        75: 2.5e-9,
-        99: 1e-10
-    })
-
-    #  ==================  No warmup, decay from 1e-5 over 100 steps  =====================
-    iteration = MockIteration(1, 100)
-    config = TestConfig(enable_warmup=False,
-                        enable_lr_decay=True,
-                        learning_rate=1e-5,
-                        warmup_init_lr=0)
-
-    test(config, iteration, {
-        0: 1e-5,
-        25: 7.5e-6,
-        50: 5e-6,
-        75: 2.5e-6,
-        99: 1e-7
-    })
-
-    #  ==================  No warmup, decay from 1e-5 over 500 steps  =====================
-    iteration = MockIteration(1, 500)
-    config = TestConfig(enable_warmup=False,
-                        enable_lr_decay=True,
-                        learning_rate=1e-5,
-                        warmup_init_lr=0)
-
-    test(config, iteration, {
-        0: 1e-5,
-        125: 7.5e-6,
-        250: 5e-6,
-        375: 2.5e-6,
-        499: 2e-8
-    })
-
-    #  ================  Warmup 50 steps to 1e-8, decay over 500 steps  ===================
-    iteration = MockIteration(1, 550)
-    config = TestConfig(enable_warmup=True,
-                        warmup_steps=50,
-                        enable_lr_decay=True,
-                        learning_rate=1e-8,
-                        warmup_init_lr=0)
-
-    test(config, iteration, {
-        0: 0,
-        25: 5e-9,
-        50: 1e-8,
-        175: 7.5e-9,
-        300: 5e-9,
-        425: 2.5e-9,
-        549: 2e-11
-    })
-
-
-@pytest.mark.category1
 def test_schedule_key_parsing():
     """Tests the parser can handle variations of string, float and int representations"""
     iteration = MockIteration(1, 550)
@@ -587,7 +445,7 @@ def test_per_tensor_lr():
             raise OSError("Failed to acquire IPU.")
 
         # The stage->tensor map would come from the Bert model in reality
-        # (see model.pipeline_stage_tensors)
+        # (see model.tensors)
         mock_tensor_map = {
             0: [w0Id],
             1: [w1Id],
@@ -671,11 +529,3 @@ def test_per_tensor_lr():
     test(config, iteration, true_scaling, test_case)
 
 
-@pytest.mark.category1
-def test_linear_optimiser_params_const_flag():
-
-    iteration = MockIteration(20, 100)
-    factory = LinearStepOptimizerFactory(TestConfig(), iteration)
-
-    for key, value in factory.optimizer_options.items():
-        assert(not value[1] if key == "defaultLearningRate" else value[1])

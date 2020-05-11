@@ -26,5 +26,6 @@
     "squeeze_model": true,
     "use_default_available_memory_proportion": true,
     "low_latency_inference": true,
-    "max_copy_merge_size": -1
+    "max_copy_merge_size": -1,
+    "max_matmul_memory": 104858
 }

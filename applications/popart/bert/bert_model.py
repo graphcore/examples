@@ -23,7 +23,12 @@ class BertConfig(NamedTuple):
     # Choices: "DEFAULT", "TRANSFORMER", "SIMPLIFIED"
     positional_embedding_init_fn: str = "DEFAULT"
     # Look up embedding on CPU
-    host_embedding: bool = False
+    # Possible values:
+    #   NONE  = all embeddings on IPU
+    #   WORD  = word embeddings on CPU, position embeddings on IPU
+    #   ALL   = all embeddings on CPU, both word and position embeddings sent to IPU
+    #   MERGE = all embeddings on CPU, sum of word and position embeddings sent to IPU
+    host_embedding: str = "NONE"
     # PRETRAINING Only
     mask_tokens: int = 20
 
@@ -97,28 +102,13 @@ class BertConfig(NamedTuple):
 
     use_default_available_memory_proportion: bool = False
 
+    no_cls_layer: bool = False
+
+    max_matmul_memory: int = 40000
+
     @property
     def available_memory_proportion(self):
-        '''This matmul option specifies the proportion of total tile memory the temporary values
-        can use. If the operation exceeds this value it will be serialized by poplibs.
-        Note: this is different to using PopART's setSerializeMatMul as the matmul will still be a single PopART Op
-        meaning other operations cannot be scheduled between the serialised steps.
-        BERT uses setSerializeMatMul so VarUpdate can execute between steps thus freeing the required gradient memory'''
-        if self.inference:
-            if self.squeeze_model and self.sequence_length == 384:
-                max_matmul_memory = 45000
-            else:
-                max_matmul_memory = 104858
-        elif self.sequence_length < 128:
-            max_matmul_memory = 40000
-        elif self.sequence_length <= 256:
-            max_matmul_memory = 60000
-        elif self.sequence_length <= 384:
-            max_matmul_memory = 45000
-        else:
-            max_matmul_memory = 40000
-        # max / 256KiB (total tile memory)
-        return max_matmul_memory / (2**18)
+        return self.max_matmul_memory / (2**18)
 
 
 class ExecutionMode(str, Enum):
@@ -149,7 +139,8 @@ class DeviceScope(object):
         # even if it's disabled. FIXME: T13889
         if self.execution_mode == ExecutionMode.PIPELINE\
                 and self.pipelineStage is not None:
-            self.stack.enter_context(self.builder.pipelineStage(self.pipelineStage))
+            self.stack.enter_context(
+                self.builder.pipelineStage(self.pipelineStage))
 
         if self.nameScope is not None:
             self.stack.enter_context(self.builder.nameScope(self.nameScope))
@@ -172,9 +163,8 @@ class Model(object):
             execution_mode = ExecutionMode(execution_mode)
         self.execution_mode = execution_mode
 
-        # Whenever a new tensor is created on a given pipeline stage, it should be added
-        # to this dict to ensure it is given the correct learning rate
-        self.pipeline_stage_tensors = defaultdict(list)
+        # Keep track of tensors in order to give them different parameters
+        self.tensors = defaultdict(list)
 
     def normal_init_tensor(self, dtype, shape, mean, std_dev, debug_name=""):
         data = self.normal_init_data(dtype, shape, mean, std_dev, debug_name)
@@ -195,7 +185,8 @@ class Model(object):
             if np.any(data.shape != np.array(shape)):
                 if np.all(data.T.shape == np.array(shape)):
                     data = data.T.copy()
-                    logger.warn(f"Initializer for {name} was provided transposed.")
+                    logger.warn(
+                        f"Initializer for {name} was provided transposed.")
                 else:
                     raise RuntimeError(f"Initializer {name} does not match shapes. \n"
                                        f" Provided {data.shape}. Required {shape}")
@@ -226,10 +217,11 @@ class Model(object):
         return DeviceScope(self.builder, self.execution_mode, virtualGraph, pipelineStage, nameScope, additional_scopes)
 
     def _add_to_tensor_map(self, tensor):
-        if not self.builder.hasPipelineStage():
-            return
-        pipeline_stage = self.builder.getPipelineStage()
-        self.pipeline_stage_tensors[pipeline_stage].append(tensor)
+        if self.builder.hasPipelineStage():
+            pipeline_stage = self.builder.getPipelineStage()
+            self.tensors[pipeline_stage].append(tensor)
+        else:
+            self.tensors[0].append(tensor)
 
 
 class Bert(Model):
@@ -336,7 +328,10 @@ class Bert(Model):
 
         if self.config.task == "PRETRAINING":
             with self.cls_scope:
-                predictions = self.lm_prediction_head(x)
+                if self.config.no_cls_layer:
+                    predictions = self.builder.aiOnnx.identity([x])
+                else:
+                    predictions = self.lm_prediction_head(x)
             with self.mlm_scope:
                 outputs = [self.projection(predictions)] + outputs
 
@@ -347,7 +342,8 @@ class Bert(Model):
 
             if self.output_scope:
                 with self.output_scope:
-                    outputs += [self.detach(tensor) for tensor in squad_outputs]
+                    outputs += [self.detach(tensor)
+                                for tensor in squad_outputs]
             else:
                 outputs += squad_outputs
 
@@ -430,7 +426,8 @@ class Bert(Model):
                                                 num_splits,
                                                 keep_precision=True)
             if not self.config.use_default_available_memory_proportion:
-                self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
+                self.builder.setAvailableMemoryProportion(
+                    x, self.config.available_memory_proportion)
             x = self.builder.aiOnnx.add([x, bias1])
 
         x = self.intermediate_activation_function(x)
@@ -452,7 +449,8 @@ class Bert(Model):
                                                 num_splits,
                                                 keep_precision=True)
             if not self.config.use_default_available_memory_proportion:
-                self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
+                self.builder.setAvailableMemoryProportion(
+                    x, self.config.available_memory_proportion)
             x = self.builder.aiOnnx.add([x, bias2])
 
         # google-research/bert puts dropout here
@@ -460,7 +458,6 @@ class Bert(Model):
         x = self.builder.aiOnnx.add([input_x, x])
         x = self.norm(x)
         return x
-
 
     def detach(self, input_x, pass_through_creation=1):
         if self.config.inference:
@@ -506,10 +503,12 @@ class Bert(Model):
         if init_fn not in ("TRANSFORMER", "SIMPLIFIED"):
             return self.normal_init_data(dtype, shape, 0, 0.02, debug_name)
 
-        data = self.initializers.get(self.builder.getNameScope(debug_name), None)
+        data = self.initializers.get(
+            self.builder.getNameScope(debug_name), None)
         if data is None:
             if init_fn == "TRANSFORMER":
-                data = self.generate_transformer_periodic_pos_data(dtype, shape)
+                data = self.generate_transformer_periodic_pos_data(
+                    dtype, shape)
             else:
                 data = self.generate_simplified_periodic_pos_data(dtype, shape)
         else:
@@ -525,32 +524,29 @@ class Bert(Model):
         self._add_to_tensor_map(tensor)
         return tensor
 
-
     def get_model_embeddings(self):
         embedding_dict = None
         positional_dict = None
-        if self.config.host_embedding:
+        if self.config.host_embedding in ("ALL", "WORD", "MERGE"):
             with self.builder.nameScope("Embedding"):
                 embedding_dict = self.get_embedding_data(self.config.dtype,
                                                          (self.config.vocab_length, self.config.hidden_size),
                                                          "DEFAULT",
                                                          "Embedding_Dict")
-                positional_dict = self.get_embedding_data(self.config.dtype,
-                                                          (self.config.max_positional_length, self.config.hidden_size),
-                                                          self.config.positional_embedding_init_fn,
-                                                          "Positional_Dict")
+                if self.config.host_embedding in ("ALL", "MERGE"):
+                    positional_dict = self.get_embedding_data(self.config.dtype,
+                                                              (self.config.max_positional_length, self.config.hidden_size),
+                                                              self.config.positional_embedding_init_fn,
+                                                              "Positional_Dict")
         return embedding_dict, positional_dict
-
 
     def embedding(self, indices, positions, segments):
         with self.embedding_scope:
-            x = self.gather(indices, self.config.vocab_length, "Embedding_Dict")
+            x = self.gather(indices,
+                            self.config.vocab_length,
+                            "Embedding_Dict")
 
         with self.embedding_split_scope:
-            x_pos = self.gather(positions,
-                                self.config.max_positional_length,
-                                "Positional_Dict",
-                                init_fn=self.config.positional_embedding_init_fn)
 
             segments_onehot = self.builder.aiOnnx.onehot([
                 segments,
@@ -560,9 +556,15 @@ class Bert(Model):
                 self.config.dtype,
                 [2, self.config.hidden_size],
                 0, 0.02, "Segment_Dict")
-            x_seg = self.builder.aiOnnx.matmul([segments_onehot, segments_weights])
+            x_seg = self.builder.aiOnnx.matmul(
+                [segments_onehot, segments_weights])
 
-            x = self.builder.aiOnnx.add([x, x_pos])
+            if self.config.host_embedding != "MERGE":
+                x_pos = self.gather(positions,
+                                    self.config.max_positional_length,
+                                    "Positional_Dict",
+                                    init_fn=self.config.positional_embedding_init_fn)
+                x = self.builder.aiOnnx.add([x, x_pos])
             x = self.builder.aiOnnx.add([x, x_seg])
 
             # When outlining is enabled, under certain situations, the `add` above resolves
@@ -575,23 +577,26 @@ class Bert(Model):
         return x
 
     def gather(self, indices, embedding_size, name, init_fn="DEFAULT"):
-        if self.config.host_embedding and (name == "Embedding_Dict" or name == "Positional_Dict"):
+        if self.config.host_embedding in ("ALL", "WORD", "MERGE") and name == "Embedding_Dict":
             return indices
-
+        if self.config.host_embedding in ("ALL", "MERGE") and name == "Positional_Dict":
+            return indices
         if name == "Embedding_Dict" and self.config.task == "PRETRAINING":
             # Important that the tied gather/matmul weight with transpose before the gather.
             # This will ensure it matches the custom_ops/tied_gather_pattern.
-            embedding_dict = self.embedding_init_tensor(self.config.dtype,
-                                                        (self.config.hidden_size, embedding_size),
-                                                        init_fn,
-                                                        name)
+            embedding_dict = self.embedding_init_tensor(
+                self.config.dtype,
+                (self.config.hidden_size, embedding_size),
+                init_fn,
+                name)
             self.embedding_dict = embedding_dict
             embedding_dict = self.builder.aiOnnx.transpose([embedding_dict])
         else:
-            embedding_dict = self.embedding_init_tensor(self.config.dtype,
-                                                        (embedding_size, self.config.hidden_size),
-                                                        init_fn,
-                                                        name)
+            embedding_dict = self.embedding_init_tensor(
+                self.config.dtype,
+                (embedding_size, self.config.hidden_size),
+                init_fn,
+                name)
 
         x = self.builder.aiOnnx.gather([embedding_dict, indices])
 
@@ -652,29 +657,32 @@ class Bert(Model):
         return final_mask
 
     def attention(self, input_x, masks=None):
-        qkv_weights = self.normal_init_tensor(self.config.dtype,
-                                              [self.config.hidden_size, 3 * self.config.hidden_size],
-                                              0, 0.02,
-                                              "QKV")
+        qkv_weights = self.normal_init_tensor(
+            self.config.dtype,
+            [self.config.hidden_size, 3 * self.config.hidden_size],
+            0, 0.02,
+            "QKV")
         qkv = self.builder.aiOnnx.matmul([input_x, qkv_weights])
         if self.config.split_linear_layers:
             self.builder.setSerializeMatMul({qkv}, 'output_channels', 3, True)
         if not self.config.use_default_available_memory_proportion:
-            self.builder.setAvailableMemoryProportion(qkv, self.config.available_memory_proportion)
+            self.builder.setAvailableMemoryProportion(
+                qkv, self.config.available_memory_proportion)
 
         if 'attention' in self.config.custom_ops:
             x = self.attention_custom(qkv, masks)
         else:
             x = self.attention_onnx(qkv, masks)
 
-        projection_weights = self.normal_init_tensor(self.config.dtype,
-                                                     [self.config.hidden_size,
-                                                         self.config.hidden_size],
-                                                     0, 0.02,
-                                                     "Out")
+        projection_weights = self.normal_init_tensor(
+            self.config.dtype,
+            [self.config.hidden_size, self.config.hidden_size],
+            0, 0.02,
+            "Out")
         x = self.builder.aiOnnx.matmul([x, projection_weights])
         if not self.config.use_default_available_memory_proportion:
-            self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
+            self.builder.setAvailableMemoryProportion(
+                x, self.config.available_memory_proportion)
 
         x = self.dropout(x)
         x = self.builder.aiOnnx.add([input_x, x])
@@ -721,7 +729,12 @@ class Bert(Model):
             perm = [0, 2, 1, 3] if not transpose else [0, 2, 3, 1]
             return self.builder.aiOnnx.transpose([tensor], perm=perm)
 
-        split_qkv = self.builder.aiOnnx.split([qkv], num_outputs=3, axis=1, split=[self.config.hidden_size]*3, debugPrefix="QKV_Split")
+        split_qkv = self.builder.aiOnnx.split(
+            [qkv],
+            num_outputs=3,
+            axis=1,
+            split=[self.config.hidden_size]*3,
+            debugPrefix="QKV_Split")
 
         q, kt, v = [extract_heads(t, i == 1) for i, t in enumerate(split_qkv)]
 
@@ -729,7 +742,8 @@ class Bert(Model):
         with self.builder.nameScope('Z'):
             x = self.builder.aiOnnx.matmul([q, kt])
             if not self.config.use_default_available_memory_proportion:
-                self.builder.setAvailableMemoryProportion(x, self.config.available_memory_proportion)
+                self.builder.setAvailableMemoryProportion(
+                    x, self.config.available_memory_proportion)
 
             c = self.constant_tensor(
                 1 / np.sqrt(self.config.qkv_length), self.config.dtype)
@@ -747,7 +761,8 @@ class Bert(Model):
             # x[batch_size, attention_heads, sequence_length, sequence_length] * v[batch_size, attention_heads, sequence_length, qkv_length]
             z = self.builder.aiOnnx.matmul([x, v])
             if not self.config.use_default_available_memory_proportion:
-                self.builder.setAvailableMemoryProportion(z, self.config.available_memory_proportion)
+                self.builder.setAvailableMemoryProportion(
+                    z, self.config.available_memory_proportion)
 
             # [batch_size, attention_heads, sequence_length, qkv_length] -> [batch_size, sequence_length, attention_heads, qkv_length]
             z = self.builder.aiOnnx.transpose([z], perm=[0, 2, 1, 3])
@@ -766,8 +781,9 @@ class Bert(Model):
         weight = self.embedding_dict
 
         # Move the weight to the current pipeline stage
-        if weight in self.pipeline_stage_tensors[self.embedding_scope.pipelineStage]:
-            self.pipeline_stage_tensors[self.embedding_scope.pipelineStage].remove(weight)
+        if weight in self.tensors[self.embedding_scope.pipelineStage]:
+            embedding_stage = self.embedding_scope.pipelineStage
+            self.tensors[embedding_stage].remove(weight)
             self._add_to_tensor_map(weight)
 
         x = self.builder.aiOnnx.matmul([x, weight])
@@ -837,7 +853,8 @@ class Bert(Model):
         cls_weight = self.normal_init_tensor(
             self.config.dtype, [self.config.hidden_size, 2], 0, 0.02, "NspW"
         )
-        cls_bias = self.constant_init_tensor(self.config.dtype, (2,), 0, "NspB")
+        cls_bias = self.constant_init_tensor(
+            self.config.dtype, (2,), 0, "NspB")
         x = self.builder.aiOnnx.gemm([x, cls_weight, cls_bias])
         return x
 
@@ -849,7 +866,8 @@ class Bert(Model):
                                                0.02,
                                                "LMPredictionW")
 
-        dense_bias = self.constant_init_tensor(self.config.dtype, (self.config.hidden_size,), 0, "LMPredictionB")
+        dense_bias = self.constant_init_tensor(
+            self.config.dtype, (self.config.hidden_size,), 0, "LMPredictionB")
 
         x = self.builder.aiOnnx.gemm([input_x, dense_weight, dense_bias])
 
