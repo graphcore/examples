@@ -34,7 +34,7 @@ int main() {
   for (unsigned i = 0; i < 4; ++i)
     graph.setTileMapping(v2[i], i);
 
-  // Allocate v3, t4 to tile 0
+  // Allocate v3, v4 to tile 0
   graph.setTileMapping(v3, 0);
   graph.setTileMapping(v4, 0);
 
