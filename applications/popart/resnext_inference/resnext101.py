@@ -102,7 +102,7 @@ def main(argv):
     # Create a session to compile and execute the graph
     options = popart.SessionOptions()
     if FLAGS.synthetic:
-        options.ignoreData = True
+        options.syntheticDataMode = popart.SyntheticDataMode.Zeros
     options.instrumentWithHardwareCycleCounter = FLAGS.report_hw_cycle_count
 
     # Select a device
@@ -115,7 +115,7 @@ def main(argv):
     session = popart.InferenceSession(
         fnModel=proto,
         deviceInfo=device,
-        dataFeed=dataFlow,
+        dataFlow=dataFlow,
         userOptions=options)
 
     print("Compiling...")

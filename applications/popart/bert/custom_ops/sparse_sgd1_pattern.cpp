@@ -8,7 +8,7 @@
 #include <popart/tensorinfo.hpp>
 #include <popart/logging.hpp>
 #include <popart/op/gather.hpp>
-#include <popart/op/sgd1accumulate.hpp>
+#include <popart/op/accumulate.hpp>
 #include <iostream>
 
 #include "sparse_sgd1_accumulate.cpp"
@@ -25,7 +25,7 @@ public:
         popart::Tensor *gradient = op->outTensor(popart::GatherGradOp::gradOutIndex());
         bool has_sgd1_consumer = false;
         for (popart::Op *consumer : gradient->consumers.getOps()) {
-            if (consumer->isConvertibleTo<popart::SGD1AccumulateOp>()) {
+            if (consumer->isConvertibleTo<popart::AccumulateOp>()) {
                 return true;
             }
         }
@@ -40,22 +40,22 @@ public:
     auto &graph = op->getGraph();
 
     popart::GatherGradOp *gather_grad = dynamic_cast<popart::GatherGradOp *>(op);
-    popart::SGD1AccumulateOp *dense_accl;
+    popart::AccumulateOp *dense_accl;
 
     popart::Tensor *gradient = op->outTensor(popart::GatherGradOp::gradOutIndex());
     for (popart::Op *consumer : gradient->consumers.getOps()) {
-        if (consumer->isConvertibleTo<popart::SGD1AccumulateOp>() &&
+        if (consumer->isConvertibleTo<popart::AccumulateOp>() &&
             !consumer->isConvertibleTo<SparseSGD1AccumulateOp>()) {
-            dense_accl = dynamic_cast<popart::SGD1AccumulateOp *>(consumer);
+            dense_accl = dynamic_cast<popart::AccumulateOp *>(consumer);
             break;
         }
     }
 
-    popart::TensorId accl_id = dense_accl->inId(popart::SGD1AccumulateOp::getVarToUpdateInIndex());
+    popart::TensorId accl_id = dense_accl->inId(popart::AccumulateOp::getVarToUpdateInIndex());
 
     auto sparse_accl_up = std::make_unique<SparseSGD1AccumulateOp>(
         accl_id,
-        dense_accl->initDpsf1,
+        dense_accl->getFactor(),
         gather_grad->getAxis(),
         popart::Op::Settings(graph, dense_accl->name() + "_accumulate"));
 
@@ -71,18 +71,18 @@ public:
     sparse_accl->connectInTensor(SparseSGD1AccumulateOp::getUpdaterInIndex(),
                                  gather_grad->inId(popart::GatherGradOp::gradInIndex()));
     // Scale
-    if (!dense_accl->initDpsf1.isConst()) {
+    if (!dense_accl->getFactor().isConst()) {
         sparse_accl->connectInTensor(
             // the index at which the dampening scale factor is received,
             SparseSGD1AccumulateOp::getDpsf1InIndex(),
             // the name of the dampening scale factor
-            dense_accl->inId(popart::SGD1AccumulateOp::getDpsf1InIndex()));
+            dense_accl->inId(popart::AccumulateOp::getFactorInIndex()));
     }
     // Indices
     sparse_accl->connectInTensor(SparseSGD1AccumulateOp::getIndicesInIndex(),
                                  gather_grad->inId(popart::GatherGradOp::indicesInIndex()));
 
-    auto outId = dense_accl->outId(popart::SGD1AccumulateOp::getUpdatedVarOutIndex());
+    auto outId = dense_accl->outId(popart::AccumulateOp::getUpdatedVarOutIndex());
     auto gradId = gather_grad->outId(popart::GatherGradOp::gradOutIndex());
 
     // Transfer TopoCons

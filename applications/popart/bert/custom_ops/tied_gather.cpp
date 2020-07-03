@@ -58,7 +58,7 @@ public:
   std::vector<popart::TensorId> mustExistBeforeCreate(int) const { return {}; }
 
   popart::popx::InputCreatorType getInputCreatorType(int index0) const {
-    return index0 == TiedGatherOp::dataInIndex() ? popart::popx::InputCreatorType::CANCREATE
+    return index0 == TiedGatherOp::dataInIndex() ? popart::popx::InputCreatorType::CanCreate
                                                  : popart::popx::Opx::getInputCreatorType(index0);
   }
 

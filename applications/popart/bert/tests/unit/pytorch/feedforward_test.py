@@ -1,8 +1,5 @@
 # Copyright 2019 Graphcore Ltd.
-import os
-import ctypes
 import numpy as np
-from pathlib import Path
 import torch
 from torch import nn
 import pytest
@@ -67,7 +64,6 @@ def test_activation_function(activation_function, phase, custom_ops):
                         sequence_length=128,
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=[],
                         activation_type=str(popart_act_function))
 
     data, outputs, proto, post_proto = popart_result_and_model(
@@ -120,11 +116,12 @@ def popart_result_and_model(popart_config, is_bwd=False):
 
     if is_bwd:
         l1_lambda = 0.1
-        l1 = popart.L1Loss(output, "l1LossVal", l1_lambda)
+        l1 = builder.aiGraphcore.l1loss([output], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
+        proto = builder.getModelProto()
         optimizer = popart.ConstSGD(0.01)
 
         outputs, post_proto = run_py(proto,
-                                     data, (output, l1.output(0)),
+                                     data, (output, l1),
                                      loss=l1,
                                      optimizer=optimizer)
     else:

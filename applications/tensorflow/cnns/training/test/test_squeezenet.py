@@ -26,21 +26,22 @@ class TestCifar10SqueezeNetTraining(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_final_validation_accuracy(self):
+    def test_results(self):
+        # test_final_validation_accuracy
         final_acc = self.validation['val_acc'][-1]
         self.assertGreater(final_acc, 57)
         self.assertLess(final_acc, 67)
 
-    def test_final_training_accuracy(self):
+        # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
         self.assertGreater(final_acc, 55)
         self.assertLess(final_acc, 65)
 
-    def test_learning_rates(self):
+        # test_learning_rates
         self.assertEqual(self.training['lr'][0], 0.1)
         self.assertAlmostEqual(self.training['lr'][-1], 0.0001, places=3)
 
-    def test_epochs_completed(self):
+        # test_epochs_completed
         self.assertEqual(round(self.training['epoch'][-1]), 10)
 
 
@@ -63,19 +64,20 @@ class TestCifar10SqueezeNetFullTraining(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_final_validation_accuracy(self):
+    def test_results(self):
+        # test_final_validation_accuracy
         final_acc = statistics.median(self.validation['val_acc'][-3:-1])
         self.assertGreater(final_acc, 83.0)
         self.assertLess(final_acc, 87.0)
 
-    def test_final_training_accuracy(self):
+        # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
         self.assertGreater(final_acc, 96)
         self.assertLess(final_acc, 99)
 
-    def test_final_loss(self):
+        # test_final_loss
         self.assertLess(self.training['loss_batch'][-1], 0.45)
         self.assertGreater(self.training['loss_batch'][-1], 0.35)
 
-    def test_epochs_completed(self):
+        # test_epochs_completed
         self.assertEqual(round(self.training['epoch'][-1]), 399)

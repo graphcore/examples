@@ -43,8 +43,10 @@ def infer_builder(opts):
         d3 = np.zeros([1, 4 * hidden_size, hidden_size], dType)
         input = np.zeros(input_shape, dType)
     else:
-        d2 = np.random.normal(0, 1, [1, 4 * hidden_size, input_size]).astype(dType)
-        d3 = np.random.normal(0, 1, [1, 4 * hidden_size, hidden_size]).astype(dType)
+        d2 = np.random.normal(
+            0, 1, [1, 4 * hidden_size, input_size]).astype(dType)
+        d3 = np.random.normal(
+            0, 1, [1, 4 * hidden_size, hidden_size]).astype(dType)
         input = np.random.uniform(-1, 1, input_shape).astype(dType)
 
     i1 = builder.addInputTensor(d1, "input_sequences")
@@ -57,7 +59,7 @@ def infer_builder(opts):
         builder,
         {i1: input},
         {out: popart.AnchorReturnType("ALL")},
-        [],
+        None,
         None
     ]
 
@@ -66,10 +68,11 @@ def eval_builder(opts):
     builder, data, outputs, __, __ = infer_builder(opts)
 
     probs = builder.aiOnnx.softmax([list(outputs)[0]])
-    label_shape = [opts.timesteps, opts.batch_size]
+    label_shape = [opts.timesteps, 1, opts.batch_size]
     label = builder.addInputTensor(popart.TensorInfo("INT32", label_shape))
 
-    loss = popart.NllLoss(probs, label, "nllLossVal")
+    loss = builder.aiGraphcore.nllloss(
+        [probs, label], popart.ReductionType.Sum, debugPrefix="nllLossVal")
     if opts.use_zero_values:
         label_data = np.zeros(label_shape, np.int32)
     else:
@@ -78,8 +81,8 @@ def eval_builder(opts):
     return [
         builder,
         {**data, label: label_data},
-        {loss.output(0): popart.AnchorReturnType("ALL")},
-        [loss],
+        {loss: popart.AnchorReturnType("ALL")},
+        loss,
         None
     ]
 

@@ -27,21 +27,22 @@ class TestCifar10ResNeXtTraining(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_final_validation_accuracy(self):
+    def test_results(self):
+        # test_final_validation_accuracy
         final_acc = self.validation['val_acc'][-1]
         self.assertGreater(final_acc, 82)
         self.assertLess(final_acc, 89)
 
-    def test_final_training_accuracy(self):
+        # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
         self.assertGreater(final_acc, 82)
         self.assertLess(final_acc, 89)
 
-    def test_learning_rates(self):
+        # test_learning_rates
         self.assertEqual(self.training['lr'][0], 0.125)
         self.assertEqual(self.training['lr'][-1], 0.000125)
 
-    def test_epochs_completed(self):
+        # test_epochs_completed
         self.assertEqual(round(self.training['epoch'][-1]), 10)
 
 
@@ -65,21 +66,22 @@ class TestCifar10ResNeXtFullTraining(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_final_validation_accuracy(self):
+    def test_results(self):
+        # test_final_validation_accuracy
         final_acc = statistics.median(self.validation['val_acc'][-3:-1])
         self.assertGreater(final_acc, 91.0)
         self.assertLess(final_acc, 95.0)
 
-    def test_final_training_accuracy(self):
+        # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
         self.assertGreater(final_acc, 96)
         self.assertLess(final_acc, 100)
 
-    def test_final_loss(self):
+        # test_final_loss
         self.assertLess(self.training['loss_batch'][-1], 0.45)
         self.assertGreater(self.training['loss_batch'][-1], 0.35)
 
-    def test_epochs_completed(self):
+        # test_epochs_completed
         self.assertEqual(round(self.training['epoch'][-1]), 50)
 
 
@@ -121,12 +123,16 @@ class TestPipelineResNeXt14(unittest.TestCase):
                            '--batch-size': 1,
                            '--no-validation': '',
                            '--pipeline-splits': 'b2/0/relu'})
+        cls.out = out
         cls.training = get_csv(out, 'training.csv')
-        print(cls.training)
 
-    def test_iterations_completed(self):
+    def test_results(self):
+        # test_iterations_completed
         self.assertEqual(self.training['iteration'][-1], 1000)
         self.assertEqual(self.training['step'][-1], 2)
+
+        # test_number_of_parameters
+        self.assertTrue('9411880' in self.out)
 
 
 @pytest.mark.category2
@@ -148,12 +154,13 @@ class TestReplicatedTraining(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_final_training_accuracy(self):
+    def test_results(self):
+        # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
         self.assertGreater(final_acc, 85)
         self.assertLess(final_acc, 95)
 
-    def test_epochs_completed(self):
+        # test_epochs_completed
         self.assertEqual(round(self.training['epoch'][-1]), 20)
 
 
@@ -183,9 +190,9 @@ class TestLotsOfOptions(unittest.TestCase):
         cls.training = get_csv(out, 'training.csv')
 
     # We're mostly just testing that training still runs with all the above options.
-
-    def test_learning_rate(self):
+    def test_results(self):
+        # test_learning_rate
         self.assertEqual(self.training['lr'][0], 0.25)
 
-    def test_epoch(self):
+        # test_epoch
         self.assertEqual(int(self.validation['epoch'][-1] + 0.5), 10)

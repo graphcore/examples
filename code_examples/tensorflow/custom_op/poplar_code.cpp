@@ -7,6 +7,11 @@
 
 #include <iostream>
 
+// Export the API level symbol
+extern "C" {
+  int32_t custom_op_api_level = 1;
+}
+
 // If an operation takes one or more tensors of the same shape,
 // and performs an expression on only corresponding elements in
 // the input tensors, and produces a tensor of the same shape,

@@ -25,13 +25,12 @@ from ipu_utils import get_config
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.ipu.autoshard import automatic_sharding
 from tensorflow.python.ipu import loops, ipu_infeed_queue, ipu_outfeed_queue, ipu_compiler
-from tensorflow.python.ipu.ipu_optimizer import CrossReplicaOptimizer
-from tensorflow.python.ipu.gradient_accumulation_optimizer import GradientAccumulationOptimizer
 from tensorflow.python.ipu.utils import reset_ipu_seed
 from tensorflow.python.ipu.ops import pipelining_ops
 from ipu_optimizer import IPUOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope
 import Datasets.data as dataset
+from weight_avg import average_ckpts, save_ckpt
 DATASET_CONSTANTS = dataset.DATASET_CONSTANTS
 
 
@@ -74,8 +73,19 @@ def get_optimizer(opts):
         opt_fun = tf.train.GradientDescentOptimizer
     elif opts['optimiser'] == 'momentum':
         opt_fun = partial(tf.train.MomentumOptimizer, momentum=opts['momentum'])
+    elif opts['optimiser'] == 'RMSprop':
+        opt_fun = partial(tf.train.RMSPropOptimizer, momentum=opts['momentum'],
+                          decay=opts['rmsprop_decay'], epsilon=opts['rmsprop_epsilon'])
+    else:
+        raise ValueError("Optimizer {} not recognised".format(opts['optimiser']))
 
     wd_exclude = opts["wd_exclude"] if "wd_exclude" in opts.keys() else []
+
+    # get variables to include in training
+    if opts["variable_filter"]:
+        var_list = [v for v in tf.trainable_variables() if any(s in v.name for s in opts["variable_filter"])]
+    else:
+        var_list = tf.trainable_variables()
 
     def filter_fn(name):
         return not any(s in name for s in wd_exclude)
@@ -85,12 +95,14 @@ def get_optimizer(opts):
                                    replicas=opts["replicas"],
                                    gradients_to_accumulate=opts["gradients_to_accumulate"] * opts['pipeline_depth'],
                                    pipelining = opts['pipeline_depth'] > 1,
+                                   grad_scale=opts["grad_scale"],
                                    weight_decay=opts["weight_decay"] * opts['loss_scaling'],
-                                   weight_decay_filter_fn=filter_fn)
+                                   weight_decay_filter_fn=filter_fn,
+                                   var_list=var_list)
 
 
 def calculate_and_apply_gradients(loss, opts=None, learning_rate=None):
-    optimizer = get_optimizer(opts)(learning_rate / opts['loss_scaling'])
+    optimizer = get_optimizer(opts)(learning_rate / opts['lr_scale'])
     grads_and_vars = optimizer.compute_gradients(loss * opts['loss_scaling'])
     with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
         return learning_rate, optimizer.apply_gradients(grads_and_vars)
@@ -121,7 +133,7 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
     def final_stage(learning_rate, x, label,  pipeline_stage=None):
         x = pipeline_stage(x)
         loss, cross_entropy, accuracy = calculate_loss(x, label, opts)
-        return loss, cross_entropy, accuracy, learning_rate / opts["loss_scaling"]
+        return loss, cross_entropy, accuracy, learning_rate / opts["lr_scale"]
 
     model_stages = model(opts)
     computational_stages = [partial(first_stage, pipeline_stage=model_stages[x]) for x in range(len(model_stages) - 1)]
@@ -151,6 +163,7 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
                                    backward_propagation_stages_poplar_options=options,
                                    pipeline_schedule=next(p for p in list(pipelining_ops.PipelineSchedule)
                                                           if opts["pipeline_schedule"] == str(p).split(".")[-1]),
+                                   offload_weight_update_variables=False if opts['disable_variable_offloading'] else True,
                                    name="Pipeline")
 
 
@@ -285,7 +298,8 @@ def training_graph(model, opts, iterations_per_step=1):
                              xla_recompute=opts["xla_recompute"],
                              seed=opts["seed"],
                              profile=opts['profile'],
-                             availableMemoryProportion=globalAMP)
+                             availableMemoryProportion=globalAMP,
+                             stable_norm=opts["stable_norm"])
 
     ipu.utils.configure_ipu_system(ipu_options)
     train_sess = tf.Session(graph=train_graph, config=sess_config, target=sess_target)
@@ -310,7 +324,7 @@ def training_step(train, e, learning_rate):
 
 def train_process(model, LR_Class, opts):
 
-    # --------------- OPTIONS ---------------------
+    # --------------- OPTIONS --------------------
     epochs = opts["epochs"]
     iterations_per_epoch = DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES'] // opts["total_batch_size"]
     if not opts['iterations']:
@@ -347,7 +361,8 @@ def train_process(model, LR_Class, opts):
         valid = validation.initialise_validation(model, opts)
 
     # -------------- SAVE AND RESTORE --------------
-
+    if opts.get('init_path'):
+        train.saver.restore(train.session, opts['init_path'])
 
     if opts['ckpts_per_epoch']:
         filepath = train.saver.save(train.session, opts["checkpoint_path"], global_step=0)
@@ -393,7 +408,7 @@ def train_process(model, LR_Class, opts):
         try:
             batch_loss, batch_acc, batch_time, current_lr = training_step(train, i + 1, LR.feed_dict_lr(i))
             if opts['pipeline_depth'] > 1:
-                current_lr *= opts["loss_scaling"]
+                current_lr *= opts["lr_scale"]
         except tf.errors.OpError as e:
             raise tf.errors.ResourceExhaustedError(e.node_def, e.op, e.message)
 
@@ -442,6 +457,9 @@ def train_process(model, LR_Class, opts):
         if ckpt_this_step:
             filepath = train.saver.save(train.session, opts["checkpoint_path"], global_step=i+iterations_per_step)
             print("Saved checkpoint to {}".format(filepath))
+            if 'ckpts' not in locals():
+                ckpts = []
+            ckpts.append((i + iterations_per_step, epoch, i == 0, filepath))
 
         # Eval
         if valid_this_step and opts['validation']:
@@ -449,12 +467,31 @@ def train_process(model, LR_Class, opts):
                 validation_points = []
             validation_points.append((i + iterations_per_step, epoch, i == 0, filepath))
 
+        # ------------ COLLECT PROFILE -----------
+        if opts["profile"] and i == 0:
+            from gcprofile import save_tf_report
+            save_tf_report(train.session.run(train.profile))
+
         i += iterations_per_step
 
-    # ------------ COLLECT PROFILE -----------
-    if opts["profile"]:
-        from gcprofile import save_tf_report
-        save_tf_report(train.session.run(train.profile))
+    if opts['weight_avg_N'] or opts['weight_avg_exp']:
+        _ckpts = ckpts[:-1]  # discard final checkpoint as the final 2 are practically identical
+        final_iteration, final_epoch = _ckpts[-1][:2]
+        if opts['weight_avg_N']:
+            for N in opts['weight_avg_N']:
+                V = average_ckpts(
+                    [c[3] for c in _ckpts if round(c[1], 1) >= round(final_epoch, 1) - N],
+                    mode='mean')
+                filename = os.path.join(opts["checkpoint_path"], "weight_avg_N_{}".format(N))
+                save_ckpt(V, ckpts[-1][3], filename)
+                validation_points.append((final_iteration, final_epoch, False, filename))
+
+        if opts['weight_avg_exp']:
+            for d in opts['weight_avg_exp']:
+                V = average_ckpts(list(zip(*ckpts))[3], mode='exponential', decay=d)
+                filename = os.path.join(opts["checkpoint_path"], "weight_avg_exp_{}".format(d))
+                save_ckpt(V, ckpts[-1][3], filename)
+                validation_points.append((final_iteration, final_epoch, False, filename))
 
     # ------------ RUN VALIDATION ------------
     if 'validation_points' in locals() and opts['validation']:
@@ -467,7 +504,7 @@ def train_process(model, LR_Class, opts):
 
 def add_main_arguments(parser, required=True):
     group = parser.add_argument_group('Main')
-    group.add_argument('--model', default='resnet', help="Choose model")
+    group.add_argument('--model', type=str.lower, default='resnet', help="Choose model")
     group.add_argument('--lr-schedule', default='stepped',
                        help="Learning rate schedule function. Default: stepped")
     group.add_argument('--help', action='store_true', help='Show help information')
@@ -491,7 +528,7 @@ def add_training_arguments(parser):
                           help="Number of training epochs")
     tr_group.add_argument('--iterations', type=int, default=None,
                           help="Force a fixed number of training iterations to be run rather than epochs.")
-    tr_group.add_argument('--weight-decay', type=float, default=1e-4,
+    tr_group.add_argument('--weight-decay', type=float,
                           help="Value for weight decay bias, setting to 0 removes weight decay.")
     tr_group.add_argument('--loss-scaling', type=float, default=128,
                           help="Loss scaling factor")
@@ -517,13 +554,29 @@ def add_training_arguments(parser):
                           help="Strings for splitting pipelines. E.g. b2/0/relu b3/0/relu")
     tr_group.add_argument('--pipeline-schedule', type=str, default="Interleaved",
                           choices=pipeline_schedule_options, help="Pipelining scheduler. Choose between 'Interleaved' and 'Grouped'")
-    tr_group.add_argument('--optimiser', type=str, default="SGD", choices=['SGD', 'momentum'],
+    tr_group.add_argument('--optimiser', type=str, default="SGD", choices=['SGD', 'RMSprop', 'momentum'],
                           help="Optimiser")
     tr_group.add_argument('--momentum', type=float, default=0.9,
                           help="Momentum coefficient")
+    tr_group.add_argument('--rmsprop-decay', type=float, default=0.9,
+                          help="RMSprop decay coefficient")
+    tr_group.add_argument('--rmsprop-epsilon', type=float, default=0.001,
+                          help="RMSprop epsilon coefficient")
+    tr_group.add_argument('--variable-filter', nargs='+', type=str, default=[],
+                          help="Filter which variables to include in training")
+    tr_group.add_argument('--init-path', type=str,
+                          help="Path to checkpoint to initialise from")
 
     tr_group.add_argument('--distributed', action="store_true",
                           help="Use distributed multi-worker training")
+
+    tr_group.add_argument('--stable-norm', action="store_true",
+                          help="Use stable implementation of normalization functions")
+
+    tr_group.add_argument('--weight-avg-N', nargs='+', type=int, default=None,
+                          help="Number of checkpoints to average over")
+    tr_group.add_argument('--weight-avg-exp', nargs='+', type=float, default=None,
+                          help="Decay factor for averaging weights")
 
     return parser
 
@@ -552,12 +605,23 @@ def set_training_defaults(opts):
     if opts['shards'] > 1:
         opts['summary_str'] += " Training Shards: {shards}\n"
 
+    # lr_scale is used to scale down the LR to account for loss scaling
+    # lr_scale==loss_scaling iff the update is not divided by a linear function
+    # of the gradients otherwise lr_scale = 1
+    opts['lr_scale'] = opts['loss_scaling']
+    opts['grad_scale'] = 1.0
     if opts['optimiser'] == 'SGD':
         opts['summary_str'] += "SGD\n"
     elif opts['optimiser'] == 'momentum':
-        opts['name'] += '_Mom'
         opts['summary_str'] += ("SGD with Momentum\n"
-                                " Momentum Coefficient: {momentum}\n")
+                                " Momentum: {momentum}\n")
+    elif opts['optimiser'] == 'RMSprop':
+        opts['summary_str'] += ("RMSprop\n"
+                                " Momentum: {momentum}\n"
+                                " Decay: {rmsprop_decay}\n"
+                                " Epsilon: {rmsprop_epsilon}\n")
+        opts['lr_scale'] = 1.0
+        opts['grad_scale'] = opts['loss_scaling']
 
 
 def add_ipu_arguments(parser):
@@ -579,11 +643,15 @@ def add_ipu_arguments(parser):
     group.add_argument('--xla-recompute', action="store_true",
                        help="Allow recomputation of activations to reduce memory usage")
     group.add_argument('--seed', default=None, help="Seed for randomizing training")
-    group.add_argument('--gc-profile', action="store_true", dest='profile', default=False,
-                       help="Generate profile reports")
+    group.add_argument('--gc-profile', type=str, dest='profile', nargs='?', action='store', default=None,
+                       const="IPU_PROFILE", choices=["DEVICE_PROFILE", "IPU_PROFILE", "TILE_PROFILE", "NO_PROFILE"],
+                       help="Generate profile reprts")
     group.add_argument('--available-memory-proportion', default=None, nargs='+',
                        help="Proportion of memory which is available for convolutions. Use a value of less than 0.6 "
                             "to reduce memory usage.")
+    group.add_argument('--disable-variable-offloading', action="store_true",
+                       help="Disable offloading of variables to remote memory. This may increase live memory usage")
+
     return parser
 
 
@@ -664,6 +732,11 @@ def set_defaults(model, LR, opts):
     logging.set_defaults(opts)
 
 
+def set_profiling_opts(opts):
+    if(opts["profile"]):
+        opts["summary_str"] += 'A profiling session is run, the report will be retrieved for the first iteration'
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CNN Training in TensorFlow', add_help=False)
     parser = add_main_arguments(parser)
@@ -695,13 +768,24 @@ if __name__ == '__main__':
         amps = opts['available_memory_proportion']
         if amps and len(amps) > 1:
             if not opts['pipeline_depth'] > 1:
-                raise ValueError('--available-memory-propotion should only have one value unless using pipelining')
+                raise ValueError('--available-memory-proportion should only have one value unless using pipelining')
             if len(amps) != int(opts['shards']) * 2:
-                raise ValueError('--available-memory-propotion should have either one value or 2*shards values specified')
+                raise ValueError('--available-memory-proportion should have either one value or 2*shards values specified')
 
         opts["command"] = ' '.join(sys.argv)
         set_defaults(model, lr_schedule, opts)
 
+        if opts['dataset'] == 'imagenet':
+            if opts['image_size'] is None:
+                opts['image_size'] = 224
+            if opts['image_size'] != 224:
+                opts['name'] += '_{}x{}'.format(opts['image_size'], opts['image_size'])
+            opts['summary_str'] += "Image Size: {}x{}\n".format(opts['image_size'], opts['image_size'])
+        elif 'cifar' in opts['dataset']:
+            if opts['image_size'] is not None and opts['image_size'] != 32:
+                raise ValueError('--image-size not supported for CIFAR sized datasets')
+            opts['image_size'] = 32
+        set_profiling_opts(opts)
         logging.print_to_file_and_screen("Command line: " + opts["command"], opts)
         logging.print_to_file_and_screen(opts["summary_str"].format(**opts), opts)
         opts["summary_str"] = ""

@@ -90,7 +90,7 @@ if __name__ == '__main__':
 
     opts = parse_opts(module, False)
 
-    if opts.shards > 0:
+    if opts.shards > 1:
         raise NotImplementedError("--shards option has not been implemented with this example")
 
     # Temporary setting for ResNet18 before this option is automated.

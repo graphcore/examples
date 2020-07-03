@@ -1,10 +1,6 @@
 # Copyright 2019 Graphcore Ltd.
-import os
-import ctypes
 import numpy as np
-from pathlib import Path
 import torch
-from torch import nn
 import popart
 import onnx
 
@@ -110,7 +106,6 @@ def test_embedding_bwd(custom_ops):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['gather'],
                         update_embedding_dict=False)
     popart_model = Bert(config, builder=builder)
     # Prevent virtualGraph attributes being added to the ops.
@@ -138,10 +133,10 @@ def test_embedding_bwd(custom_ops):
     }
 
     output = popart_model.embedding(indices, positions, segments)
+    l1 = builder.aiGraphcore.l1loss([output], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
 
     proto = builder.getModelProto()
 
-    l1 = popart.L1Loss(output, "l1LossVal", l1_lambda)
     optimizer = popart.ConstSGD(0.01)
 
     outputs, post_proto = run_py(proto,

@@ -4,10 +4,7 @@ import popart
 import argparse
 import time
 import os
-import sys
 import datetime
-import json
-from onnx import TensorProto, numpy_helper
 from collections import deque
 from resnet_builder import PopartBuilderResNet
 from resnet_data import load_dataset
@@ -72,18 +69,17 @@ def init_session(proto, losses, device, dataFlow,
     if training:
         session_type = "training"
         session = popart.TrainingSession(fnModel=proto,
-                                         losses=losses,
+                                         loss=losses,
                                          deviceInfo=device,
                                          optimizer=optimizer,
-                                         dataFeed=dataFlow,
+                                         dataFlow=dataFlow,
                                          userOptions=options)
 
     else:
         session_type = "validation"
         session = popart.InferenceSession(fnModel=proto,
-                                          losses=losses,
                                           deviceInfo=device,
-                                          dataFeed=dataFlow,
+                                          dataFlow=dataFlow,
                                           userOptions=options)
 
 
@@ -171,7 +167,6 @@ def get_options(opts, training=True):
 
     # Enable auto-sharding
     if opts.num_ipus > 1 and opts.num_ipus > opts.replication_factor:
-        options.enableVirtualGraphs = True
         options.virtualGraphMode = popart.VirtualGraphMode.Auto
 
     # Enable pipelining
@@ -182,6 +177,7 @@ def get_options(opts, training=True):
     if opts.replication_factor > 1:
         options.enableReplicatedGraphs = True
         options.replicatedGraphCount = opts.replication_factor
+        options.enablePrefetchDatastreams = False
 
     if opts.gradient_accumulation_factor > 1:
         if training:
@@ -212,12 +208,13 @@ def create_model(builder, opts, image, label):
 
     argmax = resnet.builder.aiOnnx.argmax([probs], axis=1, keepdims=0)
 
-    loss = popart.NllLoss(probs, label, "loss",
-                          reduction=popart.ReductionType.Mean)
+    loss = builder.aiGraphcore.nllloss([probs, label],
+                                       debugPrefix="loss",
+                                       reduction=popart.ReductionType.Mean)
 
     outputs = {
         argmax: popart.AnchorReturnType("ALL"),
-        "loss": popart.AnchorReturnType("ALL")
+        loss: popart.AnchorReturnType("ALL")
     }
 
     proto = resnet.builder.getModelProto()
@@ -269,7 +266,7 @@ def train_process(opts):
     (training_session,
      training_anchors) = init_session(
         proto,
-        [loss],
+        loss,
         device,
         dataFlow=popart.DataFlow(
             opts.batches_per_step,
@@ -288,7 +285,7 @@ def train_process(opts):
         validation_options = get_options(opts, training=False)
 
         (validation_session,
-         validation_anchors) = init_session(proto, [loss],
+         validation_anchors) = init_session(proto, loss,
                                             device,
                                             dataFlow=popart.DataFlow(
                                                 opts.batches_per_step,
@@ -299,7 +296,6 @@ def train_process(opts):
 
     # Copy weights and optimization parameters onto the device
     training_session.weightsFromHost()
-    training_session.optimizerFromHost()
 
     batch_losses = deque(maxlen=opts.steps_per_log)
     batch_accs = deque(maxlen=opts.steps_per_log)
@@ -316,7 +312,12 @@ def train_process(opts):
         training_start_point = time.time()
 
         print("Executing epoch ", e)
-        # Do one epoch of training
+
+        # Do one epoch of training, reset optimizer after inference
+        training_session.updateOptimizerFromHost(popart.SGD({
+            "defaultLearningRate": (current_lr, False),
+            "defaultWeightDecay": (opts.weight_decay, True)
+            }))
         for step, data in enumerate(training_dataset):
 
             total_steps = (e*steps_per_epoch) + step
@@ -330,11 +331,10 @@ def train_process(opts):
                 else:
                     next_drop = np.inf
 
-                training_session.updateOptimizer(popart.SGD({
+                training_session.updateOptimizerFromHost(popart.SGD({
                     "defaultLearningRate": (current_lr, False),
                     "defaultWeightDecay": (opts.weight_decay, True)
                     }))
-                training_session.optimizerFromHost()
                 print("Learning_rate change to {}".format(current_lr))
 
             images = data[0]
@@ -354,7 +354,7 @@ def train_process(opts):
 
             # Get the loss and 'learnt' labels
             # - Sum the losses across replication & batch size
-            nll_loss_anch = training_anchors["loss"]
+            nll_loss_anch = training_anchors[loss]
             arg_max_anch = training_anchors[argmax]
 
             batch_losses.append(nll_loss_anch)
@@ -427,7 +427,7 @@ def train_process(opts):
                 validation_session.run(validation_stepio)
 
                 # Get the loss and 'predicted' labels
-                validation_nll_loss_anch = validation_anchors["loss"]
+                validation_nll_loss_anch = validation_anchors[loss]
                 validation_arg_max_anch = validation_anchors[argmax]
 
                 validation_losses.append(validation_nll_loss_anch)
@@ -453,7 +453,6 @@ def train_process(opts):
 
             # Write the training weights to the device
             training_session.weightsFromHost()
-            training_session.optimizerFromHost()
 
 
 if __name__ == '__main__':

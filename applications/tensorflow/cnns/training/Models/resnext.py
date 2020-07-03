@@ -13,20 +13,23 @@ cardinality with --convolution-groups and change the dimensions with --group-dim
 
 
 import tensorflow as tf
-from .resnet_base import *
+from functools import partial
+from . import resnet_base as rb
+from .model_base import ModelBase
 
 
-class ResNeXt(ResNetBase):
+class ResNeXt(rb.ResNetBase):
     def __init__(self, opts, is_training=True):
         if opts['dataset'] == 'imagenet':
-            definitions = RESNETS_Bottleneck_Imagenet
+            definitions = rb.RESNETS_Bottleneck_Imagenet
         else:
             if opts['widenet']:
-                definitions = RESNETS_Bottleneck_Cifar_wide
+                definitions = rb.RESNETS_Bottleneck_Cifar_wide
             else:
-                definitions = RESNETS_Bottleneck_Cifar
+                definitions = rb.RESNETS_Bottleneck_Cifar
         definition = definitions[opts["model_size"]]
-        super().__init__(opts, definition, conv, is_training)
+        super().__init__(opts, definition, is_training)
+
         self.conv_groups = opts['convolution_groups']
         self.group_dim = opts['group_dim']
         mult = self.group_dim * self.conv_groups / self.initial_block_filters
@@ -36,6 +39,14 @@ class ResNeXt(ResNetBase):
                                 filter_factor=mult,
                                 conv=self.conv,
                                 norm=self.norm)
+
+        # Apply dataset specific changes
+        if opts["dataset"] == "imagenet":
+            self.initial_block_fn = partial(self.initial_block_fn, ksize=7, initial_downsample=True)
+        elif opts["dataset"] == "cifar-10":
+            self.initial_block_fn = partial(self.initial_block_fn, ksize=3, initial_downsample=False)
+        elif opts["dataset"] == "cifar-100":
+            self.initial_block_fn = partial(self.initial_block_fn, ksize=3, initial_downsample=False)
 
 
 def Model(opts, training, image):
@@ -65,7 +76,7 @@ def staged_model(opts):
 
 def add_arguments(parser):
     group = parser.add_argument_group('ResNeXt')
-    add_resnet_arguments(group)
+    rb.add_resnet_base_arguments(group)
     group.add_argument('--convolution-groups', type=int,
                        help="Cardinality/Number of groups in convolution")
     group.add_argument('--group-dim', type=int,

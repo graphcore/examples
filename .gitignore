@@ -15,7 +15,7 @@ __pycache__
 *.csv
 *.json
 *.log
-
+*.so
 report.txt
 
 *.onnx
@@ -32,3 +32,6 @@ report.txt
 # C++ examples build into the "build" directory
 **/build
 .vscode
+
+# Virtual environments
+*virtualenv/

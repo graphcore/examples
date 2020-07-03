@@ -3,6 +3,7 @@ import time
 
 import numpy as np
 import popart
+import argparse
 
 
 class PerfIntervalTimer:
@@ -28,11 +29,10 @@ class PerfIntervalTimer:
 # Define a function to build and run the graph with
 # the specified data size:
 def build_and_run_graph(data_size):
-
     # Create a builder object:
     builder = popart.Builder()
 
-    # Specifiy two input vectors:
+    # Specify two input vectors:
     data_spec = popart.TensorInfo("FLOAT", [data_size])
     id_a = builder.addInputTensor(data_spec)
     id_b = builder.addInputTensor(data_spec)
@@ -45,17 +45,17 @@ def build_and_run_graph(data_size):
     # often the result will be required:
     builder.addOutputTensor(o1)
     builder.addOutputTensor(o2)
-    dataFlow = popart.DataFlow(
-        1,
-        {o1: popart.AnchorReturnType("ALL"),
-         o2: popart.AnchorReturnType("ALL")})
+    data_flow = popart.DataFlow(
+        1, {o1: popart.AnchorReturnType("ALL"), o2: popart.AnchorReturnType("ALL")}
+    )
 
     # Setup an inference graph:
     proto = builder.getModelProto()
     session = popart.InferenceSession(
         fnModel=proto,
-        dataFeed=dataFlow,
-        deviceInfo=popart.DeviceManager().createIpuModelDevice({}))
+        dataFlow=data_flow,
+        deviceInfo=popart.DeviceManager().createIpuModelDevice({}),
+    )
 
     # Compile graph:
     session.prepareDevice()
@@ -95,27 +95,25 @@ def build_and_run_graph(data_size):
         rtt = timer.interval()
         rtts[id] = rtt
 
-
     # Create the callback IO system:
-    stepio = popart.PyStepIOCallback(input_callback,
-                                     input_complete_callback,
-                                     output_callback,
-                                     output_complete_callback)
+    stepio = popart.PyStepIOCallback(
+        input_callback,
+        input_complete_callback,
+        output_callback,
+        output_complete_callback,
+    )
 
     # Run the graph and return timings:
     session.run(stepio)
-
+    print(rtts)
     return rtts
 
-if __name__ == '__main__':
-    sizes = [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000]
-    results = []
-    for i in sizes:
-        results.append(build_and_run_graph(i))
 
-    keys = results[0].keys()
-
-    for k in keys:
-        print(f"\nLatencies for {k}")
-        for s, d in enumerate(results):
-            print(f"{sizes[s]}, {d[k]}")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Callbacks in PopART",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--data-size", help="Set the data size", type=int, default=1000)
+    args = parser.parse_args()
+    build_and_run_graph(args.data_size)

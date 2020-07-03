@@ -4,8 +4,6 @@ import tempfile
 import numpy as np
 import struct
 import pytest
-import subprocess
-import zipfile
 import pickle
 import popart
 from functools import reduce
@@ -261,6 +259,7 @@ def test_no_drop_remainder(batch_size, shuffle, mpi_size, get_squad):
             self.replication_factor = 1
             self.shuffle = shuffle
             self.mpi_size = mpi_size
+            self.squad_lr_scale = None
 
     def create_dataset(args):
         # a simple copy of main bert.py until the dataset creation

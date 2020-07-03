@@ -10,10 +10,12 @@ import tensorflow as tf
 import time
 
 
-from tensorflow.python.ipu import loops, ipu_infeed_queue, ipu_compiler, ipu_optimizer, \
-                                  ops as ipu_ops, \
-                                  utils as ipu_utils
-from tensorflow.python.ipu.ops import summary_ops
+from tensorflow.python.ipu import loops
+from tensorflow.python.ipu import ipu_infeed_queue
+from tensorflow.python.ipu import ipu_compiler
+from tensorflow.python.ipu import cross_replica_optimizer
+from tensorflow.python.ipu import utils as ipu_utils
+from tensorflow.python.ipu import summary_ops
 from tensorflow.python.ipu.scopes import ipu_scope, ipu_shard
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
@@ -60,7 +62,7 @@ def graph_builder(
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
         # Wrap in a CrossReplica if we're replicating across multiple IPUs
         if opts.replication_factor > 1:
-            optimizer = ipu_optimizer.CrossReplicaOptimizer(optimizer)
+            optimizer = cross_replica_optimizer.CrossReplicaOptimizer(optimizer)
         # Batch norm variable update dependency
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
@@ -179,14 +181,15 @@ def generic_graph(opts, data, trainFlag):
 
 
 def run(graph_op, i=0, learning_rate=None):  # Must pass a learning_rate in for training graphs. and e for valid graphs
-    start = time.time()
     feed = {graph_op.placeholders["learning_rate"]: learning_rate} if graph_op.mode == util.Modes.TRAIN else {}
+    start = time.time()
     outputs = graph_op.session.run(
         graph_op.ops,
         feed_dict=feed
     )
+    time_taken = time.time() - start
     graph_op.writer.add_summary(outputs[-1], i)
-    return outputs[:-1] + [time.time() - start]
+    return outputs[:-1] + [time_taken]
 
 
 def generate_report(graph):
@@ -299,7 +302,11 @@ def train_process(opts, training_data, valid_data):
 
     # Print best RMSPE
     if not opts.no_validation:
-        print(f'Best RMSPE: {min([x for x in val_logger.history[:] if x>0]):6.4f}')
+        rmspe_list = [x for x in val_logger.history[:] if x > 0]
+        if rmspe_list:
+            print(f'Best RMSPE: {min(rmspe_list):6.4f}')
+        else:
+            print("There have been no valid RMSPE results.")
 
 
 def validation_process(opts, valid_data, lr_scheduler=None, val_logger=None, queue=None):
@@ -385,7 +392,7 @@ def get_options():
 
     # -------------- DATASET -----------------
     group = parser.add_argument_group('Dataset')
-    group.add_argument('-d', '--datafolder',        type=str,       default=None,
+    group.add_argument('-d', '--datafolder',        type=str,       default='.',
                        help="Path to compressed rossmann store sales data folder")
     group.add_argument('--use-synthetic-data',      default=False,  action='store_true',
                        help="Use synthetic data. Synthetic data is random data generated directly on the IPU as needed by the program, removing any host <-> IPU data transfers.")
@@ -485,7 +492,7 @@ if __name__ == '__main__':
     # If using synthetic data, set the environment variable required
     if opts.use_synthetic_data:
         if 'TF_POPLAR_FLAGS' in os.environ:
-            os.environ['TF_POPLAR_FLAGS'] += '--use_synthetic_data --synthetic_data_initializer=random'
+            os.environ['TF_POPLAR_FLAGS'] += ' --use_synthetic_data --synthetic_data_initializer=random'
         else:
             os.environ['TF_POPLAR_FLAGS'] = '--use_synthetic_data --synthetic_data_initializer=random'
 

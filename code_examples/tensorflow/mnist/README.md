@@ -17,6 +17,10 @@ The `ipu.dataset_benchmark` tool allows to obtain the maximum achievable through
 
    Install the poplar-sdk following the README provided. Make sure to run the `enable.sh` scripts and activate a Python virtualenv with gc_tensorflow installed.
 
-2) Train and test the model:
+2) Install the package requirements
+
+   `pip install -r requirements.txt`
+
+3) Train and test the model:
 
    `python3 mnist_tf.py`

@@ -46,11 +46,16 @@ def run(benchmark, opts):
                 .repeat() \
                 .prefetch(opts.batches_per_step)
 
-        if opts.batches_per_step > 1:
+        if opts.batches_per_step > 1 or opts.replicas > 1:
             with tf.device('cpu'):
-                infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, feed_name="benchmark_dataset_infeed")
+                infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, feed_name="benchmark_dataset_infeed", replication_factor=opts.replicas)
                 data_init = infeed_queue.initializer
+        else:
+            with tf.device('cpu'):
+                data_tensor = dataset.make_one_shot_iterator().get_next()
+                data_init = tf.no_op()
 
+        if opts.batches_per_step > 1:
             with tf.Graph().as_default():  # To get the shape and dtype
                 dummy_opts = copy.deepcopy(opts)
                 dummy_opts.shards = 1
@@ -70,11 +75,11 @@ def run(benchmark, opts):
                                                             [input],
                                                             infeed_queue), [])
         else:
-            with tf.device('cpu'):
-                data_tensors = dataset.make_one_shot_iterator().get_next()
-                data_init = tf.no_op()
-            out = ipu_compiler.compile(lambda: benchmark.graph_builder(opts, data_tensors), [])
             opts.batches_per_step = 1
+            if opts.replicas > 1:
+                out = ipu_compiler.compile(lambda: benchmark.graph_builder(opts, infeed_queue), [])
+            else:
+                out = ipu_compiler.compile(lambda: benchmark.graph_builder(opts, data_tensor), [])
 
     # Report
     report = gen_ipu_ops.ipu_event_trace()
@@ -111,7 +116,7 @@ def run(benchmark, opts):
             sess.run(out)
             duration = time.time() - start
 
-            average_batches_per_sec += (opts.batches_per_step/duration)/opts.steps
+            average_batches_per_sec += (opts.batches_per_step*opts.replicas/duration)/opts.steps
             report_string = "{:<7.3} sec/itr.".format(duration)
             report_string += "   " + benchmark.iteration_report(opts, duration)
             print(report_string)
@@ -136,12 +141,14 @@ def parse_opts(benchmark, arg_string=None):
                         help="Save execution and compilation reports as JSON")
     parser.add_argument('--convolution-options', type=str,
                         help='Set convolution options as a JSON string.')
-    parser.add_argument('--shards', type=int, default=0,
+    parser.add_argument('--shards', type=int, default=1,
                         help="Select a number of IPUs to split across")
     parser.add_argument('--device-id', type=int, default=-1,
                         help="Select a device")
     parser.add_argument('--use-zero-values', action="store_true",
                         help="If True weights and input will be initialised to zeros (otherwise random data)")
+    parser.add_argument('--replicas', type=int, default=1,
+                        help="Number of IPUs to replicate input data across")
     # Benchmark Arguments
     benchmark.add_args(parser)
 
@@ -172,7 +179,7 @@ def get_config(opts):
                                      profile_execution=profile,
                                      report_every_nth_execution=1)
     if opts.device_id == -1:
-        config = utils.auto_select_ipus(config, [opts.shards or 1])
+        config = utils.auto_select_ipus(config, opts.shards*opts.replicas)
     else:
         config = utils.select_ipus(config, [opts.device_id])
 

@@ -29,7 +29,7 @@ The following files are found in the `bert_data/` folder:
 
 The sample text is in a form that is already suitable to create the pretraining data. Run the script as:
 
-`python create_pretraining_data.py --input-file path/to/sample_text.txt --output-file data/sample_text.bin --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 -- mask-tokens 20 --duplication-factor 6`
+`python3 create_pretraining_data.py --input-file path/to/sample_text.txt --output-file data/sample_text.bin --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 -- mask-tokens 20 --duplication-factor 6`
 
 ## Wikipedia pre-training data
 
@@ -83,7 +83,7 @@ If different filtering is required then use the WikiExtractor directly. A compre
 
 The files from step 3 require further preprocessing with the `wikipedia_preprocessing.py` script:
 
-`python wikipedia_preprocessing.py --input-file /target_folder/AA/ --output-file /preprocessed_target_folder`
+`python3 wikipedia_preprocessing.py --input-file /target_folder/AA/ --output-file /preprocessed_target_folder`
 
 where `target_folder/AA` contains the files from step 3 and `preprocessed_target_folder` will contain the new files (wiki_00_cleaned, wiki_01_cleaned, ...). The structure of the text in these files is now the same as the structure of the text in the `sample_text.txt` file.
 
@@ -93,7 +93,7 @@ The data can now be tokenised to create the pre-training dataset for BERT. For t
 
 The script `create_pretraining_data.py` will accept a glob of input and output files to tokenise however attempting to process them all at once may result in the process being killed by the OS for consuming too much memory. It is therefore preferable to convert the files one by one:
 
-`python create_pretraining_data.py --input-file /preprocessed_target_folder/wiki_00_cleaned --output-file /preprocessed_target_folder/wiki_00_tokenised --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 --mask-tokens 20 --duplication-factor 6`
+`python3 create_pretraining_data.py --input-file /preprocessed_target_folder/wiki_00_cleaned --output-file /preprocessed_target_folder/wiki_00_tokenised --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 --mask-tokens 20 --duplication-factor 6`
 
 **NOTE:** When using an uncased vocab, use `--do-lower-case`.
 

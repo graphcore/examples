@@ -521,7 +521,7 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                 # MAJOR CHANGE: The dataset may drop the remainder of the dataset
                 # based on values for batch_size and batches_per_step
                 # use --no-drop-remainder to guarentee the full dataset used.
-                logger.warn(f"No Result for unique_id {feature.unique_id}. Data has been dropped, use `--no-drop-remainder` to prevent this.")
+                logger.warning(f"No Result for unique_id {feature.unique_id}. Data has been dropped, use `--no-drop-remainder` to prevent this.")
                 continue
             start_indexes = _get_best_indexes(result.start_logits, n_best_size)
             end_indexes = _get_best_indexes(result.end_logits, n_best_size)

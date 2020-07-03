@@ -3,7 +3,6 @@ import os
 import unittest
 
 import pytest
-from common import download_mnist
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
 from tests import test_util
@@ -21,7 +20,6 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        download_mnist(os.path.dirname(__file__))
         cls.accuracy_tolerances = 3.0
         cls.generic_arguments = {
             "--batch-size": 4,
@@ -30,7 +28,7 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
         }
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
+    @pytest.mark.category2
     def test_mnist_train(self):
         """Generic test on default arguments in training"""
         py_args = self.generic_arguments.copy()
@@ -46,7 +44,7 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
         )
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
+    @pytest.mark.category2
     def test_mnist_all_data(self):
         """Generic test using all the available data (10,000)"""
         py_args = self.generic_arguments.copy()
@@ -59,7 +57,7 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
         )
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
+    @pytest.mark.category2
     def test_mnist_log_graph_trace(self):
         """Basic test with log-graph-trace argument"""
         py_args = self.generic_arguments.copy()
@@ -70,6 +68,7 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
             **py_args
         )
 
+    @pytest.mark.ipus(1)
     @pytest.mark.category2
     def test_mnist_conv_simulation(self):
         """Simulation test with basic arguments - This simulation takes

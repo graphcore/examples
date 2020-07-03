@@ -1,14 +1,8 @@
 # Copyright 2019 Graphcore Ltd.
-import argparse
 import os
-import logging
 import numpy as np
 import popart
-import onnx
-import re
 import json
-from typing import Dict
-from onnx import numpy_helper
 from logging import getLogger
 
 from bert_model import BertConfig, Bert
@@ -71,7 +65,7 @@ def get_tf_mapping(config, task="PRETRAINING"):
     return tf_to_onnx
 
 
-def get_tf_transform(config, task="PRETRAINING"):
+def get_tf_transform(task="PRETRAINING"):
     # Some of the head weights are stored transposed in the Google Research checkpoint
     # compared to the Popart model.
     tf_to_onnx_tform = {}
@@ -141,10 +135,8 @@ def generate_initializers(config, map_names, load_data, mapping, transform={}):
                 pad = np.zeros((diff, config.hidden_size)).astype(array.dtype)
                 array = np.concatenate((array, pad), axis=0)
             else:
-                logger.warn(f"Cropping the vocabulary may negatively effect performance. From {tf_vocab_length} to {config.vocab_length}")
+                logger.warning(f"Cropping the vocabulary may negatively effect performance. From {tf_vocab_length} to {config.vocab_length}")
                 array = np.array(array[:config.vocab_length, :])
-        if "gather" in config.custom_ops and mapping[name] in ["Embedding/Embedding_Dict", "Embedding/Positional_Dict"]:
-            array = np.transpose(array)
 
         # FIXME: This copy is currently required to prevent popart misinterpreting the memory layout after the transpose.
         # Remove once T13187 is resolved.
@@ -168,8 +160,6 @@ def load_tf_frozen_data(tf_frozen_path, mapping):
             "instructions."
         )
         raise
-
-    tf_path = os.path.abspath(tf_frozen_path)
 
     tf.reset_default_graph()
     with tf.io.gfile.GFile(tf_frozen_path, "rb") as f:
@@ -230,7 +220,7 @@ def load_initializers_from_tf(
     `is_checkpoint` flag, passed in as the second argument.
     """
     mapping = get_tf_mapping(config, task=task)
-    transform = get_tf_transform(config, task=task)
+    transform = get_tf_transform(task=task)
 
     if is_checkpoint:
         names, data = load_tf_ckpt_data(file_path, mapping)

@@ -4,8 +4,7 @@ import sys
 import json
 import argparse
 import datetime
-import math
-from typing import List, Any, Optional
+from typing import List, Optional
 import numpy as np
 import onnx
 from logging import getLogger
@@ -13,6 +12,35 @@ from onnx import TensorProto, numpy_helper
 from bert_model import BertConfig
 
 logger = getLogger(__name__)
+
+
+def fetch_reports(args, session=None, exception=None, execution=False):
+    if session is None and exception is None:
+        raise Exception("Must provide session or exception to 'fetch_reports'")
+
+    should_exit = False
+
+    if args.gc_profile:
+        import gcprofile
+        gcprofile.save_popart_report(session, exception=exception)
+        should_exit = execution
+
+    if args.graph_report:
+        with open(args.graph_report, "wb") as f:
+            if exception is not None:
+                graph_report = exception.getGraphReport()
+            else:
+                graph_report = session.getGraphReport()
+            f.write(graph_report)
+
+    if args.execution_report and execution and session is not None:
+        with open(args.execution_report, "wb") as f:
+            exec_report = session.getExecutionReport()
+            f.write(exec_report)
+        should_exit = True
+
+    if should_exit:
+        sys.exit(0)
 
 
 def load_initializers_from_onnx(model_path):
@@ -98,8 +126,8 @@ class ScheduleArgumentParser(argparse.Action):
             try:
                 schedule[int(training_proportion)] = float(lr)
             except ValueError as ex:
-                logger.warn("Invalid Learning Rate Schedule provided. "
-                            "It should be a set of int:float pairs.")
+                logger.warning("Invalid Learning Rate Schedule provided. "
+                               "It should be a set of int:float pairs.")
                 raise ex
 
         setattr(namespace, self.dest, schedule)
@@ -168,10 +196,6 @@ def parse_bert_args(args_string=None):
             choices=["DEFAULT", "TRANSFORMER", "SIMPLIFIED"],
             help="Set the function used to initialise the positional embeddings"
         ),
-        "custom_ops": dict(
-            choices=["gather", "attention"],
-            help="Use Custom Operators"
-        ),
         "split_linear_layers": "Memory Optimisation to serialise MatMul Operations. Required for Large 384.",
         "max_matmul_memory": "This matmul option specifies the proportion of total tile memory the temporary values \
                               can use. If the operation exceeds this value it will be serialized by poplibs. \
@@ -184,7 +208,8 @@ def parse_bert_args(args_string=None):
         "projection_serialization_steps": "Split the final MLM projection into this many steps",
         "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on the encoder matmuls.",
         "update_embedding_dict": "Include the sparse update to the word Embedding_Dict.",
-        "no_cls_layer": "Don't include the CLS layer in pretraining. This layer comes after the encoders but before the projection for the MLM loss."
+        "no_cls_layer": "Don't include the CLS layer in pretraining. This layer comes after the encoders but before the projection for the MLM loss.",
+        "projection_bias": "Include bias to the projection layer."
     })
     group.add_argument("--use-ipu-model", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Target the IpuModel (acquires a real IPU device by default). \
@@ -206,6 +231,8 @@ def parse_bert_args(args_string=None):
                        help="Path to directory to write results (Note: will be created if path does not exist)")
     group.add_argument("--squad-evaluate-script", type=str,
                        help="Path to SQuAD evaulate-v1.1.py script")
+    group.add_argument("--squad-lr-scale", type=float, default=1.0,
+                       help="Scale the learning rate of the SQuAD layers.")
 
     group = parser.add_argument_group("Training Config")
     group.add_argument("--gradient-accumulation-factor", type=int, default=1,
@@ -226,6 +253,8 @@ def parse_bert_args(args_string=None):
     group.add_argument("--weight-decay", type=float, default=0, help="Set the weight decay, not used for bias and norms parameters")
     group.add_argument("--epochs", type=int, default=35,
                        help="Number of epochs to train for")
+    group.add_argument("--epochs-inference", type=int, default=1,
+                       help="Number of epochs to run inference for")
     group.add_argument("--stochastic-rounding", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Turn on Stochastic Rounding")
 
@@ -292,6 +321,8 @@ def parse_bert_args(args_string=None):
     group.add_argument("--synthetic-data", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Generate a synthetic dataset. Creates enough data for one step per epoch. "
                             "Increase --epochs for multiple perfomance measurements.")
+    group.add_argument("--synthetic-data-type", type=str, choices=['random_normal', 'zeros'],
+                       help="Specify to use synthetic data with either 'random_normal' or 'zeros'. Note that using this option will remove all Host I/O from the model")
     group.add_argument("--duplication-factor", type=int, default=1,
                        help="Set the number of times the dataset has been duplicated. This reduces the samples per epoch to"
                             " (# of samples in input-files)/duplication-factor")
@@ -304,6 +335,8 @@ def parse_bert_args(args_string=None):
                        help="Build and execute the graph with only VirtualGraph annotations.")
     emode.add_argument("--pipeline", type=str_to_bool, nargs="?", const=True, default=None,
                        help="Build and execute the graph with Pipeline annotations.")
+    emode.add_argument("--ping-pong", type=str_to_bool, nargs="?", const=True, default=None,
+                       help="Build and execute the graph with PingPong annotations.")
 
     group = parser.add_argument_group("Execution Config")
     group.add_argument("--batches-per-step", type=int, default=250,
@@ -315,7 +348,7 @@ def parse_bert_args(args_string=None):
     group.add_argument("--graph-report", type=str,
                        help="Path to save a poplar Graph Report")
     group.add_argument("--execution-report", type=str,
-                       help="Path to save a poplar Execution Report. NOTE: this will run the graph with instrumentation and for only one 'batch'")
+                       help="Path to save a poplar Execution Report")
     group.add_argument("--gc-profile", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Run the model and save the reports with gcprofile.save_popart_reports")
     parser.add_argument('--report-hw-cycle-count', action="store_true",
@@ -350,6 +383,8 @@ def parse_bert_args(args_string=None):
                        help="Path to preset config for validation. If set by the `--config` file, it definied as a dict instead")
     group.add_argument("--low-latency-inference", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Use input/output callbacks to minimise inference latency for tasks that support this mode.")
+    group.add_argument("--inference-lm-perplexity", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Calculate the LM perplexity metric as part of inference (e^loss).")
     group.add_argument("--realtime-scheduler", action="store_true",
                        help="Set a realtime scheduler for this process. Only activated during inference. \
                              (IMPORTANT: Requires non-interactive sudo, otherwise has no effect)")
@@ -358,15 +393,11 @@ def parse_bert_args(args_string=None):
     group.add_argument("--disable-fully-connected-pass", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Adding fully connected pass to some matmuls causes large transposes before operations during training. "
                        "Note: This will improve throughput at the cost of memory.")
-    group.add_argument("--deterministic-workers", type=str_to_bool, nargs="?", const=True, default=False,
-                       help="Force a deterministic mapping of vertices to worker threads. Slower, but allows "
-                       "for repeatability within results, particularly when using stochastic rounding.")
-    group.add_argument("--reduce-stack-size", type=str_to_bool, nargs="?", const=True, default=False,
-                       help="Reduces the worker stack size to 128. This provides a small memory saving, however could cause stack overflow "
-                            "if set too low.")
     group.add_argument("--log-level", type=str, default='INFO',
                        choices=['NOTSET', 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'],
                        help="Set the logging level")
+    group.add_argument("--group-host-syncs", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Groups the host-device synchronisations more efficiently, higher throughput can be reached at the expense of sum liveness")
     group = parser.add_argument_group("Distribution Config")
     group.add_argument("--mpi-distributed", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Enable distributed training with MPI backend. Distributed training with MPI is currently in preview."
@@ -406,7 +437,11 @@ def parse_bert_args(args_string=None):
 def set_execution_mode(args):
     if args.pipeline:
         args.execution_mode = "PIPELINE"
-    elif args.virtual_graph or args.execution_mode == "PIPELINE" and args.pipeline is False:
+    elif args.ping_pong:
+        args.execution_mode = "PINGPONG"
+    elif args.virtual_graph or \
+        args.execution_mode == "PIPELINE" and args.pipeline is False or \
+            args.execution_mode == "PINGPONG" and args.ping_pong is False:
         args.execution_mode = "DEFAULT"
     return args
 
@@ -459,18 +494,18 @@ def set_mpi_args(args):
     if not args.mpi_distributed:
         return
 
-    logger.warn("Distributed training with MPI is currently in preview."
-                "Full support for distributed training will be coming in a future release.")
+    logger.warning("Distributed training with MPI is currently in preview."
+                   "Full support for distributed training will be coming in a future release.")
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
     mpi_size = comm.Get_size()
     mpi_rank = comm.Get_rank()
     if args.mpi_rank != mpi_rank and args.mpi_rank != 0:
-        logger.warn(f"Overwriting the MPI rank provided {args.mpi_rank} to {mpi_rank}")
+        logger.warning(f"Overwriting the MPI rank provided {args.mpi_rank} to {mpi_rank}")
     args.mpi_rank = mpi_rank
 
     if args.mpi_size != mpi_size and args.mpi_size > 1:
-        logger.warn(f"Overwriting the MPI size provided {args.mpi_size} to {mpi_size}")
+        logger.warning(f"Overwriting the MPI size provided {args.mpi_size} to {mpi_size}")
     args.mpi_size = mpi_size
 
     is_distributed = mpi_size > 1

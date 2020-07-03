@@ -31,6 +31,9 @@ class BaseOptimizerFactory():
         self.projection_lr_scaling = args.task == "PRETRAINING"
         self.projection_lr_scale = args.projection_lr_scale
 
+        self.squad_lr_scaling = args.task == "SQUAD"
+        self.squad_lr_scale = args.squad_lr_scale
+
         self.lr_scaling = args.pipeline_lr_scaling
         self.weight_decay = args.weight_decay
         self.momentum_scaling = args.pipeline_momentum_scaling
@@ -119,6 +122,12 @@ class BaseOptimizerFactory():
                         params["learningRate"] = (lr[0] * self.projection_lr_scale, lr[1])
                         optimizer.insertSpecific(tensor_id, params)
                         projection_scale_added = True
+                    elif self.squad_lr_scaling and "Squad" in tensor_id:
+                        logger.info(f"Setting SQuAD LR scaling for tensor [{tensor_id}]: {self.squad_lr_scale}")
+                        lr = specific_parameters.get("learningRate", self.optimizer_options["defaultLearningRate"])
+                        params = specific_parameters.copy()
+                        params["learningRate"] = (lr[0] * self.squad_lr_scale, lr[1])
+                        optimizer.insertSpecific(tensor_id, params)
                     else:
                         optimizer.insertSpecific(tensor_id, specific_parameters)
 
@@ -229,8 +238,8 @@ class Schedule(object):
         try:
             return {int(k): float(raw_schedule[k]) for k in raw_schedule}
         except ValueError as ex:
-            logger.warn(f"Invalid Schedule provided for parameter [{param}]. "
-                        "It should be a set of int:float pairs.")
+            logger.warning(f"Invalid Schedule provided for parameter [{param}]. "
+                           "It should be a set of int:float pairs.")
             raise ex
 
 
@@ -288,7 +297,3 @@ class ScheduledOptimizerFactory(BaseOptimizerFactory):
     def _fast_forward(self):
         for param_name in self._schedules.keys():
             self.option_values[param_name] = self._schedules[param_name].fast_forward(self.iteration)
-
-
-if __name__ == "__main__":
-    pytest.main(args=[__file__, '-vv', '-s'])

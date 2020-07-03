@@ -147,14 +147,14 @@ def bwd_graph(popart_model,
     }
 
     output = popart_model.build_graph(indices, positions, segments)
-    proto = builder.getModelProto()
+    loss = popart_loss_fn(output)
 
-    losses = popart_loss_fn(output)
+    proto = builder.getModelProto()
 
     optimizer = popart.ConstSGD(0.01)
 
     outputs, post_proto = run_py(
-        proto, data, output, loss=losses, optimizer=optimizer,
+        proto, data, output, loss=loss, optimizer=optimizer,
         ipus=math.ceil(config.num_layers / config.layers_per_ipu) + popart_model.layer_offset)
 
     # ----------------- PopART -> PyTorch ----------------
@@ -186,7 +186,8 @@ def bwd_graph(popart_model,
     torch_loss.backward()
     optim.step()
 
-    check_tensors([output.detach().numpy() for output in torch_outputs], outputs)
+    check_tensors([output.detach().numpy()
+                   for output in torch_outputs], outputs)
 
     check_model(torch_model, post_proto,
                 torch_to_onnx, transform_weights,

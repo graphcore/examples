@@ -15,16 +15,21 @@ class IPUOptimizer(optimizer.Optimizer):
                  replicas,
                  gradients_to_accumulate,
                  pipelining=False,
+                 grad_scale=1.0,
                  weight_decay=0.0,
-                 weight_decay_filter_fn = lambda x: False,):
+                 weight_decay_filter_fn = lambda x: False,
+                 var_list=None
+                 ):
         super(IPUOptimizer, self).__init__(False, name="IPUOptimizer")
         self._optimizer = optimizer
         self._sharded = sharded
         self._replicas = replicas
         self._gradients_to_accumulate = gradients_to_accumulate
         self._pipelining = pipelining
+        self._grad_scale = grad_scale
         self._weight_decay = weight_decay
         self._weight_decay_filter_fn = weight_decay_filter_fn
+        self._var_list = var_list
 
     def add_WD(self, grads_and_vars):
         if self._weight_decay != 0.0:
@@ -34,6 +39,8 @@ class IPUOptimizer(optimizer.Optimizer):
         return grads_and_vars
 
     def compute_gradients(self, loss, var_list=None, **kwargs):
+        if not var_list:
+            var_list = self._var_list
         kwargs['colocate_gradients_with_ops'] = True
         grads_and_vars = self._optimizer.compute_gradients(loss, var_list=var_list, **kwargs)
         if not self._pipelining:
@@ -54,7 +61,7 @@ class IPUOptimizer(optimizer.Optimizer):
                 with ops.colocate_with(grad):
                     # gradient accumulation
                     if self._gradients_to_accumulate > 1 and not self._pipelining:
-                        grad = gen_poputil_ops.ipu_stateful_gradient_accumulate(grad/self._gradients_to_accumulate,
+                        grad = gen_poputil_ops.ipu_stateful_gradient_accumulate(grad,
                                                                                 num_mini_batches=self._gradients_to_accumulate)
 
                     # replication
@@ -72,6 +79,8 @@ class IPUOptimizer(optimizer.Optimizer):
             # can do weight decay here as apply_gradients is only called on last accumulation step
             summed_grads_and_vars = self.add_WD(summed_grads_and_vars)
 
+        if self._grad_scale != 1.0:
+            summed_grads_and_vars = [(grad / self._grad_scale, var) for grad, var in summed_grads_and_vars]
         ret = self._optimizer.apply_gradients(summed_grads_and_vars, global_step, name)
         if self._sharded:
             sharding.propagate_sharding(ops.get_default_graph())

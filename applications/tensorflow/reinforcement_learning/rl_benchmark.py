@@ -10,13 +10,13 @@ import tensorflow as tf
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu import ipu_infeed_queue
-from tensorflow.python.ipu import ipu_optimizer
+from tensorflow.python.ipu import cross_replica_optimizer
+from tensorflow.python.ipu import gradient_accumulation_optimizer
 from tensorflow.python.ipu import loops
 from tensorflow.python.ipu import utils
-from tensorflow.python.ipu.ops.embedding_ops import embedding_lookup
-from tensorflow.python.ipu.ops.rnn_ops import PopnnLSTM
+from tensorflow.python.ipu import embedding_ops
+from tensorflow.python.ipu import rnn_ops
 from tensorflow.python.ipu.scopes import ipu_scope
-from tensorflow.python.ipu.gradient_accumulation_optimizer import GradientAccumulationOptimizer
 from tensorflow.keras.layers import Dense
 
 try:
@@ -25,7 +25,7 @@ try:
 except ImportError:
     use_poplar_text_report = True
     report_dest = 'profile_data'
-    warnings.warn('Could not import gc_profile, falling back to text reports.', ImportWarning)
+    warnings.warn('Could not import gcprofile, falling back to text reports.', ImportWarning)
 
 
 # Hyper-parameters
@@ -101,7 +101,7 @@ def create_policy(*infeed_data):
         for index, obs in enumerate(dis_obs):
             emb_matrix = tf.get_variable(f'emb_matrix{index}', [DIS_OBS_CARDINALITY[index], DIS_OBS_EMB_SIZE[index]],
                                          DTYPE)
-            emb_lookup.append(embedding_lookup(emb_matrix, obs, name=f'emb_lookup{index}'))
+            emb_lookup.append(embedding_ops.embedding_lookup(emb_matrix, obs, name=f'emb_lookup{index}'))
 
     # Clip some continuous observations
     cont_obs[-1] = tf.clip_by_value(cont_obs[-1], -5.0, 5.0, name="clip")
@@ -123,9 +123,9 @@ def create_policy(*infeed_data):
     # LSTM layer
     lstm_input = tf.transpose(lstm_input, perm=[1, 0, 2],
                               name="pre_lstm_transpose")  # PopnnLSTM uses time-major tensors
-    lstm_cell = PopnnLSTM(num_units=LSTM_HIDDEN_SIZE, dtype=DTYPE, partials_dtype=DTYPE, name="lstm")
+    lstm_cell = rnn_ops.PopnnLSTM(num_units=LSTM_HIDDEN_SIZE, dtype=DTYPE, partials_dtype=DTYPE, name="lstm")
     lstm_output, state_out = lstm_cell(lstm_input, training=True,
-                                       initial_state=tf.contrib.rnn.LSTMStateTuple(state_in[:, 0], state_in[:, 1]))
+                                       initial_state=tf.nn.rnn_cell.LSTMStateTuple(state_in[:, 0], state_in[:, 1]))
     lstm_output = tf.transpose(lstm_output, perm=[1, 0, 2], name="post_lstm_transpose")
     logits = Dense(NUM_ACTIONS, name="logits", dtype=DTYPE)(lstm_output)
     log_prob = tf.nn.log_softmax(logits, name="prob")
@@ -147,8 +147,9 @@ def build_train_op(previous_loss, *infeed_data):
         loss = tf.reduce_sum(action_prob * infeed_data[-2])
         opt = tf.train.GradientDescentOptimizer(LEARNING_RATE)
         if args.accumulate_grad:
-            opt = GradientAccumulationOptimizer(opt, num_mini_batches=args.num_mini_batches)
-        opt = ipu_optimizer.CrossReplicaOptimizer(opt)
+            opt = gradient_accumulation_optimizer.GradientAccumulationOptimizer(
+                opt, num_mini_batches=args.num_mini_batches)
+        opt = cross_replica_optimizer.CrossReplicaOptimizer(opt)
         train_op = opt.minimize(loss)
         with tf.control_dependencies([train_op]):
             loss = tf.identity(loss)

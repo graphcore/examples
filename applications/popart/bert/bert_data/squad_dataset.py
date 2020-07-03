@@ -91,7 +91,7 @@ class SquadDataLoader(object):
             uid.append(item.unique_id)
             # Including impossible samples during training is under investigation. T12851
             # if item.is_impossible:
-            #     logger.warn("Impossible sample exists in the dataset. "
+            #     logger.warning("Impossible sample exists in the dataset. "
             #                 f"start pos: {item.start_position}, end pos: {item.end_position}")
 
         inputs = []

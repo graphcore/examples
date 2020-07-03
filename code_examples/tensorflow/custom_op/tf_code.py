@@ -16,7 +16,7 @@ def add_op(x, y):
         "output_shapes": [tf.TensorShape([SIZE])],
     }
 
-    base_path = os.path.dirname(__file__)
+    base_path = os.path.realpath(os.path.dirname(__file__))
     lib_path = os.path.join(base_path, "libcustom_op.so")
     gp_path = os.path.join(base_path, "custom_codelet.gp")
 

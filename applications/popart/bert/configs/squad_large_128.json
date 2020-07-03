@@ -1,0 +1,68 @@
+
+{
+    "task": "SQUAD",
+    "num_layers": 24,
+    "layers_per_ipu": 2,
+    "hidden_size": 1024,
+    "attention_heads": 16,
+    "sequence_length": 128,
+    "popart_dtype": "FLOAT16",
+    "no_dropout": false,
+    "learning_rate": 0.00016,
+    "lr_schedule_by_step": {
+        "0": 0.00016,
+        "40": 0.000152,
+        "80": 0.0001444,
+        "120": 0.00013717999999999998,
+        "160": 0.000130321,
+        "200": 0.00012380494999999998,
+        "240": 0.00011761470249999997,
+        "280": 0.00011173396737499997,
+        "320": 0.00010614726900624997,
+        "360": 0.00010083990555593746,
+        "400": 9.57979102781406e-05,
+        "440": 9.100801476423356e-05,
+        "480": 8.645761402602187e-05,
+        "520": 8.213473332472078e-05
+    },
+    "momentum": 0.984375,
+    "pipeline_lr_scaling": true,
+    "pipeline_lr_scaling_offset": 0.25,
+    "pipeline_momentum_scaling": true,
+    "pipeline_momentum_scaling_offset": 0.1,
+    "loss_scaling": 20,
+    "stochastic_rounding": true,
+    "batches_per_step": 2048,
+    "epochs": 3,
+    "aggregate_epochs_over_steps": 1,
+    "input_files": [
+        "data/squad/train-v1.1.json"
+    ],
+    "vocab_length": 30400,
+    "max_matmul_memory": 60000,
+    "vocab_file": "data/ckpts/uncased_L-24_H-1024_A-16/vocab.txt",
+    "tf_checkpoint": "data/ckpts/uncased_L-24_H-1024_A-16/bert_model.ckpt",
+    "do_lower_case": true,
+    "shuffle": true,
+    "execution_mode": "PIPELINE",
+    "checkpoint_dir": "ckpts/squad_large_128",
+    "engine_cache": "__squad_large_128",
+    "validation_config": {
+        "split_linear_layers": false,
+        "sequence_length": 128,
+        "layers_per_ipu": 2,
+        "squeeze_model": false,
+        "batches_per_step": 23,
+        "steps_per_log": 200,
+        "input_files": [
+            "data/squad/dev-v1.1.json"
+        ],
+        "squad_results_dir": "data/squad/results",
+        "squad_evaluate_script": "data/squad/evaluate-v1.1.py",
+        "pipeline": true,
+        "no_drop_remainder": true,
+        "variable_weights_inference": true,
+        "max_copy_merge_size": 32000,
+        "engine_cache": "__squad_large_128_validation"
+    }
+}

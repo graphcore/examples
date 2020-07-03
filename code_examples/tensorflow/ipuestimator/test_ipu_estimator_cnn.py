@@ -1,7 +1,6 @@
-#!/usr/bin/python
 # Copyright 2020 Graphcore Ltd.
 import os
-import unittest
+import pytest
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
@@ -17,31 +16,44 @@ def run_ipu_estimator_cnn(**kwargs):
     return out
 
 
-class TestIPUEstimatorCNN(unittest.TestCase):
+class TestIPUEstimatorCNN():
     """High-level integration tests for ipu_estimator_cnn Tensorflow
        example"""
 
     @classmethod
-    def setUpClass(cls):
+    def setup_class(cls):
         cls.generic_arguments = {
             "--batch-size": 32,
             "--batches-per-step": 100,
             "--epochs": 1,
             "--learning-rate": 0.01,
             "--log-interval": 10,
-            "--summary-interval": 1,
+            "--summary-interval": 1
         }
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_normal_usage(self):
         self._ipu_estimator_cnn_test_helper()
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
+    def test_normal_usage_with_synthetic_data(self):
+        self._ipu_estimator_cnn_test_helper(synthetic_data="")
+
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_strange_numbers(self):
         self._ipu_estimator_cnn_test_helper(batch_size=13, batches_per_step=89)
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_test_only(self):
         self._ipu_estimator_cnn_test_helper(model_dir='/tmp/tmpje829e90/')
         self._ipu_estimator_cnn_test_helper(model_dir='/tmp/tmpje829e90/', test_only='')
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_profile(self):
         self._ipu_estimator_cnn_test_helper(model_dir='/tmp/tmpid930d30/', profile='')
         assert os.path.exists('/tmp/tmpid930d30/train_report.txt'), "Train report wasn't generated"

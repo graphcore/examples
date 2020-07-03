@@ -220,6 +220,23 @@ def train_process_init(opts, training_data):
         training_processes.append(tp)
         tp.start()
 
+    # Wait for 30 seconds to give processes a chance to spawn and attempt to attach to IPU
+    time.sleep(30)
+
+    # Check for any failed processes
+    for index, tp in enumerate(training_processes):
+        # Subprocess failed.  Probably failed to attach to IPU
+        if tp.exitcode == 1:
+            training_processes.pop(index)
+            tp.terminate()
+
+    # Stop benchmark if num_ipus available != num_ipus requested
+    if len(training_processes) != opts.num_ipus:
+        print("\nERROR: Tried to attach to {0} IPUs but only {1} were available.  Stopping benchmark.\n".format(opts.num_ipus, len(training_processes)))
+        for tp in training_processes:
+            tp.terminate()
+        return
+
     for tp in training_processes:
         throughput = queue.get()
         throughputs.append(throughput)

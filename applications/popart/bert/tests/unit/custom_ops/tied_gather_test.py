@@ -24,12 +24,13 @@ def model(splits=1):
     if splits > 1:
         builder.setSerializeMatMul(
             {x}, 'output_channels', splits, True)
+    loss = builder.aiGraphcore.l1loss([x], 0.1, debugPrefix='loss')
 
-    return builder.getModelProto(), {d0: input_data}, x
+    return builder.getModelProto(), {d0: input_data}, x, loss
 
 
 def session(train=False, skip_execution=False, include_patterns=True, splits=1, outline=False):
-    proto, data, x = model(splits=splits)
+    proto, data, x, loss = model(splits=splits)
     # Required
     patterns = ["MatMulOp", "MatMulLhsGradOp", "MatMulRhsGradOp", "OpToIdentity", "PreUniRepl"]
     if include_patterns:
@@ -39,7 +40,7 @@ def session(train=False, skip_execution=False, include_patterns=True, splits=1, 
             proto,
             data=data,
             outputs=x,
-            loss=popart.L1Loss(x, 'loss', 0.1),
+            loss=loss,
             optimizer=popart.SGD({
                 "defaultLearningRate": (0.1, True),
                 "defaultMomentum": (0.9, True),

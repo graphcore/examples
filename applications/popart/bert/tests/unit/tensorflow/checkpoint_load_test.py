@@ -48,7 +48,6 @@ def load_bert_config_tf(config_path, override_vocab=None, chkpt_task="PRETRAININ
         no_dropout=True,
         inference=True,
         activation_type="relu",
-        custom_ops=["gather", "attention"],
         task=chkpt_task
     )
 

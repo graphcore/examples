@@ -311,12 +311,12 @@ public:
             // SGD1DecomposePattern has not run.
             return false;
         }
-        std::vector<popart::SGD1AccumulateOp *> accumulate_ops(update_ops.size());
+        std::vector<popart::AccumulateOp *> accumulate_ops(update_ops.size());
         for (size_t i = 0; i < update_ops.size(); i++) {
             auto var_update = update_ops[i];
-            auto accl_op = search_producers_for<popart::SGD1AccumulateOp>(var_update->input->tensor(popart::SGD1VarUpdateOp::getUpdaterInIndex()), 3);
+            auto accl_op = search_producers_for<popart::AccumulateOp>(var_update->input->tensor(popart::SGD1VarUpdateOp::getUpdaterInIndex()), 3);
             if (!accl_op) {
-                throw popart::error("Could not find SGD1AccumulateOp for SGD1VarUpdateOp {}", var_update->name());
+                throw popart::error("Could not find AccumulateOp for SGD1VarUpdateOp {}", var_update->name());
             }
             accumulate_ops[i] = accl_op;
         }
@@ -331,8 +331,8 @@ public:
         // TODO: Find a more robust way than sorting input ids
         std::sort(accumulate_ops.begin(), accumulate_ops.end(),
                   [](const popart::Op *l, const popart::Op *r) {
-                      return l->input->tensor(popart::SGD1AccumulateOp::getVarToUpdateInIndex())->id.compare(
-                          r->input->tensor(popart::SGD1AccumulateOp::getVarToUpdateInIndex())->id) < 0;
+                      return l->input->tensor(popart::AccumulateOp::getVarToUpdateInIndex())->id.compare(
+                          r->input->tensor(popart::AccumulateOp::getVarToUpdateInIndex())->id) < 0;
                   });
         std::sort(gather_ops.begin(), gather_ops.end(), 
             [](const popart::Op *l, const popart::Op *r) {
@@ -348,7 +348,7 @@ public:
 
         auto dense_accl = accumulate_ops[serial_index];
 
-        auto accl_id = dense_accl->input->tensor(popart::SGD1AccumulateOp::getVarToUpdateInIndex())->id;
+        auto accl_id = dense_accl->input->tensor(popart::AccumulateOp::getVarToUpdateInIndex())->id;
         auto weight_id = update_ops[serial_index]->input->tensor(popart::SGD1VarUpdateOp::getVarToUpdateInIndex())->id;
         popart::logging::pattern::info("Using tied accumulator {} for {}", accl_id, gather->name());
 
@@ -362,7 +362,7 @@ public:
         // Add sparseSGD1AccumulateOp.
         auto sparse_accl_up = std::make_unique<SparseSGD1AccumulateOp>(
             accl_id,
-            dense_accl->initDpsf1,
+            dense_accl->getFactor(),
             gather_grad->getAxis(),
             popart::Op::Settings(graph, "_tiedAccumulate/" + std::to_string(serial_index)));
 
@@ -378,12 +378,12 @@ public:
         sparse_accl->connectInTensor(SparseSGD1AccumulateOp::getUpdaterInIndex(),
                                      gather_grad->inId(popart::GatherGradOp::gradInIndex()));
         // Scale
-        if (!dense_accl->initDpsf1.isConst()) {
+        if (!dense_accl->getFactor().isConst()) {
             sparse_accl->connectInTensor(
                 // the index at which the dampening scale factor is received,
                 SparseSGD1AccumulateOp::getDpsf1InIndex(),
                 // the name of the dampening scale factor
-                dense_accl->inId(popart::SGD1AccumulateOp::getDpsf1InIndex()));
+                dense_accl->inId(popart::AccumulateOp::getFactorInIndex()));
         }
         // Indices
         sparse_accl->connectInTensor(SparseSGD1AccumulateOp::getIndicesInIndex(),
@@ -425,6 +425,9 @@ public:
         auto &opts = var_update->getIr().getSessionOptions();
         if (opts.enablePipelining) {
             return var_update->getPipelineStage() >= sparse_accl->getPipelineStage();
+        }
+        if (opts.pingPongPhases > 1) {
+            return var_update->getPingPongPhase() >= sparse_accl->getPingPongPhase();
         }
         return true;
     }

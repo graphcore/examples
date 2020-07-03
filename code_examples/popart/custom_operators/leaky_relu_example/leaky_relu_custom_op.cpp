@@ -181,7 +181,7 @@ LeakyReluGradOp::LeakyReluGradOp(const LeakyReluOp &fwdOp)
 const std::vector<popart::GradInOutMapper> &
 LeakyReluGradOp::gradInputInfo() const {
   static const std::vector<popart::GradInOutMapper> inInfo = {
-      {0, 0, popart::GradOpInType::GRADOUT}, {1, 0, popart::GradOpInType::IN}};
+      {0, 0, popart::GradOpInType::GradOut}, {1, 0, popart::GradOpInType::In}};
   return inInfo;
 }
 

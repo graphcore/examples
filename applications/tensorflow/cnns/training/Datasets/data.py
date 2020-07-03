@@ -52,6 +52,11 @@ def data(opts, is_training=True):
     dtypes = opts["precision"].split('.')
     datatype = tf.float16 if dtypes[0] == '16' else tf.float32
 
+    if opts['train_with_valid_preprocessing'] and is_training:
+        training_preprocessing = False
+    else:
+        training_preprocessing = is_training
+
     if opts['synthetic_data']:
         dataset = synthetic_dataset(opts)
         dataset = dataset.cache()
@@ -66,8 +71,10 @@ def data(opts, is_training=True):
 
         cycle_length = 1 if opts['seed_specified'] else 4
         if opts["dataset"] == 'imagenet':
-            preprocess_fn = partial(imagenet_preprocess, is_training=is_training,
-                                    dtype=datatype, seed=opts['seed'])
+            preprocess_fn = partial(imagenet_preprocess, is_training=training_preprocessing,
+                                    image_size=opts["image_size"],
+                                    dtype=datatype, seed=opts['seed'],
+                                    full_normalisation=opts["normalise_input"])
             dataset_fn = tf.data.TFRecordDataset
             if is_training and opts['distributed']:
                 # Shuffle after sharding
@@ -79,7 +86,7 @@ def data(opts, is_training=True):
             dataset = dataset.interleave(dataset_fn, cycle_length=cycle_length,
                                          block_length=cycle_length, num_parallel_calls=cycle_length)
         elif 'cifar' in opts["dataset"]:
-            preprocess_fn = partial(cifar_preprocess, is_training=is_training, dtype=datatype,
+            preprocess_fn = partial(cifar_preprocess, is_training=training_preprocessing, dtype=datatype,
                                     dataset=opts['dataset'], seed=opts['seed'])
             dataset = tf.data.FixedLengthRecordDataset(filenames, DATASET_CONSTANTS[opts['dataset']]['RECORD_BYTES'])
             if is_training and opts['distributed']:
@@ -92,7 +99,8 @@ def data(opts, is_training=True):
             shuffle_buffer = DATASET_CONSTANTS[opts['dataset']]['SHUFFLE_BUFFER']
             dataset = dataset.shuffle(shuffle_buffer, seed=opts['seed'])
         else:
-            dataset = dataset.take(opts["validation_batches_per_step"]*opts["validation_iterations"]*batch_size)
+            dataset = dataset.take(opts["validation_batches_per_step"] *
+                                   opts["validation_iterations"]*opts["validation_total_batch_size"])
             dataset = dataset.cache()
         dataset = dataset.repeat()
 
@@ -120,8 +128,8 @@ def synthetic_dataset(opts):
     """Returns dataset filled with random data."""
     # Synthetic input should be within [0, 255].
 
-    height = DATASET_CONSTANTS[opts['dataset']]['IMAGE_HEIGHT']
-    width = DATASET_CONSTANTS[opts['dataset']]['IMAGE_WIDTH']
+    height = opts['image_size']
+    width = opts['image_size']
     num_classes = DATASET_CONSTANTS[opts['dataset']]['NUM_CLASSES']
 
     dtypes = opts["precision"].split('.')
@@ -187,10 +195,10 @@ def cifar_preprocess(raw_record, is_training, dtype, dataset, seed):
     }
 
 
-def imagenet_preprocess(raw_record, is_training, dtype, seed):
+def imagenet_preprocess(raw_record, is_training, dtype, seed, image_size, full_normalisation):
     image, label = imagenet_preprocessing.parse_record(raw_record, is_training, dtype,
-                                                       DATASET_CONSTANTS['imagenet']['IMAGE_HEIGHT'],
-                                                       seed)
+                                                       image_size,
+                                                       seed, full_normalisation=full_normalisation)
 
     label -= 1
 
@@ -210,6 +218,13 @@ def add_arguments(parser):
                        help="Number of images to process in parallel")
     group.add_argument('--synthetic-data', action="store_true",
                        help="Use synthetic data")
+    group.add_argument('--normalise-input', action="store_true",
+                       help='''Normalise inputs to zero mean and unit variance.
+                           Default approach just translates [0, 255] image to zero mean. (ImageNet only)''')
+    group.add_argument('--image-size', type=int,
+                       help="Size of image (ImageNet only)")
+    group.add_argument('--train-with-valid-preprocessing', action="store_true",
+                       help="Use validation image preprocessing when training")
     return parser
 
 

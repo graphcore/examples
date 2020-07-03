@@ -1,6 +1,4 @@
 # Copyright 2019 Graphcore Ltd.
-import os
-import ctypes
 import torch
 import popart
 import numpy as np
@@ -41,7 +39,6 @@ def test_pretraining_fwd(custom_ops):
                         popart_dtype="FLOAT",
                         activation_type="relu",
                         no_dropout=True,
-                        custom_ops=[],
                         inference=True)
     popart_model = Bert(config, builder=builder)
 
@@ -72,7 +69,6 @@ def test_pretraining_bwd(custom_ops):
                         popart_dtype="FLOAT",
                         activation_type="relu",
                         no_dropout=True,
-                        custom_ops=[],
                         update_embedding_dict=False)
     popart_model = Bert(config, builder=builder)
 
@@ -90,9 +86,9 @@ def test_pretraining_bwd(custom_ops):
     l1_lambda = 0.1
 
     def popart_loss_fn(logits):
-        loss = popart.L1Loss(logits[0], "l1LossVal", l1_lambda)
-        loss.virtualGraph(popart_model.mlm_scope.virtualGraph)
-        return [loss]
+        loss = builder.aiGraphcore.l1loss([logits[0]], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
+        builder.virtualGraph(loss, popart_model.mlm_scope.virtualGraph)
+        return loss
 
     bwd_graph(popart_model,
               torch_model,

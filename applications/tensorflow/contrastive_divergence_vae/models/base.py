@@ -21,7 +21,7 @@ except ImportError:
     pass
 
 try:
-    from tensorflow.python.ipu.ipu_optimizer import CrossReplicaOptimizer
+    from tensorflow.python.ipu.cross_replica_optimizer import CrossReplicaOptimizer
 except ImportError:
     pass
 
@@ -91,7 +91,8 @@ class BaseModel(object):
             - 'maybe_xla_compile': is xla.compile function if on IPU or GPU, else is identity function
         """
         self.device_config = get_device_config(device_str,
-                                               num_ipus=self.config.get('n_replicas', 1))
+                                               num_ipus=self.config.get('n_replicas', 1),
+                                               only_ipu=self.config.get('only_ipu'))
 
     def set_training_config(self):
         """Set some of config relating to parameter optimisation of internal variables"""

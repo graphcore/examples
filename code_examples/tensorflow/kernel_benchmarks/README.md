@@ -18,16 +18,17 @@ This repo contains the code required to run the kernel model.
 
 The structure of the repo is as follows:
 
-| File               | Description			                        |
-| ------------------ | -------------------------------------------------------- |
-| `grouped_conv.py`  | Benchmark program for grouped convolutions               |
-| `gru.py`           | Benchmark program for 1 GRU layer                        |
-| `hmc.py`           | Benchmark HMC steps in isolation                         |
-| `lstm.py`          | Benchmark program for 1 LSTM layer                       |
-| `rnn.py`           | Benchmark program for 1 RNN layer                        |
-| `dense.py`         | Benchmark program for 1 Dense layer                      |
-| `README.md`        | This file                                                |
-| `test/`            | Test code that can be run via pytest                     |
+| File               | Description			                                         |
+| ------------------ | --------------------------------------------------------- |
+| `grouped_conv.py`  | Benchmark program for grouped convolutions                |
+| `gru.py`           | Benchmark program for 1 GRU layer                         |
+| `hmc.py`           | Benchmark HMC steps in isolation                          |
+| `lstm.py`          | Benchmark program for 1 LSTM layer                        |
+| `lstm_multi.py`    | Benchmark for a multi-layer LSTM with a dense final layer |
+| `rnn.py`           | Benchmark program for 1 RNN layer                         |
+| `dense.py`         | Benchmark program for 1 Dense layer                       |
+| `README.md`        | This file                                                 |
+| `test/`            | Test code that can be run via pytest                      |
 
 
 

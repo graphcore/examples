@@ -13,6 +13,7 @@ from collections import namedtuple
 
 import numpy as np
 import popart
+from time import time
 
 Session = namedtuple('Session', ['session', 'anchors'])
 
@@ -47,6 +48,33 @@ def load_mnist():
     train_labels = _readfile('data/train-labels-idx1-ubyte')
     test_data = _readfile('data/t10k-images-idx3-ubyte')
     test_labels = _readfile('data/t10k-labels-idx1-ubyte')
+
+    return train_data, train_labels, test_data, test_labels
+
+
+def load_dummy(cl_opts: argparse.Namespace):
+    def _generate_data(cls_opts):
+        """
+        Generates random data based provided command line arguments
+
+        Args:
+            cls_opts: The command line arguments
+
+        Returns:
+            Arrays with random values for data and labels
+        """
+        input_shape = [cl_opts.batches_per_step * cl_opts.batch_size, 1, ROWS, COLS]
+        data = np.zeros(input_shape, np.float32) if cl_opts.syn_data_type == "zeros" \
+            else np.random.normal(0, 1, input_shape).astype(np.float32)
+
+        label_shape = [cl_opts.batches_per_step * cl_opts.batch_size]
+        label_data = np.zeros(label_shape, np.int32) if cl_opts.syn_data_type == "zeros" \
+            else np.random.uniform(0, 10, label_shape).astype(np.int32)
+
+        return data, label_data
+
+    train_data, train_labels = _generate_data(cl_opts)
+    test_data, test_labels = _generate_data(cl_opts)
 
     return train_data, train_labels, test_data, test_labels
 
@@ -125,7 +153,7 @@ def create_model(batch_size):
     label_shape = popart.TensorInfo('INT32', [batch_size])
     label = builder.addInputTensor(label_shape)
 
-    loss = popart.NllLoss(probs, label, 'nllLossVal')
+    loss = builder.aiGraphcore.nllloss([probs, label], popart.ReductionType.Sum, debugPrefix='nllLossVal')
 
     proto = builder.getModelProto()
 
@@ -176,18 +204,20 @@ def get_device(sim=True):
 
 def init_session(proto, loss, dataFlow, userOpts, device, training=True):
     # Create a session to compile and execute the graph
+    if opts.test_mode:
+        userOpts.instrumentWithHardwareCycleCounter = True
+
     if training:
         session = popart.TrainingSession(fnModel=proto,
-                                         losses=[loss],
+                                         loss=loss,
                                          deviceInfo=device,
                                          optimizer=popart.ConstSGD(0.001),
-                                         dataFeed=dataFlow,
+                                         dataFlow=dataFlow,
                                          userOptions=userOpts)
     else:
         session = popart.InferenceSession(fnModel=proto,
-                                          losses=[loss],
                                           deviceInfo=device,
-                                          dataFeed=dataFlow,
+                                          dataFlow=dataFlow,
                                           userOptions=userOpts)
 
     print('Compiling the {} graph.'.format(
@@ -200,27 +230,40 @@ def init_session(proto, loss, dataFlow, userOpts, device, training=True):
     return Session(session, anchors)
 
 
+def log_run_info(session, start_time, batch_size, batches_per_step):
+    duration = time() - start_time
+    report_string = "{0:<8.3} sec/itr. {1:5f} images/sec.".format(
+        duration,
+        batch_size * batches_per_step / duration
+    )
+    print(report_string)
+    print(
+        "Hardware cycle count per 'run':",
+        session.session.getCycleCount()
+    )
+    print("Total time: {}".format(duration))
+
+
 def train(opts):
-    train_data, train_labels, test_data, test_labels = load_mnist()
+    # Do not require the mnist data to be present if running with synthetic data
+    train_data, train_labels, test_data, test_labels = load_dummy(opts) \
+        if opts.syn_data_type in ["random_normal", "zeros"] else load_mnist()
 
-    # Limit batches_per_step so the test set isn't evaluated more than once.
-    max_value = len(test_data) // opts.batch_size
-    if max_value < opts.batches_per_step:
-        print('(batches-per-step * batch-size) is larger than test set!\n'
-              ' Reduced batches-per-step to: {}\n'.format(max_value))
-        opts.batches_per_step = max_value
-
-    training_set = DataSet(
-        opts.batch_size, opts.batches_per_step, train_data, train_labels)
-    test_set = DataSet(opts.batch_size, opts.batches_per_step,
-                       test_data, test_labels)
+    if not opts.test_mode:
+        max_value = len(test_data) // opts.batch_size
+        if max_value < opts.batches_per_step:
+            print("(batches-per-step * batch-size) is larger than test set!\n"
+                  " Reduced batches-per-step to: {}\n".format(max_value))
+            opts.batches_per_step = max_value
+    training_set = DataSet(opts.batch_size, opts.batches_per_step, train_data, train_labels)
+    test_set = DataSet(opts.batch_size, opts.batches_per_step, test_data, test_labels)
 
     print('Creating ONNX model.')
     proto, data_in, labels_in, output, loss = create_model(opts.batch_size)
 
     # Describe how to run the model
     anchor_desc = {output: popart.AnchorReturnType('ALL'),
-                   loss.output(0): popart.AnchorReturnType('ALL')}
+                   loss: popart.AnchorReturnType('ALL')}
     dataFlow = popart.DataFlow(opts.batches_per_step, anchor_desc)
 
     # Options
@@ -229,6 +272,16 @@ def train(opts):
     # The validation graph by default will be optimized to change all variables to constants
     # This prevents that, which allows for checkpoints to be loaded into the model without recompiling
     userOpts.constantWeights = False
+
+    # If requested, setup synthetic data
+    if opts.syn_data_type in ["random_normal", "zeros"]:
+        print(
+            "Running with Synthetic Data Type '{}'".format(opts.syn_data_type)
+        )
+        if opts.syn_data_type == "random_normal":
+            userOpts.syntheticDataMode = popart.SyntheticDataMode.RandomNormal
+        elif opts.syn_data_type == "zeros":
+            userOpts.syntheticDataMode = popart.SyntheticDataMode.Zeros
 
     # A single device is shared between training and validation sessions
     device = get_device(opts.simulation)
@@ -242,7 +295,6 @@ def train(opts):
     _, onnx_file_name = tempfile.mkstemp()
 
     training.session.weightsFromHost()
-    training.session.optimizerFromHost()
     training.session.modelToHost(onnx_file_name)
 
     print('Running training loop.')
@@ -254,7 +306,14 @@ def train(opts):
         for data, labels in training_set:
             stepio = popart.PyStepIO(
                 {data_in: data, labels_in: labels}, training.anchors)
+
+            start = time()
             training.session.run(stepio)
+            if opts.test_mode == "training":
+                log_run_info(training,
+                             start,
+                             opts.batch_size,
+                             opts.batches_per_step)
 
         aggregated_loss = 0
         aggregated_accuracy = 0
@@ -267,9 +326,17 @@ def train(opts):
         for data, labels in test_set:
             stepio = popart.PyStepIO(
                 {data_in: data, labels_in: labels}, validation.anchors)
+
+            start = time()
             validation.session.run(stepio)
+            if opts.test_mode == "inference":
+                log_run_info(validation,
+                             start,
+                             opts.batch_size,
+                             opts.batches_per_step)
+
             # Loss
-            aggregated_loss += np.mean(validation.anchors['nllLossVal'])
+            aggregated_loss += np.mean(validation.anchors[loss])
             # Accuracy
             results = np.argmax(validation.anchors[output].reshape(
                 [test_set.inputs_per_step, 10]), 1)
@@ -291,17 +358,43 @@ def train(opts):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='MNIST training in Popart',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--batch-size', type=int, default=32,
-                        help='Set the Batch size')
-    parser.add_argument('--batches-per-step', type=int, default=100,
-                        help='Number of minibatches to perform on the Device before returning to the Host.'
-                        ' This will be capped so the Device returns each epoch.')
-    parser.add_argument('--epochs', type=int, default=10,
-                        help='Number of epochs to train for.')
-    parser.add_argument('--simulation', action='store_true',
-                        help='Run the example with an IPU_MODEL device.')
-    parser.add_argument('--log-graph-trace', action='store_true',
-                        help='Turn on ir logging to display the graph\'s ops.')
+    parser.add_argument(
+        '--batch-size',
+        type=int,
+        default=32,
+        help='Set the Batch size')
+    parser.add_argument(
+        '--batches-per-step',
+        type=int,
+        default=100,
+        help='Number of minibatches to perform on the Device before returning to the Host.'
+             ' This will be capped so the Device returns each epoch.')
+    parser.add_argument(
+        '--epochs',
+        type=int,
+        default=10,
+        help='Number of epochs to train for.')
+    parser.add_argument(
+        '--simulation',
+        action='store_true',
+        help='Run the example with an IPU_MODEL device.')
+    parser.add_argument(
+        '--log-graph-trace',
+        action='store_true',
+        help='Turn on ir logging to display the graph\'s ops.')
+    parser.add_argument(
+        "--test-mode",
+        choices=['training', 'inference'],
+        help="Output extra performance information, specify wit"
+        "h either 'training' or 'inference'",
+    )
+    parser.add_argument(
+        "--syn-data-type",
+        choices=['random_normal', 'zeros'],
+        default="off",
+        help="Specify to use synthetic data with either 'random"
+             "_normal' or 'zeros' (no host to IPU IO done in this mode)",
+    )
     opts = parser.parse_args()
 
     # Set logging

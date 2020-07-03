@@ -7,7 +7,6 @@ import glob
 import json
 import os
 import portpicker
-import shutil
 import statistics
 import subprocess
 import tempfile
@@ -47,10 +46,10 @@ class TestMisc(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_logdir(self):
+    def test_results(self):
+        # test_logdir
         self.assertEqual(self.logdir[:12], 'logs/walrus/')
-
-    def test_name_suffix(self):
+        # test_name_suffix
         self.assertNotEqual(self.logdir.find('penguin'), -1)
 
 
@@ -69,21 +68,22 @@ class TestCifar10Training(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_final_validation_accuracy(self):
+    def test_results(self):
+        # test_final_validation_accuracy
         final_acc = self.validation['val_acc'][-1]
         self.assertGreater(final_acc, 81)
         self.assertLess(final_acc, 87)
 
-    def test_final_training_accuracy(self):
+        # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
-        self.assertGreater(final_acc, 82)
+        self.assertGreater(final_acc, 81)
         self.assertLess(final_acc, 87)
 
-    def test_learning_rates(self):
+        # test_learning_rates
         self.assertEqual(self.training['lr'][0], 0.5)
         self.assertEqual(self.training['lr'][-1], 0.0005)
 
-    def test_epochs_completed(self):
+        # test_epochs_completed
         self.assertEqual(round(self.training['epoch'][-1]), 10)
 
 
@@ -105,21 +105,22 @@ class TestCifar10FullTraining(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_final_validation_accuracy(self):
+    def test_results(self):
+        # test_final_validation_accuracy
         final_acc = statistics.median(self.validation['val_acc'][-3:-1])
-        self.assertGreater(final_acc, 91.0)
-        self.assertLess(final_acc, 93.0)
+        self.assertGreater(final_acc, 89.0)
+        self.assertLess(final_acc, 91.0)
 
-    def test_final_training_accuracy(self):
+        # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
         self.assertGreater(final_acc, 96)
         self.assertLess(final_acc, 98)
 
-    def test_final_loss(self):
+        # test_final_loss
         self.assertLess(self.training['loss_batch'][-1], 0.45)
         self.assertGreater(self.training['loss_batch'][-1], 0.35)
 
-    def test_epochs_completed(self):
+        # test_epochs_completed
         self.assertEqual(round(self.training['epoch'][-1]), 50)
 
 
@@ -169,7 +170,6 @@ class TestResNet50Pipelining2IPUs(unittest.TestCase):
                            '--available-memory-proportion': 0.1,
                            '--pipeline-splits': 'b3/1/relu'})
         cls.training = get_csv(out, 'training.csv')
-        print(cls.training)
 
     def test_iterations_completed(self):
         self.assertEqual(self.training['iteration'][-1], 10)
@@ -199,7 +199,6 @@ class TestResNet50Pipelining2IPUs2Replicas(unittest.TestCase):
                            '--available-memory-proportion': 0.1,
                            '--pipeline-splits': 'b3/0/relu'})
         cls.training = get_csv(out, 'training.csv')
-        print(cls.training)
 
     def test_iterations_completed(self):
         self.assertEqual(self.training['iteration'][-1], 10)
@@ -222,12 +221,12 @@ class TestReplicatedTraining(unittest.TestCase):
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
-    def test_final_training_accuracy(self):
+    def test_results(self):
+        # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
         self.assertGreater(final_acc, 85)
         self.assertLess(final_acc, 95)
-
-    def test_epochs_completed(self):
+        # test_epochs_completed
         self.assertEqual(round(self.training['epoch'][-1]), 20)
 
 
@@ -256,67 +255,92 @@ class TestLotsOfOptions(unittest.TestCase):
         cls.training = get_csv(out, 'training.csv')
 
     # We're mostly just testing that training still runs with all the above options.
-
-    def test_learning_rate(self):
+    def test_results(self):
+        # test_learning_rate
         self.assertEqual(self.training['lr'][0], 1.0)
 
-    def test_epoch(self):
+        # test_epoch
         self.assertEqual(int(self.validation['epoch'][-1] + 0.5), 10)
 
 
-@pytest.mark.category1
-@pytest.mark.ipus(4)
+@pytest.mark.category3
+@pytest.mark.ipus(16)
 class TestDistributedTraining(unittest.TestCase):
     """Testing distributed training with multiple processes on a single machine."""
 
-    NUM_WORKERS = 2
-    WORKER_TIMEOUT_SECONDS = 10 * 60
+    def test_resnet_50_from_readme(self):
 
-    @classmethod
-    def setUpClass(cls):
-        cls.logdir = tempfile.mkdtemp()
+        NUM_WORKERS = 2
+        WORKER_TIMEOUT_SECONDS = 30 * 60
 
-        cmd = [
-            'python3', 'train.py',
-            '--dataset=cifar-10',
-            '--synthetic-data',
-            '--model-size=20',
-            '--batch-size=1',
-            '--iterations=100',
-            '--batches-per-step=1',
-            '--pipeline-depth=4',
-            '--pipeline-splits', 'b2/0/relu',
-            '--xla-recompute',
-            '--shards=2',
-            '--distributed',
-            '--no-validation',
-            '--no-stochastic-rounding',
-            '--log-dir', cls.logdir,
-        ]
+        with tempfile.TemporaryDirectory() as logdir:
+            cmd = [
+                'python3', 'train.py',
+                '--dataset=imagenet',
+                '--synthetic-data',
+                '--model-size=50',
+                '--batch-size=4',
+                '--batches-per-step=1',
+                '--shards=4',
+                '--pipeline-depth=64',
+                '--pipeline-splits', 'b1/2/relu', 'b2/3/relu', 'b3/5/relu',
+                '--xla-recompute',
+                '--replicas=2',  # Instead of 4 to make two processes fit on one machine.
+                '--distributed',
+                '--no-stochastic-rounding',
+                '--no-validation',
+                '--iterations=100',
+                '--learning-rate-schedule=1',
+                '--base-learning-rate=-14',
+                '--log-dir', logdir,
+            ]
 
-        cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            extra_env = {
+                'POPLAR_ENGINE_OPTIONS': '{"opt.maxCopyMergeSize": 8388608}',
+            }
 
-        worker_ports = cls._pick_unique_unused_ports(cls.NUM_WORKERS)
-        cluster_spec = {
-            'worker': ['localhost:%s' % port for port in worker_ports]
-        }
+            cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
-        processes = cls._start_processes_with_tf_config(cmd, cwd, cluster_spec)
-        cls._wait_for_processes(processes, cls.WORKER_TIMEOUT_SECONDS)
+            worker_ports = self._pick_unique_unused_ports(NUM_WORKERS)
+            cluster_spec = {
+                'worker': ['localhost:%s' % port for port in worker_ports]
+            }
 
-        cls.worker_log_dirs = cls._find_worker_log_dirs()
-        cls.training_logs = [parse_csv(os.path.join(d, "training.csv")) for d in cls.worker_log_dirs]
+            processes = self._start_processes_with_tf_config(cmd, cwd, extra_env, cluster_spec)
+            self._wait_for_processes(processes, WORKER_TIMEOUT_SECONDS)
 
-    @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(cls.logdir)
+            worker_log_dirs = self._find_worker_log_dirs(NUM_WORKERS, logdir)
+            training_logs = [parse_csv(os.path.join(d, "training.csv")) for d in worker_log_dirs]
+
+            # The final training accuracy should be the same on all workers.
+            for i in range(1, NUM_WORKERS):
+                self.assertEqual(
+                    training_logs[0]['train_acc_avg'][-1],
+                    training_logs[i]['train_acc_avg'][-1])
+
+            # The final training loss should be the same on all workers.
+            for i in range(1, NUM_WORKERS):
+                self.assertEqual(
+                    training_logs[0]['loss_avg'][-1],
+                    training_logs[i]['loss_avg'][-1])
+
+            # The final weights should be the same on all workers.
+            var_names_and_shapes = tf.train.list_variables(worker_log_dirs[0])
+
+            for var_name, _ in var_names_and_shapes:
+                value_worker_0 = tf.train.load_variable(worker_log_dirs[0], var_name)
+
+                for i in range(1, NUM_WORKERS):
+                    value_worker_i = tf.train.load_variable(worker_log_dirs[i], var_name)
+                    self.assertListEqual(value_worker_0.tolist(), value_worker_i.tolist())
 
     @staticmethod
-    def _start_processes_with_tf_config(cmd, cwd, cluster_spec):
+    def _start_processes_with_tf_config(cmd, cwd, extra_env, cluster_spec):
         processes = []
 
         for i in range(len(cluster_spec['worker'])):
             env = os.environ.copy()
+            env.update(extra_env)
             env["TF_CONFIG"] = json.dumps({
                 "cluster": cluster_spec,
                 "task": {
@@ -354,36 +378,14 @@ class TestDistributedTraining(unittest.TestCase):
             for p in remaining:
                 p.kill()
 
-    @classmethod
-    def _find_worker_log_dirs(cls):
+    @staticmethod
+    def _find_worker_log_dirs(num_workers, logdir):
         worker_log_dirs = []
 
-        for i in range(cls.NUM_WORKERS):
-            logdirs = glob.glob(f"{cls.logdir}/*_worker{i}_*")
+        for i in range(num_workers):
+            logdirs = glob.glob(f"{logdir}/*_worker{i}_*")
             if len(logdirs) != 1:
                 raise RuntimeError(f"Expected 1 worker dir, found {len(logdirs)}: {logdirs}")
             worker_log_dirs.append(logdirs[0])
 
         return worker_log_dirs
-
-    def test_final_train_acc_avg_is_same_on_workers(self):
-        for i in range(1, self.NUM_WORKERS):
-            self.assertEqual(
-                self.training_logs[0]['train_acc_avg'][-1],
-                self.training_logs[i]['train_acc_avg'][-1])
-
-    def test_final_loss_avg_is_same_on_workers(self):
-        for i in range(1, self.NUM_WORKERS):
-            self.assertEqual(
-                self.training_logs[0]['loss_avg'][-1],
-                self.training_logs[i]['loss_avg'][-1])
-
-    def test_variables_are_equal_on_workers(self):
-        var_names_and_shapes = tf.train.list_variables(self.worker_log_dirs[0])
-
-        for var_name, _ in var_names_and_shapes:
-            value_worker_0 = tf.train.load_variable(self.worker_log_dirs[0], var_name)
-
-            for i in range(1, self.NUM_WORKERS):
-                value_worker_i = tf.train.load_variable(self.worker_log_dirs[i], var_name)
-                self.assertListEqual(value_worker_0.tolist(), value_worker_i.tolist())

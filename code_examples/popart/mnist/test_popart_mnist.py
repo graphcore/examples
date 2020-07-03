@@ -3,7 +3,6 @@ import os
 import unittest
 
 import pytest
-from common import download_mnist
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
 from tests.test_util import run_python_script_helper, run_test_helper, \
@@ -23,7 +22,6 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        download_mnist(os.path.dirname(__file__))
         cls.accuracy_tolerances = 3.0
         cls.generic_arguments = {
             "--batch-size": 4,
@@ -33,7 +31,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
         }
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
+    @pytest.mark.category2
     def test_mnist_train(self):
         """Generic test on default arguments in training"""
         py_args = self.generic_arguments.copy()
@@ -49,7 +47,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
         )
 
     @pytest.mark.ipus(2)
-    @pytest.mark.category1
+    @pytest.mark.category2
     def test_mnist_train_sharded(self):
         """Generic test on default arguments in training over 2 IPUs"""
         py_args = self.generic_arguments.copy()
@@ -66,7 +64,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
         )
 
     @pytest.mark.ipus(2)
-    @pytest.mark.category1
+    @pytest.mark.category2
     def test_mnist_train_sharded_pipelined(self):
         """Generic test on default arguments in training over 2 IPUs
            and pipelined"""
@@ -85,7 +83,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
         )
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
+    @pytest.mark.category2
     def test_mnist_all_data(self):
         """Generic test using all the available data (10,000)"""
         py_args = self.generic_arguments.copy()
@@ -97,7 +95,8 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
             **py_args
         )
 
-    @pytest.mark.category1
+    @pytest.mark.ipus(1)
+    @pytest.mark.category2
     def test_mnist_simulation(self):
         """Simulation test with basic arguments"""
         py_args = self.generic_arguments.copy()
@@ -109,7 +108,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
         )
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
+    @pytest.mark.category2
     def test_mnist_log_graph_trace(self):
         """Basic test with log-graph-trace argument"""
         py_args = self.generic_arguments.copy()

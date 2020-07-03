@@ -1,23 +1,40 @@
 # Copyright 2020 Graphcore Ltd.
 
-from tensorflow.python.ipu.scopes import ipu_scope, ipu_shard
-from tensorflow.python.ipu import utils, loops, ipu_infeed_queue, ipu_compiler
-import tensorflow_probability as tfp
-import tensorflow as tf
+import argparse
+import os
 import time as time
+
 import numpy as np
+import tensorflow as tf
+from tensorflow.python.ipu import ipu_compiler, ipu_infeed_queue, loops, utils
+from tensorflow.python.ipu.scopes import ipu_scope, ipu_shard
+
+import tensorflow_probability as tfp
+
 
 # Model and sampling parameters
 # Note: increasing model size, number of steps, or dataset size may cause out of memory errors
 first_layer_size = 40
 num_burnin_steps = 100
+num_ipus = 2
 num_results = 400
 num_leapfrog_steps = 1000
-input_file = "returns_and_features_for_mcmc.txt"
 useful_features = 22
 num_skip_columns = 2
 output_file = "output_samples.txt"
-num_ipus = 2
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--dataset-dir",
+    type=str,
+    default=".",
+    help="Path to datasets"
+)
+args = parser.parse_args()
+
+input_file = os.path.join(
+    args.dataset_dir, "returns_and_features_for_mcmc.txt"
+)
 
 # Print the about message
 print("\nMCMC sampling example with TensorFlow Probability\n"
@@ -27,6 +44,7 @@ print("\nMCMC sampling example with TensorFlow Probability\n"
       f" Number of burn-in steps {num_burnin_steps}\n"
       f" Number of leapfrog steps {num_leapfrog_steps}\n"
       f" First layer size {first_layer_size}")
+
 
 # Load data
 raw_data = np.genfromtxt(input_file, skip_header=1,
@@ -63,7 +81,7 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 # Initialize TensorFlow graph and session
 tf.reset_default_graph()
 config = tf.ConfigProto()
-sess = tf.InteractiveSession(config=config)
+sess = tf.Session(config=config)
 
 
 # Build the neural network
@@ -176,12 +194,12 @@ for i in range(num_ipus):
 
 # Configure IPU
 config = utils.create_ipu_config()
-# Create num_chips devices, with 1 IPU per device
+# Create num_chips TF devices, with 1 IPU per device
 config = utils.auto_select_ipus(config, [1]*num_ipus)
 utils.configure_ipu_system(config)
+utils.move_variable_initialization_to_cpu()
 
 # Initialize variables
-utils.move_variable_initialization_to_cpu()
 init_g = tf.global_variables_initializer()
 sess.run(init_g)
 
@@ -200,12 +218,10 @@ print("Done\n")
 
 # Concatenate samples from separate MCMC chains
 samples = np.concatenate(list(map(lambda x: x[0], results)), axis=0)
-is_accepted = np.concatenate(list(map(lambda x: x[1].inner_results.is_accepted, results)), axis=0)
 
 # Write samples to file
 np.savetxt(output_file, samples, delimiter='\t')
 print("Written {} samples to {}".format(samples.shape[0], output_file))
 
-# Print result
-print("Acceptance rate {0:.2f}\n".format(is_accepted.mean()))
+# Print run time
 print("Completed in {0:.2f} seconds\n".format(end_time - start_time))

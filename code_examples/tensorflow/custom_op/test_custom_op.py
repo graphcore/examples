@@ -1,4 +1,3 @@
-#!/usr/bin/python
 # Copyright 2020 Graphcore Ltd.
 import os
 import re

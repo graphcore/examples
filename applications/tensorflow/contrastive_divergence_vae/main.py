@@ -61,6 +61,9 @@ argp.add_argument('-c', '--config-file',
 argp.add_argument("--log-level", type=str, default='INFO',
                   choices=['NOTSET', 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'],
                   help="Set the logging level")
+argp.add_argument('--only-ipu',
+                  help='restrict execution target to IPU only',
+                  action='store_true')
 args = argp.parse_args()
 
 # Model parameters
@@ -106,6 +109,7 @@ def update_model_config(conf):
     conf[0]['args']['training']['mcmc']['step_size_adaption_rate'] = \
         float(args.batch_size) / 100. * conf[0]['args']['training']['mcmc']['step_size_adaption_rate']
     conf[0]['args']['results_location'] = args.results_dir
+    conf[0]['args']['only_ipu'] = args.only_ipu if args.only_ipu else False
     conf[0]['args']['task_name'] = args.run_name
     conf[0]['args']['data']['n_validation'] = VALIDATION_SIZE if args.validation else 0
 

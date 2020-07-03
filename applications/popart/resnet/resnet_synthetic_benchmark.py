@@ -74,13 +74,14 @@ def eval_builder(opts):
     else:
         label_data = np.random.uniform(0, 10, label_shape).astype(np.int32)
 
-    loss = popart.NllLoss(probs, label, "nllLossVal")
+    loss = builder.aiGraphcore.nllloss(
+        [probs, label], debugPrefix="nllLossVal")
 
     return [
         builder,
         {**data, label: label_data},
-        {loss.output(0): popart.AnchorReturnType("ALL")},
-        [loss],
+        {loss: popart.AnchorReturnType("ALL")},
+        loss,
         None
     ]
 
@@ -135,7 +136,8 @@ if __name__ == '__main__':
         " Batches per Step {}.\n"
         " Steps {}.".format(
             opts.size,
-            {"infer": "Inference", "eval": "Evaluation", "train": "Training"}[opts.mode],
+            {"infer": "Inference", "eval": "Evaluation",
+                "train": "Training"}[opts.mode],
             opts.batch_size,
             opts.batches_per_step if not opts.report else "n/a",
             opts.steps if not opts.report else "n/a"))

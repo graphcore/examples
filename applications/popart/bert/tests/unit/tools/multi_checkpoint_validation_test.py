@@ -162,5 +162,60 @@ def test_perform_validations(monkeypatch, num_experiments, num_runs, num_process
             getitem, Path(relpath).parts, dict(pooled_results))
 
 
+@pytest.mark.category1
+@pytest.mark.parametrize(
+    "num_processes,num_sweeps,num_repeats",
+    [
+        (3, 5, 5),
+        (1, 5, 5),
+        (3, 5, 1),
+        (3, 1, 5),
+    ]
+)
+def test_merge_hierarchy_results(num_processes, num_sweeps, num_repeats):
+    """Ensure that nested directory paths are handled correctly by the validation result pooler"""
+
+    # Generate a number of mocked paths that would go as input to validation
+    paths = []
+    root = '/mock/root/'
+    path_pieces = [
+        [f'sweep-{i}' for i in range(num_sweeps)],
+        [f'repeat-{i}' for i in range(num_repeats)]
+    ]
+    for p in path_pieces[0]:
+        for q in path_pieces[1]:
+            paths.append(str(Path(root) / 'ckpt' / p / q))
+
+    # Now pool them as we would if running pooled validation
+    checkpoint_paths_pooled = (paths[i*len(paths) // num_processes:
+                                     (i+1)*len(paths) // num_processes]
+                               for i in range(num_processes))
+
+    # Mock the results out (we don't care about the value)
+    pooled_results = []
+    for process_paths in checkpoint_paths_pooled:
+        result_dict = validation.recursive_defaultdict()
+        for path in process_paths:
+            validation.result_into_recursive_path(
+                result_dict, path, root, "A_MOCK_RESULT")
+        pooled_results.append(result_dict)
+
+    # Code under test
+    mock_results = validation.merge_pooled_results(pooled_results)
+
+    # Now check that the number of results provided in the test code exactly
+    # matches the number of results given above.
+    def count_leaves(d):
+        count = 0
+        for i in d.values():
+            if isinstance(i, dict):
+                count += count_leaves(i)
+            else:
+                count += 1
+        return count
+
+    assert count_leaves(mock_results) == len(paths)
+
+
 if __name__ == "__main__":
     pytest.main(args=[__file__, '-vv', '-s'])

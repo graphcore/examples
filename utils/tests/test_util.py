@@ -51,7 +51,7 @@ def parse_results_for_accuracy(output, expected_accuracies, acc_tolerance):
         raise AssertionError("Expected accuracies and parsed accuracies have"
                              " different lengths")
 
-    _verify_model_accuracies(accuracies, expected_accuracies, acc_tolerance)
+    verify_model_accuracies(accuracies, expected_accuracies, acc_tolerance)
 
 
 def _verify_model_numbers(iter_tolerance, iterations,
@@ -89,7 +89,7 @@ def _verify_model_numbers(iter_tolerance, iterations,
         raise AssertionError(iter_error + speed_error)
 
 
-def _verify_model_accuracies(accuracies, expected_accuracy, acc_tolerance):
+def verify_model_accuracies(accuracies, expected_accuracy, acc_tolerance):
     """Asserts a list of accuracies is within a list of expected accuracies
        with a tolerance applied.
 
@@ -187,6 +187,27 @@ def assert_result_equals_tensor_value(output, tensor):
     assert contents == np.array_repr(tensor), (
         "Output value {} does not "
         "equal expected value {}".format(np.array_repr(contents), tensor)
+    )
+
+
+def assert_result_equals_string(output, expected):
+    """Checks output line equals expected string
+
+    Args:
+        output: String representing the output of a test.
+        expected: String of expected result.
+
+    Returns:
+        None
+
+    Raises:
+        Assertion Error: Output string does not equal the expected
+            string
+    """
+
+    assert output == expected, (
+        "Output string {} does not "
+        "equal expected string {}".format(output, expected)
     )
 
 
@@ -344,13 +365,14 @@ def assert_final_accuracy(output, minimum, maximum):
     assert accuracy <= maximum
 
 
-def run_python_script_helper(cwd, script, **kwargs):
+def run_python_script_helper(cwd, script, want_std_err=False, **kwargs):
     """A function that given a path and python script name, runs the script
       with kwargs as the command line arguments
 
     Args:
         cwd: string representing the directory of the python script
         script: string representing the full name of the python script
+        want_std_err: optional - set True to include stderr trace in the output
         kwargs: dictionary of string key and values that form the command
             line arguments when the script is run.
 
@@ -363,12 +385,13 @@ def run_python_script_helper(cwd, script, **kwargs):
     """
     py_version = "python{}".format(sys.version_info[0])
     cmd = [py_version, script]
+    err = subprocess.STDOUT if want_std_err else None
     if kwargs:
         args = [
             str(item) for sublist in kwargs.items() for item in sublist if item != ""
         ]
         cmd.extend(args)
-    out = subprocess.check_output(cmd, cwd=cwd, universal_newlines=True)
+    out = subprocess.check_output(cmd, stderr=err, cwd=cwd, universal_newlines=True)
     print(out)
     return out
 
@@ -521,7 +544,7 @@ class SubProcessChecker(unittest.TestCase):
                 self.fail(f"Output of command: '{cmd}' contained no match for: '{must_contain[i]}'\nOutput was:\n{output}")
 
 
-    def run_command(self, cmd, working_path, expected_strings, env=None):
+    def run_command(self, cmd, working_path, expected_strings, env=None, timeout=None):
         """
         Run a command using subprocess, check it ran successfully, and
         check its output.
@@ -535,16 +558,24 @@ class SubProcessChecker(unittest.TestCase):
                 List of strings that must appear in the output at least once.
             env:
                 Optionally pass in the Environment variables to use
+            timeout:
+                Optionally pass in the timeout for running the command
             Returns:
                 Output of the command (combined stderr and stdout).
         """
         if env is None:
-            completed = subprocess.run(args=cmd.split(), cwd=working_path, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            completed = subprocess.run(args=cmd.split(),
+                                       cwd=working_path,
+                                       shell=False,
+                                       stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT,
+                                       timeout=timeout)
         else:
             completed = subprocess.run(args=cmd.split(), cwd=working_path,
                                        shell=False, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT,
-                                       env=env)
+                                       env=env,
+                                       timeout=timeout)
         combined_output = str(completed.stdout, 'utf-8')
         try:
             completed.check_returncode()

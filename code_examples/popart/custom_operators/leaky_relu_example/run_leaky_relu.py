@@ -26,7 +26,7 @@ def build_and_run_graph(input_data, alpha, run_on_ipu):
     proto = builder.getModelProto()
 
     anchors = {output_tensor: popart.AnchorReturnType("FINAL")}
-    dataFeed = popart.DataFlow(1, anchors)
+    dataFlow = popart.DataFlow(1, anchors)
 
     if run_on_ipu:
         device = popart.DeviceManager().acquireAvailableDevice(1)
@@ -37,7 +37,7 @@ def build_and_run_graph(input_data, alpha, run_on_ipu):
 
     print("alpha={}".format(alpha))
 
-    session = popart.InferenceSession(proto, dataFeed, device)
+    session = popart.InferenceSession(proto, dataFlow, device)
 
     session.prepareDevice()
     result = session.initAnchorArrays()

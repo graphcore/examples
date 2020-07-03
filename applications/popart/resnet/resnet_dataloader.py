@@ -1,11 +1,8 @@
 # Copyright 2019 Graphcore Ltd.
 import random
 import torch
-import signal
-import functools
 import re
 import sys
-import threading
 import traceback
 import os
 import time

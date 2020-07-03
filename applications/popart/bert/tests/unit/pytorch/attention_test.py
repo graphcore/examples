@@ -1,8 +1,5 @@
 # Copyright 2019 Graphcore Ltd.
-import os
-import ctypes
 import numpy as np
-from pathlib import Path
 import torch
 
 import popart
@@ -43,7 +40,6 @@ def test_attention_fwd(custom_ops):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['attention'],
                         inference=True)
 
     popart_model = Bert(config, builder=builder)
@@ -117,8 +113,7 @@ def test_attention_bwd(custom_ops):
                         sequence_length=128,
                         activation_type='relu',
                         popart_dtype="FLOAT",
-                        no_dropout=True,
-                        custom_ops=['attention'])
+                        no_dropout=True)
     popart_model = Bert(config, builder=builder)
 
     input_info = popart.TensorInfo(config.popart_dtype, [config.batch_size * config.sequence_length, config.hidden_size])
@@ -133,13 +128,13 @@ def test_attention_bwd(custom_ops):
     }
 
     output = popart_model.attention(input_tensor, [mmask_tensor, smask_tensor])
+    l1 = builder.aiGraphcore.l1loss([output], l1_lambda, reduction=popart.ReductionType.Sum)
     proto = builder.getModelProto()
 
-    l1 = popart.L1Loss(output, "l1LossVal", l1_lambda)
     optimizer = popart.ConstSGD(0.01)
 
     outputs, post_proto = run_py(
-        proto, data, (output, l1.output(0)), loss=l1, optimizer=optimizer)
+        proto, data, (output, l1), loss=l1, optimizer=optimizer)
 
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)

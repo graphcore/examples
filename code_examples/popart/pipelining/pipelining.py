@@ -66,12 +66,12 @@ def create_pipelined_model(
     builder.addOutputTensor(output_probs)
 
     # Loss
-    loss = popart.NllLoss(output_probs, labels, "loss")
-    loss.virtualGraph(1)
+    loss = builder.aiGraphcore.nllloss([output_probs, labels], popart.ReductionType.Sum, debugPrefix="loss")
+    builder.virtualGraph(loss, 1)
 
     # Anchors
     art = popart.AnchorReturnType("ALL")
-    anchor_map = {"loss": art}
+    anchor_map = {loss: art}
     anchor_map[popart.reservedGradientPrefix() + x0] = art
 
     # Protobuffer
@@ -114,8 +114,8 @@ def main(args):
     # Create session
     session = popart.TrainingSession(
         fnModel=model_proto,
-        dataFeed=popart.DataFlow(pipeline_depth, anchor_map),
-        losses=[loss],
+        dataFlow=popart.DataFlow(pipeline_depth, anchor_map),
+        loss=loss,
         optimizer=popart.ConstSGD(0.01),
         userOptions=opts,
         deviceInfo=popart.DeviceManager().acquireAvailableDevice(num_ipus))
@@ -139,7 +139,6 @@ def main(args):
     inputs = {x0: data_in, labels: labels_in}
     stepio = popart.PyStepIO(inputs, anchors)
     session.weightsFromHost()
-    session.optimizerFromHost()
     session.run(stepio)
 
     # Save report and return session object (optional)

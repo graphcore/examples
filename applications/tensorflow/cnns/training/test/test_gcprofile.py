@@ -12,9 +12,7 @@ def run_profiling(**kwargs):
     cmd = ['gc-profile', '-d', 'testdir', '--', 'python3', 'train.py']
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    test_env = os.environ.copy()
-    test_env["LANG"] = "C.UTF-8"
-    return subprocess.check_output(cmd, env=test_env).decode('utf-8')
+    return subprocess.check_output(cmd).decode('utf-8')
 
 
 def get_profile_csv(out, name):
@@ -55,10 +53,11 @@ class TestProfiling(unittest.TestCase):
                            })
         cls.training = get_profile_csv(out, 'training.csv')
 
-    def test_archive_exists(self):
+    def test_results(self):
+        # test_archive_exists
         archive = './testdir/archive.a'
         self.assertTrue(os.path.isfile(archive))
 
-    def test_execution_report(self):
+        # test_execution_report
         execution = './testdir/execution.json'
         self.assertTrue(os.path.isfile(execution))

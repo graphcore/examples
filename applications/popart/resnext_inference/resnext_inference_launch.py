@@ -65,7 +65,7 @@ flags.DEFINE_bool(
 flags.DEFINE_string(
     "model_path", None,
     (
-        "If set, the model will be saved to this"
+        "If set, the model will be read from this"
         " specfic path, instead of models/"
     )
 )

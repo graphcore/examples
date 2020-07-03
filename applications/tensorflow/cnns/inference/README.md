@@ -13,10 +13,12 @@ The following models can be run on a single IPU using this inference harness.
 2. InceptionV3 (up to bs=2, fp16)
 3. MobileNetV2 (up to bs=4, fp16)
 4. MobileNet (up to bs=4, fp16)
-5. EfficientNet-S (up to bs=4, fp32)
-6. EfficientNet-M (up to bs=2, fp32)
-7. EfficientNet-L (up to bs=1, fp32)
+5. EfficientNet-Edgetpu-S (up to bs=4, fp32)
+6. EfficientNet-Edgetpu-M (up to bs=2, fp32)
+7. EfficientNet-Edgetpu-L (up to bs=1, fp32)
 
+The following models require multiple IPUs to be able to run using this inference harness.
+1. DenseNet (up to bs=4 (with sharding=2), fp16)
 
 ### File structure
 

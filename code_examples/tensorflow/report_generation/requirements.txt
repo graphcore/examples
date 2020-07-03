@@ -1,3 +1,4 @@
 numpy==1.17.3
 pytest==5.4.1
 pytest-pythonpath==0.7.3
+pytest-mock==2.0.0

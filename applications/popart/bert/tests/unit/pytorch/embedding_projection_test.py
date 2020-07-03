@@ -1,8 +1,5 @@
 # Copyright 2019 Graphcore Ltd.
-import os
-import ctypes
 import numpy as np
-from pathlib import Path
 import torch
 from torch import nn
 import popart
@@ -80,7 +77,6 @@ def test_embedding_projection_fwd(custom_ops):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['gather'],
                         inference=True)
     popart_model = Bert(config, builder=builder)
 
@@ -109,7 +105,8 @@ def test_embedding_projection_fwd(custom_ops):
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
-    inputs = [data[indices].reshape(config.batch_size, config.sequence_length).astype(np.int32)]
+    inputs = [data[indices].reshape(
+        config.batch_size, config.sequence_length).astype(np.int32)]
 
     #  ------------------- PyTorch -------------------------
     torch_model = EmbeddingProjectionModel(
@@ -169,10 +166,11 @@ def test_embedding_projection_bwd(custom_ops):
     with popart_model.device_scope(nameScope="CLS"):
         x = popart_model.lm_prediction_head(x)
     output = popart_model.projection(x)
+    l1 = builder.aiGraphcore.l1loss(
+        [output], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
 
     proto = builder.getModelProto()
 
-    l1 = popart.L1Loss(output, "l1LossVal", l1_lambda)
     optimizer = popart.ConstSGD(0.01)
 
     outputs, post_proto = run_py(proto,
@@ -183,7 +181,8 @@ def test_embedding_projection_bwd(custom_ops):
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
-    inputs = [data[indices].reshape(config.batch_size, config.sequence_length).astype(np.int32)]
+    inputs = [data[indices].reshape(
+        config.batch_size, config.sequence_length).astype(np.int32)]
 
     #  ------------------- PyTorch -------------------------
 

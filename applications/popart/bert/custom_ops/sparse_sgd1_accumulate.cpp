@@ -12,7 +12,7 @@
 #include <popart/ir.hpp>
 #include <popart/graph.hpp>
 #include <popart/error.hpp>
-#include <popart/op/sgd1accumulate.hpp>
+#include <popart/op/accumulate.hpp>
 #include <popart/util.hpp>
 #include <popart/logging.hpp>
 
@@ -90,7 +90,7 @@ public:
 
     popart::popx::InputCreatorType getInputCreatorType(int index0) const {
         return index0 == SparseSGD1AccumulateOp::getVarToUpdateInIndex() ? 
-            popart::popx::InputCreatorType::CANCREATE : popart::popx::Opx::getInputCreatorType(index0);
+            popart::popx::InputCreatorType::CanCreate : popart::popx::Opx::getInputCreatorType(index0);
     }
 
     std::vector<popart::TensorId> mustExistBeforeCreate(int index0) const {
@@ -134,6 +134,10 @@ public:
         auto dpsf = isConst ? 
             getConst(accl.elementType(), {}, op.initDpsf1.val(), "ConstSparseDPSF") :
             getInTensor(SparseSGD1AccumulateOp::getDpsf1InIndex());
+
+        if (dpsf.elementType() != accl.elementType()) {
+            dpsf = popops::cast(graph(), dpsf, accl.elementType(), prog, debugPrefix("dpsf_cast"));
+        }
 
         if (isConst && op.initDpsf1.val() == 0.0f) {
             throw popart::internal_error(

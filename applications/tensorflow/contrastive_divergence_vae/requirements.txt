@@ -36,10 +36,14 @@ urllib3==1.24.1
 
 # For machinable
 pendulum==1.5.1
-pyyaml
-fs
-fs-s3fs
-python-baseconv
-regex
-observable
-gitignore_parser
+pyyaml==5.3
+fs==2.4.11
+fs-s3fs==1.1.1
+python-baseconv==1.2.2
+regex==2020.1.8
+observable==1.0.3
+gitignore_parser==0.0.5
+
+# For tests
+pytest==5.4.1
+pytest-pythonpath==0.7.3

@@ -8,13 +8,18 @@ import multiprocessing
 import shutil
 import tempfile
 import re
+import sys
 from io import StringIO
-from functools import partial
+from functools import partial, reduce
 from pathlib import Path
 from collections import defaultdict
 
 import popart
 import onnx
+
+# Add the bert root to the PYTHONPATH
+bert_root_path = str(Path(__file__).parent.parent)
+sys.path.append(bert_root_path)
 
 from bert import (
     setup_logger,
@@ -23,7 +28,7 @@ from bert import (
     bert_pretrained_initialisers,
     bert_add_inputs,
     bert_logits_graph,
-    bert_add_infer_outputs,
+    bert_add_logit_outputs,
     get_bert_dataset,
     Iteration,
     calc_required_ipus,
@@ -68,7 +73,7 @@ def run_inference_extract_result(args, session, dataset, inputs, logits, anchors
     log_capture_handler = logging.StreamHandler(log_capture_string)
     log_capture_handler.setLevel(logging.INFO)
     dataset_logger.addHandler(log_capture_handler)
-    bert_infer_loop(args, session, dataset, inputs, logits, anchors, iteration)
+    bert_infer_loop(args, session, dataset, inputs, logits, anchors, None, None, None, iteration)
     log_contents = log_capture_string.getvalue()
 
     if log_contents is None or not log_contents:
@@ -106,7 +111,7 @@ def pooled_validation_run(bert_args,
         bert_args, model)
     logits = bert_logits_graph(model, indices, positions, segments, masks)
     inputs = [indices, positions, segments, *masks]
-    outputs = bert_add_infer_outputs(model, logits)
+    outputs = bert_add_logit_outputs(model, logits)
 
     with tempfile.TemporaryDirectory() as temp_results_path:
         # Inject the checkpoint-specific squad results directory into the dataset args otherwise
@@ -157,6 +162,25 @@ def pooled_validation_run(bert_args,
     return model_results
 
 
+def merge_pooled_results(results_pooled):
+
+    def deep_merge_dicts(dict_a, dict_b, path=None):
+        if path is None:
+            path = []
+
+        for key in dict_b:
+            if key in dict_a:
+                if isinstance(dict_a[key], dict) and isinstance(dict_b[key], dict):
+                    deep_merge_dicts(dict_a[key], dict_b[key], path + [str(key)])
+                else:
+                    pass
+            else:
+                dict_a[key] = dict_b[key]
+        return dict_a
+
+    return reduce(deep_merge_dicts, results_pooled)
+
+
 def perform_validations(num_processes, checkpoint_paths, args, config, initializers, available_ipus):
     if num_processes == 1:
         return pooled_validation_run(args,
@@ -185,7 +209,7 @@ def perform_validations(num_processes, checkpoint_paths, args, config, initializ
     pool.close()
     pool.join()
 
-    return {path: result for d in results_pooled for path, result in d.items()}
+    return merge_pooled_results(results_pooled)
 
 
 def validate_checkpoints(self_args, args):

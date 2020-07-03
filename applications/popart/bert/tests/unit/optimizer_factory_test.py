@@ -1,6 +1,5 @@
 # Copyright 2019 Graphcore Ltd.
 import pytest
-import sys
 import math
 import popart
 import numpy as np
@@ -61,6 +60,10 @@ class TestConfig(NamedTuple):
     batch_size: int = 1
     gradient_accumulation_factor: int = 1
     replication_factor: int = 1
+
+    inference_lm_perplexity: bool = False
+
+    squad_lr_scale: int = 1
 
 
 @pytest.mark.category1
@@ -431,7 +434,7 @@ def test_per_tensor_lr():
         add0 = builder.aiOnnx.add([w0Id, input0])
         add1 = builder.aiOnnx.add([w1Id, add0])
         add2 = builder.aiOnnx.add([w2Id, add1])
-
+        loss = builder.aiGraphcore.l1loss([add2], 1.0, debugPrefix="l1LossVal")
         builder.addOutputTensor(add2)
 
         proto = builder.getModelProto()
@@ -439,7 +442,7 @@ def test_per_tensor_lr():
         opts = popart.SessionOptions()
         opts.reportOptions = {"showExecutionSteps": "true"}
         opts.enableGroupedMatmuls = False
-        pat = popart.Patterns(popart.PatternsLevel.DEFAULT)
+        pat = popart.Patterns(popart.PatternsLevel.Default)
         device = popart.DeviceManager().acquireAvailableDevice(1)
         if device is None:
             raise OSError("Failed to acquire IPU.")
@@ -460,11 +463,11 @@ def test_per_tensor_lr():
 
         session = popart.TrainingSession(
             fnModel=proto,
-            dataFeed=dataFlow,
+            dataFlow=dataFlow,
             userOptions=opts,
-            losses=[popart.L1Loss(add2, "l1LossVal", 1.0)],
+            loss=loss,
             optimizer=optimizer_step0,
-            passes=pat,
+            patterns=pat,
             deviceInfo=device)
 
         session.prepareDevice()
@@ -473,7 +476,6 @@ def test_per_tensor_lr():
 
         input_data = np.array([3.1415], dtype=np.float32)
         stepio = popart.PyStepIO({input0: input_data}, anchors)
-        session.optimizerFromHost()
 
         for step in range(iteration.total_steps):
             session.run(stepio)
@@ -491,8 +493,7 @@ def test_per_tensor_lr():
                 optimizer_step1 = factory.update_and_create(iteration)
                 assert_scaled_lr(factory, true_scaling)
 
-                session.updateOptimizer(optimizer_step1)
-                session.optimizerFromHost()
+                session.updateOptimizerFromHost(optimizer_step1)
 
     #  ==============================  2 Steps, decayed LR  ===============================
     iteration = MockIteration(1, 2)

@@ -9,10 +9,7 @@ def get_ipu_tf():
     try:
         from tensorflow.python import ipu as ipu_tf
     except ImportError:
-        try:
-            from tensorflow.contrib import ipu as ipu_tf
-        except ImportError:
-            ipu_tf = None
+        ipu_tf = None
     return ipu_tf
 
 
@@ -20,10 +17,7 @@ def get_ipu_scope(ipu_tf):
     if ipu_tf is None:
         return None
     else:
-        try:
-            return ipu.ops.ipu_scope
-        except AttributeError:
-            return ipu.scopes.ipu_scope
+        return ipu.scopes.ipu_scope
 
 ipu = get_ipu_tf()
 ipu_scope = get_ipu_scope(ipu)
@@ -50,7 +44,7 @@ def get_ipu_option_dict(ipu_id=None, prng=False, n_ipus=1):
     return {'ipu_options': options}
 
 
-def get_device_config(desired_device, num_ipus=1):
+def get_device_config(desired_device, num_ipus=1, only_ipu=False):
 
     def _else_cpu(desired_scope, candidate_device):
         if candidate_device in desired_scope.lower():
@@ -77,7 +71,12 @@ def get_device_config(desired_device, num_ipus=1):
         sess_opts['log_device_placement'] = False
         sess_opts['allow_soft_placement'] = False
         on_ipu = True
+
     except ImportError:
+
+        if only_ipu:
+            raise ImportError("IPU not available and IPU only mode selected.")
+
         ipu_options = {}
         if tf.test.is_gpu_available():
             # Run on GPU if machine has one

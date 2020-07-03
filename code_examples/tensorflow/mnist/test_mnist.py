@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import unittest
+import pytest
 
 
 def run_mnist():
@@ -19,14 +20,17 @@ def run_mnist():
 class TestMnist(unittest.TestCase):
     """Test simple model on MNIST images on IPU. """
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         out = run_mnist()
-        self.final_acc = 0
+        cls.final_acc = 0
         for line in out.split('\n'):
             if line.find('Test accuracy') != -1:
-                self.final_acc = float(line.split(":")[-1].strip())
+                cls.final_acc = float(line.split(":")[-1].strip())
                 break
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_final_training_accuracy(self):
         self.assertGreater(self.final_acc, 0.9)
         self.assertLess(self.final_acc, 0.99)

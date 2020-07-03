@@ -27,18 +27,36 @@ def get_model(opts):
         print("Creating logs directory")
         os.makedirs(log_path)
 
-    # Get the model. If it doesn't exist it will be downloaded
-    if not os.path.isfile(path + filename):
-        print(f"Downloading model to {path + filename}")
+    dataset = "imagenet"
 
-    # Create the right input shape
-    dummy_input = torch.randn(1, 3, 224, 224)
-    model = pretrainedmodels.__dict__[opts.model_name](
-        num_classes=1000, pretrained='imagenet')
-    torch.onnx.export(model, dummy_input, path + filename)
+    if opts.url:
+        # Monkey patch an alternate URL into pretrained models package
+        pretrainedmodels.models.resnext.pretrained_settings[
+            opts.model_name
+        ][dataset]["url"] = opts.url
+        print(f"Download URL set to {opts.url}")
 
-    model_path = path + filename
-    onnx_model = onnx.load(model_path)
+    pretrained_model_base_path = opts.pretrained_model_path
+
+    if not pretrained_model_base_path:
+        # Get the model. If it doesn't exist it will be downloaded
+        if not os.path.isfile(path + filename):
+            print(f"Downloading model to {path + filename}")
+        pretrained_model_path = path + filename
+
+        # Create the right input shape
+        dummy_input = torch.randn(1, 3, 224, 224)
+        model = pretrainedmodels.__dict__[opts.model_name](
+            num_classes=1000, pretrained=dataset)
+        torch.onnx.export(model, dummy_input, pretrained_model_path)
+    else:
+        pretrained_model_path = os.path.join(
+            pretrained_model_base_path,
+            opts.model_name,
+            filename
+        )
+
+    onnx_model = onnx.load(pretrained_model_path)
     onnx_model.graph.input[0].type.tensor_type.shape.dim[0].dim_value = opts.micro_batch_size
     print(
         f"Converting model to batch size {opts.micro_batch_size} and saving to {path + 'model_' + str(opts.micro_batch_size) + '.onnx'}")
@@ -62,6 +80,17 @@ parser.add_argument(
     help=(
         "If set, the logs will be saved to this"
         " specfic path, instead of logs/"
+    )
+)
+parser.add_argument(
+    "--url", type=str, default=None,
+    help="If set, uses an alternate url to get the pretrained model from."
+)
+parser.add_argument(
+    "--pretrained-model-path", type=str, default=None,
+    help=(
+        "If set, the pretrained model will attempt to be loaded from here,"
+        " instead of downloaded."
     )
 )
 

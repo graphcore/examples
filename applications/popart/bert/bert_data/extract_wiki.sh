@@ -13,4 +13,4 @@ dump_path="${1}"
 
 output_path="${2}"
 
-python "${extractor_path}"/WikiExtractor.py -b 1000M --processes 16 --filter_disambig_pages -o "${output_path}" "${dump_path}"
+python3 "${extractor_path}"/WikiExtractor.py -b 1000M --processes 16 --filter_disambig_pages -o "${output_path}" "${dump_path}"

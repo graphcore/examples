@@ -52,8 +52,8 @@ public:
 
   popart::popx::InputCreatorType getInputCreatorType(popart::InIndex) const {
     if (pass_through_creation)
-      return popart::popx::InputCreatorType::CANUNWIND;
-    return popart::popx::InputCreatorType::DEADEND;
+      return popart::popx::InputCreatorType::CanUnwind;
+    return popart::popx::InputCreatorType::Deadend;
   }
 
   poplar::Tensor unwindTensorLayout(poplar::Tensor tensor, popart::InIndex, popart::OutIndex) const {

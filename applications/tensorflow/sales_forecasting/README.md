@@ -3,7 +3,7 @@ This README describes how to run a sales forecasting machine learning model on G
 
 ## Overview
 
-This directory contains code to train a simple multi-layer perceptron (MLP) network to predict sales data. The model was based on an example Keras implementation (https://github.com/horovod/horovod/blob/master/examples/keras_spark_rossmann.py) that uses the Horovod distributed training framework (https://eng.uber.com/horovod/).
+This directory contains code to train a simple multi-layer perceptron (MLP) network to predict sales data.
 
 The model predicts the amount of sales on a particular day given a set of features in the original Rossmann competition dataset.
 
@@ -11,7 +11,6 @@ The model predicts the amount of sales on a particular day given a set of featur
 
 The following files are provided for running the sales forecasting model.
 
-* `NOTICE`      License conditions.
 * `README.md`   This file.
 * `main.py`     Main training and validation loop.
 * `data.py`     Data pipeline.
@@ -28,7 +27,7 @@ The following files are provided for running the sales forecasting model.
 Install the Poplar SDK following the README provided. Make sure to source the `enable.sh`
 scripts for poplar and gc_drivers (if running on hardware).
 
-##### 2) Python
+**2) Python**
 
 Create a virtualenv and install the required packages:
 

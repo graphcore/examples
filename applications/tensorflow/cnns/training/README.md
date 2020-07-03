@@ -43,7 +43,7 @@ CIFAR-100 dataset is here https://www.cs.toronto.edu/~kriz/cifar-100-binary.tar.
 | `ipu_utils.py`  | IPU specific utilities |
 | `log.py`        | Module containing functions for logging results |
 | `Datasets/`     | Code for using different datasets. Currently CIFAR-10, CIFAR-100 and ImageNet are supported |
-| `Models/`       | Code for neural networks<br/>- `resnet.py`: A ResNet description based on code from Graphcore's Customer Engineering team and well optimised for the IPU.<br/>- `resnext.py`: Definition for ResNeXt model.<br/>- `squeezenet.py`: Definition for SqueezeNet model.
+| `Models/`       | Code for neural networks<br/>- `resnet.py`: A ResNet description based on code from Graphcore's Customer Engineering team and well optimised for the IPU.<br/>- `resnext.py`: Definition for ResNeXt model.<br/>- `squeezenet.py`: Definition for SqueezeNet model.<br/>- `efficientnet.py`: Definition for EfficientNet models.
 | `LR_Schedules/` | Different LR schedules<br/> - `stepped.py`: A stepped learning rate schedule with optional warmup<br/>- `cosine.py`: A cosine learning rate schedule with optional warmup
 | `test/`         | Test files - run using `pytest` |
 
@@ -87,10 +87,35 @@ it will not be possible to add replication for a model that
 is a tight fit on a single IPU because replication introduces additional control
 code and buffers for copying updated gradients between replicas.
 
+
+### ImageNet - EfficientNet
+
+It is recommended to split the model across 2 or 4 IPUs for the best throughput. For example this will
+achieve good B0 model convergence pipelined over 4 IPUs, with the RMSprop optimiser and 32 bit precision
+for weight updates:
+
+    python train.py --model efficientnet --model-size B0 --data-dir .../imagenet-data --shards 4 \
+    --batch-size 4 --pipeline-depth 128 --pipeline-splits block2b block4a block6a --xla-recompute \
+    --pipeline-schedule Grouped --optimiser RMSprop --precision 16.32
+
+Note that larger models (B1, B2 etc.) will automatically increase the image sized used. This can be
+overridden with the `--image-size` option if needed.
+
+Changing the dimension of the group convolutions can make the model more efficient on the IPU. To keep the
+number of parameters approximately the same the expansion ratio can be reduced. For example a modified
+EfficientNet-B0 model, with a similar number of trainable parameters can be trained using:
+
+    python train.py --model efficientnet --model-size B0 --data-dir .../imagenet-data --shards 4 \
+    --batch-size 8 --pipeline-depth 64 --pipeline-splits block2a/SE block4a block5c --xla-recompute \
+    --pipeline-schedule Grouped --optimiser RMSprop --precision 16.32 --group-dim 16 --expand-ratio 4 --groups 4
+
+This should give a similar validation accuracy as the standard model but with improved training throughput.
+
+
 # Training Options
 
 `--model`: By default this is set to `resnet`, and this document is focused on ResNet
-training, but other examples such as `squeezenet` and `resnext` are available in the
+training, but other examples such as `efficientnet`, `squeezenet` and `resnext` are available in the
 `Models/` directory. Consult the source code for these models to find the corresponding default options.
 
 # Distributed training
@@ -105,8 +130,8 @@ size of `num_workers * num_replicas * pipeline_depth * batch_size`.
 For example, to distribute the training over two machines, with hostnames worker0 and worker1, run this on worker0:
 
     export TF_CONFIG='{"cluster":{"worker":["worker0:3636","worker1:3636"]},"task":{"type":"worker","index":0}}'
-    python train.py --dataset imagenet --data-dir .../imagenet-data --model-size 50 --batch-size 2 \
-    --batches-per-step 1 --shards 4 --pipeline-depth 128 --pipeline-splits b1/2/relu b2/3/relu b3/5/relu \
+    python train.py --dataset imagenet --data-dir .../imagenet-data --model-size 50 --batch-size 4 \
+    --batches-per-step 1 --shards 4 --pipeline-depth 64 --pipeline-splits b1/2/relu b2/3/relu b3/5/relu \
     --xla-recompute --replicas 4 --distributed --no-stochastic-rounding --base-learning-rate -11
 
 Run exactly the same commands on worker1, with the exception of changing the worker index in `TF_CONFIG` from 0 to 1:
@@ -135,6 +160,19 @@ For ImageNet data smaller batch sizes are usually used and group normalisation i
 
 `--group-norm` : Group normalisation can be used for small batch sizes (including 1) when batch normalisation would be
 unsuitable. Use the `--groups` option to specify the number of groups used (default 32).
+
+## EfficientNet model options
+
+`--model-size` : The model to use, default 'B0' for EfficientNet-B0. Also supported are 'B1' to 'B7', plus
+an unofficial 'cifar' size which can bu used with CIFAR sized datasets.
+
+`--group-dim` : The dimension used for group convolutions, default 1. Using a higher group dimension can improve
+performance on the IPU but will increase the number of parameters.
+
+`--expand-ratio` : The EfficientNet expansion ratio, default 6. When using a higher group dimension this can be 
+reduced to keep the number of parameters approximately the same as the official models.
+
+Use `python train.py --model efficientnet --help` to see other model options.
 
 
 ## Major options
@@ -204,6 +242,15 @@ line).
 `--gc-profile` : Allows profiling for gc-profile tool, Python must be run with gc-profile:
 "gc-profile -d profile_dir -- python train.py --gc-profile "
 
+The type of execution profile can be specified (default: IPU_PROFILE):
+
+* NO_PROFILE: indicates that there should be no execution profiling.
+* DEVICE_PROFILE: indicates that the execution profile should contain only device wide events.
+* IPU_PROFILE: indicates that the profile should contain IPU level execution events.
+* TILE_PROFILE: indicates that the profile should contain Tile level execution events.
+
+NOTE: If using multiple iterations, the profile only considers the first iteration.
+
 `--available-memory-proportion` : The approximate proportion of memory which is available for convolutions.
 It may need to be adjusted (e.g. to 0.1) if an Out of Memory error is raised. A reasonable range is [0.05, 0.6].
 Multiple values may be specified when using pipelining. In this case two values should be given for each pipeline stage
@@ -237,8 +284,8 @@ validation mode is set to `end`.
 `--replicas` : The number of replicas of the graph to use. Using `N` replicas increases the batch size by a factor of
 `N` (as well as the number of IPUs used for training)
 
-`--optimiser` : Choice of optimiser. Default is `SGD` but `momentum` is also available, in which case you also should
-set the `--momentum` flag.
+`--optimiser` : Choice of optimiser. Default is `SGD` but `momentum` and `RMSProp` are also available, and which
+have additional options.
 
 `--momentum` : Momentum coefficient to use when `--optimiser` is set to `momentum`. The default is `0.9`.
 

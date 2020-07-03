@@ -1,6 +1,5 @@
 # Copyright 2019 Graphcore Ltd.
 import math
-import torch
 import pytest
 import numpy as np
 import tensorflow as tf
@@ -49,7 +48,6 @@ def test_positional_encoding_data(position_length, hidden_size):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['gather'],
                         positional_embedding_init_fn="TRANSFORMER",
                         inference=True)
     popart_model = Bert(config, builder=builder)
@@ -100,7 +98,6 @@ def test_simplified_position_encoding(position_length, hidden_size):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=['gather'],
                         positional_embedding_init_fn="SIMPLIFIED",
                         inference=True)
     popart_model = Bert(config, builder=builder)

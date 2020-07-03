@@ -1,0 +1,21 @@
+{
+  "num_layers": 2,
+  "num_ipus": 2,
+  "execution_mode": "PINGPONG",
+  "no_dropout": true,
+  "popart_dtype": "FLOAT16",
+  "loss_scaling": 1.0,
+  "stochastic_rounding": false,
+  "layer_norm_eps": 1e-8,
+  "custom_ops": [
+    "embedding",
+    "projection"
+  ],
+  "batch_size": 1,
+  "batches_per_step": 124,
+  "epochs": 150,
+  "epochs_per_save": 150,
+  "input_files": [
+    "data/sample_text.bin"
+  ]
+}

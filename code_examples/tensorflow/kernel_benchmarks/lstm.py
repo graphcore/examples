@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Copyright 2019 Graphcore Ltd.
 """
-Benchmark a single LSTM layer with no host/device data transfers.
+Benchmark a single LSTM layer.
 
 The Items/sec reported at the end of the benchmark is based on wall time.
 
@@ -88,7 +88,7 @@ def add_args(parser):
 
 
 def iteration_report(opts, time):
-    return "{:5f} items/sec".format(opts.batch_size * opts.batches_per_step / time)
+    return "{:5f} items/sec".format(opts.batch_size * opts.batches_per_step * opts.replicas / time)
 
 
 if __name__ == '__main__':
@@ -108,7 +108,7 @@ if __name__ == '__main__':
 
     options = benchmark.parse_opts(module, False)
 
-    if options.shards > 0:
+    if options.shards > 1:
         raise NotImplementedError(
             "--shards option has not been implemented with this example")
 

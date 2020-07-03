@@ -388,7 +388,7 @@ if __name__ == "__main__":
     parser.add_argument('--available-mem-prop', dest='available_mem_prop', type=float, default=None,
                         help="Float between 0.05 and 1.0: Proportion of tile memory available as temporary " +
                              "memory for matmul and convolutions execution (default:0.6 and 0.2 for Mobilenetv2)")
-    parser.add_argument('--gen-report', dest='gen_report', action='store_true', help="Generate report.")
+    parser.add_argument('--gc-profile', dest='gen_report', action='store_true', help="Generate report.")
     parser.add_argument('--save-graph-pb', dest='save_graph_pb', type=bool, default=False,
                         help="Export frozen graph to event file to view in Tensorboard")
 

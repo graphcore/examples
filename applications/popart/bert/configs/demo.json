@@ -1,19 +1,12 @@
 {
   "num_layers": 2,
   "popart_dtype": "FLOAT16",
-  "loss_scaling": 1.0,
-  "stochastic_rounding": true,
-  "custom_ops": [
-    "attention"
-  ],
-  "batches_per_step": 64,
+  "batches_per_step": 1,
+  "gradient_accumulation_factor": 64,
   "epochs": 150,
   "epochs_per_save": -1,
   "input_files": [
     "data/sample_text.bin"
   ],
-  "shuffle": true,
-  "no_validation": true,
-  "squeeze_model": true,
-  "use_default_available_memory_proportion": true
+  "no_validation": true
 }

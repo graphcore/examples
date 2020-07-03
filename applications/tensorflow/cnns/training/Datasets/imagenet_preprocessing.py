@@ -37,12 +37,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-
-# The lower bound for the smallest side of the image for aspect-preserving
-# resizing. For example, if an image is 500 x 1000, it will be resized to
-# _RESIZE_MIN x (_RESIZE_MIN * 2).
-_RESIZE_MIN = 256
-
 '''
 FROM https://github.com/tensorflow/models/blob/master/official/resnet/imagenet_main.py
 '''
@@ -121,7 +115,7 @@ def _parse_example_proto(example_serialized):
     return features['image/encoded'], label, bbox
 
 
-def parse_record(raw_record, is_training, dtype, image_size, seed=None):
+def parse_record(raw_record, is_training, dtype, image_size, seed=None, full_normalisation=False):
     """Parses a record containing a training example of an image.
     The input record is parsed into a label and image, and the image is passed
     through preprocessing steps (cropping, flipping, and so on).
@@ -142,6 +136,7 @@ def parse_record(raw_record, is_training, dtype, image_size, seed=None):
         output_width=image_size,
         num_channels=3,
         is_training=is_training,
+        full_normalisation=full_normalisation,
         seed=seed)
     image = tf.cast(image, dtype)
 
@@ -196,7 +191,7 @@ def _decode_crop_and_flip(image_buffer, bbox, num_channels, seed=None):
 
     # Use the fused decode and crop op here, which is faster than each in series.
     cropped = tf.image.decode_and_crop_jpeg(
-        image_buffer, crop_window, channels=num_channels)
+        image_buffer, crop_window, channels=num_channels, dct_method='INTEGER_FAST')
 
     # Flip to add a little more random distortion in.
     cropped = tf.image.random_flip_left_right(cropped, seed=seed)
@@ -329,8 +324,28 @@ def _resize_image(image, height, width):
         align_corners=False)
 
 
+def _normalise_image(image, means, std_dev, num_channels):
+    """Normalise each image channel.
+    """
+    if image.get_shape().ndims != 3:
+        raise ValueError('Input must be of size [height, width, C>0]')
+
+    if len(means) != num_channels:
+        raise ValueError('len(means) must match the number of channels')
+
+    # We have a 1-D tensor of means; convert to 3-D.
+    means = tf.expand_dims(tf.expand_dims(means, 0), 0)
+    std_dev = tf.expand_dims(tf.expand_dims(std_dev, 0), 0)
+
+    image /= 255.0
+    image -= means
+    image /= std_dev
+
+    return image
+
+
 def preprocess_image(image_buffer, bbox, output_height, output_width,
-                     num_channels, is_training=False, seed=None):
+                     num_channels, is_training=False, full_normalisation=False, seed=None):
     """Preprocesses the given image.
 
     Preprocessing includes decoding, cropping, and resizing for both training
@@ -358,16 +373,26 @@ def preprocess_image(image_buffer, bbox, output_height, output_width,
     else:
         # For validation, we want to decode, resize, then just crop the middle.
         image = tf.image.decode_jpeg(image_buffer, channels=num_channels)
+        # The lower bound for the smallest side of the image for aspect-preserving
+        # resizing. Originally set to 256 for 224x224 image sizes. Now scaled by the
+        # prescribed image size.
+        _RESIZE_MIN = int(output_height * float(256) / float(224))
         image = _aspect_preserving_resize(image, _RESIZE_MIN)
         image = _central_crop(image, output_height, output_width)
 
     image.set_shape([output_height, output_width, num_channels])
 
-    # original mean
-    _R_MEAN = 123.68
-    _G_MEAN = 116.78
-    _B_MEAN = 103.94
-    _CHANNEL_MEANS = [_R_MEAN, _G_MEAN, _B_MEAN]
-    image = _mean_image_subtraction(image, _CHANNEL_MEANS, num_channels)
+    if full_normalisation:
+        # values taken from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L198
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        image = _normalise_image(image, mean, std, num_channels)
+    else:
+        # original mean
+        _R_MEAN = 123.68
+        _G_MEAN = 116.78
+        _B_MEAN = 103.94
+        _CHANNEL_MEANS = [_R_MEAN, _G_MEAN, _B_MEAN]
+        image = _mean_image_subtraction(image, _CHANNEL_MEANS, num_channels)
 
     return image

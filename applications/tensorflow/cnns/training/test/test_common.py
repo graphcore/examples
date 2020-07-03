@@ -45,6 +45,20 @@ def run_train(**kwargs):
     return subprocess.check_output(cmd).decode('utf-8')
 
 
+def run_restore(mypath, **kwargs):
+    cmd = ['python3', 'restore.py']
+    args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
+    cmd.extend(args)
+    return subprocess.check_output(cmd, cwd=mypath).decode('utf-8')
+
+
+def run_validation(mypath, **kwargs):
+    cmd = ['python3', 'validation.py']
+    args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
+    cmd.extend(args)
+    return subprocess.check_output(cmd, cwd=mypath).decode('utf-8')
+
+
 def parse_csv(filepath):
     with open(filepath) as csv:
         lines = csv.read().split('\n')

@@ -2,10 +2,8 @@
 import math
 import os
 import json
-import subprocess
 import tempfile
 import numpy as np
-from pathlib import Path
 
 from typing import Iterable, Tuple, Any, Union, Mapping, Callable, Optional
 from itertools import chain
@@ -68,7 +66,7 @@ def make_tuple(something: Any) -> Tuple:
 def run_py(proto: onnx.ModelProto,
            data: Mapping[str, np.ndarray],
            outputs: Optional[Union[str, Iterable[str]]],
-           loss: Optional[Union[popart.Loss, Iterable[popart.Loss]]] = None,
+           loss: Optional[str] = None,
            optimizer: Optional[popart.Optimizer] = None,
            patterns: Optional[popart.Patterns] = None,
            return_stats: bool = False,
@@ -78,8 +76,7 @@ def run_py(proto: onnx.ModelProto,
            user_options: Optional[Mapping[str, Any]] = None,
            skip_execution: bool = False):
     outputs = make_tuple(outputs)
-    if loss is not None:
-        loss = make_tuple(loss)
+
     # Setting up the Session
     data_flow = popart.DataFlow(
         batches_per_step, {output: popart.AnchorReturnType("ALL")
@@ -107,10 +104,6 @@ def run_py(proto: onnx.ModelProto,
     for key, value in user_options.items():
         setattr(options, key, value)
 
-    if ipus is not None:
-        options.enableVirtualGraphs = False
-    else:
-        ipus = 1
     if return_stats:
         options.engineOptions = {
             "debug.allowOutOfMemory": "true",
@@ -126,45 +119,36 @@ def run_py(proto: onnx.ModelProto,
     if optimizer is not None:
         session = popart.TrainingSession(fnModel=proto,
                                          deviceInfo=device,
-                                         dataFeed=data_flow,
+                                         dataFlow=data_flow,
                                          userOptions=options,
-                                         losses=loss,
+                                         loss=loss,
                                          optimizer=optimizer,
-                                         passes=patterns)
+                                         patterns=patterns)
     else:
         session = popart.InferenceSession(fnModel=proto,
                                           deviceInfo=device,
-                                          dataFeed=data_flow,
+                                          dataFlow=data_flow,
                                           userOptions=options,
-                                          passes=patterns)
+                                          patterns=patterns)
 
     if skip_execution:
+        device.detach()
         return session
 
     # Compile the Poplar Graph. If it fails, return the memory stats
     try:
         session.prepareDevice()
-    except popart.session.PrepareDeviceException as e:
-        if return_stats:
-            if log_dir:
-                import gcprofile
-                os.makedirs(log_dir, exist_ok=True)
-                reports = gcprofile.save_popart_report(session,
-                                                       log_dir=log_dir,
-                                                       exception=e)
-                graph_report = json.loads(reports["graph"])
-            else:
-                graph_report = json.loads(e.getGraphReport())
-            max_tile_memory = max(graph_report["memory"]["byTile"]["total"])
-            total_memory = np.sum(graph_report["memory"]["byTile"]["total"])
-            raise e
-        else:
-            raise e
+    except popart.session.OutOfMemoryException as e:
+        if return_stats and log_dir:
+            import gcprofile
+            os.makedirs(log_dir, exist_ok=True)
+            gcprofile.save_popart_report(session,
+                                         log_dir=log_dir,
+                                         exception=e)
+        raise e
     print("Compilation complete")
 
     session.weightsFromHost()
-    if optimizer is not None:
-        session.optimizerFromHost()
     session.setRandomSeed(1984)
 
     anchors = session.initAnchorArrays()

@@ -15,7 +15,7 @@ There are two BERT models:
 
 BERT Large requires 14 IPUs for pre-training (Wikipedia) and 13 IPUs for training on the SQuAD dataset. There are 2 layers of the model per IPU and the other IPUs are used for embedding and projection. 
 
-Similarly BERT Base requires 8 IPUs for pre-training (Wikipedia) and 7 IPUs for training on the SQuAD dataset (2 layers of the model per IPU, other IPUs used for embedding and projection). 
+Similarly BERT Base requires 8 IPUs for pre-training (Wikipedia) and 7 IPUs for training on the SQuAD dataset (2 layers of the model per IPU, other IPUs used for embedding and projection). Better performance can be achieved by using 14 IPUs for pre-training (Wikipedia) and 13 IPUs for training on the SQuAD dataset (1 layer of the model per IPU, other IPUs used for embedding and projection), which is the option used in the JSON configuration files provided.
 
 **NOTE**: IPUs can only be acquired in powers of two (2, 4, 8, 16). Unused IPUs will be unavailable for other tasks.
 
@@ -118,7 +118,7 @@ mkdir data
 Data for the sample text is created by running:
 
 ```bash
-python bert_data/create_pretraining_data.py \
+python3 bert_data/create_pretraining_data.py \
   --input-file bert_data/sample_text.txt \
   --output-file data/sample_text.bin \
   --vocab-file data/ckpts/uncased_L-12_H-768_A-12/vocab.txt \
@@ -178,10 +178,6 @@ For the sample text a configuration has been created -  `configs/demo.json`. It 
   "popart_dtype": "FLOAT16",
   "loss_scaling": 1.0,
   "stochastic_rounding": true,
-  "custom_ops": [
-    "attention",
-    "projection"
-  ],
   # The data generation should have created 64 samples. Therefore, we will do an epoch per session.run
   "batches_per_step": 64,
   "epochs": 150,
@@ -197,7 +193,7 @@ For the sample text a configuration has been created -  `configs/demo.json`. It 
 Run this config:
 
 ```bash
-python bert.py --config configs/demo.json
+python3 bert.py --config configs/demo.json
 ```
 
 This will compile the graph and run for 150 epochs. At end our model should have overfit to 100% test accuracy.
@@ -214,11 +210,11 @@ tensorboard --logdir logs
 
 For BERT Base phase 1, use the following command:
 
-`python bert.py --config configs/pretrain_base.json`
+`python3 bert.py --config configs/pretrain_base_128.json`
 
 For BERT Base phase 2, use the following command:
 
-`python bert.py --config configs/pretrain_base_384.json`
+`python3 bert.py --config configs/pretrain_base_384.json`
 
 ### Run the training loop with training data (SQuAD 1.1)
 
@@ -226,13 +222,13 @@ How to get the SQuAD 1.1 training dataset is described in `bert_data/README`.
 
 You can then extract the weights and launch SQuAD fine tuning using one of the preset configurations. 
 
-To run SQuAD with a BERT Base model:
+To run SQuAD with a BERT Base model and sequence length of 384:
 
-`python bert.py --config configs/squad_base.json`
+`python3 bert.py --config configs/squad_base_384.json`
 
 and for BERT Large:
 
-`python bert.py --config configs/squad_large.json`
+`python3 bert.py --config configs/squad_large_384.json`
 
 View the JSON files in configs for detailed parameters.
 
@@ -246,12 +242,16 @@ Before running inference you should run fine tuning or acquire fine-tuned weight
 
 How to get the SQuAD 1.1 files required for inference is described in `bert_data/README`.
 
-To run SQuAD BERT Base inference:
+To run SQuAD BERT Base inference with a sequence length of 128:
 
-`python bert.py --config configs/squad_base_inference.json`
+`python3 bert.py --config configs/squad_base_128_inference.json`
 
-and for BERT Large:
+and for BERT Large with a sequence length of 384:
 
-`python bert.py --config configs/squad_large_inference.json`
+`python3 bert.py --config configs/squad_large_384_inference.json`
 
 View the JSON files in configs for detailed parameters.
+
+It is also possible to run inference on the pretraining graph to validate the MLM/NSP results. It requires input files to be provided, either by adding them to the config or by using the following command-line for sequence length of 384:
+
+`python3 bert.py --config configs/mlm_nsp_base_128_inference.json --input-files <path_to_input_file>`

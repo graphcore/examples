@@ -1,7 +1,8 @@
-#!/usr/bin/python
 # Copyright 2020 Graphcore Ltd.
 import os
+import pytest
 import unittest
+import pytest
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
@@ -19,29 +20,41 @@ def run_report_generation(**kwargs):
 class TestTensorflowReportGeneration(unittest.TestCase):
     """Simple tests for the report generation example"""
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_basic_usage(self):
         """Run with default arguments"""
         self._test_reports_helper({}, ["report.txt"])
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_execution_profiling(self):
         """Run with execution profiling on"""
         self._test_reports_helper({"--profile-execution": ""}, ["report.txt"])
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_json_report(self):
         """Run with option to generate json reports instead of text"""
         self._test_reports_helper({"--json-report": ""}, ["report.json"])
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_no_var_init(self):
         """Run with option to generate reports for the main graph only"""
         self._test_reports_helper({"--no-var-init-profiling": ""},
                                   ["report.txt"])
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_split_reports_no_execution(self):
         """Run with option to split compile and execution reports,
             but don't enable execution profiling"""
         self._test_reports_helper({"--split-reports": ""}, ["compile.txt"])
 
-    def test_split_reports(self):
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
+    def test_split_reports_with_execution(self):
         """Run with option to split compile and execution reports"""
         self._test_reports_helper({"--split-reports": "",
                                    "--profile-execution": ""},

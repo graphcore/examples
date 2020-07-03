@@ -8,7 +8,7 @@ from bert import (set_library_seeds,
                   bert_config_from_args,
                   bert_pretrained_initialisers,
                   bert_add_inputs,
-                  bert_add_infer_outputs,
+                  bert_add_logit_outputs,
                   acquire_device,
                   get_bert_dataset,
                   Iteration,
@@ -52,7 +52,7 @@ def run_embedding_layer(args):
     logits = tuple([model.embedding(indices, positions, segments)])
 
     if args.inference:
-        outputs = bert_add_infer_outputs(model, logits)
+        outputs = bert_add_logit_outputs(model, logits)
         losses = []
         writer = None
         embedding_dict, positional_dict = model.get_model_embeddings()
@@ -72,7 +72,7 @@ def run_embedding_layer(args):
 
         device = acquire_device(args, request_ipus)
 
-        session, anchors = bert_inference_session(model, args, data_flow, losses, device)
+        session, anchors = bert_inference_session(model, args, data_flow, device)
         logger.info("Inference Started")
         inputs = [indices, positions, segments, *masks]
         """bert_infer_loop(args, session,
@@ -115,7 +115,7 @@ def run_embedding_layer(args):
 @pytest.mark.category1
 def test_host_embedding():
     args_string = ["--config",
-                   'configs/squad_base_inference.json',
+                   'configs/squad_base_128_inference.json',
                    '--host-embedding=ALL',
                    '--synthetic-data=true'
                    ]

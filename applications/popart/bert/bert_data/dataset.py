@@ -41,7 +41,7 @@ class DataSet(object):
         return len(self.loader)
 
     def __next__(self):
-        # Get the next image/label
+        # Get the next sample/label
         items = next(self.loader_iterator)
         tensor_names = []
 

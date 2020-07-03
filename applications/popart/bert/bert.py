@@ -30,7 +30,7 @@ so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
 if os.path.exists(so_path):
     ctypes.cdll.LoadLibrary(so_path)
 else:
-    logger.warn("Could not find custom_ops.so. Execute `make` before running this script.")
+    logger.warning("Could not find custom_ops.so. Execute `make` before running this script.")
 
 
 def set_library_seeds(seed):
@@ -75,10 +75,12 @@ def bert_add_inputs(args, model):
             model.builder.addInputTensor(mask_info, "mask_tokens_mask_idx"))
         masks.append(
             model.builder.addInputTensor(mask_info, "sequence_mask_idx"))
-        labels_info = popart.TensorInfo(
+        mlm_info = popart.TensorInfo(
             "UINT32", [args.batch_size, args.mask_tokens])
-        labels.append(model.builder.addInputTensor(labels_info, "mask_labels"))
-        labels.append(model.builder.addInputTensor(mask_info, "nsp_labels"))
+        labels.append(model.builder.addInputTensor(mlm_info, "mask_labels"))
+        nsp_info = popart.TensorInfo(
+            "UINT32", [args.batch_size])
+        labels.append(model.builder.addInputTensor(nsp_info, "nsp_labels"))
     elif args.task == "SQUAD":
         masks.append(model.builder.addInputTensor(mask_info, "seq_pad_idx"))
         if not args.inference:
@@ -96,62 +98,88 @@ def bert_logits_graph(model, indices, positions, segments, masks):
     return logits
 
 
-def bert_infer_graph(model, logits):
+def bert_perplexity_graph(model, logits, labels):
+    with model.mlm_scope:
+        mlm_probs = model.builder.aiOnnx.softmax(
+            [logits[0]], axis=2, debugPrefix="Softmax")
+
+    losses = bert_loss_graph(model, [mlm_probs], [labels[0]])
+
+    # Due to limitations on the way loss is handled with Popart, we'll anchor the loss and calculate
+    # the perplexity on the host in the stats function.
+    return losses
+
+
+def bert_infer_graph(model, logits, include_probs=True):
+    # NOTE: include_probs added as we don't need to calculate the softmax if we only care about accuracy and not
+    # about loss
+    probs = None
     if model.config.task == "SQUAD":
         with model.squad_scope:
             predictions = list(
                 model.builder.aiOnnx.argmax(
                     [logit], axis=1, keepdims=0, debugPrefix=f"{logit}/ArgMax")
                 for logit in logits)
-            probs = list(
-                model.builder.aiOnnx.softmax(
-                    [logit], axis=1, debugPrefix=f"{logit}/Softmax")
-                for logit in logits)
 
-            # FIXME: There is currently an issue with Pipeline recomputation that causes in-place softmax
-            # to corrupt in the backwards pass. Remove this when D16304 lands
-            for prob in probs:
-                model.builder.setInplacePreferences(
-                    prob, {"SoftmaxInplace": -1})
+            if include_probs:
+                probs = list(
+                    model.builder.aiOnnx.softmax(
+                        [logit], axis=1, debugPrefix=f"{logit}/Softmax")
+                    for logit in logits)
+                for prob in probs:
+                    model.builder.setInplacePreferences(
+                        prob, {"SoftmaxInplace": -1})
     elif model.config.task == "PRETRAINING":
         with model.nsp_scope:
             nsp_predictions = model.builder.aiOnnx.argmax(
                 [logits[1]], axis=1, keepdims=0, debugPrefix="ArgMax")
-            nsp_probs = model.builder.aiOnnx.softmax(
-                [logits[1]], axis=1, debugPrefix="Softmax")
+
+            if include_probs:
+                nsp_probs = model.builder.aiOnnx.softmax(
+                    [logits[1]], axis=1, debugPrefix="Softmax")
         with model.mlm_scope:
             mlm_predictions = model.builder.aiOnnx.argmax(
                 [logits[0]], axis=2, keepdims=0, debugPrefix="ArgMax")
-            mlm_probs = model.builder.aiOnnx.softmax(
-                [logits[0]], axis=2, debugPrefix="Softmax")
+
+            if include_probs:
+                mlm_probs = model.builder.aiOnnx.softmax(
+                    [logits[0]], axis=2, debugPrefix="Softmax")
+
         predictions = [mlm_predictions, nsp_predictions]
-        probs = [mlm_probs, nsp_probs]
+        if include_probs:
+            probs = [mlm_probs, nsp_probs]
     return predictions, probs
 
 
 def bert_loss_graph(model, probs, labels):
     def loss(prob, label):
         if model.config.task == "SQUAD":
-            vGraph = model.squad_scope.virtualGraph
-            pStage = model.squad_scope.pipelineStage
-            nllloss = popart.NllLoss(prob, label, f"{label}/loss")
+            with model.squad_scope:
+                nllloss = model.builder.aiGraphcore.nllloss(
+                    [prob, label],
+                    reduction=popart.ReductionType.NoReduction,
+                    debugPrefix=f"{label}/loss")
         elif 'nsp' in label:
-            vGraph = model.nsp_scope.virtualGraph
-            pStage = model.nsp_scope.pipelineStage
-            nllloss = popart.NllLoss(
-                prob, label, f"{label}/loss", ignore_index=2)
+            with model.nsp_scope:
+                nllloss = model.builder.aiGraphcore.nllloss(
+                    [prob, label],
+                    reduction=popart.ReductionType.NoReduction,
+                    ignoreIndex=2,
+                    debugPrefix=f"{label}/loss")
         else:
-            vGraph = model.mlm_scope.virtualGraph
-            pStage = model.mlm_scope.pipelineStage
-            nllloss = popart.NllLoss(prob, label, f"{label}/loss", ignore_index=0)
-        nllloss.virtualGraph(vGraph)
-        nllloss.pipelineStage(pStage)
-        logger.debug(f"Placing NllLoss for {label} on ipu {vGraph} stage {pStage}")
+            with model.mlm_scope:
+                nllloss = model.builder.aiGraphcore.nllloss(
+                    [prob, label],
+                    reduction=popart.ReductionType.NoReduction,
+                    ignoreIndex=0,
+                    debugPrefix=f"{label}/loss")
+
         return nllloss
+
     return [loss(*p_l) for p_l in zip(probs, labels)]
 
 
-def bert_add_infer_outputs(model, logits):
+def bert_add_logit_outputs(model, logits):
     outputs = {}
     for logit in logits:
         outputs[logit] = popart.AnchorReturnType("ALL")
@@ -165,7 +193,7 @@ def bert_add_validation_outputs(model, predictions, losses):
     for pred in predictions:
         outputs[pred] = popart.AnchorReturnType("ALL")
     for loss in losses:
-        outputs[loss.output(0)] = popart.AnchorReturnType("ALL")
+        outputs[loss] = popart.AnchorReturnType("ALL")
     for out in outputs.keys():
         model.builder.addOutputTensor(out)
     return outputs
@@ -174,7 +202,6 @@ def bert_add_validation_outputs(model, predictions, losses):
 def bert_session_options(args, model):
     engine_options = {}
     options = popart.SessionOptions()
-    options.enableVirtualGraphs = True
     options.virtualGraphMode = popart.VirtualGraphMode.Manual
     options.enableFloatingPointChecks = args.floating_point_exceptions
     options.enableStochasticRounding = args.stochastic_rounding
@@ -187,6 +214,11 @@ def bert_session_options(args, model):
     if args.execution_mode == "PIPELINE":
         options.enablePipelining = True
         options.autoRecomputation = popart.RecomputationType.Pipeline
+    elif args.execution_mode == "PINGPONG":
+        options.virtualGraphMode = popart.VirtualGraphMode.PingPong
+        options.outlineThreshold = -np.inf
+        options.enableOutliningCopyCostPruning = False
+        options.pingPongPhases = model.total_ping_pong_phases
     if args.gradient_accumulation_factor > 1:
         options.enableGradientAccumulation = True
         options.accumulationFactor = args.gradient_accumulation_factor
@@ -204,42 +236,42 @@ def bert_session_options(args, model):
             "showExecutionSteps": "true"
         }
     options.instrumentWithHardwareCycleCounter = args.report_hw_cycle_count
-    # Addition of momentum tensors causes merged copies to exceed max
-    # host translation table entries during the weightsFromHost program.
-    # With the addition of disableGradAccumulationTensorStreams no copy merging
-    # is needed but may be needed later when gradAccumulationTensorStreams are re-enabled
-    # FIXME when T11642 is resolved.
     options.disableGradAccumulationTensorStreams = True
     if args.max_copy_merge_size == -1:
-        logger.debug(f"No copy merge size limit applied")
+        logger.debug("No copy merge size limit applied")
     else:
         logger.warning(
-            f"Workaround for T11642: copy merge size limit set to {args.max_copy_merge_size}")
+            f"Copy merge size limit set to {args.max_copy_merge_size}")
         engine_options["opt.maxCopyMergeSize"] = str(args.max_copy_merge_size)
 
     # Adding {"fullyConnectedPass", "TRAINING_BWD"} to some matmuls causes large
     # transposes before operations.
-    # WARNING: This causes SQuAD 384 12-layer to go OOM
     if args.disable_fully_connected_pass:
         if args.task == "SQUAD" and args.sequence_length == 384:
             logger.warning(
-                f"Fully connected pass has been disabled. This may cause SQuAD 384 12-layer to go OOM.")
+                "Fully connected pass has been disabled. This may cause SQuAD 384 12-layer to go OOM.")
         options.enableFullyConnectedPass = False
 
     if args.inference and args.engine_cache is not None and not args.variable_weights_inference:
-        logger.warn("Using engine cache with constant weights. Checkpoint weights will be ignored. "
-                    "Use the `--variable-weights-inference` flag if checkpoint weights should be used.")
+        logger.warning("Using engine cache with constant weights. Checkpoint weights will be ignored. "
+                       "Use the `--variable-weights-inference` flag if checkpoint weights should be used.")
 
     if args.variable_weights_inference:
         options.constantWeights = False
 
-    if args.deterministic_workers:
-        engine_options["target.deterministicWorkers"] = "true"
-
-    if args.reduce_stack_size:
-        engine_options["target.workerStackSizeInBytes"] = "128"
+    if args.group_host_syncs:
+        options.groupHostSync = True
 
     options.engineOptions = engine_options
+
+    # Set synthetic data mode (if active)
+    if args.synthetic_data_type:
+        if args.synthetic_data_type == "random_normal":
+            options.syntheticDataMode = popart.SyntheticDataMode.RandomNormal
+        elif args.synthetic_data_type == "zeros":
+            options.syntheticDataMode = popart.SyntheticDataMode.Zeros
+        logger.info(
+            f"Running with Synthetic Data Type '{options.syntheticDataMode}'")
     return options
 
 
@@ -251,7 +283,11 @@ def bert_session_patterns(args):
 
 
 def calc_required_ipus(args, model):
-    num_ipus = math.ceil(model.config.num_layers / model.config.layers_per_ipu) + model.layer_offset
+    if args.execution_mode == "PINGPONG":
+        num_ipus = 2
+    else:
+        num_ipus = math.ceil(model.config.num_layers /
+                             model.config.layers_per_ipu) + model.layer_offset
     num_ipus *= args.replication_factor
     request_ipus = pow(2, math.ceil(math.log2(num_ipus)))
     logger.info(f"Need {num_ipus} IPUs. Requesting {request_ipus}")
@@ -264,41 +300,46 @@ def compile_graph_checked(args, session):
         session.prepareDevice()
         end_time = time.time()
         logger.info(f"Compiled. Duration {end_time - start_time} seconds")
-    except popart.PrepareDeviceException as e:
-        if args.gc_profile:
-            import gcprofile
-            gcprofile.save_popart_report(session, exception=e)
+    except popart.OutOfMemoryException as e:
+        utils.fetch_reports(args, session=session, exception=e)
         raise e
 
 
-def bert_training_session(model, args, feed, losses, device, optimizer_factory):
+def bert_training_session(model, args, feed, losses, device,
+                          optimizer_factory):
     options = bert_session_options(args, model)
 
     patterns = bert_session_patterns(args)
 
+    def final_loss(losses):
+        with model.final_loss_scope:
+            reduced_losses = []
+            for loss in losses:
+                reduced_losses.append(
+                    model.builder.aiOnnx.reducesum([loss], [0, 1], 0, f"Reduce{loss}"))
+            loss_sum = model.builder.aiOnnx.sum(reduced_losses, "FinalLoss")
+            return loss_sum
+
+    loss = final_loss(losses)
     proto = model.builder.getModelProto()
 
     optimizer = optimizer_factory.create()
 
     logger.info("Creating Session")
     session = popart.TrainingSession(fnModel=proto,
-                                     losses=losses,
+                                     loss=loss,
                                      deviceInfo=device,
                                      optimizer=optimizer,
-                                     dataFeed=feed,
-                                     passes=patterns,
+                                     dataFlow=feed,
+                                     patterns=patterns,
                                      userOptions=options)
 
     logger.info("Compiling Training Graph")
     compile_graph_checked(args, session)
 
-    if args.graph_report and not options.enableEngineCaching and not args.gc_profile:
-        with open(args.graph_report, "wb") as f:
-            graph_report = session.getGraphReport()
-            f.write(graph_report)
+    utils.fetch_reports(args, session=session)
 
     session.weightsFromHost()
-    session.optimizerFromHost()
     session.setRandomSeed(args.seed)
 
     anchors = session.initAnchorArrays()
@@ -306,7 +347,7 @@ def bert_training_session(model, args, feed, losses, device, optimizer_factory):
     return session, anchors
 
 
-def bert_inference_session(model, args, feed, losses, device):
+def bert_inference_session(model, args, feed, device):
     options = bert_session_options(args, model)
 
     patterns = bert_session_patterns(args)
@@ -315,19 +356,15 @@ def bert_inference_session(model, args, feed, losses, device):
 
     logger.info("Creating Session")
     session = popart.InferenceSession(fnModel=proto,
-                                      losses=losses,
                                       deviceInfo=device,
-                                      dataFeed=feed,
-                                      passes=patterns,
+                                      dataFlow=feed,
+                                      patterns=patterns,
                                       userOptions=options)
 
     logger.info("Compiling Inference Graph")
     compile_graph_checked(args, session)
 
-    if args.graph_report and not options.enableEngineCaching and not args.gc_profile:
-        with open(args.graph_report, "wb") as f:
-            graph_report = session.getGraphReport()
-            f.write(graph_report)
+    utils.fetch_reports(args, session=session)
 
     session.weightsFromHost()
     session.setRandomSeed(args.seed)
@@ -397,8 +434,34 @@ def get_bert_dataset(model, args, inputs, embedding_dict=None, positional_dict=N
             mpi_size=args.mpi_size,
             mpi_rank=args.mpi_rank,
             is_distributed= args.mpi_size > 1)
-
         return ds
+
+
+def bert_step_loss(losses, anchors, num_unmasked, padding_masks):
+    master_mask = num_unmasked != 0
+    for loss, mask in zip(losses, padding_masks):
+        anchors[loss][np.logical_not(mask)] = 0
+    combined_loss = reduce(np.add, map(lambda loss: anchors[loss], losses))
+    # Mask both num_losses and combined_loss to remove entries where all labels are ignored
+    num_unmasked = num_unmasked[master_mask]
+    combined_loss = combined_loss[master_mask]
+    # Calculate mean loss for each token
+    combined_loss /= num_unmasked
+    # Calculate mean loss for step
+    step_loss = np.mean(combined_loss)
+    return step_loss
+
+
+def bert_step_accuracy(labels, anchors, predictions, num_unmasked, padding_masks):
+    total_correct = 0
+    for pred, label, mask in zip(map(lambda p: anchors[p], predictions),
+                                 labels,
+                                 padding_masks):
+        equal = pred.reshape(label.shape) == label
+        total_correct += np.sum(equal[mask])
+    total_attempted = np.sum(num_unmasked)
+    step_accuracy = total_correct / total_attempted
+    return step_accuracy
 
 
 def bert_output_stats(labels, anchors, losses, predictions, ignore_index=None):
@@ -406,37 +469,31 @@ def bert_output_stats(labels, anchors, losses, predictions, ignore_index=None):
         padding_masks = [label != ignore_index for label in labels]
     else:
         padding_masks = [np.ones(label.shape, np.bool) for label in labels]
+    num_unmasked = np.sum(np.array(padding_masks, dtype=np.int8), axis=0)
 
-    # TODO: Come up with a better name for num_losses
-    num_losses = np.sum(np.array(padding_masks, dtype=np.int8), axis=0)
-    master_mask = num_losses != 0
-    for loss, mask in zip(losses, padding_masks):
-        anchors[loss][np.logical_not(mask)] = 0
-    combined_loss = reduce(np.add, map(lambda loss: anchors[loss], losses))
-    # Mask both num_losses and combined_loss to remove entries where all labels are ignored
-    num_losses = num_losses[master_mask]
-    combined_loss = combined_loss[master_mask]
-    # Calculate mean loss for each token
-    combined_loss /= num_losses
-    # Calculate mean loss for step
-    step_loss = np.mean(combined_loss)
+    # In the case of inference w/ labels, we don't care about the loss, so it can be ignored
+    if losses[0] is None:
+        step_loss = None
+    else:
+        step_loss = bert_step_loss(losses, anchors, num_unmasked, padding_masks)
 
-    total_correct = 0
-    for pred, label, mask in zip(map(lambda p: anchors[p], predictions),
-                                 labels,
-                                 padding_masks):
-        equal = pred.reshape(label.shape) == label
-        total_correct += np.sum(equal[mask])
-    total_attempted = np.sum(num_losses)
-    step_accuracy = total_correct / total_attempted
+    step_accuracy = bert_step_accuracy(labels, anchors, predictions, num_unmasked, padding_masks)
     return step_loss, step_accuracy
 
 
 def bert_pretraining_stats(labels, anchors, losses, predictions):
+    if losses is None:
+        losses = [None, None]
+
+    # For pretraining inference with perplexity, we'll only have a single loss
+    if len(losses) == 1:
+        losses.append(None)
+
     mlm_loss, mlm_acc = bert_output_stats(
         [labels[0]], anchors, [losses[0]], [predictions[0]], 0)
     nsp_loss, nsp_acc = bert_output_stats(
         [labels[1]], anchors, [losses[1]], [predictions[1]], 2)
+
     return [mlm_loss, nsp_loss], [mlm_acc, nsp_acc]
 
 
@@ -468,6 +525,7 @@ class Iteration:
         self.total_steps = self.steps_per_epoch * self.epochs
         self.writer = writer
         self.task = args.task
+        self.calculate_perplexity = args.inference_lm_perplexity
         # This should get overridden but will ensure we can always write a scalar to TB.
         self.learning_rate = 0
         if recording_steps is None:
@@ -520,6 +578,25 @@ class Iteration:
                                    np.average(self.accuracies),
                                    self.count)
 
+
+    def add_inference_stats(self, duration, hw_cycles, labels_data, anchors, predictions, losses):
+        self.durations.append(duration)
+        if hw_cycles:
+            self.cycles.append(hw_cycles)
+
+        if labels_data:
+
+            loss, accuracy = self.stats_fn(labels_data, anchors, losses, predictions)
+
+            if self.task == "PRETRAINING":
+                self.mlm_accuracies.append(accuracy[0])
+                self.nsp_accuracies.append(accuracy[1])
+
+                if self.calculate_perplexity:
+                    self.mlm_losses.append(loss[0])
+            else:
+                self.accuracies.append(accuracy)
+
     @property
     def throughput(self):
         return np.divide(self.samples_per_step, self.durations)
@@ -543,8 +620,31 @@ class Iteration:
             f"Duration: {avg(self.durations):6.4f} s " \
             f"Throughput: {avg(self.throughput):6.1f} samples/s"
         if self.cycles:
-            status_string += f" Cycles: {avg(self.cycles)}"
+            status_string += f" Cycles: {int(avg(self.cycles))}"
         logger.info(status_string)
+
+    def report_inference_stats(self, mean_latency, min_latency, max_latency, hw_cycles):
+        avg = np.average
+        status_string = \
+            f"Iteration: {self.count:6} " \
+            f"Duration: {avg(self.durations):6.4f} s " \
+            f"Throughput: {avg(self.throughput):6.1f} samples/s"
+
+        if self.task == "PRETRAINING":
+            status_string += \
+                f" Accuracy (MLM NSP): {avg(self.mlm_accuracies):5.3f} {avg(self.nsp_accuracies):5.3f}"
+
+            if self.calculate_perplexity:
+                status_string += \
+                    f" LM Perplexity: {np.exp(avg(self.mlm_losses)):5.3f}"
+
+
+        if mean_latency is not None:
+            status_string += f" Per-sample Latency: {mean_latency} {min_latency} {max_latency} seconds (mean min max)"
+        if hw_cycles is not None:
+            status_string += f" Cycles: {hw_cycles}"
+        logger.info(status_string)
+
 
 
 def bert_process_data(args, session, labels, data, anchors,
@@ -562,24 +662,20 @@ def bert_process_data(args, session, labels, data, anchors,
     duration = time.time() - start
     hw_cycles = session.getCycleCount() if args.report_hw_cycle_count else None
 
-    if args.gc_profile:
-        import gcprofile
-        gcprofile.save_popart_report(session)
-        sys.exit(0)
-
     iteration.add_stats(duration, hw_cycles, labels_data,
                         anchors, losses, predictions)
 
     if (iteration.count % iteration.steps_per_log) == 0:
         iteration.report_stats()
 
+    utils.fetch_reports(args, session=session, execution=True)
+
     # The following will only be true if:
     #   Learning rate mode is STEP and the current total step counter is in the schedule
     #   Learning rate mode is EPOCH and the current epoch has just changed to one in the schedule
     if optimizer_factory.should_update(iteration):
         optimizer = optimizer_factory.update_and_create(iteration)
-        session.updateOptimizer(optimizer)
-        session.optimizerFromHost()
+        session.updateOptimizerFromHost(optimizer)
 
     iteration.count += 1
 
@@ -634,10 +730,7 @@ def create_callback_stepio(data, anchors, start_times, end_times, batches_per_st
 
 
 def compute_latency(args, start_times, end_times, durations):
-    mean_latency = None
-    min_latency = None
-    max_latency = None
-    if args.low_latency_inference and args.task == "SQUAD":
+    if start_times and args.low_latency_inference and args.task == "SQUAD":
         # Compute latency stats using time between the
         # two anchors most separated in time:
         start_id = get_timing_start_anchor(start_times)
@@ -662,7 +755,8 @@ def compute_latency(args, start_times, end_times, durations):
 
 def bert_process_infer_data(args, session, data, anchors,
                             logits, iteration: Iteration,
-                            start_times, end_times, stepio):
+                            start_times, end_times, stepio,
+                            labels=None, predictions=None, losses=None):
     if stepio is None:
         stepio = popart.PyStepIO(data, anchors)
 
@@ -671,28 +765,27 @@ def bert_process_infer_data(args, session, data, anchors,
     duration = time.perf_counter() - start
     hw_cycles = session.getCycleCount() if args.report_hw_cycle_count else None
 
-    if args.gc_profile:
-        import gcprofile
-        gcprofile.save_popart_report(session)
-        sys.exit(0)
+    labels_data = None
+    if labels is not None:
+        labels_data = [data[label] for label in labels]
 
-    iteration.durations.append(duration)
+        if not np.any([np.any(label) for label in labels_data]):
+            labels_data = None
+
+    iteration.add_inference_stats(duration, hw_cycles, labels_data, anchors, predictions, losses)
 
     mean_latency, min_latency, max_latency = compute_latency(
         args, start_times, end_times, iteration.durations)
 
     if (iteration.count % iteration.steps_per_log) == 0:
-        status_string = \
-            f"Iteration: {iteration.count:6} " \
-            f"Duration: {np.average(iteration.durations):6.4f} s " \
-            f"Throughput: {np.average(iteration.throughput):6.1f} samples/s"
-        if mean_latency is not None:
-            status_string += f" Per-sample Latency: {mean_latency} {min_latency} {max_latency} seconds (mean min max)"
-        if hw_cycles is not None:
-            status_string += f" Cycles: {hw_cycles}"
-        logger.info(status_string)
+        iteration.report_inference_stats(mean_latency, min_latency, max_latency, hw_cycles)
+
+    utils.fetch_reports(args, session=session, execution=True)
 
     iteration.count += 1
+
+    if args.task == "PRETRAINING":
+        return None
 
     return [anchors[logit] for logit in logits]
 
@@ -700,7 +793,7 @@ def bert_process_infer_data(args, session, data, anchors,
 def bert_train_loop(args, session, writer,
                     dataset, labels, predictions, losses, anchors,
                     iteration, optimizer_factory):
-    losses = [loss.output(0) for loss in losses]
+    losses = [loss for loss in losses]
 
     save_model_and_stats(args, session, writer,
                          iteration.count, iteration.epoch)
@@ -741,10 +834,14 @@ def disable_realtime_scheduling(args):
 
 def bert_infer_loop(args, session,
                     dataset, inputs, logits, anchors,
+                    labels, predictions, losses,
                     iteration):
     save_results = args.task == "SQUAD" and not args.synthetic_data
 
-    repeat_count = max(1, int(round(args.epochs)))
+    if not losses:
+        losses = None
+    else:
+        losses = [loss.output(0) for loss in losses]
 
     # Create the stepio once outside of the inference loop:
     static_data = {}
@@ -758,14 +855,15 @@ def bert_infer_loop(args, session,
 
     enable_realtime_scheduling(args)
 
-    for iteration.epoch in range(repeat_count):
+    for iteration.epoch in range(args.epochs_inference):
         for data in dataset:
             static_data.update({t: data[t] for t in inputs})
             result = bert_process_infer_data(args, session, static_data, anchors,
                                              logits, iteration,
-                                             start_times, end_times, stepio)
+                                             start_times, end_times, stepio,
+                                             labels, predictions, losses)
 
-            if save_results and iteration.epoch == repeat_count - 1:
+            if result is not None and save_results and iteration.epoch == args.epochs_inference - 1:
                 dataset.add_results(data, result)
             start_times.clear()
             end_times.clear()
@@ -784,10 +882,14 @@ def acquire_device(args, request_ipus):
             model_opts["ipuVersion"] = args.ipu_model_version
         device = popart.DeviceManager().createIpuModelDevice(model_opts)
     else:
-        sync_pattern = popart.SyncPattern.Full
+        if args.execution_mode == "PINGPONG":
+            sync_pattern = popart.SyncPattern.PingPong
+        elif args.execution_mode == "PIPELINE" and args.replication_factor <= 1:
+            sync_pattern = popart.SyncPattern.SinglePipeline
+        else:
+            sync_pattern = popart.SyncPattern.Full
         device = popart.DeviceManager().acquireAvailableDevice(
             request_ipus,
-            1216,
             pattern=sync_pattern)
     if device is None:
         raise OSError("Failed to acquire IPU.")
@@ -818,7 +920,6 @@ def main(args):
 
     logger.info("Building Model")
     # Specifying ai.onnx opset9 for the slice syntax
-    # TODO: Change slice to opset10
     model = Bert(config,
                  builder=popart.Builder(
                      opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}),
@@ -830,8 +931,24 @@ def main(args):
     logits = bert_logits_graph(model, indices, positions, segments, masks)
 
     if args.inference:
-        outputs = bert_add_infer_outputs(model, logits)
+
+        predictions = None
         losses = []
+        if args.task == "PRETRAINING":
+            # If this is a pretraining session, labels for NSP and MLM are already within the dataset,
+            # so we can always calculate prediction performance
+            predictions, _ = bert_infer_graph(model, logits, include_probs=False)
+
+            if args.inference_lm_perplexity:
+                losses = bert_perplexity_graph(model, logits, labels)
+
+            outputs = bert_add_validation_outputs(model, predictions, losses)
+        else:
+            if args.inference_lm_perplexity:
+                raise RuntimeError("Masked LM perplexity is only supported in pretraining.")
+
+            outputs = bert_add_logit_outputs(model, logits)
+
         writer = None
     else:
         predictions, probs = bert_infer_graph(model, logits)
@@ -864,12 +981,12 @@ def main(args):
 
     if args.inference:
         session, anchors = bert_inference_session(
-            model, args, data_flow, losses, device)
+            model, args, data_flow, device)
         logger.info("Inference Started")
-        inputs = [indices, positions, segments, *masks]
+        inputs = [indices, positions, segments, *masks, *labels]
         bert_infer_loop(args, session,
                         dataset, inputs, logits, anchors,
-                        iteration)
+                        labels, predictions, losses, iteration)
         device.detach()
     else:
         if not args.no_training:

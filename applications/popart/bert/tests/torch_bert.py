@@ -424,7 +424,7 @@ class BertLMPredictionHead(nn.Module):
                                  config.vocab_size,
                                  bias=False)
 
-        # We don't include the bias in the final projection
+        # We do not include the bias in the final projection
         # self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
     def forward(self, hidden_states):
@@ -433,7 +433,7 @@ class BertLMPredictionHead(nn.Module):
         # MAJOR CHANGE. We move the masked tokens to the front. As such we only need to project the first max_mask_tokens in the output layer.
         hidden_states = hidden_states[:, :self.mask_tokens, :]
 
-        hidden_states = self.decoder(hidden_states) #+ self.bias
+        hidden_states = self.decoder(hidden_states)  # + self.bias
         return hidden_states
 
 
@@ -792,7 +792,7 @@ def load_tf_weights_in_bert(model, config, tf_checkpoint_path):
                 logger.info("Skipping due to null ptr {}".format("/".join(name)))
                 continue
             if m_name == "word_embeddings" and pointer.shape != array.shape:
-                logger.warn(f"Cropping the vocabulary for torch load: From {array.shape[0]} to {config.vocab_length}")
+                logger.warning(f"Cropping the vocabulary for torch load: From {array.shape[0]} to {config.vocab_length}")
                 array = np.array(array[:config.vocab_length, :])
             assert pointer.shape == array.shape
         except AssertionError as e:

@@ -90,7 +90,7 @@ def create_model(batch_size):
     label_shape = popart.TensorInfo("INT32", [batch_size])
     label = builder.addInputTensor(label_shape)
 
-    loss = popart.NllLoss(probs, label, "nllLossVal")
+    loss = builder.aiGraphcore.nllloss([probs, label], popart.ReductionType.Sum, debugPrefix="nllLossVal")
 
     proto = builder.getModelProto()
 
@@ -148,24 +148,21 @@ def init_session(proto, loss, dataFlow, userOpts, device, training=True):
     # Create a session to compile and execute the graph
     if training:
         session = popart.TrainingSession(fnModel=proto,
-                                         losses=[loss],
+                                         loss=loss,
                                          deviceInfo=device,
                                          optimizer=popart.ConstSGD(0.01),
-                                         dataFeed=dataFlow,
+                                         dataFlow=dataFlow,
                                          userOptions=userOpts)
     else:
         session = popart.InferenceSession(fnModel=proto,
-                                          losses=[loss],
                                           deviceInfo=device,
-                                          dataFeed=dataFlow,
+                                          dataFlow=dataFlow,
                                           userOptions=userOpts)
 
     print("Compiling the {} graph.".format("training" if training else "validation"))
 
     session.prepareDevice()
     session.setRandomSeed(1)
-    if training:
-        session.optimizerFromHost()
 
     # Create buffers to receive results from the execution
     anchors = session.initAnchorArrays()
@@ -207,7 +204,7 @@ def train(opts):
 
     # Describe how to run the model
     anchor_desc = {output: popart.AnchorReturnType("ALL"),
-                   loss.output(0): popart.AnchorReturnType("ALL")}
+                   loss: popart.AnchorReturnType("ALL")}
     dataFlow = popart.DataFlow(opts.batches_per_step, anchor_desc)
 
     # Options
@@ -229,7 +226,6 @@ def train(opts):
 
     # Enable auto-sharding
     if opts.num_ipus > 1:
-        userOpts.enableVirtualGraphs = True
         userOpts.virtualGraphMode = popart.VirtualGraphMode.Auto
 
     # Enable pipelining
@@ -275,7 +271,7 @@ def train(opts):
                 log_run_info(validation, start, opts)
 
             # Loss
-            aggregated_loss += np.mean(validation.anchors["nllLossVal"])
+            aggregated_loss += np.mean(validation.anchors[loss])
             # Accuracy
             results = np.argmax(validation.anchors[output].reshape([test_set.inputs_per_step, 10]), 1)
             num_correct = np.sum(results == labels.reshape([test_set.inputs_per_step]))
@@ -340,7 +336,7 @@ if __name__ == "__main__":
         choices=['random_normal', 'zeros'],
         default="off",
         help="Specify to use synthetic data with either 'random"
-             "_normal' or 'zeros'",
+             "_normal' or 'zeros' (no host to IPU IO done in this mode)",
     )
     opts = parser.parse_args()
 

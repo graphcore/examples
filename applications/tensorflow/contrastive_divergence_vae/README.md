@@ -46,7 +46,6 @@ bash
 virtualenv venv -p python3.6
 source venv/bin/activate
 pip install -r requirements.txt
-pip install -U git+https://github.com/keras-team/keras-applications # latest keras apps
 ```
 
 TensorFlow is not included in the requirements. If running on IPU hardware install the Graphcore tensorflow wheel as follows:
@@ -62,7 +61,7 @@ Otherwise install standard TensorFlow 1.14.0.
 After activating your virtual environment, run as follows:
 
 ```
-python main.py -r where/to/store_results/
+python3 main.py -r where/to/store_results/
 ```
 
 The models defined by `configs/default_config.json` and `configs/global_cv_config.json` take around nine hours to train on CPU.
@@ -72,19 +71,26 @@ The models defined by `configs/default_config.json` and `configs/global_cv_confi
 Use `--help` to show the available hyperparameters and options. The detailed configuration is set in the files within the `configs/` folder. Set the path to the desired config file using the `-c` option:  
 
 ```
-python main.py -c path/to/config.json
+python3 main.py -c path/to/config.json
 ```
 
 The preset configs included in `configs/` are:
 
 - `default_config.json`  which is the experimental set up used in the original paper
 - `global_cv_config.json` which is the same as `default_config.json` but with a scalar (global) control variate in place of a vector of local control variates
-- `bs_experiment_config.json` is for the experiments testing the effect of batch size. These run for 8,200 epochs rather than 800 (as in the two configs above). You'll need to pass the `--batch_size` argument via the command line, and specificy a learning rate using `--learning_rate` if the batch size is not one we tested (16, 128, 512, 1024). If the learning rate is not given and the batch size is one we tested, the learning rate we found to be best during validation will be used (see the `TUNED_LEARNING_RATE` dict in `main.py`).
+- `bs_experiment_config.json` is for the experiments testing the effect of batch size. These run for 8,200 epochs rather than 800 (as in the two configs above). You'll need to pass the `--batch_size` argument via the command line, and specificy a learning rate using `--learning_rate` if the batch size is not one we tested (16, 128, 512, 1024). If the learning rate is not given and the batch size is one we tested, the learning rate we found to be best during validation will be used (see the `TUNED_LEARNING_RATE` dict in `main.py`)
+- `test_config.json`  which is similar to default config but only run for one epoch
 
 You can also copy and extend your own config — just specify the path to your custom config via the command line.
 
 ### Device Placement
 
-The code will execute on IPU if an IPU is available, else it will execute on GPU if `tf.test.is_gpu_available()` returns `True`. If neither IPU nor GPU are available, it will run on CPU. This logic is implemented in `get_device_config()` in `utils/ipu_utils.py`.
+The code will execute on IPU if an IPU is available, else it will execute on GPU if `tf.test.is_gpu_available()` returns `True`. If neither IPU nor GPU are available, it will run on CPU. This logic is implemented in `get_device_config()` in `utils/ipu_utils.py`. Tests only on IPU and fail if no IPU is available on the system.
 
+### Tests
 
+After setting up the environment, tests can be run with:
+
+```
+pytest
+```

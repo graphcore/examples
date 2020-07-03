@@ -1,6 +1,4 @@
 # Copyright 2019 Graphcore Ltd.
-import os
-import ctypes
 import torch
 import popart
 import numpy as np
@@ -41,7 +39,6 @@ def test_nsp_fwd(custom_ops):
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=[],
                         inference=True)
     popart_model = Bert(config, builder=builder)
 
@@ -75,8 +72,7 @@ def test_nsp_bwd(custom_ops):
                         sequence_length=128,
                         activation_type="relu",
                         popart_dtype="FLOAT",
-                        no_dropout=True,
-                        custom_ops=[])
+                        no_dropout=True)
     popart_model = Bert(config, builder=builder)
 
     #  ------------------- PyTorch -------------------------
@@ -92,9 +88,9 @@ def test_nsp_bwd(custom_ops):
                         num_labels=2))
 
     def popart_loss_fn(outputs):
-        loss = popart.L1Loss(outputs[0], "l1Loss", 0.1)
-        loss.virtualGraph(popart_model.nsp_scope.virtualGraph)
-        return [loss]
+        loss = builder.aiGraphcore.l1loss([outputs[0]], 0.1, debugPrefix="l1Loss", reduction=popart.ReductionType.Sum)
+        builder.virtualGraph(loss, popart_model.nsp_scope.virtualGraph)
+        return loss
 
     def torch_loss_fn(outputs):
         return 0.1 * torch.norm(outputs[0], 1)

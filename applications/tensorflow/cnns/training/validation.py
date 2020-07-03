@@ -15,6 +15,7 @@ import argparse
 import sys
 from collections import OrderedDict
 import importlib
+from glob import glob
 
 import train
 import log as logging
@@ -78,7 +79,8 @@ def validation_graph(model, opts):
                              xla_recompute=opts["xla_recompute"],
                              seed=opts["seed"],
                              profile = opts['profile'],
-                             availableMemoryProportion=globalAMP)
+                             availableMemoryProportion=globalAMP,
+                             stable_norm=opts["stable_norm"])
     ipu.utils.configure_ipu_system(ipu_options)
 
     valid_sess = tf.Session(graph=valid_graph, config=tf.ConfigProto())
@@ -89,6 +91,9 @@ def validation_graph(model, opts):
 def validation_run(valid, filepath, i, epoch, first_run, opts):
     if filepath:
         valid.saver.restore(valid.session, filepath)
+        name = filepath.split('/')[-1]
+    else:
+        name = None
 
     # Gather accuracy statistics
     accuracy = 0.0
@@ -103,10 +108,12 @@ def validation_run(valid, filepath, i, epoch, first_run, opts):
     val_time = time.time() - start
     accuracy /= opts["validation_iterations"]
 
-    valid_format = ("Validation top-1 accuracy (iteration: {iteration:6d}, epoch: {epoch:6.2f}, img/sec: {img_per_sec:6.2f},"
-                    " time: {val_time:8.6f}): {val_acc:6.3f}%")
+    valid_format = (
+        "Validation top-1 accuracy [{name}] (iteration: {iteration:6d}, epoch: {epoch:6.2f}, img/sec: {img_per_sec:6.2f},"
+        " latency (ms): {latency:8.4g}, time: {val_time:8.6f}): {val_acc:6.3f}%")
 
     stats = OrderedDict([
+                ('name', name),
                 ('iteration', i),
                 ('epoch', epoch),
                 ('val_acc', accuracy),
@@ -114,8 +121,11 @@ def validation_run(valid, filepath, i, epoch, first_run, opts):
                 ('img_per_sec', (opts["validation_iterations"] *
                                  opts["validation_batches_per_step"] *
                                  opts['validation_total_batch_size']) / val_time),
+                ('latency', 1000 * val_time / (opts["validation_iterations"] *
+                                               opts["validation_batches_per_step"])),
             ])
     logging.print_to_file_and_screen(valid_format.format(**stats), opts)
+    del stats['name']
     logging.write_to_csv(stats, first_run, False, opts)
 
 
@@ -140,10 +150,11 @@ def validation_only_process(model, opts):
         if os.path.isdir(opts["restore_path"]):
             filenames = sorted([os.path.join(opts["restore_path"], f[:-len(".index")])
                                 for f in os.listdir(opts["restore_path"])
-                                if filename_pattern.match(f[:-len(".index")]) and f[-len(".index"):] == ".index"],
+                                if filename_pattern.match(f[:-len(".index")]) and
+                                f[-len(".index"):] == ".index"],
                                key=lambda x: int(ckpt_pattern.match(x).groups()[0]))
-        elif filename_pattern.match(opts["restore_path"]):
-            filenames = [opts["restore_path"]]
+        else:
+            filenames = sorted([f[:-len(".index")] for f in glob(opts['restore_path'] + '*.index')])
     else:
         filenames = [None]
 
@@ -151,16 +162,20 @@ def validation_only_process(model, opts):
 
     for i, filename in enumerate(filenames):
         print(filename)
-        if filename and ckpt_pattern.match(filename):
+        if filename:
             valid.saver.restore(valid.session, filename)
-            iteration = int(ckpt_pattern.match(filename).groups()[0])
+            if ckpt_pattern.match(filename):
+                iteration = int(ckpt_pattern.match(filename).groups()[0])
+            else:
+                iteration = -1
         else:
             print("Warning: no restore point found - randomly initialising weights instead")
             valid.session.run(valid.init)
             iteration = 0
 
         epoch = float(opts["batch_size"] * iteration) / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
-        validation_run(valid, None, iteration, epoch, i == 0, opts)
+        for r in range(opts["repeat"]):
+            validation_run(valid, None, iteration, epoch, i == 0, opts)
 
 
 def add_main_arguments(parser):
@@ -168,7 +183,8 @@ def add_main_arguments(parser):
     group.add_argument('--model', default='resnet', help="Choose model")
     group.add_argument('--restore-path', type=str,
                        help="Path to a single checkpoint to restore from or directory containing multiple checkpoints")
-
+    group.add_argument('--repeat', type=int, default=1,
+                       help="Repeat validation for debugging puposes")
     group.add_argument('--help', action='store_true', help='Show help information')
     return parser
 
@@ -217,21 +233,24 @@ if __name__ == '__main__':
     parser = add_main_arguments(parser)
     args, unknown = parser.parse_known_args()
     args = vars(args)
-    if not args['restore_path']:
-        raise ValueError("A --restore-path that points to a log directory must be specified.")
-
-    try:
-        model = importlib.import_module("Models." + args['model'])
-    except ImportError:
-        raise ValueError('Models/{}.py not found'.format(args['model']))
-
-    parser = create_parser(model, parser)
-    opts = vars(parser.parse_args())
-    if opts['help']:
+    if args['help']:
         parser.print_help()
     else:
+        try:
+            model = importlib.import_module("Models." + args['model'])
+        except ImportError:
+            raise ValueError('Models/{}.py not found'.format(args['model']))
+
+        parser = create_parser(model, parser)
+        opts = vars(parser.parse_args())
         opts["command"] = ' '.join(sys.argv)
         set_defaults(model, opts)
+
+        if opts['dataset'] == 'imagenet':
+            if opts['image_size'] is None:
+                opts['image_size'] = 224
+        elif 'cifar' in opts['dataset']:
+            opts['image_size'] = 32
 
         logging.print_to_file_and_screen("Command line: " + opts["command"], opts)
         logging.print_to_file_and_screen(opts["summary_str"].format(**opts), opts)

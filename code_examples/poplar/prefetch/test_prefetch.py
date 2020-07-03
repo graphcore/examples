@@ -13,6 +13,8 @@ class TestBuildAndRun(SubProcessChecker):
     def setUp(self):
         self.run_command("make", working_path, [])
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.category1
     def test_run_prefetch(self):
         self.run_command("./prefetch",
                          working_path,

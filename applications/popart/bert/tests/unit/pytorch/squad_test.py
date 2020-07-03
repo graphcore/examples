@@ -1,6 +1,4 @@
 # Copyright 2019 Graphcore Ltd.
-import os
-import ctypes
 import torch
 import popart
 import numpy as np
@@ -18,7 +16,8 @@ Tests the full squad graph.
 
 def test_squad_fwd():
     #  ------------------- PopART --------------------
-    builder = popart.Builder(opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1})
+    builder = popart.Builder(
+        opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1})
     config = BertConfig(task="SQUAD",
                         vocab_length=9728,
                         num_layers=2,
@@ -28,7 +27,6 @@ def test_squad_fwd():
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=[],
                         inference=True)
     popart_model = Bert(config, builder=builder)
 
@@ -62,7 +60,8 @@ def test_squad_fwd():
 
 def test_squad_bwd():
     #  ------------------- PopART --------------------
-    builder = popart.Builder(opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1})
+    builder = popart.Builder(
+        opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1})
     config = BertConfig(task="SQUAD",
                         vocab_length=9728,
                         num_layers=1,
@@ -72,7 +71,6 @@ def test_squad_bwd():
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=[],
                         update_embedding_dict=False)
     popart_model = Bert(config, builder=builder)
 
@@ -92,12 +90,17 @@ def test_squad_bwd():
 
     def popart_loss_fn(outputs):
         losses = [
-            popart.L1Loss(outputs[0], "startsLossVal", l1_lambda),
-            popart.L1Loss(outputs[1], "endsLossVal", l1_lambda),
+            builder.aiGraphcore.l1loss(
+                [outputs[0]], l1_lambda, debugPrefix="startsLossVal", reduction=popart.ReductionType.Sum),
+            builder.aiGraphcore.l1loss(
+                [outputs[1]], l1_lambda, debugPrefix="endsLossVal", reduction=popart.ReductionType.Sum),
         ]
         for loss in losses:
-            loss.virtualGraph(popart_model.squad_scope.virtualGraph)
-        return losses
+            builder.virtualGraph(loss, popart_model.squad_scope.virtualGraph)
+
+        final_loss = builder.aiOnnx.sum(losses, debugPrefix="finalLoss")
+        builder.virtualGraph(final_loss, popart_model.squad_scope.virtualGraph)
+        return final_loss
 
     def torch_loss_fn(outputs):
         torch_losses = [l1_lambda * torch.norm(output, 1)

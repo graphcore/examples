@@ -29,7 +29,8 @@ def run(benchmark, opts):
 
     # Create a session to compile and execute the graph
     options = popart.SessionOptions()
-    options.ignoreData = not opts.use_data
+    if not opts.use_data:
+        options.syntheticDataMode = popart.SyntheticDataMode.Zeros
     options.instrumentWithHardwareCycleCounter = opts.report_hw_cycle_count
     options.engineOptions = {
         "debug.instrumentCompute": "true" if opts.report else "false"
@@ -58,16 +59,15 @@ def run(benchmark, opts):
 
     if opts.mode == 'train':
         session = popart.TrainingSession(fnModel=proto,
-                                         losses=losses,
+                                         loss=losses,
                                          deviceInfo=device,
                                          optimizer=optimizer,
-                                         dataFeed=dataFlow,
+                                         dataFlow=dataFlow,
                                          userOptions=options)
     else:
         session = popart.InferenceSession(fnModel=proto,
-                                          losses=losses,
                                           deviceInfo=device,
-                                          dataFeed=dataFlow,
+                                          dataFlow=dataFlow,
                                           userOptions=options)
 
     print("Compiling...")
@@ -86,8 +86,6 @@ def run(benchmark, opts):
 
     # Copy weights and optimization parameters onto the device
     session.weightsFromHost()
-    if opts.mode == 'train':
-        session.optimizerFromHost()
 
     # Add a batches_per_step dimension if needed
     if opts.batches_per_step > 1:

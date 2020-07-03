@@ -1,4 +1,8 @@
 # Copyright 2019 Graphcore Ltd.
+"""Simple code example of how to handle profiling reports in Tensorflow
+
+Base script for all tests.
+"""
 import argparse
 
 import numpy as np
@@ -29,15 +33,19 @@ def parse_args():
     return args
 
 
-def model(x):
-    # Example model
+def model(feature):
+    """Simple example model"""
     with tf.variable_scope('fully_connected', use_resource=True):
-        weights = tf.get_variable('weights', [NUM_UNITS_IN, NUM_UNITS_OUT],
-                                  initializer=tf.truncated_normal_initializer(stddev=0.01), dtype=datatype)
-        biases = tf.get_variable('biases', [NUM_UNITS_OUT],
-                                 initializer=tf.constant_initializer(0.0), dtype=datatype)
+        weights = tf.get_variable(
+            'weights', [NUM_UNITS_IN, NUM_UNITS_OUT],
+            initializer=tf.truncated_normal_initializer(stddev=0.01),
+            dtype=datatype)
+        biases = tf.get_variable(
+            'biases', [NUM_UNITS_OUT],
+            initializer=tf.constant_initializer(0.0),
+            dtype=datatype)
 
-        return tf.nn.xw_plus_b(x, weights, biases)
+        return tf.nn.xw_plus_b(feature, weights, biases)
 
 
 if __name__ == "__main__":
@@ -63,10 +71,14 @@ if __name__ == "__main__":
     utils.configure_ipu_system(opts)
     with tf.Session() as session:
         session.run(tf.global_variables_initializer())
-        # The "trace" op constantly profiles everything that happens on the IPU, from the moment it's created.
-        # Executing the trace op flushes everything it has recorded up to that point and outputs it.
-        # Therefore if the variable initializer graph runs on IPU, we can prevent it from being included
-        # in the reports with a "session.run(trace)" after it has been run (line above).
+        # The "trace" op constantly profiles everything that happens on the IPU,
+        # from the moment it's created.
+        # Executing the trace op flushes everything
+        # it has recorded up to that point and outputs it.
+        # Therefore if the variable initializer graph runs on IPU,
+        # we can prevent it from being included
+        # in the reports with a "session.run(trace)"
+        # after it has been run (line above).
         if args.no_var_init_profiling and not args.var_init_on_cpu:
             session.run(trace)
 
@@ -74,24 +86,32 @@ if __name__ == "__main__":
         training_data = np.zeros([1, NUM_UNITS_IN])
         # Run the main graph
         session.run(logits, feed_dict={x: training_data})
-        # Execute the event trace op: the result is a list of trace event serialized protobufs.
+        # Execute the event trace op:
+        # the result is a list of trace event serialized protobufs.
         raw_report = session.run(trace)
-        # These objects can be converted to strings with utility functions, as shown below.
+        # These objects can be converted to strings with utility functions,
+        # as shown below.
         ext = ".json" if args.json_report else ".txt"
         if args.split_reports:
             compile_reports = utils.extract_compile_reports(raw_report)
             execution_reports = utils.extract_execute_reports(raw_report)
-            # These are lists, as long as the number of graphs profiled, except that the
-            # execution_reports list will be empty if execution profiling is not enabled.
-            # You could save only the last (i.e. relative to the main graph); in this case we save everything.
-            with open("compile" + ext, "w", encoding="utf-8") as f:
-                for report in compile_reports:
-                    # Each element of the list is a tuple of 2 elements:
-                    # the first is a string representing an auto-generated name of the xla graph
-                    # the second is a string containing the actual report relative to the graph
-                    xla_name, report_string = report
-                    f.write(xla_name + "\n")
-                    f.write(report_string + "\n")
+            # These are lists, as long as the number of graphs profiled,
+            # except that the
+            # execution_reports list will be empty
+            # if execution profiling is not enabled.
+            # You could save only the last (i.e. relative to the main graph);
+            # in this case we save everything.
+            if len(compile_reports) > 0:
+                with open("compile" + ext, "w", encoding="utf-8") as f:
+                    for report in compile_reports:
+                        # Each element of the list is a tuple of 2 elements:
+                        # the first is a string representing an
+                        # auto-generated name of the xla graph
+                        # the second is a string containing the
+                        # actual report relative to the graph
+                        xla_name, report_string = report
+                        f.write(xla_name + "\n")
+                        f.write(report_string + "\n")
             if len(execution_reports) > 0:
                 with open("execution" + ext, "w", encoding="utf-8") as f:
                     for report in execution_reports:

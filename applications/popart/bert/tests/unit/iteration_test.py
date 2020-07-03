@@ -18,7 +18,9 @@ class MockArgs(NamedTuple):
     epochs_per_save: int = 1
     steps_per_log: int = 1
     batch_size: int = 1
+    inference_lm_perplexity: bool = False
     task: str = "SQUAD"
+    squad_lr_scale: int = 1
 
 
 class MockWriter():

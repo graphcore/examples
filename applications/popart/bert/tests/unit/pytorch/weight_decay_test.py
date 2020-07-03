@@ -41,6 +41,7 @@ class MockArgs:
         self.momentum_scaling = 0
         self.pipeline_momentum_scaling = 0
         self.execution_mode = "DEFAULT"
+        self.squad_lr_scale = None
 
 
 class BertFCN(nn.Module):
@@ -84,7 +85,6 @@ def test_weight_decay(weight_decay):
                         sequence_length=128,
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        custom_ops=[],
                         activation_type='Gelu')
 
     data, outputs, proto, post_proto = popart_result_and_model(
@@ -121,7 +121,7 @@ def test_weight_decay(weight_decay):
                 transform=TRANSPOSE_WEIGHTS)
 
 
-def popart_result_and_model(popart_config, weight_decay=0, lr=0, l1_lambda=0):
+def popart_result_and_model(popart_config, weight_decay=0.0, lr=0.0, l1_lambda=0.0):
     builder = popart.Builder()
     popart_model = Bert(popart_config, builder=builder)
 
@@ -138,9 +138,9 @@ def popart_result_and_model(popart_config, weight_decay=0, lr=0, l1_lambda=0):
     }
 
     output = popart_model.feed_forward(input_tensor)
-    proto = builder.getModelProto()
 
-    l1 = popart.L1Loss(output, "l1LossVal", l1_lambda)
+    l1 = builder.aiGraphcore.l1loss([output], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
+    proto = builder.getModelProto()
 
     iteration = MockIteration()
     args = MockArgs(lr, weight_decay)
@@ -149,7 +149,7 @@ def popart_result_and_model(popart_config, weight_decay=0, lr=0, l1_lambda=0):
     optimizer = optimizer_factory.create()
 
     outputs, post_proto = run_py(proto,
-                                 data, (output, l1.output(0)),
+                                 data, (output, l1),
                                  loss=l1,
                                  optimizer=optimizer)
 
@@ -159,9 +159,9 @@ def popart_result_and_model(popart_config, weight_decay=0, lr=0, l1_lambda=0):
 def pytorch_result_and_model(torch_config,
                              inputs,
                              popart_proto,
-                             weight_decay=0,
-                             lr=0,
-                             l1_lambda=0):
+                             weight_decay=0.0,
+                             lr=0.0,
+                             l1_lambda=0.0):
 
     proto = onnx.load_model_from_string(popart_proto)
     torch_model = BertFCN(torch_config)
@@ -170,7 +170,7 @@ def pytorch_result_and_model(torch_config,
                           proto,
                           TORCH_TO_ONNX,
                           transform=TRANSPOSE_WEIGHTS)
-    result = run_fwd_model(inputs, torch_model)
+    run_fwd_model(inputs, torch_model)
 
     decay = []
     no_decay = []

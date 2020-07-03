@@ -64,12 +64,12 @@ def eval_builder(opts):
     else:
         label_data = np.random.uniform(0, 2, label_shape).astype(np.int32)
 
-    loss = popart.NllLoss(probs, label, "nllLossVal")
+    loss = builder.aiGraphcore.nllloss([probs, label], popart.ReductionType.Sum, debugPrefix="nllLossVal")
 
     return [
         builder,
         {**data, label: label_data},
-        {loss.output(0): popart.AnchorReturnType("FINAL")},
+        {loss: popart.AnchorReturnType("FINAL")},
         [loss],
         None
     ]

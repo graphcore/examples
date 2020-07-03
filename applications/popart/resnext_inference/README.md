@@ -39,7 +39,7 @@ The following files are provided for running the ResNeXt benchmark.
   Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
   scripts for Poplar, gc_drivers (if running on hardware) and PopART.
 
-##### 2) Python
+**2) Python**
 
 Create a virtualenv and install the required packages:
 
@@ -50,7 +50,17 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Prepare the dataset
+### Prepare the dataset and model
+The following script can be run to prepare the data and add the configured model to the directory `models/resnext101_32x4d/`.
+
+```
+(popart) $ ./model_prep_helper.sh /localdata/datasets/coco/val2014 datasets
+```
+the first argument being the path to the COCO dataset, the second being the output directory for the processed datasets.
+
+NOTE: If this the above script is run, the `Prepare the dataset` and `Prepare the model` sections can be skipped.
+
+#### Prepare the dataset
 
 **1) Download the dataset**
 
@@ -67,7 +77,7 @@ Assuming you are running on 8 IPUs, the COCO dataset should be partitioned into 
 
 Where `data-dir` is the location of the COCO dataset.
 
-### Running the model
+#### Prepare the model
 
 This application can run over multiple IPUs. It does this by creating multiple PopART `inference Session`s, each of which uses one ONNX model and processes a fraction of the total batch of data. The size of the data that is used by one model is called the `micro batch size`. The total batch size used will therefore be `micro-batch-size * num-ipus`.
 
@@ -81,8 +91,7 @@ To download the pretrained ResNext101 model from Cadene’s pretrained models re
 
 This will add the configured model to the directory `models/resnext101_32x4d/`.
 
-
-**2) Run the model**
+### Running the model
 
 Now you have set up the data and created the model you can run the model on the partitioned data. The entry point is `resnext_inference_launch.py`. This takes the batch size, which is the sum of all micro batch sizes over all the IPUs you are using.
 

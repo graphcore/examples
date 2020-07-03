@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Copyright 2019 Graphcore Ltd.
 """
-Benchmark a single GRU layer with no host/device data transfers.
+Benchmark a single GRU layer.
 
 The Items/sec reported at the end of the benchmark is based on wall time.
 
@@ -37,7 +37,7 @@ def gru(opts, inputs):
 def inputs(opts, index):
     value = tf.cast(index, tf.float16)
     return {
-        "inputs": tf.broadcast_to(value, [opts.timesteps, opts.batch_size, opts.hidden_size]),
+        "inputs": tf.broadcast_to(value, [opts.timesteps, opts.batch_size, opts.input_size]),
         "labels": tf.broadcast_to(value, [opts.timesteps, opts.batch_size, opts.hidden_size]),
     }
 
@@ -77,6 +77,8 @@ def add_args(parser):
                         help="Number of recurrent steps")
     parser.add_argument("--hidden-size", default=128, type=int,
                         help="GRU hidden size")
+    parser.add_argument("--input-size", default=128, type=int,
+                        help="GRU input size")
     parser.add_argument("--train", action='store_true', dest='train',
                         help="Compute loss and optimization pass (default)")
     parser.add_argument("--no-train", action='store_false', dest='train',
@@ -88,7 +90,7 @@ def add_args(parser):
 
 
 def iteration_report(opts, time):
-    return "{:5f} items/sec".format(opts.batch_size * opts.batches_per_step / time)
+    return "{:5f} items/sec".format(opts.batch_size * opts.batches_per_step * opts.replicas / time)
 
 
 if __name__ == '__main__':
@@ -108,7 +110,7 @@ if __name__ == '__main__':
 
     options = benchmark.parse_opts(module, False)
 
-    if options.shards > 0:
+    if options.shards > 1:
         raise NotImplementedError(
             "--shards option has not been implemented with this example")
 

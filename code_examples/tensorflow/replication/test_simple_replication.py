@@ -1,7 +1,7 @@
-#!/usr/bin/python
 # Copyright 2020 Graphcore Ltd.
 import os
 import unittest
+import pytest
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
@@ -30,21 +30,33 @@ class TestSimpleReplicationModelling(unittest.TestCase):
             "--num-iters": 250
         }
 
+    @pytest.mark.ipus(2)
+    @pytest.mark.category1
     def test_replication_2(self):
         self._replication_factor_test_helper(2)
 
+    @pytest.mark.ipus(4)
+    @pytest.mark.category1
     def test_replication_4(self):
         self._replication_factor_test_helper(4)
 
+    @pytest.mark.ipus(8)
+    @pytest.mark.category1
     def test_replication_8(self):
         self._replication_factor_test_helper(8)
 
-    def test_dataset_shape_less_than_replication_factor(self):
+    @pytest.mark.ipus(4)
+    @pytest.mark.category1
+    def test_dataset_shape_less_than_replication_factor_3(self):
         self._replication_factor_test_helper(4, num_features=3)
 
-    def test_dataset_shape_less_than_replication_factor(self):
+    @pytest.mark.ipus(4)
+    @pytest.mark.category1
+    def test_dataset_shape_less_than_replication_factor_1(self):
         self._replication_factor_test_helper(4, num_features=1)
 
+    @pytest.mark.ipus(4)
+    @pytest.mark.category1
     def test_dataset_shape_equal_to_replication_factor(self):
         self._replication_factor_test_helper(4, num_features=4)
 

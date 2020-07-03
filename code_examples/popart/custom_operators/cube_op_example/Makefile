@@ -17,4 +17,4 @@ cube_fn_custom_op: cube_fn_custom_op.cpp
 
 .PHONY: clean
 clean:
-	rm -r  $(BUILD_DIR)
+	rm -rf  $(BUILD_DIR)

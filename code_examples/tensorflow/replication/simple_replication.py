@@ -3,14 +3,7 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.ipu import ipu_compiler,         \
-                                  ipu_optimizer,        \
-                                  scopes,               \
-                                  loops,                \
-                                  ipu_infeed_queue,     \
-                                  ipu_outfeed_queue,    \
-                                  utils,                \
-                                  gradient_accumulation_optimizer as gao
+from tensorflow.python import ipu
 
 # Handle CMD arguments
 parser = argparse.ArgumentParser()
@@ -34,8 +27,8 @@ dataset = dataset.map(lambda x, y: (tf.nn.sigmoid(x),
 dataset = dataset.repeat()
 # Make the IPU infeed and outfeed
 # To use replication, we make as many feeds as there are replicated IPUs by passing in replication_factor
-infeed = ipu_infeed_queue.IPUInfeedQueue(dataset, replication_factor=opts.replication_factor, feed_name='in')
-outfeed = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=opts.replication_factor, feed_name='out')
+infeed = ipu.ipu_infeed_queue.IPUInfeedQueue(dataset, replication_factor=opts.replication_factor, feed_name='in')
+outfeed = ipu.ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=opts.replication_factor, feed_name='out')
 
 
 # Make a basic linear model
@@ -45,23 +38,23 @@ def model(X, Y):
     optimizer = tf.train.GradientDescentOptimizer(1e-3)
     # To use replication, we wrap our optimizer with the IPU custom CrossReplicaOptimizer,
     # ...which averages the gradients determined by all IPUs together
-    training_op = ipu_optimizer.CrossReplicaOptimizer(optimizer).minimize(loss)
+    training_op = ipu.cross_replica_optimizer.CrossReplicaOptimizer(optimizer).minimize(loss)
     # We can also use the CrossReplicaGradientAccumulationOptimizer instead, which accumulates gradients
     # ...every N mini_batches before updating parameters, to effectively increase the batch size
     # ...For replication, this reduces the number of inter-IPU synchs by the factor N.
-    # training_op = gao.CrossReplicaGradientAccumulationOptimizer(optimizer, num_mini_batches=8).minimize(loss)
+    # training_op = ipu.gradient_accumulation_optimizer.CrossReplicaGradientAccumulationOptimizer(optimizer, num_mini_batches=8).minimize(loss)
     # Enqueue the loss to be dequeued later off the IPU
     return outfeed.enqueue(loss), training_op
 
 
 # Repeat the training 250 times on the IPU (i.e. with no switch back to the host)
 def training_loop():
-    return loops.repeat(opts.num_iters, model, infeed_queue=infeed)
+    return ipu.loops.repeat(opts.num_iters, model, infeed_queue=infeed)
 
 
 # Compile the graph with the IPU custom xla compiler
-with scopes.ipu_scope("/device:IPU:0"):
-    compiled = ipu_compiler.compile(training_loop)
+with ipu.scopes.ipu_scope("/device:IPU:0"):
+    compiled = ipu.ipu_compiler.compile(training_loop)
 
 # Ops to read the outfeed and initialize all variables
 dequeue_outfeed_op = outfeed.dequeue()
@@ -71,11 +64,11 @@ init_op = tf.global_variables_initializer()
 # 'max_cross_replica_sum_buffer_size' determines the amount in memory of gradients to
 # ...accumulate before updating parameters, when using CrossReplicaGradientAccumulationOptimizer
 # ...Increasing this will reduce IPU memory but increase performance
-cfg = utils.create_ipu_config(profiling=False, max_cross_replica_sum_buffer_size=10000000)  # 10mb
+cfg = ipu.utils.create_ipu_config(profiling=False, max_cross_replica_sum_buffer_size=10000000)  # 10mb
 # Auto select as many IPUs as we want to replicate across
 # ...(must be a power of 2 - IPU driver MultiIPUs come only in powers of 2)
-cfg = utils.auto_select_ipus(cfg, opts.replication_factor)
-utils.configure_ipu_system(cfg)
+cfg = ipu.utils.auto_select_ipus(cfg, opts.replication_factor)
+ipu.utils.configure_ipu_system(cfg)
 
 # Run the model
 with tf.Session() as sess:

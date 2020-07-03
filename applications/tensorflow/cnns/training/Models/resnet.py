@@ -1,21 +1,18 @@
 # Copyright 2019 Graphcore Ltd.
 import tensorflow as tf
-from .resnet_base import *
+from . import resnet_base as rb
+from .model_base import ModelBase
+from functools import partial
 
 
-
-class ResNet(ResNetBase):
+class ResNet(rb.ResNetBase):
     def __init__(self, opts, is_training=True):
         if opts['dataset'] == 'imagenet':
-            definitions = {**RESNETS_Imagenet, **RESNETS_Bottleneck_Imagenet}
+            definitions = {**rb.RESNETS_Imagenet, **rb.RESNETS_Bottleneck_Imagenet}
         else:
-            definitions = {**RESNETS_Cifar, **RESNETS_Bottleneck_Cifar}
+            definitions = {**rb.RESNETS_Cifar, **rb.RESNETS_Bottleneck_Cifar}
         definition = definitions[opts["model_size"]]
-        super().__init__(opts, definition, conv, is_training)
-        self.block_fn = partial(definition.block_fn,
-                                shortcut_type=opts["shortcut_type"],
-                                conv=self.conv,
-                                norm=self.norm)
+        super().__init__(opts, definition, is_training)
 
 
 def Model(opts, training, image):
@@ -45,7 +42,7 @@ def staged_model(opts):
 
 def add_arguments(parser):
     group = parser.add_argument_group('ResNet')
-    add_resnet_arguments(group)
+    rb.add_resnet_base_arguments(group)
     return parser
 
 

@@ -10,6 +10,12 @@ your interest [here](https://www.graphcore.ai/product_info).
 Please note we are not currently accepting pull requests or issues on this
 repository. If you are actively using this repository and want to report any issues, please raise a ticket through the Graphcore support portal: https://www.graphcore.ai/support.
 
+The latest version of the documentation for the Poplar software stack, and other developer resources, is available at https://www.graphcore.ai/developer.
+
+>  The code presented here requires using POPLAR SDK v1.2.x
+
+Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE referenced at the top level applies to the files in this repository.
+
 ## Repository contents
 
 ### Notable examples

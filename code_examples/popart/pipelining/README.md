@@ -5,14 +5,13 @@
 This demo shows how to use pipelining in PopART on a very simple model
 consisting of two dense layers. Run one pipeline length and compute loss.
 
-
-### File structure
+## File structure
 
 * `pipelining.py` The main PopART file showcasing pipelining.
 * `test_pipelining.py` Test script.
 * `README.md` This file.
 
-### How to use this demo
+## How to use this demo
 
 1) Prepare the environment.
 
@@ -23,6 +22,15 @@ consisting of two dense layers. Run one pipeline length and compute loss.
 
     python3 pipelining.py [-h] [--export FILE] [--report] [--no_pipelining] [--test]
 
+### Options
 
-#### Options
 Run pipelining.py with -h option to list all the command line options.
+
+### Running the tests
+
+Install the needed package and use pytest.
+
+```cmd
+pip install -r requirements.txt
+pytest -s
+```

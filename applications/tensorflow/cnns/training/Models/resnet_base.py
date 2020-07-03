@@ -1,40 +1,87 @@
 # Copyright 2019 Graphcore Ltd.
 import tensorflow as tf
-from tensorflow.python.ipu import normalization_ops
 from collections import namedtuple
 from functools import partial
+from tensorflow.python.ipu import normalization_ops
+from .model_base import ModelBase
 
 
-def conv(x, ksize, stride, filters_out, groups=1, seed=None):
-    in_filters = x.get_shape().as_list()[3]
-    with tf.variable_scope("conv", use_resource=True):
-        if stride > 1:
-            x = fixed_padding(x, ksize, "channels_last")
-        W = tf.get_variable(
-            "conv2d/kernel",
-            shape=[ksize, ksize, in_filters / groups, filters_out],
-            dtype=x.dtype,
-            trainable=True,
-            initializer=tf.variance_scaling_initializer(seed=seed),
+class ResNetBase(ModelBase):
+    """Base model for ResNet and ResNeXt"""
+
+    def __init__(self, opts, definition, is_training=True):
+        super().__init__(opts, is_training)
+
+        # Apply options to layers
+        self.conv = partial(conv, seed=opts["seed"])
+
+        self.norm = partial(norm, opts=opts, is_training=is_training)
+        self.fc = partial(fc, seed=opts["seed"])
+
+        # Apply changed layers to block functions
+        self.initial_block_fn = partial(
+            initial_block, conv=self.conv, norm=self.norm
         )
-        return tf.nn.conv2d(
-            x,
-            filters=W,
-            strides=[1, stride, stride, 1],
-            padding=("SAME" if stride == 1 else "VALID"),
-            data_format="NHWC",
+
+        self.initial_block_filters = definition.initial_block_filters
+        self.block_counts = definition.block_counts
+        self.out_filters = definition.out_filters
+
+        self.out_filters = [
+            int(f) if not isinstance(f, tuple) else tuple(int(f2) for f2 in f)
+            for f in self.out_filters
+        ]
+
+        self.block_fn = partial(definition.block_fn,
+                                shortcut_type=opts["shortcut_type"],
+                                conv=self.conv,
+                                norm=self.norm)
+
+        # Apply dataset specific changes
+        if opts["dataset"] == "imagenet":
+            self.initial_block_fn = partial(self.initial_block_fn, ksize=7, initial_downsample=True)
+        elif opts["dataset"] == "cifar-10":
+            self.initial_block_fn = partial(self.initial_block_fn, ksize=3, initial_downsample=False)
+        elif opts["dataset"] == "cifar-100":
+            self.initial_block_fn = partial(self.initial_block_fn, ksize=3, initial_downsample=False)
+
+    def _build_function_list(self):
+        fn_list = []
+        fn_list.append(
+            partial(
+                self.initial_block_fn,
+                filters=self.initial_block_filters,
+                name="b0"
+            )
         )
 
-
-def max_pool(x, ksize=3, stride=2):
-    x = tf.nn.max_pool(
-        x,
-        ksize=[1, ksize, ksize, 1],
-        strides=[1, stride, stride, 1],
-        padding="SAME",
-    )
-    tf.add_to_collection("activations", x)
-    return x
+        for n in range(len(self.block_counts)):
+            first_stride = 1 if n is 0 else 2
+            for i in range(self.block_counts[n]):
+                stride = first_stride if (i == 0) else 1
+                fn_list.append(
+                    partial(
+                        self.block_fn,
+                        stride=stride,
+                        filters=self.out_filters[n],
+                        name="b{}/{}".format(n + 1, i),
+                        use_shortcut=(i == 0)
+                    )
+                )
+                fn_list.append(
+                    partial(
+                        final_block_relu, name="b{}/{}/relu".format(n + 1, i)
+                    )
+                )
+        fn_list.append(
+            partial(
+                tf.reduce_mean, reduction_indices=[1, 2], name="reduce_mean"
+            )
+        )
+        fn_list.append(
+            partial(self.fc, num_units_out=self.num_classes, name="fc1")
+        )
+        return fn_list
 
 
 def norm(x, opts, is_training=True):
@@ -62,6 +109,64 @@ def norm(x, opts, is_training=True):
 
     tf.add_to_collection("activations", x)
     return x
+
+
+def fc(x, num_units_out, name, seed=None):
+    with tf.variable_scope(name, use_resource=True):
+        x = tf.layers.dense(
+            inputs=x,
+            units=num_units_out,
+            kernel_initializer=tf.glorot_uniform_initializer(seed=seed),
+        )
+        tf.add_to_collection("activations", x)
+        return x
+
+
+def max_pool(x, ksize=3, stride=2):
+    x = tf.nn.max_pool(
+        x,
+        ksize=[1, ksize, ksize, 1],
+        strides=[1, stride, stride, 1],
+        padding="SAME",
+    )
+    tf.add_to_collection("activations", x)
+    return x
+
+
+def conv(x, ksize, stride, filters_out, groups=1, seed=None):
+    in_filters = x.get_shape().as_list()[3]
+    with tf.variable_scope("conv", use_resource=True):
+        if stride > 1:
+            x = fixed_padding(x, ksize, "channels_last")
+        W = tf.get_variable(
+            "conv2d/kernel",
+            shape=[ksize, ksize, in_filters / groups, filters_out],
+            dtype=x.dtype,
+            trainable=True,
+            initializer=tf.variance_scaling_initializer(seed=seed),
+        )
+        return tf.nn.conv2d(
+            x,
+            filters=W,
+            strides=[1, stride, stride, 1],
+            padding=("SAME" if stride == 1 else "VALID"),
+            data_format="NHWC",
+        )
+
+
+def initial_block(x, filters, conv, norm, ksize=3, initial_downsample=False, name="b0"):
+    with tf.variable_scope(name, use_resource=True):
+        x = conv(x, ksize, 2 if initial_downsample else 1, filters)
+        x = norm(x)
+        x = tf.nn.relu(x)
+        if initial_downsample:
+            x = max_pool(x, ksize=3, stride=2)
+        return x
+
+
+def final_block_relu(x, name):
+    with tf.variable_scope(name, use_resource=True):
+        return tf.nn.relu(x)
 
 
 # Shortcut types:
@@ -109,7 +214,6 @@ def block2(x, stride, filters, name, use_shortcut, shortcut_type, conv, norm):
 def block3(x, stride, filters, name, use_shortcut, shortcut_type, norm, conv,
            conv_groups=1, filter_factor=1):
     shortcut = x
-    shape_in = x.get_shape()
     split_filters = filters[0] * filter_factor
     with tf.variable_scope(name, use_resource=True):
         with tf.variable_scope("1", use_resource=True):
@@ -135,17 +239,6 @@ def block3(x, stride, filters, name, use_shortcut, shortcut_type, norm, conv,
     return x
 
 
-def fc(x, num_units_out, name, seed=None):
-    with tf.variable_scope(name, use_resource=True):
-        x = tf.layers.dense(
-            inputs=x,
-            units=num_units_out,
-            kernel_initializer=tf.glorot_uniform_initializer(seed=seed),
-        )
-        tf.add_to_collection("activations", x)
-        return x
-
-
 def fixed_padding(inputs, kernel_size, data_format):
     """Pads the input along the spatial dimensions independently of input size.
 
@@ -165,23 +258,6 @@ def fixed_padding(inputs, kernel_size, data_format):
             inputs, [[0, 0], [pad_beg, pad_end], [pad_beg, pad_end], [0, 0]]
         )
     return padded_inputs
-
-
-def final_block_relu(x, name):
-    with tf.variable_scope(name, use_resource=True):
-        return tf.nn.relu(x)
-
-
-def initial_block(
-    x, filters, conv, norm, ksize=3, initial_downsample=False, name="b0"
-):
-    with tf.variable_scope(name, use_resource=True):
-        x = conv(x, ksize, 2 if initial_downsample else 1, filters)
-        x = norm(x)
-        x = tf.nn.relu(x)
-        if initial_downsample:
-            x = max_pool(x, ksize=3, stride=2)
-        return x
 
 
 ResNetDefinition = namedtuple(
@@ -233,20 +309,7 @@ RESNETS_Imagenet = {
 }
 
 
-def custom_dtype_getter(getter, name, dtype, trainable,
-                        master_weight_filter_fn,
-                        shape=None, *args, **kwargs):
-    master_dtype = master_weight_filter_fn(name)
-    if dtype != master_dtype and trainable:
-        var = getter(
-            name, shape, master_dtype, *args, trainable=trainable, **kwargs
-        )
-        return tf.cast(var, dtype=dtype, name=name + "_cast")
-    else:
-        return getter(name, shape, dtype, *args, trainable=trainable, **kwargs)
-
-
-def add_resnet_arguments(group):
+def add_resnet_base_arguments(group):
     group.add_argument("--model-size", type=int, help="Size of the model.")
     group.add_argument("--batch-norm", action="store_true",
                        help="Use batch norm (CIFAR Default)")
@@ -256,145 +319,3 @@ def add_resnet_arguments(group):
     group.add_argument("--BN-decay", type=float,
                        help="Decay (or momentum) used for the BN weighted " +
                        "mean and variance.")
-
-
-class ResNetBase:
-    def __init__(self, opts, definition, conv, is_training=True):
-        dtypes = opts["precision"].split(".")
-        self.dtype = tf.float16 if dtypes[0] == "16" else tf.float32
-
-        self.master_weight_filter_fn = (
-            lambda name: tf.float32 if dtypes[1] == "32" else tf.float16
-        )
-
-        self.custom_dtype_getter = partial(
-            custom_dtype_getter,
-            master_weight_filter_fn=self.master_weight_filter_fn,
-        )
-
-        # Apply options to layers
-        self.conv = partial(conv, seed=opts["seed"])
-
-        self.norm = partial(norm, opts=opts, is_training=is_training)
-        self.fc = partial(fc, seed=opts["seed"])
-
-        # Apply changed layers to block functions
-        self.initial_block_fn = partial(
-            initial_block, conv=self.conv, norm=self.norm
-        )
-
-        self.initial_block_filters = definition.initial_block_filters
-        self.block_counts = definition.block_counts
-        self.out_filters = definition.out_filters
-
-        self.out_filters = [
-            int(f) if not isinstance(f, tuple) else tuple(int(f2) for f2 in f)
-            for f in self.out_filters
-        ]
-
-        # Apply dataset specific changes
-        if opts["dataset"] == "imagenet":
-            self.num_classes = 1000
-            self.initial_block_fn = partial(
-                self.initial_block_fn, ksize=7, initial_downsample=True
-            )
-        elif opts["dataset"] == "cifar-10":
-            self.num_classes = 10
-            self.initial_block_fn = partial(
-                self.initial_block_fn, ksize=3, initial_downsample=False
-            )
-        elif opts["dataset"] == "cifar-100":
-            self.num_classes = 100
-            self.initial_block_fn = partial(
-                self.initial_block_fn, ksize=3, initial_downsample=False
-            )
-        else:
-            raise ValueError("Unknown Dataset {}".format(opts["dataset"]))
-
-    def _build_function_list(self):
-        fn_list = []
-        fn_list.append(
-            partial(
-                self.initial_block_fn,
-                filters=self.initial_block_filters,
-                name="b0"
-            )
-        )
-
-        for n in range(len(self.block_counts)):
-            first_stride = 1 if n is 0 else 2
-            for i in range(self.block_counts[n]):
-                stride = first_stride if (i == 0) else 1
-                fn_list.append(
-                    partial(
-                        self.block_fn,
-                        stride=stride,
-                        filters=self.out_filters[n],
-                        name="b{}/{}".format(n + 1, i),
-                        use_shortcut=(i == 0)
-                    )
-                )
-                fn_list.append(
-                    partial(
-                        final_block_relu, name="b{}/{}/relu".format(n + 1, i)
-                    )
-                )
-        fn_list.append(
-            partial(
-                tf.reduce_mean, reduction_indices=[1, 2], name="reduce_mean"
-            )
-        )
-        fn_list.append(
-            partial(self.fc, num_units_out=self.num_classes, name="fc1")
-        )
-        return fn_list
-
-    def build_whole_graph(self, x):
-        fn_list = self._build_function_list()
-
-        tf.add_to_collection("activations", x)
-        with tf.variable_scope(
-            "all", use_resource=True, custom_getter=self.custom_dtype_getter
-        ):
-            for fn in fn_list:
-                x = fn(x)
-        return x
-
-    def first_stage(self, x, first_split_name):
-        self.fn_list = self._build_function_list()
-        if first_split_name not in [f.keywords["name"] for f in self.fn_list]:
-            raise ValueError(
-                "Couldn't find pipeline split called " + first_split_name
-            )
-        tf.add_to_collection("activations", x)
-        with tf.variable_scope(
-            "all", use_resource=True, custom_getter=self.custom_dtype_getter
-        ):
-            for fn in self.fn_list:
-                if fn.keywords["name"] == first_split_name:
-                    break
-                x = fn(x)
-        return x
-
-    def later_stage(self, x, prev_split_name, end_split_name):
-        if end_split_name is not None and end_split_name not in [
-            fn.keywords["name"] for fn in self.fn_list
-        ]:
-            raise ValueError(
-                "Couldn't find pipeline split called " + end_split_name
-            )
-        with tf.variable_scope(
-            "all", use_resource=True, custom_getter=self.custom_dtype_getter
-        ):
-            first_stage = False
-            for f in self.fn_list:
-                if (not first_stage and f.keywords["name"] != prev_split_name):
-                    continue
-                first_stage = True
-                if f.keywords["name"] == end_split_name:
-                    break
-                x = f(x)
-        return x
-
-    def __call__(self, x):
-        return self.build_whole_graph(x)

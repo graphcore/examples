@@ -108,8 +108,8 @@ public:
   //
   virtual const std::vector<popart::GradInOutMapper> &gradInputInfo() const {
     static const std::vector<popart::GradInOutMapper> inInfo = {
-        {0, 0, popart::GradOpInType::GRADOUT},
-        {1, 0, popart::GradOpInType::OUT}};
+        {0, 0, popart::GradOpInType::GradOut},
+        {1, 0, popart::GradOpInType::Out}};
     return inInfo;
   }
 
@@ -151,7 +151,17 @@ public:
   float getSubgraphValue() const final { return getLowSubgraphValue(); }
 };
 
-static popart::OpCreator<CubeOp> cubeOpCreator(Onnx::CustomOperators::Cube);
+// describe the inputs and outputs that are supported by the operation
+static popart::OpDefinition::DataTypes T = {popart::DataType::FLOAT16,
+                                            popart::DataType::FLOAT};
+
+static popart::OpDefinition
+    cubeOpDef({popart::OpDefinition::Inputs({{"input", T}}),
+               popart::OpDefinition::Outputs({{"output", T}}),
+               popart::OpDefinition::Attributes({})});
+
+static popart::OpCreator<CubeOp>
+    cubeOpCreator({{Onnx::CustomOperators::Cube, cubeOpDef}});
 
 // forward Opx (poplar implementation of the forward Op)
 class CubeOpx : public popart::popx::Opx {
@@ -319,9 +329,7 @@ auto main(int argc, char **argv) -> int {
 
   // 2.2 Loss(es).
   // 2.2.1 l1 loss : 0.1 * |output|_1
-  std::unique_ptr<popart::L1Loss> l1Loss(new popart::L1Loss(
-      outputs[0], "l1LossVal", 0.1f, popart::ReductionType::SUM));
-  std::vector<popart::Loss *> losses{l1Loss.get()};
+  auto loss = builder->aiGraphcoreOpset1.l1loss({outputs[0]}, 0.1f, popart::ReductionType::Sum, "l1LossVal");
 
   // 2.3 Data streaming.
   // We will stream
@@ -347,8 +355,8 @@ auto main(int argc, char **argv) -> int {
 
   // Create the session
   auto session = popart::TrainingSession::createFromOnnxModel(
-      proto, dataFlow, losses, optimizer, device, popart::InputShapeInfo(), {},
-      popart::Patterns({popart::PreAliasPatternType::PREUNIREPL}));
+      proto, dataFlow, loss, optimizer, device, popart::InputShapeInfo(), {},
+      popart::Patterns({popart::PreAliasPatternType::PreUniRepl}));
 
   // prepare the anchors buffers. The anchors are what were specified in 2.3
   // for data streaming: the tensors which will be returned from the device
@@ -377,7 +385,6 @@ auto main(int argc, char **argv) -> int {
   popart::StepIO stepio(inputs, anchors);
 
   session->weightsFromHost();
-  session->optimizerFromHost();
   session->run(stepio);
 
   std::cout << "Input Data:  " << inData << "\n";

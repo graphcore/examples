@@ -1,12 +1,9 @@
 # Copyright 2019 Graphcore Ltd.
-import os
-import ctypes
 import popart
 import numpy as np
 from scipy.stats import truncnorm
-from typing import NamedTuple, List, Optional
-from functools import reduce
-from contextlib import contextmanager, ExitStack
+from typing import NamedTuple, Optional
+from contextlib import ExitStack
 from collections import defaultdict
 from enum import Enum
 import logging
@@ -61,9 +58,6 @@ class BertConfig(NamedTuple):
     # Choices: PRETRAINING (MLM + NSP), SQUAD
     task: str = "PRETRAINING"
 
-    # Choices: attention
-    custom_ops: List[str] = []
-
     # This option serializes all matmul layers to multiples
     # {N, hidden_size} x {hidden_size, hidden_size}.
     # This is required for sequence length 384.
@@ -104,6 +98,8 @@ class BertConfig(NamedTuple):
 
     no_cls_layer: bool = False
 
+    projection_bias: bool = False
+
     max_matmul_memory: int = 40000
 
     @property
@@ -114,6 +110,7 @@ class BertConfig(NamedTuple):
 class ExecutionMode(str, Enum):
     DEFAULT = "DEFAULT"
     PIPELINE = "PIPELINE"
+    PINGPONG = "PINGPONG"
 
 
 class DeviceScope(object):
@@ -122,25 +119,34 @@ class DeviceScope(object):
                  execution_mode=ExecutionMode.DEFAULT,
                  virtualGraph=None,
                  pipelineStage=None,
+                 pingPongPhase=None,
                  nameScope=None,
                  additional_scopes=None):
         self.builder = builder
         self.execution_mode = execution_mode
         self.virtualGraph = virtualGraph
         self.pipelineStage = pipelineStage
+        self.pingPongPhase = pingPongPhase
         self.nameScope = nameScope
         self.additional_scopes = additional_scopes or []
 
     def __enter__(self):
         self.stack = ExitStack()
-        if self.virtualGraph is not None:
-            self.stack.enter_context(self.builder.virtualGraph(self.virtualGraph))
-        # Adding pipelineStage attributes can have side effects on the schedule.
-        # even if it's disabled. FIXME: T13889
+        # PingPong will automatically set the virtualGraph attributes based on ping pong phase
+        if self.execution_mode != ExecutionMode.PINGPONG \
+                and self.virtualGraph is not None:
+            self.stack.enter_context(
+                self.builder.virtualGraph(self.virtualGraph))
+
         if self.execution_mode == ExecutionMode.PIPELINE\
                 and self.pipelineStage is not None:
             self.stack.enter_context(
                 self.builder.pipelineStage(self.pipelineStage))
+
+        if self.execution_mode == ExecutionMode.PINGPONG\
+                and self.pingPongPhase is not None:
+            self.stack.enter_context(
+                self.builder.pingPongPhase(self.pingPongPhase))
 
         if self.nameScope is not None:
             self.stack.enter_context(self.builder.nameScope(self.nameScope))
@@ -185,7 +191,7 @@ class Model(object):
             if np.any(data.shape != np.array(shape)):
                 if np.all(data.T.shape == np.array(shape)):
                     data = data.T.copy()
-                    logger.warn(
+                    logger.warning(
                         f"Initializer for {name} was provided transposed.")
                 else:
                     raise RuntimeError(f"Initializer {name} does not match shapes. \n"
@@ -213,8 +219,8 @@ class Model(object):
             value = value.astype(dtype)
         return self.builder.aiOnnx.constant(value, debug_name)
 
-    def device_scope(self, virtualGraph=None, pipelineStage=None, nameScope=None, additional_scopes=None):
-        return DeviceScope(self.builder, self.execution_mode, virtualGraph, pipelineStage, nameScope, additional_scopes)
+    def device_scope(self, virtualGraph=None, pipelineStage=None, pingPongPhase=None, nameScope=None, additional_scopes=None):
+        return DeviceScope(self.builder, self.execution_mode, virtualGraph, pipelineStage, pingPongPhase, nameScope, additional_scopes)
 
     def _add_to_tensor_map(self, tensor):
         if self.builder.hasPipelineStage():
@@ -235,7 +241,6 @@ class Bert(Model):
         self.embedding_dict = None
 
         # This dict[ipu,TensorId] reuses any mask already generated on an IPU/pipeline stage
-        # TODO: Should recompute instead?
         self.masks = {}
 
         self.init_device_placement()
@@ -243,41 +248,57 @@ class Bert(Model):
     def init_device_placement(self):
         ''' Create a DeviceScope for each layer, ie Embedding, SQUAD, NSP
         '''
+        # Precompute offset for masks, which are prepared in phase 0 and 1
+        self.ping_pong_precompute_offset = 2
         self.layer_offset = 1
-        if not self.config.inference:
+        if not self.config.inference and self.execution_mode != ExecutionMode.PINGPONG:
             self.layer_offset += 1
-        if self.config.squeeze_model:
+        if self.config.squeeze_model and self.execution_mode != ExecutionMode.PINGPONG:
             self.layer_offset -= 1
 
         # Embedding
-        self.embedding_scope = self.device_scope(0, 0)
+        self.embedding_scope = self.device_scope(
+            0, 0, self.ping_pong_precompute_offset)
         ipu = max(self.layer_offset - 1, 0)
-        self.embedding_split_scope = self.device_scope(ipu, ipu)
+        self.embedding_split_scope = self.device_scope(
+            ipu, ipu, ipu + self.ping_pong_precompute_offset)
         # Transformer Layers
-        pipeline_stage = ((self.config.num_layers - 1) // self.config.layers_per_ipu) + self.layer_offset + 1
+        pipeline_stage = ((self.config.num_layers - 1) //
+                          self.config.layers_per_ipu) + self.layer_offset + 1
+        ping_pong_phase = pipeline_stage + self.ping_pong_precompute_offset
         # Task Layers
         if self.config.task in ("NSP", "PRETRAINING"):
-            self.nsp_scope = self.device_scope(self.embedding_split_scope.virtualGraph, pipeline_stage, "NSP")
-            self.cls_scope = self.device_scope(self.embedding_split_scope.virtualGraph, pipeline_stage, "CLS")
+            self.nsp_scope = self.device_scope(
+                self.embedding_split_scope.virtualGraph, pipeline_stage, ping_pong_phase, "NSP")
+            self.cls_scope = self.device_scope(
+                self.embedding_split_scope.virtualGraph, pipeline_stage, ping_pong_phase, "CLS")
         if self.config.task == "PRETRAINING":
             if (self.layer_offset - 1) != 0:
                 pipeline_stage += 1
-            self.mlm_scope = self.device_scope(self.embedding_scope.virtualGraph, pipeline_stage, "MLM")
+                ping_pong_phase += 1
+            self.mlm_scope = self.device_scope(
+                self.embedding_scope.virtualGraph, pipeline_stage, ping_pong_phase, "MLM")
+            self.final_loss_scope = self.mlm_scope
         if self.config.task == "SQUAD":
             ipu = self.embedding_scope.virtualGraph
             if self.config.inference:
                 pipeline_stage -= 1
                 ipu = pipeline_stage
-            self.squad_scope = self.device_scope(ipu, pipeline_stage, "Squad")
+            self.squad_scope = self.device_scope(
+                ipu, pipeline_stage, ping_pong_phase, "Squad")
+            self.final_loss_scope = self.squad_scope
 
         # Scope to place all IO on first IPU for inference:
         if self.config.inference:
             pipeline_stage += 1
-            self.output_scope = self.device_scope(self.embedding_scope.virtualGraph, pipeline_stage, "Output")
+            ping_pong_phase += 1
+            self.output_scope = self.device_scope(
+                self.embedding_scope.virtualGraph, pipeline_stage, ping_pong_phase, "Output")
         else:
             self.output_scope = None
 
         self.total_pipeline_stages = pipeline_stage + 1
+        self.total_ping_pong_phases = ping_pong_phase + 1
 
     def encoder_scope(self, layer_index):
         ipu = (layer_index // self.config.layers_per_ipu) + self.layer_offset
@@ -296,8 +317,10 @@ class Bert(Model):
             if layer_index in [17]:
                 ipu = 3
 
+        ping_pong_phase = (layer_index // self.config.layers_per_ipu) + \
+            self.layer_offset + self.ping_pong_precompute_offset
         logger.debug(f"Encoder Layer {layer_index} -> IPU {ipu}")
-        return self.device_scope(ipu, ipu, f"Layer{layer_index}")
+        return self.device_scope(ipu, ipu, ping_pong_phase, f"Layer{layer_index}")
 
     def build_graph(self, indices, positions, segments, masks=None):
         # Embedding
@@ -618,14 +641,24 @@ class Bert(Model):
             mask_tokens: 4
             returns: [0,0,-1000.0, -1000.0, 0, -1000.0, ...]
         """
-        mask_idx = self.builder.getVirtualGraph() if self.builder.hasVirtualGraph() else None
+        if self.execution_mode == ExecutionMode.PINGPONG:
+            mask_idx = self.builder.getPingPongPhase() % 2
+            additional_scopes = [
+                self.builder.recomputeOutput(popart.RecomputeType.Checkpoint),
+                self.builder.cacheOutput(popart.CacheType.Uncached)
+            ]
+        else:
+            mask_idx = self.builder.getVirtualGraph() if self.builder.hasVirtualGraph() else None
+            additional_scopes = None
 
         if mask_idx in self.masks:
             return self.masks[mask_idx]
 
         mask_scope = self.device_scope(mask_idx,
                                        self.builder.getPipelineStage() if self.builder.hasPipelineStage() else None,
-                                       "Mask")
+                                       mask_idx,
+                                       "Mask",
+                                       additional_scopes=additional_scopes)
         with mask_scope:
             base_value = np.arange(self.config.sequence_length)
             base = self.constant_tensor(base_value, np.uint32, "mask_sequence")
@@ -669,10 +702,7 @@ class Bert(Model):
             self.builder.setAvailableMemoryProportion(
                 qkv, self.config.available_memory_proportion)
 
-        if 'attention' in self.config.custom_ops:
-            x = self.attention_custom(qkv, masks)
-        else:
-            x = self.attention_onnx(qkv, masks)
+        x = self.attention_onnx(qkv, masks)
 
         projection_weights = self.normal_init_tensor(
             self.config.dtype,
@@ -687,36 +717,6 @@ class Bert(Model):
         x = self.dropout(x)
         x = self.builder.aiOnnx.add([input_x, x])
         x = self.norm(x)
-        return x
-
-    def attention_custom(self, qkv, masks):
-        if self.config.no_mask or masks is not None:
-            mask = self.attention_mask(masks)
-        else:
-            mask = self.constant_tensor(
-                np.zeros([self.config.sequence_length]), self.config.dtype)
-
-        available_memory_proportion = self.config.available_memory_proportion
-        if self.config.use_default_available_memory_proportion:
-            available_memory_proportion = -1
-
-        dropout_modifier = self.dropout_modifier
-        if self.config.no_dropout or self.config.no_attn_dropout:
-            dropout_modifier = -1
-
-        x = self.builder.customOp(opName="Attention",
-                                  opVersion=1,
-                                  domain="ai.graphcore",
-                                  inputs=[qkv, mask],
-                                  attributes={
-                                      "heads": self.config.attention_heads,
-                                      "sequence_length": self.config.sequence_length,
-                                      "available_memory_proportion": available_memory_proportion,
-                                      "dropout_modifier": dropout_modifier,
-                                      "dropout_ratio": self.config.attn_dropout_prob
-                                  },
-                                  numOutputs=6)[0]
-        self.dropout_modifier += 1
         return x
 
     def attention_onnx(self, qkv, masks):
@@ -790,6 +790,10 @@ class Bert(Model):
         num_splits = self.config.projection_serialization_steps
         self.builder.setSerializeMatMul(
             {x}, 'output_channels', num_splits, True)
+
+        if self.config.projection_bias:
+            bias = self.constant_init_tensor(self.config.dtype, (self.config.vocab_length,), 0, "ProjectionB")
+            x = self.builder.aiOnnx.add([x, bias])
 
         x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
                                        self.config.batch_size, self.config.mask_tokens, self.config.vocab_length])
