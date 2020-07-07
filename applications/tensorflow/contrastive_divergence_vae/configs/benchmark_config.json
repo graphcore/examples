@@ -1,0 +1,108 @@
+{
+    "model": [
+        {
+            "args": {
+                "_evaluate": true,
+                "batch_size": 100,
+                "data": {
+                    "formats": {
+                        "np": "np.float32",
+                        "tf": "tf.float32"
+                    },
+                    "loading": {
+                        "dynamic_binarise": false,
+                        "set": "binarised_mnist",
+                        "shuffle_each_epoch": true,
+                        "shuffle_pre_split": false
+                    },
+                    "n_validation": 0,
+                    "use_tfp_data": false
+                },
+                "device": "/device:IPU:0",
+                "n_replicas": 1,
+                "network": {
+                    "decoder": {
+                        "name": "vcd"
+                    },
+                    "encoder": {
+                        "name": "vcd"
+                    },
+                    "z_dim": 10
+                },
+                "save_checkpoints": true,
+                "testing": {
+                    "batch_size_te": 128,
+                    "iwae_samples_te_batch_size": 50,
+                    "n_epoch_freq_te": 1000,
+                    "n_iwae_samples_te": 20000,
+                    "mcmc": {
+                        "use_train_step_size_init": false,
+                        "hmc_step_size_init": 0.05,
+                        "acceptance_target": 0.9
+                    }
+                },
+                "training": {
+                    "base_lr": {
+                        "decoder": 0.0005,
+                        "encoder": {
+                            "mean": 0.0005,
+                            "std": 0.00025
+                        }
+                    },
+                    "control_variate": {
+                        "decay": 0.9,
+                        "independent_iterations": 3000,
+                        "use_control_variate": true,
+                        "use_local_control_variate": false
+                    },
+                    "lr_kwargs": {
+                        "epoch_timescale": 30
+                    },
+                    "mcmc": {
+                        "acceptance_target": 0.9,
+                        "hmc_only": false,
+                        "hmc_step_size_init": 0.05,
+                        "n_burn_in_steps": 8,
+                        "n_hmc_steps": 0,
+                        "n_leapfrog_steps": 5,
+                        "step_size_adaption_fn": "ruiz",
+                        "step_size_adaption_rate": 0.01
+                    },
+                    "n_epoch_freq_val": 1000,
+                    "n_infeed_batches": 10000,
+                    "n_epoch": 200,
+                    "optimiser_config": "vcd",
+                    "use_infeed": true
+                }
+            },
+            "flags": {
+                "ATTRIBUTE": "model",
+                "MODULE": "models.vae.vcd_vae",
+                "NAME": "models.vcd_vae",
+                "TUNING": false
+            }
+        }
+    ],
+    "experiment": {
+        "args": {
+            "_evaluate": true,
+            "data": {
+                "formats": {
+                    "np": "np.float32",
+                    "tf": "tf.float32"
+                },
+                "loading": {
+                    "dynamic_binarise": false,
+                    "set": "binarised_mnist",
+                    "shuffle_each_epoch": true,
+                    "shuffle_pre_split": false
+                },
+                "n_validation": 0,
+                "use_tfp_data": false
+            },
+            "testing": false,
+            "training": true,
+            "validation": false
+        }
+    }
+}

@@ -13,7 +13,6 @@
 __pycache__
 .cache
 *.csv
-*.json
 *.log
 *.so
 report.txt

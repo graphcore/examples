@@ -23,16 +23,18 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 | Example | Link |
 | ------- | ---- |
 | BERT | [code](applications/popart/bert) |
-| ResNext | [code](applications/popart/resnext_inference) |
-| EfficientNet | [code](applications/tensorflow/cnns/inference) |
+| DeepVoice3 | [code](applications/popart/deep_voice) |
+| CNN Training (including ResNet, ResNeXt & EfficientNet | [code](applications/tensorflow/cnns/training) |
+| CNN Inference (including ResNet, MobileNet & EfficientNet | [code](applications/tensorflow/cnns/inference) |
+| ResNext Inference | [code](applications/popart/resnext_inference) |
 | Recommendation using Autoencoders | [code](applications/tensorflow/autoencoder) |
 | Sales forecasting example | [code](applications/tensorflow/sales_forecasting) |
-| MCMC methods example | [code](code_examples/tensorflow/mcmc) |
 | Recurrent layer kernel benchmarks | [code](code_examples/tensorflow/kernel_benchmarks) |
-| ResNet | [inference code](applications/tensorflow/cnns/inference), [training code](applications/tensorflow/cnns/training) |
 | Constrastive Divergence VAE using MCMC methods | [code](applications/tensorflow/contrastive_divergence_vae) |
-| Grouped convolution kernel benchmarks | [code](code_examples/tensorflow/kernel_benchmarks) |
 | Example reinforcement learning policy model | [code](applications/tensorflow/reinforcement_learning) |
+| MCMC methods example | [code](code_examples/tensorflow/mcmc) |
+| CosmoFlow example using 3D Convolutions | [code](code_examples/tensorflow/cosmoflow) |
+| Grouped convolution kernel benchmarks | [code](code_examples/tensorflow/kernel_benchmarks) |
 
 ### Application examples
 

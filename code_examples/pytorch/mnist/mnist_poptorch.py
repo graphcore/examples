@@ -118,6 +118,4 @@ if __name__ == '__main__':
     # Check validation loss on IPU once trained. Because PopTorch will be compiled on first call the
     # weights in model.parameters() will be copied implicitly. Subsequent calls will need to call
     # inference_model.copyWeightsToDevice()
-    training_model.copyWeightsToHost()
-
     test(inference_model, test_data)

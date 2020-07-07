@@ -111,6 +111,13 @@ EfficientNet-B0 model, with a similar number of trainable parameters can be trai
 
 This should give a similar validation accuracy as the standard model but with improved training throughput.
 
+### ImageNet - EfficientNet - Inference
+
+The training harness can also be used to demonstrate inference performance using the validation.py script. 
+For example, to check inference for EfficientNet use:
+
+    python validation.py --model efficientnet --model-size B0 --dataset imagenet --batch-size 8 \
+    --synthetic-data --repeat 10 --batch-norm
 
 # Training Options
 
