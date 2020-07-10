@@ -18,7 +18,7 @@ import json
 import tensorflow.compat.v1 as tf
 
 # Local imports
-from data import get_datasets
+from data_gen import get_datasets
 from models import get_model
 # Fix for loading Lambda layer checkpoints
 from models.layers import *

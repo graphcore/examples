@@ -5,7 +5,7 @@ This README describes how to run a conv3D based model called CosmoFlow on IPU ha
 ## File structure
 
 * `configs` 	     folder containing the config .yaml file
-* `data`		     folder containing code for input data pipeline
+* `data_gen`		     folder containing code for input data pipeline
 * `models`   	     folder containing code defining graph models
 * `README.md`	     The file you are reading now
 * `requirements.txt`   Python dependencies
