@@ -1,0 +1,9 @@
+numpy
+pybind11
+unidecode
+requests
+tqdm
+matplotlib
+pandas
+seaborn
+pytest
