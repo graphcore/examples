@@ -8,13 +8,11 @@
 #include <popops/ElementWise.hpp>
 #include "utils.hpp"
 
-#include <map>
-
 extern "C" {
 
 /// We are using a stateless op which requires
 /// API level 1 or higher.
-int32_t custom_op_api_level = 1;
+int32_t custom_op_api_level = 2;
 
 /// Meta data function sets properties of the forward op.
 void Build_metadata(std::vector<std::int64_t>& allocating_indices,
@@ -25,31 +23,33 @@ void Build_metadata(std::vector<std::int64_t>& allocating_indices,
   // lhs, metainfo, and nzvalues need special allocators but the current
   // API doesn't allow extra compile time arguments to be passed so we can't
   // use them. The workaround is a separate allocator op.
-  allocating_indices.clear();
+  allocating_indices = {0, 1, 2};
   num_inplace = 0;
   is_elementwise = false;
   is_stateless = true;
 }
 
-// Need a cache that is global in this shared object:
-popsparse::dynamic::PlanningCache sparse_matmul_cache;
-
-std::map<poplar::Graph*, bool> popsparseLoaded;
+// Return a planning cache that is global in this shared
+// object (but have one per thread):
+popsparse::dynamic::PlanningCache* getCache() {
+  thread_local popsparse::dynamic::PlanningCache global_cache;
+  return &global_cache;
+}
 
 poplar::program::Program Build(
   poplar::Graph& graph, const std::vector<poplar::Tensor>& inputs,
-  std::vector<poplar::Tensor>& outputs, const std::string& debug_prefix) {
+  std::vector<poplar::Tensor>& outputs,
+  const std::string& attributes,
+  const std::string& debug_prefix) {
 
-  // Can't add codelets more than once per graph:
-  if (!popsparseLoaded.count(&graph)) {
-    popsparseLoaded.insert(std::make_pair(&graph, true));
-    popsparse::addCodelets(graph);
-  }
+  auto json_args = read_json_args(attributes);
+  poplar::OptionFlags options = getSparseMulDefaultOptions(json_args.matmul_options);
 
+  popsparse::addCodelets(graph);
   using namespace popsparse::dynamic;
 
-  if (inputs.size() != 6) {
-    throw poputil::poplibs_error("Sparse matmul requires 6 inputs.");
+  if (inputs.size() != 5) {
+    throw poputil::poplibs_error("Sparse matmul requires 5 inputs.");
   }
 
   auto metaInfoType = poplar::UNSIGNED_SHORT;
@@ -57,15 +57,12 @@ poplar::program::Program Build(
   auto lhs = inputs[0];
   auto metainfo = inputs[1].reinterpret(metaInfoType);
   auto nzvalues = inputs[2];
-  auto args = inputs[3];
 
-  auto batchSize = lhs.dim(0);
-  auto inputSize = lhs.dim(1);
-  auto outputSize = args.dim(0);
-  auto sparsityFactor = args.dim(1) / float(inputSize * outputSize);
-  auto numGroups = args.dim(2);
-
-  poplar::OptionFlags options = getSparseMulDefaultOptions();
+  auto batchSize = json_args.batch_size;
+  auto inputSize = json_args.input_size;
+  auto outputSize = json_args.output_size;
+  auto sparsityFactor = json_args.max_non_zeros / float(inputSize * outputSize);
+  auto numGroups = json_args.group_size;
 
   SparsityParams sparsityParams(SparsityType::Element, SparsityStructure::Unstructured);
   auto params = FullyConnectedParams::createWithNzRatio(
@@ -77,12 +74,56 @@ poplar::program::Program Build(
 
   auto weights = SparseTensor(metainfo, nzvalues);
   auto sparseResult = fullyConnectedFwd(
-      graph, weights, lhs, params, prog, op_name, options, &sparse_matmul_cache);
+      graph, weights, lhs, params, prog, op_name, options, getCache());
   outputs.push_back(sparseResult);
-
   return prog;
 }
 
+poplar::Tensor Build_allocator(
+  poplar::Graph& graph, std::uint32_t operand,
+  const std::vector<size_t>& shape, poplar::Type type,
+  const std::string& attributes,
+  const std::string& debug_prefix) {
+
+  auto json_args = read_json_args(attributes);
+  poplar::OptionFlags options = getSparseMulDefaultOptions(json_args.matmul_options);
+  auto dataType = json_args.data_type;
+  auto batchSize = json_args.batch_size;
+  auto inputSize = json_args.input_size;
+  auto outputSize = json_args.output_size;
+  auto sparsityFactor = json_args.max_non_zeros / float(inputSize * outputSize);
+  auto numGroups = json_args.group_size;
+
+  using namespace popsparse::dynamic;
+
+  SparsityParams sparsityParams(SparsityType::Element, SparsityStructure::Unstructured);
+  auto params = FullyConnectedParams::createWithNzRatio(
+    sparsityParams, sparsityFactor, batchSize, numGroups, inputSize, outputSize);
+
+  if (operand == 0) {
+    // Allocate the dense layer input:
+    return createFullyConnectedInput(
+      graph, dataType, params, "dense_lhs", options, getCache());
+  }
+
+  if (operand == 1) {
+    // Allocate the sparse metainfo for the weights:
+    const SparseTensor weights = createFullyConnectedWeights(
+	        graph, dataType, params, "sparse_fc_weights", options, getCache());
+    return weights.getMetaInfoTensor().reinterpret(poplar::HALF);
+  }
+
+  if (operand == 2) {
+    // Allocate the sparse non-zero values for the weights:
+    const SparseTensor weights = createFullyConnectedWeights(
+	        graph, dataType, params, "sparse_fc_weights", options, getCache());
+    return weights.getNzValuesTensor();
+  }
+
+  if (operand > 2) {
+    throw std::logic_error("Unexpected operand index in sparse_matmul allocator: " + operand);
+  }
+}
 
 /// Meta data function sets properties of the gradient op.
 void Build_grad_metadata(std::vector<std::int64_t>& allocating_indices,
@@ -116,24 +157,25 @@ poplar::program::Program Build_grad(
     const std::vector<poplar::Tensor>& fwd_inputs,
     const std::vector<poplar::Tensor>& fwd_outputs,
     std::vector<poplar::Tensor>& outputs,
+    const std::string& attributes,
     const std::string& debug_prefix) {
 
   using namespace popsparse::dynamic;
+
+  auto json_args = read_json_args(attributes);
+  poplar::OptionFlags options = getSparseMulDefaultOptions(json_args.matmul_options);
 
   auto metaInfoType = poplar::UNSIGNED_SHORT;
   auto lhs = fwd_inputs[0];
   auto metainfo = fwd_inputs[1].reinterpret(metaInfoType);
   auto nzvalues = fwd_inputs[2];
-  auto args = fwd_inputs[3];
-  auto doDenseGradComputation = fwd_inputs[4];
+  auto doDenseGradComputation = fwd_inputs[3];
 
-  auto batchSize = lhs.dim(0);
-  auto inputSize = lhs.dim(1);
-  auto outputSize = args.dim(0);
-  auto sparsityFactor = args.dim(1) / float(inputSize * outputSize);
-  auto numGroups = args.dim(2);
-
-  poplar::OptionFlags options = getSparseMulDefaultOptions();
+  auto batchSize = json_args.batch_size;
+  auto inputSize = json_args.input_size;
+  auto outputSize = json_args.output_size;
+  auto sparsityFactor = json_args.max_non_zeros / float(inputSize * outputSize);
+  auto numGroups = json_args.group_size;
 
   SparsityParams sparsityParams(SparsityType::Element, SparsityStructure::Unstructured);
   auto params = FullyConnectedParams::createWithNzRatio(
@@ -146,11 +188,11 @@ poplar::program::Program Build_grad(
 
   auto lossWrtInput = fullyConnectedGradA(
     graph, weights, inflowingGrad, params, prog,
-    debug_prefix + "/sparse_matmul_gradA", options, &sparse_matmul_cache);
+    debug_prefix + "/sparse_matmul_gradA", options, getCache());
 
   auto lossWrtNzValues = fullyConnectedSparseGradW(
     graph, weights.getMetaInfoTensor(), inflowingGrad, lhs, params, prog,
-    debug_prefix + "/sparse_matmul_gradW", options, &sparse_matmul_cache);
+    debug_prefix + "/sparse_matmul_gradW", options, getCache());
 
   outputs.push_back(lossWrtInput);
   outputs.push_back(lossWrtNzValues);
@@ -160,6 +202,10 @@ poplar::program::Program Build_grad(
   // perhaps top-k can be taken on the IPU also:
   poplar::program::Sequence conditionalProg;
   auto inputsTransposed = lhs.dimShuffle({1, 0});
+
+  auto splits = fullyConnectedDenseGradWSerialSplits(
+    graph, inputsTransposed.elementType(), params, options, getCache());
+  /// TODO: use the splits to serialize the following matmul:
   auto gradOfLossWrtWeights =
     poplin::matMul(graph, inputsTransposed, inflowingGrad,
                    conditionalProg, debug_prefix + "/dense_matmul_gradW");

@@ -3,52 +3,77 @@
 ---
 ## PopART MNIST Training Demo
 
-This example trains a network on the MNIST dataset using a port
-of ONNX that targets Graphcore's Poplar libraries.
+This example trains a network on the MNIST dataset using PopART.
 
 ### File structure
 
-* `popart_mnist.py` The main PopART file using a linear network.
-* `popart_mnist_conv.py` The main PopART file using a convolutional network.
+* `popart_mnist.py` The main PopART program that uses a linear network.
+* `popart_mnist_conv.py` The main PopART program that uses a convolutional network.
 * `get_data.sh` Script to fetch the images and labels.
 * `README.md` This file.
+* `requirements.txt` Specifies the required modules.
+* `test_popart_mnist.py` Tests for `popart_mnist.py`.
+* `test_popart_mnist_conv.py` Tests for `popart_mnist_conv.py`.
 
 ### How to use this demo
 
 1) Prepare the environment.
 
-   Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-    scripts for poplar, gc_drivers (if running on hardware) and popart.
+   Install the Poplar SDK following the instructions in the Getting Started guide for your IPU System.
+   Make sure to source the `enable.sh` scripts for poplar, gc_drivers (if running on hardware) and popart.
+
+   The PopART Python API only supports Python 3. It is recommended to use a virtualenv.
+
+   Install the required modules:
+
+       pip3 install -r requirements.txt
 
 2) Download the data.
 
        ./get_data.sh
 
-  This will create and populate a `data/` directory.
+   This will create and populate a `data` directory.
 
-4) Run the graph. Note that the PopART Python API only supports Python 3.
+4) Run the graph.
 
        python3 popart_mnist.py
 
-or
+   or
 
        python3 popart_mnist_conv.py
 
+5) (Optional) To run the tests
 
+       python3 -m pytest
 
 #### Options
-The program has a few command-line options:
+The programs have a few command line options.
 
-`-h` Show usage information.
+Note: `popart_mnist_conv.py` does not support the `--replication-factor` or `--pipeline` options.
 
-`--batch-size`        Sets the batch size.
+`-h`                  Show usage information.
+
+`--batch-size`        Sets the batch size. This must be a multiple of the
+replication factor.
 
 `--batches-per-step`  Number on mini-batches to perform on the device before returning to the host.
 
 `--epochs`            Number of epoch to train for.
+
+`--num-ipus`          Number of IPUs to use.
+
+`--pipeline`          Pipeline the model over IPUs. Only valid for this model
+if the number of IPUs is double the replication factor.
+
+`--replication-factor` Number of times to replicate the graph to perform data parallel training. This must be a factor of the number of IPUs. Defaults to 1.
 
 `--simulation`        Run with the IPU_MODEL device instead of hardware.
 
 `--log-graph-trace`   Turn on IR logging to display the graph's ops.
 
 
+Examples:
+
+     python popart_mnist.py --num-ipus 2 --pipeline
+
+     python popart_mnist.py --num-ipus 4 --replication-factor 2 --pipeline

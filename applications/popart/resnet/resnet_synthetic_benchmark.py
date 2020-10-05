@@ -111,6 +111,9 @@ def add_args(parser):
                         help="ResNet shortcut type. Defaults to definition specified.")
     parser.set_defaults(batches_per_step=1000, steps=5,
                         mode='eval', auto_sharding=True)
+    parser.add_argument(
+        '--log-dir', type=str, default="logs",
+        help="Name of parent directory for logs and tensorboard protobufs")
     return parser
 
 

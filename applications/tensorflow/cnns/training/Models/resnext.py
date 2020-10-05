@@ -38,7 +38,7 @@ class ResNeXt(rb.ResNetBase):
                                 conv_groups=self.conv_groups,
                                 filter_factor=mult,
                                 conv=self.conv,
-                                norm=self.norm)
+                                norm=self.norm_dict)
 
         # Apply dataset specific changes
         if opts["dataset"] == "imagenet":
@@ -126,6 +126,9 @@ def set_defaults(opts):
             opts["batch_size"] = 1
         if opts.get("warmup") is None:
             opts["warmup"] = True
+        # force stable norm on
+        if not opts.get("stable_norm"):
+            opts['stable_norm'] = True
 
         # exclude beta and gamma from weight decay calculation
         opts["wd_exclude"] = ["beta", "gamma"]

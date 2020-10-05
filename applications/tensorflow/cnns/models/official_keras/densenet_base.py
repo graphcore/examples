@@ -3,7 +3,7 @@
 from typing import Optional, Tuple, Union
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 from models import tf_layers
@@ -14,7 +14,6 @@ CifarBlockType = Tuple[int, int, int]
 TensorType = Union[tf.Tensor, np.ndarray, tf.placeholder]
 
 layers = tf_layers
-
 # TODO(lakshmik): Add popart backend
 
 

@@ -8,8 +8,26 @@ from collections import defaultdict
 from enum import Enum
 import logging
 import math
+import os
+from collections import defaultdict
+from contextlib import ExitStack, contextmanager
+from enum import Enum
+from functools import reduce
+from typing import List, NamedTuple, Optional
+
+import numpy as np
+from scipy.stats import truncnorm
+
+import popart
+from pingpong.scope_manager import ScopeProvider
 
 logger = logging.getLogger(__name__)
+
+
+class ExecutionMode(str, Enum):
+    DEFAULT = "DEFAULT"
+    PIPELINE = "PIPELINE"
+    PHASED = "PHASED"
 
 
 class BertConfig(NamedTuple):
@@ -46,7 +64,21 @@ class BertConfig(NamedTuple):
     inference: bool = False
 
     num_layers: int = 2
-    layers_per_ipu: int = 2
+
+    # Specify the ipu to start adding encoders.
+    # if encoder_start_ipu >= 2: two IPUs will be used for the embeddings
+    # else: one IPU will be used for the embeddings
+    encoder_start_ipu: int = 2
+
+    # Placement of layers can be specified by either:
+    # a single element list, which will place num_layers/layers_per_ipu[0] on each IPU
+    # Or a list specifying the placement on each IPU.
+    layers_per_ipu: List[int] = [2]
+
+    # UNSUPPORTED: Try and fit the model onto fewer IPUs. Intended for inference modes:
+    squeeze_model: bool = False
+
+    split_transformer: bool = False
 
     no_dropout: bool = False
     no_attn_dropout: bool = False
@@ -62,9 +94,6 @@ class BertConfig(NamedTuple):
     # {N, hidden_size} x {hidden_size, hidden_size}.
     # This is required for sequence length 384.
     split_linear_layers: bool = False
-
-    # Try and fit the model onto fewer IPUs. Intended for inference modes:
-    squeeze_model: bool = False
 
     no_mask: bool = False
 
@@ -91,6 +120,7 @@ class BertConfig(NamedTuple):
     # In PRETRAINING this sets how many steps to serialise both the
     # embedding and projection
     projection_serialization_steps: int = 5
+    embedding_serialization_vocab_steps: int = 1
 
     update_embedding_dict: bool = True
 
@@ -102,15 +132,14 @@ class BertConfig(NamedTuple):
 
     max_matmul_memory: int = 40000
 
+    num_attention_splits: int = 1
+    num_ffwd_splits: int = 1
+
+    execution_mode: ExecutionMode = ExecutionMode.DEFAULT
+
     @property
     def available_memory_proportion(self):
         return self.max_matmul_memory / (2**18)
-
-
-class ExecutionMode(str, Enum):
-    DEFAULT = "DEFAULT"
-    PIPELINE = "PIPELINE"
-    PINGPONG = "PINGPONG"
 
 
 class DeviceScope(object):
@@ -119,21 +148,21 @@ class DeviceScope(object):
                  execution_mode=ExecutionMode.DEFAULT,
                  virtualGraph=None,
                  pipelineStage=None,
-                 pingPongPhase=None,
+                 executionPhase=None,
                  nameScope=None,
                  additional_scopes=None):
         self.builder = builder
         self.execution_mode = execution_mode
         self.virtualGraph = virtualGraph
         self.pipelineStage = pipelineStage
-        self.pingPongPhase = pingPongPhase
+        self.executionPhase = executionPhase
         self.nameScope = nameScope
         self.additional_scopes = additional_scopes or []
 
     def __enter__(self):
         self.stack = ExitStack()
-        # PingPong will automatically set the virtualGraph attributes based on ping pong phase
-        if self.execution_mode != ExecutionMode.PINGPONG \
+        # ExecutionPhase will automatically set the virtualGraph attributes based on ping pong phase
+        if self.execution_mode != ExecutionMode.PHASED \
                 and self.virtualGraph is not None:
             self.stack.enter_context(
                 self.builder.virtualGraph(self.virtualGraph))
@@ -143,10 +172,10 @@ class DeviceScope(object):
             self.stack.enter_context(
                 self.builder.pipelineStage(self.pipelineStage))
 
-        if self.execution_mode == ExecutionMode.PINGPONG\
-                and self.pingPongPhase is not None:
+        if self.execution_mode == ExecutionMode.PHASED\
+                and self.executionPhase is not None:
             self.stack.enter_context(
-                self.builder.pingPongPhase(self.pingPongPhase))
+                self.builder.executionPhase(self.executionPhase))
 
         if self.nameScope is not None:
             self.stack.enter_context(self.builder.nameScope(self.nameScope))
@@ -219,8 +248,8 @@ class Model(object):
             value = value.astype(dtype)
         return self.builder.aiOnnx.constant(value, debug_name)
 
-    def device_scope(self, virtualGraph=None, pipelineStage=None, pingPongPhase=None, nameScope=None, additional_scopes=None):
-        return DeviceScope(self.builder, self.execution_mode, virtualGraph, pipelineStage, pingPongPhase, nameScope, additional_scopes)
+    def device_scope(self, virtualGraph=None, pipelineStage=None, executionPhase=None, nameScope=None, additional_scopes=None):
+        return DeviceScope(self.builder, self.execution_mode, virtualGraph, pipelineStage, executionPhase, nameScope, additional_scopes)
 
     def _add_to_tensor_map(self, tensor):
         if self.builder.hasPipelineStage():
@@ -249,35 +278,35 @@ class Bert(Model):
         ''' Create a DeviceScope for each layer, ie Embedding, SQUAD, NSP
         '''
         # Precompute offset for masks, which are prepared in phase 0 and 1
-        self.ping_pong_precompute_offset = 2
-        self.layer_offset = 1
-        if not self.config.inference and self.execution_mode != ExecutionMode.PINGPONG:
-            self.layer_offset += 1
-        if self.config.squeeze_model and self.execution_mode != ExecutionMode.PINGPONG:
-            self.layer_offset -= 1
+        self.execution_phase_precompute_offset = 2
+
+        if self.config.squeeze_model:
+            raise Exception("Config squeeze_model is no longer supported. "
+                            "Please use `encoder_start_ipu` to specify which ipu the first Encoder layer should be placed.")
+
+        layer_offset = self.config.encoder_start_ipu
 
         # Embedding
         self.embedding_scope = self.device_scope(
-            0, 0, self.ping_pong_precompute_offset)
-        ipu = max(self.layer_offset - 1, 0)
+            0, 0, self.execution_phase_precompute_offset)
+        ipu = max(layer_offset - 1, 0)
         self.embedding_split_scope = self.device_scope(
-            ipu, ipu, ipu + self.ping_pong_precompute_offset)
+            ipu, ipu, ipu + self.execution_phase_precompute_offset)
         # Transformer Layers
-        pipeline_stage = ((self.config.num_layers - 1) //
-                          self.config.layers_per_ipu) + self.layer_offset + 1
-        ping_pong_phase = pipeline_stage + self.ping_pong_precompute_offset
+        pipeline_stage = self.encoder_ipu(self.config.num_layers - 1) + 1
+        execution_phase = pipeline_stage + self.execution_phase_precompute_offset
         # Task Layers
         if self.config.task in ("NSP", "PRETRAINING"):
             self.nsp_scope = self.device_scope(
-                self.embedding_split_scope.virtualGraph, pipeline_stage, ping_pong_phase, "NSP")
+                self.embedding_split_scope.virtualGraph, pipeline_stage, execution_phase, "NSP")
             self.cls_scope = self.device_scope(
-                self.embedding_split_scope.virtualGraph, pipeline_stage, ping_pong_phase, "CLS")
+                self.embedding_split_scope.virtualGraph, pipeline_stage, execution_phase, "CLS")
         if self.config.task == "PRETRAINING":
-            if (self.layer_offset - 1) != 0:
+            if (layer_offset - 1) != 0:
                 pipeline_stage += 1
-                ping_pong_phase += 1
+                execution_phase += 1
             self.mlm_scope = self.device_scope(
-                self.embedding_scope.virtualGraph, pipeline_stage, ping_pong_phase, "MLM")
+                self.embedding_scope.virtualGraph, pipeline_stage, execution_phase, "MLM")
             self.final_loss_scope = self.mlm_scope
         if self.config.task == "SQUAD":
             ipu = self.embedding_scope.virtualGraph
@@ -285,42 +314,42 @@ class Bert(Model):
                 pipeline_stage -= 1
                 ipu = pipeline_stage
             self.squad_scope = self.device_scope(
-                ipu, pipeline_stage, ping_pong_phase, "Squad")
+                ipu, pipeline_stage, execution_phase, "Squad")
             self.final_loss_scope = self.squad_scope
 
         # Scope to place all IO on first IPU for inference:
         if self.config.inference:
             pipeline_stage += 1
-            ping_pong_phase += 1
+            execution_phase += 1
             self.output_scope = self.device_scope(
-                self.embedding_scope.virtualGraph, pipeline_stage, ping_pong_phase, "Output")
+                self.embedding_scope.virtualGraph, pipeline_stage, execution_phase, "Output")
         else:
             self.output_scope = None
 
         self.total_pipeline_stages = pipeline_stage + 1
-        self.total_ping_pong_phases = ping_pong_phase + 1
+        self.total_execution_phases = execution_phase + 1
+
+    @property
+    def total_ipus(self):
+        return self.encoder_ipu(self.config.num_layers - 1) + 1
 
     def encoder_scope(self, layer_index):
-        ipu = (layer_index // self.config.layers_per_ipu) + self.layer_offset
-
-        if self.config.squeeze_model and self.config.inference and self.config.hidden_size == 1024:
-            # Special case to help squeeze BERT LARGE 128 inference onto 4 IPUs instead of 7
-            # by moving some of the transformer layers around. New intended split is:
-            # 3 Encoders -> IPU0
-            # 7 Encoders -> IPU1
-            # 7 Encoders -> IPU2
-            # 7 Encoders -> IPU3
-            if layer_index in [3, 4, 5]:
-                ipu = 1
-            if layer_index in [10, 11]:
-                ipu = 2
-            if layer_index in [17]:
-                ipu = 3
-
-        ping_pong_phase = (layer_index // self.config.layers_per_ipu) + \
-            self.layer_offset + self.ping_pong_precompute_offset
+        ipu = self.encoder_ipu(layer_index)
+        execution_phase = ipu + self.execution_phase_precompute_offset
         logger.debug(f"Encoder Layer {layer_index} -> IPU {ipu}")
-        return self.device_scope(ipu, ipu, ping_pong_phase, f"Layer{layer_index}")
+        return self.device_scope(ipu, ipu, execution_phase, f"Layer{layer_index}")
+
+    def encoder_ipu(self, layer_index):
+        encoder_index = 0
+        if len(self.config.layers_per_ipu) == 1:
+            encoder_index = layer_index // self.config.layers_per_ipu[0]
+        else:
+            for ipu, num_layers in enumerate(self.config.layers_per_ipu):
+                layer_index -= num_layers
+                if layer_index < 0:
+                    encoder_index = ipu
+                    break
+        return encoder_index + self.config.encoder_start_ipu
 
     def build_graph(self, indices, positions, segments, masks=None):
         # Embedding
@@ -613,6 +642,13 @@ class Bert(Model):
                 init_fn,
                 name)
             self.embedding_dict = embedding_dict
+
+            if self.config.inference:
+                embedding_dict = self.builder.customOp(opName="PreventConstFolding",
+                                                       opVersion=1,
+                                                       domain="ai.graphcore",
+                                                       inputs=[embedding_dict],
+                                                       attributes={})[0]
             embedding_dict = self.builder.aiOnnx.transpose([embedding_dict])
         else:
             embedding_dict = self.embedding_init_tensor(
@@ -641,11 +677,11 @@ class Bert(Model):
             mask_tokens: 4
             returns: [0,0,-1000.0, -1000.0, 0, -1000.0, ...]
         """
-        if self.execution_mode == ExecutionMode.PINGPONG:
-            mask_idx = self.builder.getPingPongPhase() % 2
+        if self.execution_mode == ExecutionMode.PHASED:
+            mask_idx = self.builder.getExecutionPhase() % 2
             additional_scopes = [
                 self.builder.recomputeOutput(popart.RecomputeType.Checkpoint),
-                self.builder.cacheOutput(popart.CacheType.Uncached)
+                self.builder.outputTensorLocation(popart.TensorLocation.OnChip)
             ]
         else:
             mask_idx = self.builder.getVirtualGraph() if self.builder.hasVirtualGraph() else None
@@ -778,6 +814,9 @@ class Bert(Model):
         x = self.builder.aiOnnxOpset9.slice([x], axes=[1], starts=[
             0], ends=[self.config.mask_tokens])
 
+        x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
+                                       self.config.batch_size * self.config.mask_tokens, self.config.hidden_size])
+
         weight = self.embedding_dict
 
         # Move the weight to the current pipeline stage
@@ -878,3 +917,79 @@ class Bert(Model):
         x = self.intermediate_activation_function(x)
         x = self.norm(x)
         return x
+
+
+def get_model(config, mode, block=None, initializers={}):
+    # Specifying ai.onnx opset9 for the slice syntax
+    builder = popart.Builder(opsets={
+        "ai.onnx": 9,
+        "ai.onnx.ml": 1,
+        "ai.graphcore": 1
+    })
+
+    if mode == ExecutionMode.PHASED:
+        scope_provider = ScopeProvider()
+        if not block:
+            from pingpong.bert_ping_pong import BertModel
+            return BertModel(config,
+                             builder=builder,
+                             initializers=initializers,
+                             scope_provider=scope_provider)
+
+        if block.lower() == 'embedding':
+            from pingpong.bert_layers_serialised import BertEmbedding
+            return BertEmbedding(config.vocab_length,
+                                 config.hidden_size,
+                                 config.sequence_length,
+                                 config.max_positional_length,
+                                 config.embedding_serialization_vocab_steps,
+                                 config.layer_norm_eps,
+                                 not config.no_dropout,
+                                 config.dropout_prob,
+                                 mode,
+                                 config.dtype,
+                                 config.update_embedding_dict,
+                                 weight_transposed=False,
+                                 builder=builder,
+                                 scope_provider=scope_provider)
+
+        if block.lower() == 'attention':
+            from pingpong.bert_layers import Attention
+            attention_params = {
+                'input_size': config.hidden_size,
+                'hidden_size': config.hidden_size,
+                'num_heads': config.attention_heads,
+                'serialize_matmul': config.split_linear_layers,
+                'avail_mem_prop': config.available_memory_proportion,
+                'epsilon': config.layer_norm_eps,
+                'dropout': not config.no_dropout,
+                'dropout_prob': config.dropout_prob,
+                'attn_dropout': not config.no_attn_dropout,
+                'attn_dropout_prob': config.attn_dropout_prob,
+                'batch_size': config.batch_size,
+                'sequence_length': config.sequence_length,
+                'dtype': config.dtype,
+                'task': config.task,
+                'num_mask_tokens': config.mask_tokens
+            }
+            return Attention('Attention', **attention_params, builder=builder, scope_provider=scope_provider)
+
+        if block.lower() == 'feedforward':
+            from pingpong.bert_layers import FeedForward
+            return FeedForward('FF',
+                               config.hidden_size,
+                               config.ff_size,
+                               dropout=not config.no_dropout,
+                               dropout_prob=config.dropout_prob,
+                               epsilon=config.layer_norm_eps,
+                               intermediate_act_func=config.activation_type,
+                               dtype=config.dtype,
+                               alpha=config.relu_leak,
+                               serialize_matmul=config.split_linear_layers,
+                               builder=builder,
+                               scope_provider=scope_provider)
+    else:
+        return Bert(config,
+                    builder=builder,
+                    initializers=initializers,
+                    execution_mode=mode)

@@ -21,7 +21,7 @@
   "decoder_attention_flags": [true, false, false, true],
   "attention_hidden_size": 256,
   "query_position_rate": 1.0,
-  "key_position_rate": 1.28,
+  "key_position_rate": 1.28, 
   "use_guided_attention": true,
   "guided_attention_g": 0.2,
   "num_converter_conv_blocks": 6,

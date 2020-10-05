@@ -5,7 +5,7 @@ import time
 import warnings
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.ipu import ipu_compiler
@@ -131,7 +131,8 @@ def create_policy(*infeed_data):
     log_prob = tf.nn.log_softmax(logits, name="prob")
 
     # make action selection op (outputs int actions, sampled from policy)
-    actions = tf.multinomial(logits=tf.reshape(logits, (-1, NUM_ACTIONS)), num_samples=1)
+    actions = tf.random.categorical(logits=tf.reshape(
+        logits, (-1, NUM_ACTIONS)), num_samples=1)
     actions = tf.reshape(actions, (args.batch_size, args.time_steps))
 
     action_masks = tf.one_hot(actions, NUM_ACTIONS, dtype=DTYPE)
@@ -191,8 +192,8 @@ def train(replication_factor, batch_size, batch_per_step, profile, num_iter, tim
     opts = utils.create_ipu_config(profiling=profile,
                                    use_poplar_text_report=use_poplar_text_report,
                                    profile_execution=profile,
-                                   max_cross_replica_sum_buffer_size=10000000,
                                    merge_infeed_io_copies=True)
+    opts = utils.set_optimization_options(opts, max_cross_replica_sum_buffer_size=10000000)
     opts = utils.auto_select_ipus(opts, [replication_factor])
     utils.configure_ipu_system(opts)
     sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True))
@@ -247,10 +248,10 @@ if __name__ == '__main__':
                         help="Number of batches to accumulate gradients over, if accumulate_grad flag is on")
     parser.add_argument('--profile', default=False, dest='profile', action='store_true',
                         help='Collect profiling information.')
-    parser.add_argument('--data', dest="data", type=str, default="real",
-                        help="Run inference on real data (transfer images host -> device) "
+    parser.add_argument('--data', dest="data", type=str, default="generated",
+                        help="Run inference on generated data (transfer images host -> device) "
                              "or using on-device synthetic data",
-                        choices=["real", "synthetic"])
+                        choices=["generated", "synthetic"])
     args = parser.parse_args()
     if args.data == "synthetic":
         syn_flags = "--use_synthetic_data --synthetic_data_initializer=random"

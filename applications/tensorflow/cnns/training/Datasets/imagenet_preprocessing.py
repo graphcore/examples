@@ -81,14 +81,14 @@ def _parse_example_proto(example_serialized):
     """
     # Dense features in Example proto.
     feature_map = {
-        'image/encoded': tf.FixedLenFeature([], dtype=tf.string,
-                                            default_value=''),
-        'image/class/label': tf.FixedLenFeature([], dtype=tf.int64,
-                                                default_value=-1),
-        'image/class/text': tf.FixedLenFeature([], dtype=tf.string,
+        'image/encoded': tf.io.FixedLenFeature([], dtype=tf.string,
                                                default_value=''),
+        'image/class/label': tf.io.FixedLenFeature([], dtype=tf.int64,
+                                                   default_value=-1),
+        'image/class/text': tf.io.FixedLenFeature([], dtype=tf.string,
+                                                  default_value=''),
     }
-    sparse_float32 = tf.VarLenFeature(dtype=tf.float32)
+    sparse_float32 = tf.io.VarLenFeature(dtype=tf.float32)
     # Sparse features in Example proto.
     feature_map.update(
         {k: sparse_float32 for k in ['image/object/bbox/xmin',
@@ -96,7 +96,7 @@ def _parse_example_proto(example_serialized):
                                      'image/object/bbox/xmax',
                                      'image/object/bbox/ymax']})
 
-    features = tf.parse_single_example(example_serialized, feature_map)
+    features = tf.io.parse_single_example(example_serialized, feature_map)
     label = tf.cast(features['image/class/label'], dtype=tf.int32)
 
     xmin = tf.expand_dims(features['image/object/bbox/xmin'].values, 0)
@@ -115,7 +115,7 @@ def _parse_example_proto(example_serialized):
     return features['image/encoded'], label, bbox
 
 
-def parse_record(raw_record, is_training, dtype, image_size, seed=None, full_normalisation=False):
+def parse_record(raw_record, is_training, dtype, image_size, full_normalisation, seed=None):
     """Parses a record containing a training example of an image.
     The input record is parsed into a label and image, and the image is passed
     through preprocessing steps (cropping, flipping, and so on).
@@ -242,8 +242,8 @@ def _mean_image_subtraction(image, means, num_channels):
         than three or if the number of channels in `image` doesn't match the
         number of values in `means`.
     """
-    if image.get_shape().ndims != 3:
-        raise ValueError('Input must be of size [height, width, C>0]')
+    if image.get_shape().ndims not in (3, 4):
+        raise ValueError('Input must be of size [height, width, C>0] or [batch, height, width, C>0]')
 
     if len(means) != num_channels:
         raise ValueError('len(means) must match the number of channels')
@@ -251,7 +251,36 @@ def _mean_image_subtraction(image, means, num_channels):
     # We have a 1-D tensor of means; convert to 3-D.
     means = tf.expand_dims(tf.expand_dims(means, 0), 0)
 
-    return image - means
+    if image.get_shape().ndims == 4:
+        means = tf.expand_dims(means, 0)
+
+    return image - tf.cast(means, image.dtype)
+
+
+def _normalise_image(image, means, std_dev, num_channels):
+    """Normalise each image channel.
+    """
+    if image.get_shape().ndims not in (3, 4):
+        raise ValueError('Input must be of size [height, width, C>0]')
+
+    if len(means) != num_channels:
+        raise ValueError('len(means) must match the number of channels')
+
+    means = tf.cast(means, dtype=image.dtype)
+    std_dev = tf.cast(std_dev, dtype=image.dtype)
+    # We have a 1-D tensor of means; convert to 3-D.
+    means = tf.expand_dims(tf.expand_dims(means, 0), 0)
+    std_dev = tf.expand_dims(tf.expand_dims(std_dev, 0), 0)
+
+    if image.get_shape().ndims == 4:
+        means = tf.expand_dims(means, 0)
+        std_dev = tf.expand_dims(std_dev, 0)
+
+    image /= 255.0
+    image -= means
+    image /= std_dev
+
+    return image
 
 
 def _smallest_size_at_least(height, width, resize_min):
@@ -324,23 +353,19 @@ def _resize_image(image, height, width):
         align_corners=False)
 
 
-def _normalise_image(image, means, std_dev, num_channels):
-    """Normalise each image channel.
-    """
-    if image.get_shape().ndims != 3:
-        raise ValueError('Input must be of size [height, width, C>0]')
-
-    if len(means) != num_channels:
-        raise ValueError('len(means) must match the number of channels')
-
-    # We have a 1-D tensor of means; convert to 3-D.
-    means = tf.expand_dims(tf.expand_dims(means, 0), 0)
-    std_dev = tf.expand_dims(tf.expand_dims(std_dev, 0), 0)
-
-    image /= 255.0
-    image -= means
-    image /= std_dev
-
+def normalise_image(image, full_normalisation=False, num_channels=3):
+    if full_normalisation:
+        # values taken from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L198
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        image = _normalise_image(image, mean, std, num_channels)
+    else:
+        # original mean
+        _R_MEAN = 123.68
+        _G_MEAN = 116.78
+        _B_MEAN = 103.94
+        _CHANNEL_MEANS = [_R_MEAN, _G_MEAN, _B_MEAN]
+        image = _mean_image_subtraction(image, _CHANNEL_MEANS, num_channels)
     return image
 
 
@@ -382,17 +407,8 @@ def preprocess_image(image_buffer, bbox, output_height, output_width,
 
     image.set_shape([output_height, output_width, num_channels])
 
-    if full_normalisation:
-        # values taken from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L198
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
-        image = _normalise_image(image, mean, std, num_channels)
+    if full_normalisation is None:
+        print("\nImage normalisation will be performed on the IPU.\n")
     else:
-        # original mean
-        _R_MEAN = 123.68
-        _G_MEAN = 116.78
-        _B_MEAN = 103.94
-        _CHANNEL_MEANS = [_R_MEAN, _G_MEAN, _B_MEAN]
-        image = _mean_image_subtraction(image, _CHANNEL_MEANS, num_channels)
-
+        image = normalise_image(image, full_normalisation=full_normalisation, num_channels=num_channels)
     return image

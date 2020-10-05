@@ -3,49 +3,54 @@ import unittest
 import os
 import sys
 import subprocess
+import pytest
+from tempfile import TemporaryDirectory
 
 
 def run_resnet(**kwargs):
-    cmd = ["python" + str(sys.version_info[0]),
-           'resnet_synthetic_benchmark.py']
-    # Flatten kwargs and convert to strings
-    args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
-    cmd.extend(args)
-    out = subprocess.check_output(cmd, cwd=os.path.dirname(__file__)).decode("utf-8")
-    print(out)
+    with TemporaryDirectory() as tempdir:
+        kwargs['--log-dir'] = tempdir
+        cmd = ["python" + str(sys.version_info[0]),
+               'resnet_synthetic_benchmark.py']
+        # Flatten kwargs and convert to strings
+        args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
+        cmd.extend(args)
+        out = subprocess.check_output(cmd, cwd=os.path.dirname(__file__)).decode("utf-8")
+        print(out)
     return out
 
 
 class TestPopARTResNetSyntheticBenchmarks(unittest.TestCase):
     """Tests for ResNet popART synthetic benchmarks"""
 
-    @classmethod
-    def setUpClass(cls):
-        pass
-
     # Resnet inference
+    @pytest.mark.ipus(1)
     def test_resnet_20_inference_batch_size_32(self):
         out = run_resnet(**{'--size': "20",
                             '--batch-size': 32,
                             '--norm-type': 'BATCH',
                             '--shortcut-type': 'B',
-                            '--use-data': ''})
+                            '--use-generated-data': ''})
 
+    @pytest.mark.ipus(1)
     def test_resnet_18_inference_batch_size_1(self):
         out = run_resnet(**{'--size': "18",
                             '--batch-size': 1,
                             '--norm-type': 'GROUP'})
 
+    @pytest.mark.ipus(1)
     def test_resnet_18_inference_batch_size_16(self):
         out = run_resnet(**{'--size': "18",
                             '--batch-size': 16,
                             '--norm-type': 'BATCH'})
 
+    @pytest.mark.ipus(1)
     def test_resnet_50_inference_batch_size_8(self):
         out = run_resnet(**{'--size': "50",
                             '--batch-size': 8,
                             '--norm-type': 'NONE'})
 
+    @pytest.mark.ipus(4)
     def test_resnet_50_inference_batch_size_8_pipelined_4ipus(self):
         out = run_resnet(**{'--size': "50",
                             '--batch-size': 8,
@@ -54,12 +59,14 @@ class TestPopARTResNetSyntheticBenchmarks(unittest.TestCase):
                             '--pipeline': ''})
 
     # ResNet training
+    @pytest.mark.ipus(1)
     def test_resnet_18_train_batch_size_4(self):
         out = run_resnet(**{'--size': "18",
                             '--batch-size': 4,
                             '--norm-type': 'GROUP',
                             '--mode': 'train'})
 
+    @pytest.mark.ipus(2)
     def test_resnet_18_train_batch_size_4_pipelined_2ipus(self):
         out = run_resnet(**{'--size': "18",
                             '--batch-size': 4,
@@ -68,12 +75,14 @@ class TestPopARTResNetSyntheticBenchmarks(unittest.TestCase):
                             '--shards': 2,
                             '--pipeline': ''})
 
+    @pytest.mark.ipus(1)
     def test_resnet_50_train_batch_size_1(self):
         out = run_resnet(**{'--size': "50",
                             '--batch-size': 1,
                             '--norm-type': 'GROUP',
                             '--mode': 'train'})
 
+    @pytest.mark.ipus(2)
     def test_resnet_50_train_sharded(self):
         out = run_resnet(**{'--size': "50",
                             '--batch-size': 2,
@@ -81,6 +90,7 @@ class TestPopARTResNetSyntheticBenchmarks(unittest.TestCase):
                             '--mode': 'train',
                             '--shards': 2})
 
+    @pytest.mark.ipus(1)
     def test_resnet_20_train_batch_size_32(self):
         out = run_resnet(**{'--size': "20",
                             '--batch-size': 16,

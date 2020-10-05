@@ -45,7 +45,7 @@ static T *search_producers_for(popart::Tensor *t, int max_depth=-1) {
 
 // Finds the underlying variable by searching through producers.
 static popart::Tensor *get_variable(popart::Tensor *t) {
-    if (t->tensorType() == popart::TensorType::Variable) {
+    if (t->tensorType() == popart::TensorType::Variable || t->tensorType() == popart::TensorType::Const) {
         return t;
     } else if (!t->hasProducer()) {
         return nullptr;

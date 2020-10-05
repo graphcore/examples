@@ -53,7 +53,6 @@ def run_embedding_layer(args):
 
     if args.inference:
         outputs = bert_add_logit_outputs(model, logits)
-        losses = []
         writer = None
         embedding_dict, positional_dict = model.get_model_embeddings()
 
@@ -78,7 +77,7 @@ def run_embedding_layer(args):
         """bert_infer_loop(args, session,
                         dataset, inputs, logits, anchors,
                         iteration)"""
-        save_results = args.task == "SQUAD" and not args.synthetic_data
+        save_results = args.task == "SQUAD" and not (args.synthetic_data or args.generated_data)
 
         start_times = defaultdict(list)
         end_times = defaultdict(list)
@@ -117,7 +116,7 @@ def test_host_embedding():
     args_string = ["--config",
                    'configs/squad_base_128_inference.json',
                    '--host-embedding=ALL',
-                   '--synthetic-data=true'
+                   '--generated-data=true'
                    ]
     args = utils.parse_bert_args(args_string)
     args.shuffle = False

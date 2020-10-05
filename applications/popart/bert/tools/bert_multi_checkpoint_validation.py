@@ -140,7 +140,7 @@ def pooled_validation_run(bert_args,
         device = acquire_device(bert_args, request_ipus)
 
         session, anchors = bert_inference_session(
-            model, bert_args, data_flow, [], device)
+            model, bert_args, data_flow, device)
 
         model_results = recursive_defaultdict()
         for path in checkpoint_paths:

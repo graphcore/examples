@@ -284,15 +284,15 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--synthetic-data",
+        "--generated-data",
         action="store_true",
-        help="Run the model with synthetic data."
+        help="Run the model with randomly generated data."
     )
 
     return parser.parse_args()
 
 
-def synthetic_dataset(number_of_samples):
+def generate_random_dataset(number_of_samples):
     """Returns cifar10 shaped dataset filled with random uint8."""
     cifar10_shape = (number_of_samples, 32, 32, 3)
     np.random.seed(0)
@@ -307,8 +307,8 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Load data
-    if args.synthetic_data:
-        train_data = test_data = synthetic_dataset(50000)
+    if args.generated_data:
+        train_data = test_data = generate_random_dataset(50000)
     else:
         train_data, test_data = cifar10.load_data()
 

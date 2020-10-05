@@ -285,9 +285,9 @@ int main(int argc, char **argv) {
                 Sequence(Copy(inStreamV, inputVector), Copy(inStreamM, matrix),
                          mulProg, Copy(outputVector, outStream)));
   engine.load(device);
-  engine.connectStream(inStreamV, hInput.get());
-  engine.connectStream(inStreamM, hMatrix.get());
-  engine.connectStream(outStream, hOutput.get());
+  engine.connectStream("inputVector", hInput.get());
+  engine.connectStream("inputMatrix", hMatrix.get());
+  engine.connectStream("out", hOutput.get());
 
   std::cout << "Running graph program to multiply matrix by vector\n";
   engine.run();

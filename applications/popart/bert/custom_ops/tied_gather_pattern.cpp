@@ -426,8 +426,8 @@ public:
         if (opts.enablePipelining) {
             return var_update->getPipelineStage() >= sparse_accl->getPipelineStage();
         }
-        if (opts.pingPongPhases > 1) {
-            return var_update->getPingPongPhase() >= sparse_accl->getPingPongPhase();
+        if (opts.executionPhaseSettings.phases > 1) {
+            return var_update->getExecutionPhase() >= sparse_accl->getExecutionPhase();
         }
         return true;
     }

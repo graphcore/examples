@@ -105,6 +105,11 @@ def main(argv):
         options.syntheticDataMode = popart.SyntheticDataMode.Zeros
     options.instrumentWithHardwareCycleCounter = FLAGS.report_hw_cycle_count
 
+    # Configure precision of convolutions and MatMuls
+    if FLAGS.half_partials:
+        options.convolutionOptions = {'partialsType': 'half'}
+        options.partialsTypeMatMuls = "half"
+
     # Select a device
     deviceManager = popart.DeviceManager()
     device = deviceManager.acquireAvailableDevice(1)
@@ -230,6 +235,13 @@ flags.DEFINE_bool(
     (
         "If set to true the subprocess that the model"
         " is run with will hide output."
+    )
+)
+flags.DEFINE_bool(
+    "half_partials", False,
+    (
+        "If set, the model will use half-precision (fp16) partials"
+        " in the convolution and MatMul operations."
     )
 )
 

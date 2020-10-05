@@ -3,11 +3,14 @@
 ---
 ## Training with Dynamic Sparse Matrices
 
-The Poplar SDK (since version 1.2) supports dynamic element wise
+The Poplar SDK supports dynamic element wise
 sparse weight matrices where the sparsity pattern can be
 dynamically changed at runtime. The examples here use
 custom TensorFlow ops to access this dynamic sparsity
 support from the Poplibs/popsparse library.
+
+NOTE: Although dynamic sparsity has been supported since Poplar SDK
+1.2 this example requires Poplar SDK >= 1.3.
 
 ### File structure
 
@@ -19,16 +22,21 @@ support from the Poplibs/popsparse library.
 
 1) Prepare the environment.
 
-   Install the `poplar-sdk` (version 1.2 or later) following the README provided. Make sure to source the `enable.sh`
+   Install the `poplar-sdk` (version 1.3 or later) following the README provided. Make sure to source the `enable.sh`
    scripts for poplar and gc_drivers.
 
-2) Install required modules:
+2) Install required pip modules:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3) Build the custom ops and then run the python code. The command below runs a simple test of the ipu_sparse_ops module. To use this module it must be on your `PYTHONPATH`. (Below the environment variable is set only for this single command but you can append ipu_sparse_ops permanently to your python path if you intend to use the module regularly).
+3) Install required apt packages:
+```bash
+sudo apt install $(cat required_apt_packages.txt)
+```
+
+4) Build the custom ops and then run the python code. The command below runs a simple test of the ipu_sparse_ops module. To use this module it must be on your `PYTHONPATH`. (Below the environment variable is set only for this single command but you can append ipu_sparse_ops permanently to your python path if you intend to use the module regularly).
 
 Build the ipu_sparse_ops module and test it:
 ```bash

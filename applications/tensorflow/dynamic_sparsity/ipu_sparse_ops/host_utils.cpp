@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <random>
 
+#include <poplar/DeviceManager.hpp>
 #include <poplar/Graph.hpp>
 #include <poplar/IPUModel.hpp>
 #include <popsparse/SparsePartitioner.hpp>
@@ -16,27 +17,39 @@
 
 namespace py = pybind11;
 
-using PopSpareTensorSizes = std::tuple<std::size_t, std::size_t>;
+using PopSparseSplits = std::tuple<std::size_t, std::size_t, std::size_t>;
+using PopSparseTensorSizes = std::tuple<std::size_t, std::size_t, PopSparseSplits>;
 
-const auto jsonConfigFile = "sparse_matmul_options.json";
-
-popsparse::dynamic::PlanningCache global_cache;
+// Return a planning cache that is global in this shared
+// object (but have one per thread):
+popsparse::dynamic::PlanningCache* getCache() {
+  thread_local popsparse::dynamic::PlanningCache global_cache;
+  return &global_cache;
+}
 
 const auto get_sparse_tensor_sizes_doc =
-"Return the tensor sizes required for a "
-"specific sparse matrix size and sparsity.";
-PopSpareTensorSizes get_sparse_tensor_sizes(std::size_t maxNonZeros,
+"Return the tensor sizes and serial splits required for "
+"a specific sparse matrix size and sparsity.";
+PopSparseTensorSizes get_sparse_tensor_sizes(std::size_t num_ipus,
+                                            std::size_t maxNonZeros,
                                             std::size_t numGroups, std::size_t batchSize,
-                                            std::size_t inputSize, std::size_t outputSize) {
+                                            std::size_t inputSize, std::size_t outputSize,
+                                            const std::string& dtype,
+                                            const std::string& matmulOptions) {
   using namespace popsparse::dynamic;
 
   // Construct a small graph to get the information from Poplibs:
-  poplar::IPUModel ipuModel;
-  auto device =  ipuModel.createDevice();
-  poplar::Graph graph(device.getTarget());
+  auto dm = poplar::DeviceManager::createDeviceManager();
 
-  auto dataType = poplar::FLOAT;
-  auto options = getSparseMulDefaultOptions();
+  auto hwDevices = dm.getDevices(poplar::TargetType::IPU, num_ipus);
+  if (hwDevices.empty()) {
+    throw std::runtime_error("No device found");
+  }
+  poplar::Device *device = &hwDevices[0];
+  poplar::Graph graph(device->getTarget());
+
+  const auto dataType = type_from_string(dtype);
+  auto options = getSparseMulDefaultOptions(matmulOptions);
   auto sparsityFactor = maxNonZeros / float(inputSize * outputSize);
 
   SparsityParams sparsityParams(SparsityType::Element, SparsityStructure::Unstructured);
@@ -44,10 +57,19 @@ PopSpareTensorSizes get_sparse_tensor_sizes(std::size_t maxNonZeros,
     sparsityParams, sparsityFactor, batchSize, numGroups, inputSize, outputSize);
 
   const SparseTensor weights =
-      createFullyConnectedWeights(graph, dataType, params, "weights", options, &global_cache);
+      createFullyConnectedWeights(graph, dataType, params, "weights", options, getCache());
+
+  auto splits = fullyConnectedDenseGradWSerialSplits(
+    graph, weights.getNzValuesTensor().elementType(), params, options, getCache());
+
   return std::make_tuple(
     weights.getMetaInfoTensor().numElements(),
-    weights.getNzValuesTensor().numElements());
+    weights.getNzValuesTensor().numElements(),
+      std::make_tuple(
+        std::get<0>(splits),
+        std::get<1>(splits),
+        std::get<2>(splits))
+    );
 }
 
 template <typename T>
@@ -73,15 +95,21 @@ std::vector<T> numpyToVector(const py::array_t<T>& array) {
 class PartitionerContext {
 public:
   PartitionerContext(
+    std::size_t num_ipus,
     std::size_t maxNonZeros,
     std::size_t numGroups, std::size_t batchSize,
-    std::size_t inputSize, std::size_t outputSize) {
-      poplar::IPUModel ipuModel;
-      auto device =  ipuModel.createDevice();
-      auto target = device.getTarget();
-      auto dataType = poplar::FLOAT;
-      auto partialsType = poplar::FLOAT;
-      auto options = getSparseMulDefaultOptions();
+    std::size_t inputSize, std::size_t outputSize,
+    poplar::Type dataType,
+    const std::string& jsonConfig) {
+      auto dm = poplar::DeviceManager::createDeviceManager();
+
+      auto hwDevices = dm.getDevices(poplar::TargetType::IPU, num_ipus);
+      if (hwDevices.empty()) {
+        throw std::runtime_error("No device found");
+      }
+      poplar::Device *device = &hwDevices[0];
+      auto target = device->getTarget();
+      auto options = getSparseMulDefaultOptions(jsonConfig);
       auto sparsityFactor = maxNonZeros / float(inputSize * outputSize);
 
       popsparse::dynamic::SparsityParams sparsityParams(
@@ -89,7 +117,8 @@ public:
         popsparse::dynamic::SparsityStructure::Unstructured);
       auto params = popsparse::dynamic::FullyConnectedParams::createWithNzRatio(
         sparsityParams, sparsityFactor, batchSize, numGroups, inputSize, outputSize);
-      partitioner.reset(new popsparse::dynamic::Partitioner<float>(params, dataType, target, options, &global_cache));
+      partitioner.reset(new popsparse::dynamic::Partitioner<float>(
+        params, dataType, target, options, getCache()));
   }
 
   popsparse::dynamic::Partitioner<float>& get() { return *partitioner; }
@@ -104,11 +133,14 @@ const auto representation_from_triplets_doc =
 "triplets of row indices, column indices, and values. The Triplets "
 "must be sorted by the row index.";
 PopSparseMatrix representation_from_triplets(
+    std::size_t num_ipus,
     std::size_t maxNonZeros,
     std::size_t numGroups, std::size_t batchSize,
     std::size_t inputSize, std::size_t outputSize,
+    const std::string& dtype,
     py::array_t<std::size_t> npRowIndices, py::array_t<std::size_t> npColIndices,
-    py::array_t<float> npValues) {
+    py::array_t<float> npValues,
+    const std::string& matmulOptions) {
 
   using namespace popsparse::dynamic;
 
@@ -125,7 +157,10 @@ PopSparseMatrix representation_from_triplets(
   auto values = numpyToVector(npValues);
   auto cooMatrix = popsparse::COOMatrix<float>(values, colIndices, rowIndices);
 
-  auto partitioner = PartitionerContext(maxNonZeros, numGroups, batchSize, inputSize, outputSize);
+  const auto dataType = type_from_string(dtype);
+  auto partitioner = PartitionerContext(
+    num_ipus, maxNonZeros, numGroups, batchSize,
+    inputSize, outputSize, dataType, matmulOptions);
   auto pnBuckets = partitioner.get().createSparsityDataImpl(cooMatrix);
 
   // Copy the flat representation to numpy arrays amd return them:
@@ -146,12 +181,19 @@ PopSparseMatrix representation_from_triplets(
 const auto triplets_from_representation_doc =
 "Convert from host side sparse representation back to triplets.";
 Triplets triplets_from_representation(
+    std::size_t num_ipus,
     std::size_t maxNonZeros,
     std::size_t numGroups, std::size_t batchSize,
     std::size_t inputSize, std::size_t outputSize,
-    const py::array_t<std::size_t>& metainfo, const py::array_t<float>& nzvalues) {
+    const std::string& dtype,
+    const py::array_t<std::size_t>& metainfo,
+    const py::array_t<float>& nzvalues,
+    const std::string& matmulOptions) {
 
-  auto partitioner = PartitionerContext(maxNonZeros, numGroups, batchSize, inputSize, outputSize);
+  const auto dataType = type_from_string(dtype);
+  auto partitioner = PartitionerContext(
+    num_ipus, maxNonZeros, numGroups, batchSize,
+    inputSize, outputSize, dataType, matmulOptions);
   popsparse::dynamic::SparsityDataImpl<float> buckets;
   buckets.metaInfo = numpyToVector(metainfo);
   buckets.nzValues = numpyToVector(nzvalues);

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Type
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import yaml
 
 try:
@@ -41,7 +41,7 @@ logging.basicConfig(format='%(asctime)s %(module)s - %(funcName)s: %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 logging.getLogger().setLevel(logging.DEBUG)
 
-tf.compat.v1.logging.set_verbosity("INFO")
+tf.logging.set_verbosity("INFO")
 
 
 def get_report(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation, outfeed_op: tf.Operation,

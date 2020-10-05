@@ -4,7 +4,7 @@ import subprocess
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import check_data_exists
+from examples_tests.test_util import check_data_exists
 
 
 def download_mnist(file_path):

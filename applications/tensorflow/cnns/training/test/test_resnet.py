@@ -249,6 +249,7 @@ class TestLotsOfOptions(unittest.TestCase):
                            '--seed': 1234,
                            '--warmup-epochs': 0,
                            '--no-stochastic-rounding': '',
+                           '--no-hostside-norm': '',
                            '--batches-per-step': 100
                            })
         cls.validation = get_csv(out, 'validation.csv')

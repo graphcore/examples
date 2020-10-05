@@ -27,3 +27,10 @@ python mnist_rigl/visualise_connectivity.py --records-path rigl_records --animat
 sudo apt install imagemagick
 convert -delay 20 rigl_records/connectivity_*.png mnist_connections.gif
 ```
+
+## Train a sparse transformer encoder layer on MNIST
+Each MNIST image is of shape 28x28 which can be re-interpreted as a sequence of 28 tokens with an embedding dimension of 28 i.e. each row of pixels is a single token. The interaction between tokens in the transformer attention layer is then effectively between different rows of the image.  
+The example uses Rig-L to prune-and-regrow the sparsity pattern during training.
+```bash 
+python sparse_transformer_rigl_mnist.py
+```

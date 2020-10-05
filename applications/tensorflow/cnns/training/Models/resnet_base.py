@@ -16,6 +16,8 @@ class ResNetBase(ModelBase):
         self.conv = partial(conv, seed=opts["seed"])
 
         self.norm = partial(norm, opts=opts, is_training=is_training)
+        self.norm_2 = partial(norm, opts=opts, is_training=is_training, zero_gamma_init = True)
+        self.norm_dict = {'one_init': self.norm, 'zero_init': self.norm_2}
         self.fc = partial(fc, seed=opts["seed"])
 
         # Apply changed layers to block functions
@@ -35,7 +37,7 @@ class ResNetBase(ModelBase):
         self.block_fn = partial(definition.block_fn,
                                 shortcut_type=opts["shortcut_type"],
                                 conv=self.conv,
-                                norm=self.norm)
+                                norm=self.norm_dict)
 
         # Apply dataset specific changes
         if opts["dataset"] == "imagenet":
@@ -84,7 +86,13 @@ class ResNetBase(ModelBase):
         return fn_list
 
 
-def norm(x, opts, is_training=True):
+def norm(x, opts, is_training=True, zero_gamma_init = False):
+    # We initialise the parameters depending on the gamma_init argument
+    if zero_gamma_init:
+        p_init = {'gamma': tf.zeros_initializer(), 'beta': tf.zeros_initializer()}
+    else:
+        p_init = {'gamma': tf.ones_initializer(), 'beta': tf.zeros_initializer()}
+
     norm_type = (
         "GROUP"
         if opts["group_norm"]
@@ -92,7 +100,6 @@ def norm(x, opts, is_training=True):
         if opts["batch_norm"]
         else None
     )
-
     if norm_type == "BATCH":
         x = tf.layers.batch_normalization(
             x,
@@ -103,9 +110,16 @@ def norm(x, opts, is_training=True):
             trainable=True,
             momentum=opts["BN_decay"],
             epsilon=1e-5,
+            gamma_initializer = p_init['gamma'],
+            beta_initializer = p_init['beta']
         )
     elif norm_type == "GROUP":
-        x = normalization_ops.group_norm(x, groups=opts["groups"])
+        # Adding arguments to group norm
+        x = normalization_ops.group_norm(
+            x,
+            groups=opts["groups"],
+            param_initializers = p_init
+        )
 
     tf.add_to_collection("activations", x)
     return x
@@ -179,12 +193,12 @@ def block2(x, stride, filters, name, use_shortcut, shortcut_type, conv, norm):
     with tf.variable_scope(name, use_resource=True):
         with tf.variable_scope("1", use_resource=True):
             x = conv(x, 3, stride, filters)
-            x = norm(x)
+            x = norm['one_init'](x)
             x = tf.nn.relu(x)
 
         with tf.variable_scope("2", use_resource=True):
             x = conv(x, 3, 1, filters)
-            x = norm(x)
+            x = norm['one_init'](x)
 
         with tf.variable_scope("p", use_resource=True):
             if use_shortcut:
@@ -202,7 +216,7 @@ def block2(x, stride, filters, name, use_shortcut, shortcut_type, conv, norm):
                     )
                 else:  # shortcut_type B
                     shortcut = conv(shortcut, 1, stride, filters)
-                    shortcut = norm(shortcut)
+                    shortcut = norm['one_init'](shortcut)
         x = shortcut + x
     return x
 
@@ -218,22 +232,25 @@ def block3(x, stride, filters, name, use_shortcut, shortcut_type, norm, conv,
     with tf.variable_scope(name, use_resource=True):
         with tf.variable_scope("1", use_resource=True):
             x = conv(x, 1, 1, split_filters)
-            x = norm(x)
+            x = norm['one_init'](x)
             x = tf.nn.relu(x)
 
         with tf.variable_scope("2", use_resource=True):
             x = conv(x, 3, stride, split_filters, groups=conv_groups)
-            x = norm(x)
+            x = norm['one_init'](x)
             x = tf.nn.relu(x)
 
         with tf.variable_scope("3", use_resource=True):
             x = conv(x, 1, 1, filters[1])
-            x = norm(x)
+            if use_shortcut:
+                x = norm['one_init'](x)
+            else:
+                x = norm['zero_init'](x)
 
         with tf.variable_scope("p", use_resource=True):
             if use_shortcut:
                 shortcut = conv(shortcut, 1, stride, filters[1])
-                shortcut = norm(shortcut)
+                shortcut = norm['one_init'](shortcut)
 
         x = shortcut + x
     return x

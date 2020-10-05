@@ -13,7 +13,7 @@ class ScheduleMode(enum.Enum):
 
 
 class BaseOptimizerFactory():
-    def __init__(self, args, iteration, tensors={}):
+    def __init__(self, args, iteration, tensors=None):
 
         self.option_values = {
             "defaultLearningRate": args.learning_rate,
@@ -38,7 +38,7 @@ class BaseOptimizerFactory():
         self.weight_decay = args.weight_decay
         self.momentum_scaling = args.pipeline_momentum_scaling
         self.execution_mode = args.execution_mode
-        self.tensors = tensors
+        self.tensors = tensors if tensors is not None else {}
         self.pipeline_stage_lr_scaling = []
 
         # If pipelining is enabled, we want to scale the parameters for different
@@ -244,7 +244,7 @@ class Schedule(object):
 
 
 class ScheduledOptimizerFactory(BaseOptimizerFactory):
-    def __init__(self, args, iteration, tensors={}):
+    def __init__(self, args, iteration, tensors=None):
         super().__init__(args, iteration, tensors)
 
         self._schedules = {}

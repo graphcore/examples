@@ -6,7 +6,7 @@ https://arxiv.org/pdf/1905.04062.pdf. This approach combines a standard VAE with
 """
 import json
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tensorflow_probability as tfp
 
 from machinable.utils import serialize

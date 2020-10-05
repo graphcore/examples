@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import run_python_script_helper, check_data_exists
+from examples_tests.test_util import run_python_script_helper, check_data_exists
 
 
 class TestTensorflowCustomOp(unittest.TestCase):

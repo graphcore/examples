@@ -1,5 +1,5 @@
 # Copyright 2020 Graphcore Ltd.
-from tests.test_util import SubProcessChecker
+from examples_tests.test_util import SubProcessChecker
 from pathlib import Path
 
 build_dir = Path(__file__).parent

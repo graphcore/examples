@@ -1,6 +1,6 @@
 # Copyright 2019 Graphcore Ltd.
 # coding=utf-8
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from utils.optimisers import VcdRMSPropOptimizer
 

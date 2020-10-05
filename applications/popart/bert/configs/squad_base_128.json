@@ -1,7 +1,7 @@
 {
     "task": "SQUAD",
     "num_layers": 12,
-    "layers_per_ipu": 1,
+    "layers_per_ipu": [1],
     "hidden_size": 768,
     "attention_heads": 12,
     "sequence_length": 128,
@@ -57,8 +57,8 @@
     "disable_fully_connected_pass": true,
     "validation_config": {
         "sequence_length": 128,
-        "layers_per_ipu": 6,
-        "squeeze_model": false,
+        "encoder_start_ipu": 1,
+        "layers_per_ipu": [6],
         "batches_per_step": 16,
         "steps_per_log": 200,
         "input_files": [

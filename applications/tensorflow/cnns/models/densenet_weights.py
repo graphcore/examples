@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.contrib.framework.python.framework.checkpoint_utils import \
     list_variables, load_variable
 from tensorflow.python.keras import backend as keras_backend

@@ -6,7 +6,7 @@ Standard Variational Autoencoder
 from functools import partial
 import json
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tensorflow_probability as tfp
 
 from models.base import BaseModel
@@ -262,7 +262,7 @@ class VAE(BaseModel):
         :return: Tensor of shape samples_shape
         """
         # Draw from standard normal
-        standard_norm_samples = tf.random_normal(samples_shape,
+        standard_norm_samples = tf.random.normal(samples_shape,
                                                  name='standard_gauss_samples_stateful',
                                                  dtype=self.experiment.dtype)
 

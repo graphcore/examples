@@ -4,7 +4,7 @@ import pytest
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import run_python_script_helper
+from examples_tests.test_util import run_python_script_helper
 
 
 def run_ipu_estimator_cnn(**kwargs):
@@ -38,8 +38,8 @@ class TestIPUEstimatorCNN():
 
     @pytest.mark.ipus(1)
     @pytest.mark.category1
-    def test_normal_usage_with_synthetic_data(self):
-        self._ipu_estimator_cnn_test_helper(synthetic_data="")
+    def test_normal_usage_with_generated_data(self):
+        self._ipu_estimator_cnn_test_helper(generated_data="")
 
     @pytest.mark.ipus(1)
     @pytest.mark.category1

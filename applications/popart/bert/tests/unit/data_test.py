@@ -14,14 +14,14 @@ from bert_model import Bert, BertConfig
 from bert_data.dataset import DataSet
 from bert_data.pretraining_dataset import (
     BinaryDataLoader,
-    SyntheticDataLoader,
+    GeneratedDataLoader,
     BertDataTransform,
     data_file_format as pretraining_format,
     data_ranges as pretraining_ranges
 )
 from bert_data.squad_dataset import (
     SquadDataLoader,
-    generate_synthetic_features,
+    generate_random_features,
     get_bert_dataset
 )
 
@@ -68,7 +68,7 @@ def test_dataloader():
         assert(np.all(lbl_ == lbl))
 
 
-def test_synthetic_pretraining():
+def test_generated_data_pretraining():
     sequence_length = 128
     mask_tokens = 20
     batch_size = 2
@@ -77,11 +77,11 @@ def test_synthetic_pretraining():
     sizes = pretraining_format(sequence_length, mask_tokens)
     ranges = pretraining_ranges(sequence_length, mask_tokens, vocab_length)
 
-    dl = SyntheticDataLoader([],
+    dl = GeneratedDataLoader([],
                              sizes,
                              batch_size,
                              shuffle=False,
-                             synthetic_ranges=ranges)
+                             generated_ranges=ranges)
 
     assert(len(dl) == 1)
 
@@ -92,12 +92,12 @@ def test_synthetic_pretraining():
         assert(data.shape == (batch_size, size))
 
 
-def test_synthetic_squad():
+def test_generated_data_squad():
     sequence_length = 128
     batch_size = 2
     vocab_length = 4864
 
-    features = generate_synthetic_features(
+    features = generate_random_features(
         sequence_length, vocab_length, batch_size)
 
     dl = SquadDataLoader(
@@ -227,7 +227,7 @@ def get_squad(tmpdir_factory):
         tmpdir = tmpdir_factory.mktemp("ndr_test_tmp_data")
         input_file = str(tmpdir) + "/inputfile"
         dataset_size = 3333
-        features = generate_synthetic_features(128, 30, dataset_size)
+        features = generate_random_features(128, 30, dataset_size)
         cache_file = input_file + f".{128}.cache"
         with open(cache_file, "wb") as f:
             pickle.dump(features, f)
@@ -251,7 +251,8 @@ def test_no_drop_remainder(batch_size, shuffle, mpi_size, get_squad):
             self.host_embedding = "NONE"
             self.task = "SQUAD"
             self.inference = True
-            self.synthetic = False
+            self.synthetic_data = False
+            self.generated_data = False
             self.input_files = str(tmpdir) + "/inputfile"
             self.output_dir = None
             self.vocab_file = None
@@ -281,7 +282,7 @@ def test_no_drop_remainder(batch_size, shuffle, mpi_size, get_squad):
                                    batches_per_step=args.batches_per_step,
                                    embedding_dict=embedding_dict,
                                    positional_dict=positional_dict,
-                                   synthetic = args.synthetic,
+                                   generated_data = args.generated_data,
                                    is_training=False,
                                    no_drop_remainder=True,
                                    shuffle = args.shuffle,

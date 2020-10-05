@@ -7,9 +7,15 @@ import pytest
 import popart
 import onnx
 
-from bert_model import BertConfig, Bert
+from bert_model import BertConfig, Bert, ExecutionMode, get_model
+from bert import set_library_seeds
 from tests.torch_bert import BertConfig as TorchBertConfig, BertOutput, BertIntermediate
 from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tensors, check_model
+
+'''
+Tests the fully connected layers.
+'''
+test_modes = [ExecutionMode.DEFAULT, pytest.param(ExecutionMode.PHASED, marks=pytest.mark.requires_remote_buffers)]
 
 
 def simplified_gelu(x):
@@ -26,7 +32,7 @@ class BertFCN(nn.Module):
         intermediate_output = self.intermediate(input_x)
         layer_output = self.output(intermediate_output, input_x)
         # add attentions if we output them
-        outputs = (layer_output, )  # + attention_outputs[1:]
+        outputs = (layer_output, )
         return outputs
 
 
@@ -39,12 +45,22 @@ ACTIVATIONS = {
 }
 
 TORCH_TO_ONNX = {
-    "intermediate.dense.weight": "1/W",
-    "intermediate.dense.bias": "1/B",
-    "output.dense.weight": "2/W",
-    "output.dense.bias": "2/B",
-    "output.LayerNorm.weight": "Gamma",
-    "output.LayerNorm.bias": "Beta"
+    ExecutionMode.DEFAULT: {
+        "intermediate.dense.weight": "1/W",
+        "intermediate.dense.bias": "1/B",
+        "output.dense.weight": "2/W",
+        "output.dense.bias": "2/B",
+        "output.LayerNorm.weight": "Gamma",
+        "output.LayerNorm.bias": "Beta"
+    },
+    ExecutionMode.PHASED: {
+        "intermediate.dense.weight": "FF/1/Dense/Weight",
+        "intermediate.dense.bias": "FF/1/Dense/Bias",
+        "output.dense.weight": "FF/2/Dense/Weight",
+        "output.dense.bias": "FF/2/Dense/Bias",
+        "output.LayerNorm.weight": "FF/Norm/Gamma",
+        "output.LayerNorm.bias": "FF/Norm/Beta"
+    }
 }
 
 TRANSPOSE_WEIGHTS = {
@@ -53,10 +69,13 @@ TRANSPOSE_WEIGHTS = {
 }
 
 
-@pytest.mark.parametrize(
-    ('activation_function', 'phase'),
-    [(i, p) for i in ACTIVATIONS.keys() for p in ['fwd', 'bwd']])
-def test_activation_function(activation_function, phase, custom_ops):
+@pytest.mark.parametrize('mode', test_modes)
+@pytest.mark.parametrize('activation_function', ACTIVATIONS.keys())
+@pytest.mark.parametrize('phase', ('fwd', 'bwd'))
+def test_activation_function(mode, activation_function, phase):
+
+    set_library_seeds(0)
+
     popart_act_function, pytorch_activation = ACTIVATIONS[activation_function]
     config = BertConfig(vocab_length=128,
                         batch_size=1,
@@ -67,7 +86,7 @@ def test_activation_function(activation_function, phase, custom_ops):
                         activation_type=str(popart_act_function))
 
     data, outputs, proto, post_proto = popart_result_and_model(
-        config, is_bwd=False if phase is 'fwd' else True)
+        config, mode, is_bwd=False if phase is 'fwd' else True)
 
     inputs = [
         data.reshape(config.batch_size, config.sequence_length,
@@ -84,26 +103,30 @@ def test_activation_function(activation_function, phase, custom_ops):
                                    hidden_act=pytorch_activation)
 
     torch_output, torch_model = pytorch_result_and_model(
-        torch_config, inputs, proto, is_bwd=False if phase is 'fwd' else True)
+        torch_config,
+        inputs,
+        proto,
+        mode,
+        is_bwd=False if phase is 'fwd' else True)
 
-    check_tensors(torch_output, outputs)
+    check_tensors(torch_output, outputs, margin=1e-07)
 
     if phase is 'bwd':
         check_model(torch_model,
                     post_proto,
-                    TORCH_TO_ONNX,
-                    transform=TRANSPOSE_WEIGHTS)
+                    TORCH_TO_ONNX[mode],
+                    transform=TRANSPOSE_WEIGHTS,
+                    margin=1e-07)
 
 
-def popart_result_and_model(popart_config, is_bwd=False):
-    builder = popart.Builder()
-    popart_model = Bert(popart_config, builder=builder)
+def popart_result_and_model(popart_config, mode, is_bwd=False):
+    popart_model = get_model(popart_config, mode, 'feedforward')
 
     input_info = popart.TensorInfo(popart_config.popart_dtype, [
         popart_config.batch_size * popart_config.sequence_length,
         popart_config.hidden_size
     ])
-    input_tensor = builder.addInputTensor(input_info)
+    input_tensor = popart_model.builder.addInputTensor(input_info)
 
     data = {
         input_tensor:
@@ -111,26 +134,58 @@ def popart_result_and_model(popart_config, is_bwd=False):
                          input_info.shape()).astype(popart_config.dtype)
     }
 
-    output = popart_model.feed_forward(input_tensor)
-    proto = builder.getModelProto()
+    user_options = {}
+    if mode == ExecutionMode.PHASED:
+        user_options = {
+            "batchSerializationFactor": 1,
+            "executionPhases": popart_model.total_execution_phases
+        }
+        output = popart_model(input_tensor)
+    else:
+        user_options = {"enableStochasticRounding": True}
+        output = popart_model.feed_forward(input_tensor)
 
     if is_bwd:
         l1_lambda = 0.1
-        l1 = builder.aiGraphcore.l1loss([output], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
-        proto = builder.getModelProto()
+        if mode == ExecutionMode.PHASED:
+            with popart_model.scope_provider(popart_model.builder, popart_model.norm.scope):
+                l1 = popart_model.builder.aiGraphcore.l1loss(
+                    [output],
+                    l1_lambda,
+                    debugPrefix="l1LossVal",
+                    reduction=popart.ReductionType.Sum)
+
+        else:
+            l1 = popart_model.builder.aiGraphcore.l1loss(
+                [output],
+                l1_lambda,
+                debugPrefix="l1LossVal",
+                reduction=popart.ReductionType.Sum)
+        proto = popart_model.builder.getModelProto()
         optimizer = popart.ConstSGD(0.01)
 
         outputs, post_proto = run_py(proto,
                                      data, (output, l1),
                                      loss=l1,
-                                     optimizer=optimizer)
+                                     optimizer=optimizer,
+                                     user_options=user_options,
+                                     execution_mode=mode)
     else:
-        outputs, post_proto = run_py(proto, data, output)
+        proto = popart_model.builder.getModelProto()
+        outputs, post_proto = run_py(proto,
+                                     data,
+                                     output,
+                                     user_options=user_options,
+                                     execution_mode=mode)
 
     return data[input_tensor], outputs, proto, post_proto
 
 
-def pytorch_result_and_model(torch_config, inputs, popart_proto, is_bwd=False):
+def pytorch_result_and_model(torch_config,
+                             inputs,
+                             popart_proto,
+                             mode,
+                             is_bwd=False):
     # Conversion of the popart model to onnx
     proto = onnx.load_model_from_string(popart_proto)
 
@@ -140,7 +195,7 @@ def pytorch_result_and_model(torch_config, inputs, popart_proto, is_bwd=False):
 
     copy_weights_to_torch(torch_model,
                           proto,
-                          TORCH_TO_ONNX,
+                          TORCH_TO_ONNX[mode],
                           transform=TRANSPOSE_WEIGHTS)
 
     result = run_fwd_model(inputs, torch_model)

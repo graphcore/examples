@@ -32,9 +32,12 @@ def model(splits=1):
 def session(train=False, skip_execution=False, include_patterns=True, splits=1, outline=False):
     proto, data, x, loss = model(splits=splits)
     # Required
-    patterns = ["MatMulOp", "MatMulLhsGradOp", "MatMulRhsGradOp", "OpToIdentity", "PreUniRepl"]
+    extraPatterns = []
     if include_patterns:
-        patterns += ["TiedGatherPattern", "TiedGatherGradPattern"]
+        extraPatterns += ["TiedGatherPattern", "TiedGatherGradPattern"]
+    patterns = popart.Patterns()
+    for extraPattern in extraPatterns:
+        patterns.enablePattern(extraPattern, True)
     if train:
         return run_py(
             proto,
@@ -45,7 +48,7 @@ def session(train=False, skip_execution=False, include_patterns=True, splits=1, 
                 "defaultLearningRate": (0.1, True),
                 "defaultMomentum": (0.9, True),
                 "defaultDampening": (0, True)}),  # 0 dampening to increase the error of incorrect gradients
-            patterns=popart.Patterns(patterns),
+            patterns=patterns,
             user_options={
                 "enableOutlining": outline
             },
@@ -55,7 +58,7 @@ def session(train=False, skip_execution=False, include_patterns=True, splits=1, 
             proto,
             data=data,
             outputs=x,
-            patterns=popart.Patterns(patterns),
+            patterns=patterns,
             user_options={
                 "enableOutlining": outline,
                 "constantWeights": False

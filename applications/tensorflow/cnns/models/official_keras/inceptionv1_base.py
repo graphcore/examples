@@ -7,7 +7,7 @@ https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/slim/pyt
 from typing import Optional, Tuple, Union
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from models.tf_layers import conv_norm_relu, max_pool, concat, avg_pool, \
     conv, squeeze, softmax
 

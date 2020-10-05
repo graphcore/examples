@@ -16,6 +16,7 @@ def weights_to_mask(weights):
 
 def mask_to_heat(mask):
     connection_sum = np.sum(mask, axis=1)
+    print(f"Unconnected pixel count: {np.count_nonzero(connection_sum==0)}")
     return np.reshape(connection_sum, [28, 28])
 
 

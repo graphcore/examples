@@ -1,7 +1,8 @@
 # Copyright 2019 Graphcore Ltd.
 from models.resnet_base import ResNet
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+import tensorflow.contrib as contrib
 from tensorflow.python.ipu import normalization_ops
 
 # This is all written for: NHWC
@@ -37,7 +38,7 @@ class TensorflowResNet(ResNet):
         filters_in = x.get_shape()[-1]
 
         wshape = [ksize, ksize, filters_in, filters_out]
-        w_init = tf.contrib.layers.xavier_initializer(dtype=self.dtype)
+        w_init = contrib.layers.xavier_initializer(dtype=self.dtype)
         weights = self._get_variable('weights', shape=wshape, init=w_init)
         x = tf.nn.conv2d(x, weights, [1, stride, stride, 1], padding='SAME')
         if bias:
@@ -61,7 +62,7 @@ class TensorflowResNet(ResNet):
 
     def fc(self, x, num_units_out):
         num_units_in = x.get_shape()[1]
-        w_init = tf.contrib.layers.xavier_initializer(dtype=self.dtype)
+        w_init = contrib.layers.xavier_initializer(dtype=self.dtype)
         b_init = tf.constant_initializer(0.0)
 
         with self.namescope('fc'):

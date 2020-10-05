@@ -3,7 +3,7 @@
 import os
 import subprocess
 
-import tests.test_util as test_util
+import examples_tests.test_util as test_util
 
 
 FILES_TO_GENERATE = [

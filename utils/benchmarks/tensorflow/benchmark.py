@@ -5,7 +5,7 @@ Benchmarks a TensorFlow graph.
 
 Usage: benchmark.py <benchmark_import_name> [-h --options]
 '''
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import copy
 import time
 import os
@@ -25,6 +25,7 @@ Benchmark = namedtuple(
         'initializer',       # -> [fetches]
         'add_args',          # parser -> parser
         'iteration_report',  # opts,duration -> string
+        'initializer_sess',  # sess -> None. Run an initialiser with direct access to the session.
     ]
 )
 Benchmark.__new__.__defaults__ = (lambda parser: parser, lambda *_: "")
@@ -37,24 +38,22 @@ def run(benchmark, opts):
     benchmark - An instance of Benchmark
     opts - Namespace from argparse generated from parse_opts
     '''
-    with ipu_scope('/device:IPU:0'):
-        # Build graph
-        with tf.device('cpu'):
-            dataset = tf.data.Dataset \
-                .range((opts.steps + 2) * opts.batches_per_step) \
-                .map(lambda i: benchmark.inputs(opts, i)) \
-                .repeat() \
-                .prefetch(opts.batches_per_step)
+    # Build graph
+    with tf.device('cpu'):
+        dataset = tf.data.Dataset \
+            .range((opts.steps + 2) * opts.batches_per_step) \
+            .map(lambda i: benchmark.inputs(opts, i)) \
+            .repeat() \
+            .prefetch(opts.batches_per_step)
 
         if opts.batches_per_step > 1 or opts.replicas > 1:
-            with tf.device('cpu'):
-                infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, feed_name="benchmark_dataset_infeed", replication_factor=opts.replicas)
-                data_init = infeed_queue.initializer
+            infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, feed_name="benchmark_dataset_infeed", replication_factor=opts.replicas)
+            data_init = infeed_queue.initializer
         else:
-            with tf.device('cpu'):
-                data_tensor = dataset.make_one_shot_iterator().get_next()
-                data_init = tf.no_op()
+            data_tensor = dataset.make_one_shot_iterator().get_next()
+            data_init = tf.no_op()
 
+    with ipu_scope('/device:IPU:0'):
         if opts.batches_per_step > 1:
             with tf.Graph().as_default():  # To get the shape and dtype
                 dummy_opts = copy.deepcopy(opts)
@@ -66,8 +65,7 @@ def run(benchmark, opts):
             def body(inout, *args, **kwargs):
                 with tf.control_dependencies([inout]):
                     # Run graph
-                    with tf.variable_scope("MainGraph"):
-                        out = benchmark.graph_builder(opts, kwargs)
+                    out = benchmark.graph_builder(opts, kwargs)
                 return out
 
             out = ipu_compiler.compile(lambda: loops.repeat(opts.batches_per_step,
@@ -82,7 +80,8 @@ def run(benchmark, opts):
                 out = ipu_compiler.compile(lambda: benchmark.graph_builder(opts, data_tensor), [])
 
     # Report
-    report = gen_ipu_ops.ipu_event_trace()
+    if opts.report:
+        report = gen_ipu_ops.ipu_event_trace()
 
     # Dump the graph to a logdir
     if opts.save_graph:
@@ -90,10 +89,17 @@ def run(benchmark, opts):
         writer.add_graph(tf.get_default_graph())
 
     utils.configure_ipu_system(get_config(opts))
+    utils.move_variable_initialization_to_cpu()
+
     with tf.Session() as sess:
         # Setup
-        sess.run([benchmark.initializer(), data_init])
-        sess.run(report)
+        sess.run(data_init)
+        if benchmark.initializer is not None:
+            sess.run(benchmark.initializer())
+        if benchmark.initializer_sess is not None:
+            benchmark.initializer_sess(sess)
+        if opts.report:
+            sess.run(report)
 
         # Warmup
         print("Compiling and Warmup...")
@@ -129,7 +135,7 @@ def run(benchmark, opts):
 def parse_opts(benchmark, arg_string=None):
     parser = argparse.ArgumentParser(description='Synthetic Benchmarks in TensorFlow', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # Default Arguments
-    parser.add_argument('--use-data', action="store_true",
+    parser.add_argument('--use-generated-data', action="store_true",
                         help="Add data transfer ops. Models execution with IO but unbounded by the CPU pipeline.")
     parser.add_argument('--batches-per-step', type=int, default=1,
                         help="Number of batches to run per step (on the device)")
@@ -141,6 +147,10 @@ def parse_opts(benchmark, arg_string=None):
                         help="Save execution and compilation reports as JSON")
     parser.add_argument('--convolution-options', type=str,
                         help='Set convolution options as a JSON string.')
+    parser.add_argument('--matmul-options', type=str,
+                        help='Set matrix multiplication options as a JSON string.')
+    parser.add_argument('--enable-half-partials', action="store_true", default=False,
+                        help="Use half (fp16) partials for both convolutions and matmuls")
     parser.add_argument('--shards', type=int, default=1,
                         help="Select a number of IPUs to split across")
     parser.add_argument('--device-id', type=int, default=-1,
@@ -149,20 +159,25 @@ def parse_opts(benchmark, arg_string=None):
                         help="If True weights and input will be initialised to zeros (otherwise random data)")
     parser.add_argument('--replicas', type=int, default=1,
                         help="Number of IPUs to replicate input data across")
+    parser.add_argument('--report-hw-cycle-count', action="store_true",
+                        help="Report cycle counts for each rsess.run call.")
     # Benchmark Arguments
     benchmark.add_args(parser)
 
     opts = parser.parse_args()
 
-    if not opts.use_data:
+    if "TF_POPLAR_FLAGS" not in os.environ:
+        os.environ["TF_POPLAR_FLAGS"] = ""
+
+    if not opts.use_generated_data:
         if opts.use_zero_values:
             initType = "0"
         else:
             initType = "random"
-        if "TF_POPLAR_FLAGS" in os.environ:
-            os.environ["TF_POPLAR_FLAGS"] += " --use_synthetic_data --synthetic_data_initializer=" + initType
-        else:
-            os.environ["TF_POPLAR_FLAGS"] = "--use_synthetic_data --synthetic_data_initializer=" + initType
+        os.environ["TF_POPLAR_FLAGS"] += " --use_synthetic_data --synthetic_data_initializer=" + initType
+
+    if opts.report_hw_cycle_count:
+        os.environ["TF_POPLAR_FLAGS"] += " --log_cycle_count=1"
 
     if opts.report:
         opts.batches_per_step = 1
@@ -185,6 +200,13 @@ def get_config(opts):
 
     if opts.convolution_options:
         config = utils.set_convolution_options(config, json.loads(opts.convolution_options))
+
+    if opts.matmul_options:
+                config = utils.set_matmul_options(config, json.loads(opts.matmul_options))
+
+    if opts.enable_half_partials:
+                config = utils.set_matmul_options(config, {"partialsType": 'half'})
+                config = utils.set_convolution_options(config, {"partialsType": 'half'})
     return config
 
 

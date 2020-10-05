@@ -1,7 +1,7 @@
 # Copyright 2020 Graphcore Ltd
 import os
 import pytest
-from tests.test_util import SubProcessChecker
+from examples_tests.test_util import SubProcessChecker
 
 working_path = os.path.dirname(__file__)
 

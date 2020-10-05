@@ -7,9 +7,9 @@ from more_itertools import locate
 
 # NOTE: The imports below are dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import run_python_script_helper
-from tests.test_util import assert_result_equals_tensor_value
-from tests.test_util import assert_result_equals_string
+from examples_tests.test_util import run_python_script_helper
+from examples_tests.test_util import assert_result_equals_tensor_value
+from examples_tests.test_util import assert_result_equals_string
 
 # Strings used to identify lines from trace that
 # indicate graph compilation and device attachment respectively.

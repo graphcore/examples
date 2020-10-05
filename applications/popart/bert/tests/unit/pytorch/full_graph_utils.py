@@ -91,7 +91,7 @@ def fwd_graph(popart_model, torch_model, mapping=None, transform=None):
     proto = builder.getModelProto()
 
     outputs, post_proto = run_py(proto, data, output,
-                                 ipus=math.ceil(config.num_layers / config.layers_per_ipu) + popart_model.layer_offset)
+                                 ipus=popart_model.total_ipus)
 
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
@@ -155,7 +155,7 @@ def bwd_graph(popart_model,
 
     outputs, post_proto = run_py(
         proto, data, output, loss=loss, optimizer=optimizer,
-        ipus=math.ceil(config.num_layers / config.layers_per_ipu) + popart_model.layer_offset)
+        ipus=popart_model.total_ipus)
 
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)

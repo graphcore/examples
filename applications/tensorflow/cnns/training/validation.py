@@ -20,6 +20,7 @@ from glob import glob
 import train
 import log as logging
 from Datasets import data as dataset
+from Datasets.imagenet_dataset import accelerator_side_preprocessing
 from tensorflow.python import ipu
 from ipu_utils import get_config
 from tensorflow.python.ipu.scopes import ipu_scope
@@ -30,6 +31,8 @@ DATASET_CONSTANTS = dataset.DATASET_CONSTANTS
 
 
 def validation_graph_builder(model, image, label, opts):
+    if opts.get('no_hostside_norm'):
+        image = accelerator_side_preprocessing(image, opts=opts)
     logits = model(opts, training=False, image=image)
 
     predictions = tf.argmax(logits, 1, output_type=tf.int32)
@@ -76,11 +79,16 @@ def validation_graph(model, opts):
                              number_of_replicas=opts['replicas']*opts['shards'],
                              max_cross_replica_buffer_size=opts["max_cross_replica_buffer_size"],
                              fp_exceptions=opts["fp_exceptions"],
+                             half_partials=opts["enable_half_partials"],
+                             conv_dithering=opts["enable_conv_dithering"],
                              xla_recompute=opts["xla_recompute"],
                              seed=opts["seed"],
                              profile = opts['profile'],
                              availableMemoryProportion=globalAMP,
-                             stable_norm=opts["stable_norm"])
+                             stable_norm=opts["stable_norm"],
+                             internalExchangeOptimisationTarget=opts[
+                                 "internal_exchange_optimisation_target"
+                             ])
     ipu.utils.configure_ipu_system(ipu_options)
 
     valid_sess = tf.Session(graph=valid_graph, config=tf.ConfigProto())

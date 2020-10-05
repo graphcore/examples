@@ -5,6 +5,7 @@ from functools import partial
 import tensorflow.compat.v1 as tf
 from tensorflow.python import ipu
 from ipu_sparse_ops import sparse, layers
+import logging
 
 tf.disable_eager_execution()
 tf.disable_v2_behavior()
@@ -20,20 +21,28 @@ def get_program_arguments():
                         help="Output size (cols of weight matrix)")
     parser.add_argument("--pattern", type=str,
                         help="Choose how the sparsity pattern is generated.",
-                        choices=['random', 'fixed'])
+                        choices=['random', 'fixed', 'random_sign_ones', 'random_orthogonal'])
     parser.add_argument("--density", type=float,
                         help="Non-zero density (only used if --pattern is random).")
+    parser.add_argument("--data-type", type=str,
+                        help="Choose the floating point type for the weights.",
+                        choices=['fp32', 'fp16'])
     parser.set_defaults(
-        batch_size=2, input_size=16, output_size=8, pattern='fixed', density=0.1)
+        batch_size=2, input_size=16, output_size=8, pattern='fixed', density=0.1,
+        data_type='fp32')
     return parser.parse_args()
 
 
-def make_triplets_test_inputs(args, data_type):
+def random_sign_ones_generator(size=[1]):
+    return (2*np.random.randint(0, 2, size=size))-1
+
+
+def make_triplets_test_inputs(args):
     input_size = args.input_size
     output_size = args.output_size
     batch_size = args.batch_size
-    num_groups = 1
-    topk_ratio = 0.5
+    weights_type = tf.float16 if args.data_type == 'fp16' else tf.float32
+
     if args.pattern == 'fixed':
         rhs_values = np.random.rand(input_size, output_size)
         sparse_mask = np.identity(input_size)
@@ -42,15 +51,44 @@ def make_triplets_test_inputs(args, data_type):
         masked_rhs = np.multiply(sparse_mask[:, 0:output_size], rhs_values)
         triplets = sparse.triplets_from_dense(masked_rhs)
         fc = layers.SparseFcLayer.from_triplets(
-            args.output_size, [args.batch_size, args.input_size], topk_ratio, *triplets)
+            args.output_size, [args.batch_size, args.input_size], *triplets,
+            matmul_options={"metaInfoBucketOversizeProportion": 0.1},
+            name='sparse_fc_from_triplets',
+            dtype=weights_type,
+            bias=False, relu=False)
+    elif args.pattern == 'random_sign_ones':
+        indices_random_gen = np.random.default_rng(seed=random_seed)
+        fc = layers.SparseFcLayer.from_random_generator(
+            args.output_size, [args.batch_size, args.input_size], args.density,
+            random_sign_ones_generator, indices_random_gen,
+            matmul_options={"metaInfoBucketOversizeProportion": 0.1},
+            name='sparse_fc_from_random_sign_ones', bias=False, relu=False)
+        masked_rhs = sparse.dense_from_triplets(fc.weights.spec, *fc.weights.triplets)
+    elif args.pattern == "random_orthogonal":
+        fc = layers.SparseFcLayer.from_random_orthonormal_generator(
+            args.output_size, [args.batch_size, args.input_size], args.density,
+            matmul_options={"metaInfoBucketOversizeProportion": 0.1},
+            name='sparse_fc_from_random_orthogonal', dtype=weights_type,
+            bias=False, relu=False)
+        masked_rhs = sparse.dense_from_triplets(fc.weights.spec, *fc.weights.triplets)
     else:
         random_gen = np.random.default_rng(seed=random_seed)
+        indices_random_gen = np.random.default_rng(seed=random_seed)
         fc = layers.SparseFcLayer.from_random_generator(
-            args.output_size, [args.batch_size, args.input_size], args.density, topk_ratio,
-            random_gen.standard_normal, random_seed)
-        masked_rhs = sparse.dense_from_triplets(fc.spec, *fc.triplets)
-    return fc, masked_rhs
+            args.output_size, [args.batch_size, args.input_size], args.density,
+            random_gen.standard_normal, indices_random_gen,
+            matmul_options={"metaInfoBucketOversizeProportion": 0.1},
+            name='sparse_fc_from_random',
+            dtype=weights_type,
+            bias=False, relu=False)
+        masked_rhs = sparse.dense_from_triplets(fc.weights.spec, *fc.weights.triplets)
+    return fc, masked_rhs.astype(weights_type.as_numpy_dtype())
 
+
+logging.basicConfig(
+    level=logging.getLevelName("DEBUG"),
+    format='%(asctime)s %(name)s %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S')
 
 tf.logging.set_verbosity(tf.logging.ERROR)
 np.set_printoptions(linewidth=200)
@@ -59,9 +97,17 @@ np.random.seed(random_seed)
 
 # Make input data and dense and sparse weights:
 args = get_program_arguments()
-data_type = tf.float32
-lhs_values = np.random.rand(args.batch_size, args.input_size)
-fc, masked_rhs = make_triplets_test_inputs(args, data_type)
+fc, masked_rhs = make_triplets_test_inputs(args)
+data_type = fc.get_data_type()
+np_dtype = data_type.as_numpy_dtype()
+
+if args.pattern == 'random_sign_ones':
+    lhs_values = random_sign_ones_generator(size=[args.batch_size, args.input_size])
+else:
+    lhs_values = np.random.rand(args.batch_size, args.input_size)
+
+if args.pattern == 'random_orthogonal':
+    lhs_values = lhs_values / np.linalg.norm(lhs_values, axis=1, keepdims=True)
 
 # Configure the IPU:
 cfg = ipu.utils.create_ipu_config()
@@ -70,10 +116,10 @@ ipu.utils.configure_ipu_system(cfg)
 
 with tf.device("cpu"):
     # Placeholders for the dense matmul operands:
-    lhs = tf.placeholder(data_type, lhs_values.shape)
-    rhs = tf.placeholder(data_type, masked_rhs.shape)
+    lhs = tf.placeholder(shape=lhs_values.shape, dtype=data_type)
+    rhs = tf.placeholder(shape=masked_rhs.shape, dtype=data_type)
     # Placeholders for the sparse representation:
-    fc.create_placeholders(data_type)
+    fc.create_placeholders()
     compute_dense_grad_w = tf.placeholder(tf.bool, shape=[])
 
 
@@ -82,7 +128,7 @@ def matmul_with_grad(input, weights):
     s = tf.reduce_sum(z)
     input_grad = tf.gradients(s, input)
     weights_grad = tf.gradients(s, weights)
-    return z, input_grad, weights_grad
+    return z, input_grad, weights_grad[0]
 
 
 def sparse_matmul_with_grad(fc, do_topk, input):
@@ -110,7 +156,6 @@ with tf.Session() as sess:
         reference_fetches,
         feed_dict={lhs: lhs_values, rhs: masked_rhs})
 
-    sess.run(sparse_data_update_op, feed_dict=fc.feed_dict())
     sparse_result, sparse_input_grad, sparse_weight_grad, dense_grad_w = sess.run(
         sparse_fetches, feed_dict={lhs: lhs_values, compute_dense_grad_w: True})
 
@@ -118,19 +163,27 @@ with tf.Session() as sess:
 
 # Convert the sparse gradient metainfo back to triplets and then use those row and col indices
 # to index the dense reference weight gradient:
-sparse_data = sparse.SparseRepresentation(fc.data.metainfo_state, sparse_weight_grad[0])
-triplets = sparse.triplets_from_representation(fc.spec, sparse_data)
-reference_grad_nzvalues = sparse.values_at_indices(triplets[0], triplets[1], reference_weight_grad[0])
-
+sparse_data = sparse.SparseRepresentation(fc.weights.get_metainfo(), sparse_weight_grad[0])
+triplets = sparse.triplets_from_representation(fc.weights.spec, sparse_data, fc.weights.matmul_options)
+reference_grad_nzvalues = sparse.values_at_indices(triplets[0], triplets[1], reference_weight_grad)
 # Convert the dense reference weight gradient to a sparse one using the same mask
 # that we used for the weights so we can compare the nzvalues against the sparse grad:
-_, _, values = sparse.triplets_from_dense(reference_weight_grad[0])
-sparse_data = sparse.representation_from_triplets(fc.spec, *triplets)
-reference_grad_nzvalues = sparse_data.nz_values
+dense_data = sparse.representation_from_triplets(fc.weights.spec, triplets[0], triplets[1], reference_grad_nzvalues, fc.weights.matmul_options)
 
-# Need to set tolerances for fp32 as numpy is set for doubles by default:
-rtol = 1e-05
-atol = 1e-06
+
+# Set tolerances appropriately as numpy is set for doubles by default:
+if args.pattern == 'random_sign_ones':
+    rtol = 0
+    atol = 0
+elif args.data_type == 'fp16':
+    rtol = 1e-04
+    atol = 1e-02
+elif args.pattern == 'random_orthogonal':
+    rtol = 1e-07
+    atol = 1e-06
+else:
+    rtol = 1e-05
+    atol = 1e-06
 
 if not np.allclose(reference_result, sparse_result, rtol=rtol, atol=atol, equal_nan=True):
     print(f"Reference result:\n{reference_result}")
@@ -144,7 +197,7 @@ if not np.allclose(reference_result, sparse_result, rtol=rtol, atol=atol, equal_
 if not np.allclose(reference_input_grad, sparse_input_grad, rtol=rtol, atol=atol, equal_nan=True):
     raise RuntimeError("Sparse and reference input gradients do not match.")
 
-if not np.allclose(sparse_data.nz_values, sparse_weight_grad, rtol=rtol, atol=atol, equal_nan=True):
+if not np.allclose(dense_data.nz_values, sparse_weight_grad, rtol=rtol, atol=atol, equal_nan=True):
     print(f"Reference weight grad (dense):\n{reference_weight_grad}")
     print(f"Reference weight grad (sparse):\n{sparse_data.nz_values}")
     print(f"Sparse weight grad:\n{sparse_weight_grad[0]}")

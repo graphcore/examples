@@ -2,7 +2,8 @@
 
     "task": "PRETRAINING",
     "num_layers": 12,
-    "layers_per_ipu": 6,
+    "encoder_start_ipu": 0,
+    "layers_per_ipu": [5,7],
     "hidden_size": 768,
     "attention_heads": 12,
     "sequence_length": 128,
@@ -25,8 +26,6 @@
     "disable_fully_connected_pass": true,
     "checkpoint_dir": "checkpoints/mlm_nsp_base_inference",
     "update_embedding_dict": false,
-    "variable_weights_inference": true,
-    "squeeze_model": true,
     "input_files": [],
     "max_copy_merge_size": 32000
 }

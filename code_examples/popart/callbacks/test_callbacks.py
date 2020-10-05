@@ -3,7 +3,7 @@ import unittest
 import callbacks
 import pytest
 import os
-from tests.test_util import SubProcessChecker
+from examples_tests.test_util import SubProcessChecker
 
 
 class TestCallbacks(SubProcessChecker):

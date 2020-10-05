@@ -5,7 +5,7 @@ Base class for probabilistic models
 """
 import numpy as np
 import os
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tensorflow_probability as tfp
 import time
 

@@ -4,21 +4,21 @@ import tarfile
 from pathlib import Path
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from tensorflow import pywrap_tensorflow
-from tensorflow.keras import backend as keras_backend
-from tensorflow.keras.applications.densenet import DenseNet121
-from tensorflow.keras.applications.inception_v3 import InceptionV3
-from tensorflow.keras.applications.mobilenet import MobileNet
-from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2
-from tensorflow.keras.applications.nasnet import NASNetMobile
-from tensorflow.keras.applications.resnet import ResNet50
-from tensorflow.keras.applications.xception import Xception
-from tensorflow.keras.utils import get_file
+from tensorflow.compat.v1.keras import backend as keras_backend
+from tensorflow.compat.v1.keras.applications.densenet import DenseNet121
+from tensorflow.compat.v1.keras.applications.inception_v3 import InceptionV3
+from tensorflow.compat.v1.keras.applications.mobilenet import MobileNet
+from tensorflow.compat.v1.keras.applications.mobilenet_v2 import MobileNetV2
+from tensorflow.compat.v1.keras.applications.nasnet import NASNetMobile
+from tensorflow.compat.v1.keras.applications.resnet import ResNet50
+from tensorflow.compat.v1.keras.applications.xception import Xception
+from tensorflow.compat.v1.keras.utils import get_file
 
 
-def convert_ckpt_to_fp16(ckpt_file: str) -> tf.compat.v1.train.Saver:
+def convert_ckpt_to_fp16(ckpt_file: str) -> tf.train.Saver:
     """Convert checkpoint to fp16 weights and return saver.
 
     Args:

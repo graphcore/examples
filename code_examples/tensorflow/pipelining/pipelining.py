@@ -8,13 +8,9 @@ from tensorflow.keras.datasets import mnist
 from tensorflow.keras import layers
 
 from tensorflow.python import ipu
-from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
-try:
-    from gcprofile import save_tf_report
-    gcprofile_present = True
-except ImportError:
-    gcprofile_present = False
+tf.disable_eager_execution()
+tf.disable_v2_behavior()
 
 
 def parse_args():
@@ -41,7 +37,13 @@ def parse_args():
     parser.add_argument("--synthetic-data", action='store_true',
                         help="Use synthetic data instead of real images.")
     parser.add_argument("--profile", action='store_true',
-                        help="Enable profiling for gc-profile.")
+                        help="Enable profiling for PopVision Graph Analyser."
+                        " When profiling is enabled, the repeat count will be set to 1"
+                        " and the program will be executed once.")
+    parser.add_argument("--json", action='store_true',
+                        help="Use the JSON format instead of CBOR for reports.")
+    parser.add_argument("--report-directory", type=str, default='.',
+                        help="Location to store profiling data. Defaults to the current directory.")
     args = parser.parse_args()
     return args
 
@@ -135,6 +137,10 @@ if __name__ == "__main__":
 
     n_examples, dataset = create_dataset(args)
 
+    if args.profile:
+        args.repeat_count = 1
+        print("Profiling enabled, repeat count set to one and executing the program once.")
+
     # Create the data queues from/to IPU
     infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(dataset, "infeed")
     outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue("outfeed")
@@ -148,7 +154,6 @@ if __name__ == "__main__":
 
     with tf.device('cpu'):
         lr = tf.placeholder(np.float32, [])
-        report = gen_ipu_ops.ipu_event_trace()
 
     with ipu.scopes.ipu_scope("/device:IPU:0"):
         compiled_model = ipu.ipu_compiler.compile(model, inputs=[lr])
@@ -158,15 +163,17 @@ if __name__ == "__main__":
     ipu.utils.move_variable_initialization_to_cpu()
     init_op = tf.global_variables_initializer()
 
-    # Configure the IPU
+    # Configure the IPU.
     # With pipelining, IPU-level profiling is needed to correctly visualise the execution trace.
     # For pipelined models either SNAKE or HOOF IPU selection orders are advised;
-    # the latter works best when the first and last stage live on the same IPU.
-    # For more info, check ipu.utils.py file or the TensorFlow document:
-    # https://www.graphcore.ai/docs/targeting-the-ipu-from-tensorflow#tensorflow.python.ipu.utils.SelectionOrder.
+    # the latter works best when the first and last stage are on the same IPU.
+    # For more information, see the API section of the Targeting the IPU from TensorFlow document:
+    # https://docs.graphcore.ai/projects/tensorflow1-user-guide/en/latest/api.html#tensorflow.python.ipu.utils.SelectionOrder
     cfg = ipu.utils.create_ipu_config(
         profiling=args.profile,
         profile_execution=ipu.utils.ExecutionProfileType.IPU_PROFILE if args.profile else False,
+        use_poplar_cbor_report=False if args.json else True,
+        report_directory=args.report_directory,
         selection_order=ipu.utils.SelectionOrder.SNAKE)
     # Auto select as many IPUs as we want to pipeline across
     cfg = ipu.utils.auto_select_ipus(cfg, 2)
@@ -179,9 +186,7 @@ if __name__ == "__main__":
         # Run
         for step in range(steps):
             sess.run(compiled_model, {lr: args.learning_rate})
-            if args.profile and gcprofile_present:
-                raw_reports = sess.run(report)
-                save_tf_report(raw_reports)
+            if args.profile:
                 break
             # Read the outfeed for the training losses
             losses = sess.run(outfeed_op)

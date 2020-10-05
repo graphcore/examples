@@ -5,13 +5,13 @@ from tqdm import tqdm
 from functools import partial
 import tensorflow.compat.v1 as tf
 from tensorflow.python.ipu import utils, ipu_compiler, scopes, loops, ipu_infeed_queue, ipu_outfeed_queue
-from tensorflow.python.ipu import dataset_benchmark
 from tensorflow.python.ipu import rand_ops
 import argparse
+import json
 import time
 import os
 from datetime import datetime
-from ipu_sparse_ops import sparse, layers
+from ipu_sparse_ops import sparse, layers, optimizers, sparse_training
 import logging
 
 tf.disable_eager_execution()
@@ -20,19 +20,51 @@ tf.disable_v2_behavior()
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def model(fc_layers, droprate, lr, iterations_per_step, training: bool,
+def build_optimizer(opt_name, opt_args=None):
+    # Fetch the requested optimiser
+    opt_cls = {
+        'GradientDescent': tf.train.GradientDescentOptimizer,
+        'Momentum': tf.train.MomentumOptimizer,
+        'Adam': tf.train.AdamOptimizer
+    }.get(opt_name)
+
+    if opt_cls is None:
+        raise ValueError(f'Unsupported optimizer {opt_name}')
+
+    # Fetch default kwargs, accepting overrides from argparse
+    opt_kws = {
+        'GradientDescent': {},
+        'Momentum': {
+            'momentum': 0.0001,
+            'use_nesterov': True
+        },
+        'Adam': {
+            'beta1': 0.9,
+            'beta2': 0.999,
+            'epsilon': 1e-08
+        }
+    }.get(opt_name)
+    if opt_args is not None:
+        opt_kws.update(opt_args)
+
+    return opt_cls, opt_kws
+
+
+def model(fc_layers, droprate, lr, opt_cls, opt_kws, iterations_per_step, training: bool,
           last_outqueue, inputs, labels):
 
     with tf.variable_scope("counter", reuse=tf.AUTO_REUSE, use_resource=True):
         itr_counter = tf.get_variable("iterations", shape=[], dtype=tf.int32,
+                                      trainable=False,
                                       initializer=tf.zeros_initializer())
         mod_itrs = tf.math.floormod(itr_counter, iterations_per_step)
         last_itr = tf.equal(mod_itrs, 0)
         inc = tf.assign_add(itr_counter, 1)
 
     fc1 = fc_layers['fc1']
-    with tf.variable_scope('fc1', reuse=tf.AUTO_REUSE, use_resource=True):
-        relu1 = fc1(inputs, last_itr)
+    fc2 = fc_layers['fc2']
+
+    relu1 = fc1(inputs, last_itr)
 
     # Use the IPU optimised version of dropout:
     if training:
@@ -40,9 +72,7 @@ def model(fc_layers, droprate, lr, iterations_per_step, training: bool,
     else:
         drop1 = relu1
 
-    fc2 = fc_layers['fc2']
-    with tf.variable_scope('fc2', reuse=tf.AUTO_REUSE, use_resource=True):
-        relu2 = fc2(drop1, last_itr)
+    relu2 = fc2(drop1, last_itr)
 
     with tf.variable_scope("metrics", reuse=tf.AUTO_REUSE, use_resource=True):
         acc, acc_op = tf.metrics.accuracy(labels=labels,
@@ -50,15 +80,16 @@ def model(fc_layers, droprate, lr, iterations_per_step, training: bool,
                                               relu2, axis=1, output_type=tf.dtypes.int32),
                                           name="accuracy")
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=labels, logits=relu2)
+            labels=labels, logits=tf.cast(relu2, dtype=tf.float32, name="logits_to_fp32"))
 
     if training:
         with tf.variable_scope("training", reuse=tf.AUTO_REUSE, use_resource=True):
-            optimiser = tf.train.MomentumOptimizer(
-                learning_rate=lr, momentum=0.0001, use_nesterov=True, name='optimise')
+            optimiser = optimizers.SparseOptimizer(opt_cls)(
+                learning_rate=lr, **opt_kws, name='optimise',
+                sparse_layers=[fc1, fc2])
             train_op = optimiser.minimize(loss)
-            momentum_slot_names = optimiser.get_slot_names()
-            logger.debug(f"Optimiser slot names: {momentum_slot_names}")
+            slot_names = optimiser.get_slot_names()
+            logger.debug(f"Optimiser slot names: {slot_names}")
             with tf.control_dependencies([train_op, acc_op]):
                 mean_loss = tf.reduce_mean(loss, name='train_loss')
     else:
@@ -69,14 +100,15 @@ def model(fc_layers, droprate, lr, iterations_per_step, training: bool,
     last_results = {'mean_loss': mean_loss, 'acc': acc}
     for name, fc in fc_layers.items():
         if fc.is_sparse():
-            with tf.variable_scope(name, reuse=True):
-                weights_tensor = tf.convert_to_tensor(fc.get_values_var())
-                last_results[name + '_non_zeros'] = weights_tensor
-                if training:
-                    dense_grad_w = fc.get_dense_grad_w(loss)
-                    fc.record_momentum_var(optimiser, momentum_slot_names[0])
-                    last_results[name + '_momentum'] = tf.convert_to_tensor(fc.momentum_var)
-                    last_results[name + '_grad_w'] = tf.convert_to_tensor(dense_grad_w)
+            weights_tensor = tf.convert_to_tensor(fc.get_values_var())
+            last_results[name + '_non_zeros'] = weights_tensor
+            if training:
+                dense_grad_w = fc.get_dense_grad_w(loss)
+                last_results[name + '_grad_w'] = tf.convert_to_tensor(dense_grad_w)
+
+                for slot_name in fc.sparse_slots:
+                    last_results[name + f'_{slot_name}'] = \
+                        tf.convert_to_tensor(fc.sparse_slots[slot_name].tf_variable)
 
     # When training we only want to return the sparse
     # non-zero weight values on the last iteration.
@@ -103,24 +135,39 @@ def create_fc_layers(opts, batch_shape, random_gen):
     batch_size = batch_shape[0]
     density1, density2 = opts.densities
     make_sparse = layers.SparseFcLayer.from_random_generator
+    dtype = tf.float16 if opts.data_type == 'fp16' else tf.float32
 
     fc_layers = {}
     if density1 >= 1:
-        fc_layers['fc1'] = layers.DenseFcReluLayer(h1)
+        fc_layers['fc1'] = layers.DenseFcLayer(h1, name='dense_fc',
+                                               dtype=dtype, bias=True, relu=True)
     else:
-        limit = np.sqrt(6/(batch_shape[1] + h1))
+        limit = np.sqrt(6/((batch_shape[1] + h1)*density1))
         glorot_uniform_gen = partial(random_gen.uniform, -limit, limit)
-        fc_layers['fc1'] = make_sparse(h1, batch_shape, density1, opts.prune_ratio,
-                                       glorot_uniform_gen, opts.seed,
+        indices_random_gen = np.random.default_rng(seed=opts.seed)
+        options = {"metaInfoBucketOversizeProportion": 0.2}
+        fc_layers['fc1'] = make_sparse(h1, batch_shape, density1,
+                                       glorot_uniform_gen,
+                                       indices_random_gen,
+                                       matmul_options=options,
+                                       name='sparse_fc',
+                                       dtype=dtype,
                                        bias=True, relu=True)
     if density2 >= 1:
-        fc_layers['fc2'] = layers.DenseFcReluLayer(h2)
+        fc_layers['fc2'] = layers.DenseFcLayer(h2, name='dense_classifier',
+                                               dtype=dtype, bias=True, relu=False)
     else:
-        limit = np.sqrt(6/(batch_shape[1] + h2))
+        limit = np.sqrt(6/((h1 + h2)*density2))
         glorot_uniform_gen = partial(random_gen.uniform, -limit, limit)
-        fc_layers['fc2'] = make_sparse(h2, [batch_size, h1], density2, opts.prune_ratio,
-                                       glorot_uniform_gen, opts.seed,
-                                       bias=True, relu=True)
+        indices_random_gen = np.random.default_rng(seed=opts.seed)
+        options = {"metaInfoBucketOversizeProportion": 0.1}
+        fc_layers['fc2'] = make_sparse(h2, [batch_size, h1], density2,
+                                       glorot_uniform_gen,
+                                       indices_random_gen,
+                                       matmul_options=options,
+                                       name='sparse_classifier',
+                                       dtype=dtype,
+                                       bias=True, relu=False)
     return fc_layers
 
 
@@ -130,12 +177,11 @@ def build_update_op(fc_layers):
     fc_update_ops = {}
     for name, fc in fc_layers.items():
         if fc.is_sparse():
-            with tf.variable_scope(name, reuse=True):
-                fc_update_ops[name] = fc.update_sparsity_op()
+            fc_update_ops[name] = fc.update_sparsity_op()
             if not opts.disable_pruning:
-                # If a layers sparsity pattern changed then its momentum
+                # If a layer's sparsity pattern changed then its slot
                 # also need to be updated:
-                fc_update_ops[name + '_momentum'] = fc.update_momentum_op()
+                fc_update_ops[name + '_slots'] = fc.update_slots_op()
 
     # Combine all layer updates into one update op:
     return tf.group(fc_update_ops.values())
@@ -143,135 +189,31 @@ def build_update_op(fc_layers):
 
 def prune_and_grow(layer_name, layer, outputs_from_last_step, random_gen,
                    step, total_steps, opts):
+
+    def cosine_prune_schedule(t, T, max_pruned):
+        return int(np.ceil(.5 * max_pruned * (1 + np.cos(t * (np.pi/T)))))
+
     name = layer_name
     fc = layer
     last = outputs_from_last_step
 
     # Sync the layer's internal host-side state with last results
-    # (both weights and momentum need to be kept in sync):
-    fc.sync_internal_data(last[name+'_non_zeros'][0], last[name+'_momentum'][0])
+    # (both weights and slots need to be kept in sync):
+    fc.sync_internal_representation(
+        last[name+'_non_zeros'][0],
+        {
+            slot_name: last[name+f'_{slot_name}'][0]
+            for slot_name in fc.sparse_slots
+        })
 
-    def bottom_k(a, k):
-        return np.argpartition(a, k)[0:k]
+    updater = partial(sparse_training.prune_and_grow,
+                      prune_schedule=partial(cosine_prune_schedule, t=step, T=total_steps),
+                      prune_ratio=opts.prune_ratio,
+                      grad_w=np.array(last[name+'_grad_w'][0]),
+                      grow_method=opts.regrow,
+                      random_gen=np.random.default_rng(seed=opts.seed))
 
-    def cosine_prune_schedule(t, T, max_pruned):
-        return int(np.ceil(.5 * max_pruned * (1 + np.cos(t * (np.pi/T)))))
-
-    prune_count = cosine_prune_schedule(step, total_steps, fc.get_max_prune_count())
-    logger.debug(f"Layer {name} pruning schedule: iteration {step} prune: {prune_count}")
-    if prune_count <= 0:
-        return
-
-    # Convert to triplets to do the pruning:
-    triplets = fc.extract_triplets()
-    # We also need momentum triplets so that we can update the sparse momentum but we only
-    # need to process the values because row and col indices must be the same:
-    _, _, momentum_values = fc.extract_momentum_triplets()
-
-    # Find the indices of the lowest magnitude weights:
-    lowest_weight_idx = bottom_k(np.abs(triplets[2]), prune_count)
-    logger.debug(f"Bottom {prune_count} value indices for layer {name}: {lowest_weight_idx}")
-    logger.debug(f"Average trained triplet weights for layer {name}: {np.mean(triplets[2])}")
-    prune_row_indices = triplets[0][lowest_weight_idx]
-    prune_col_indices = triplets[1][lowest_weight_idx]
-    logger.debug(f"Weight indices to prune: {name}: {list(zip(prune_row_indices, prune_col_indices))}")
-    logger.debug(f"Weight values to prune: {name}: {triplets[2][lowest_weight_idx]}")
-    if len(prune_row_indices) != prune_count:
-        raise RuntimeError(f"Pruned {len(prune_row_indices)} indices but expected to prune {prune_count}")
-
-    # Make new triplets with these indices removed:
-    remaining_triplets = [np.delete(t, lowest_weight_idx) for t in triplets]
-    # Prune the same indices from the momentum triplets:
-    remaining_momentum_values = np.delete(momentum_values, lowest_weight_idx)
-
-    if len(remaining_triplets[0]) + prune_count != len(triplets[0]):
-        raise RuntimeError(f"Remaining index count {len(remaining_triplets[0])} is not the correct size: {fc.max_non_zeros}")
-
-    # Get flat indices for the original index set:
-    fc_shape = (fc.spec.input_size, fc.spec.output_size)
-    original_flat_idx = np.ravel_multi_index((triplets[0], triplets[1]), fc_shape)
-
-    # # Make the random initialiser for new values:
-    # limit = np.sqrt(6/(fc.spec.input_size + fc.spec.output_size))
-    # glorot_uniform_gen = partial(random_gen.uniform, -limit, limit)
-
-    def zero_values(size=1):
-        return [0]*size
-
-    new_value_gen = zero_values
-
-    if opts.regrow == 'rigl':
-        # Grow back new indices using Rig-L: (https://arxiv.org/abs/1911.11134)
-        grad_w = np.array(last[name+'_grad_w'][0][0])
-
-        # We want to grow back weights at the positions with the highest gradient
-        # magnitudes that are also not in the original set:
-        abs_grad_flat = np.abs(grad_w.flatten())
-        valid_new_idx = []
-        argsorted = np.argsort(-abs_grad_flat)
-        m = 1
-        # Repeatedly take top-k in chunks until we have enough novel indices:
-        while len(valid_new_idx) < prune_count:
-            logger.debug(f"Next Top-k chunk {m}: {m*prune_count}")
-            topk_flat_chunk_idx = argsorted[(m-1)*prune_count:m*prune_count]
-            logger.debug(f"Next chunk indices: {topk_flat_chunk_idx}")
-            mask = np.isin(topk_flat_chunk_idx, original_flat_idx, assume_unique=False)
-            valid_new_idx = valid_new_idx + np.array(topk_flat_chunk_idx[~mask]).tolist()
-            logger.debug(f"Valid so far: {valid_new_idx}")
-            m += 1
-            logger.debug(f"Valid new indices count: {len(valid_new_idx)}")
-
-        topk_flat_idx = valid_new_idx[:prune_count]
-        common = np.intersect1d(topk_flat_idx, original_flat_idx)
-        if len(common):
-            raise RuntimeError("Intersection of new and original indices must be empty.")
-        logger.debug(f"Final non intersecting indices: {topk_flat_idx}")
-
-        # Check the indices are unique before we use them:
-        unique = np.unique(topk_flat_idx)
-        duplicates = len(topk_flat_idx) - len(unique)
-        if duplicates != 0:
-            print(f"New indices contain {duplicates} duplicates:\n{topk_flat_idx}")
-            raise RuntimeError("New indices are not unique")
-
-        top_k_idx = np.unravel_index(topk_flat_idx, fc_shape)
-        logger.debug(f"Layer {name} weight grad top-k indices: {top_k_idx}")
-        new_triplets = (top_k_idx[0], top_k_idx[1], new_value_gen(size=prune_count))
-
-    if opts.regrow == 'random':
-        # Random replacement strategy: add back random indices
-        # Gen some replacement random indices excluding all the existing
-        # ones then we will swap for the pruned ones:
-        new_triplets = sparse.random_triplets(fc.spec, seed=opts.seed, value_generator=new_value_gen,
-                                              excluded_flat_indices=original_flat_idx, count=prune_count)
-
-    # Join the triplets we kept with the newly generated ones:
-    grown_rows = np.concatenate([remaining_triplets[0], new_triplets[0]]).astype(int)
-    grown_cols = np.concatenate([remaining_triplets[1], new_triplets[1]]).astype(int)
-    grown_values = np.concatenate([remaining_triplets[2], new_triplets[2]])
-    # Momentum for new weights are set to zero:
-    grown_momentum = np.concatenate([remaining_momentum_values, zero_values(size=prune_count)])
-
-    if len(grown_rows) != fc.spec.max_non_zeros:
-        raise ValueError(f"Grown row count {len(grown_rows)} does not match expected count {fc.spec.max_non_zeros}")
-    if len(grown_cols) != fc.spec.max_non_zeros:
-        raise ValueError(f"Grown col count {len(grown_cols)} does not match expected count {fc.spec.max_non_zeros}")
-    if len(grown_values) != fc.spec.max_non_zeros:
-        raise ValueError(f"Grown col count {len(grown_values)} does not match expected count {fc.spec.max_non_zeros}")
-    if len(grown_momentum) != fc.spec.max_non_zeros:
-        raise ValueError(f"Grown col count {len(grown_momentum)} does not match expected count {fc.spec.max_non_zeros}")
-
-    # Now update the fc representations with the pruned and grown triplets:
-    try:
-        fc.update_triplets([grown_rows, grown_cols, grown_values])
-        fc.update_momentum_from_triplets([grown_rows, grown_cols, grown_momentum])
-    except:
-        print(f"Old rows:\n{remaining_triplets[0]}")
-        print(f"New rows:\n{new_triplets[0]}")
-        print(f"Failed to update representation with triplets:\n{grown_rows}\n{grown_cols}\n{grown_values}")
-        print(f"Non-zeros: {len(grown_rows)}")
-        print(f"Layer spec: {fc.spec}")
-        raise
+    fc.update_sparsity_pattern(updater)
 
     if opts.records_path and name == 'fc1':
         # Save the first hidden layer's weight mask for later analysis:
@@ -288,6 +230,10 @@ def save_weights(opts, name, fc, step):
 def scheduler(epoch, opts):
     progress = epoch / opts.epochs
     lr_scale = 16/opts.batch_size
+
+    if opts.optimizer == "Adam":
+        return 0.002 * lr_scale
+
     if progress < 0.2:
         return 0.02 * lr_scale
     if progress < 0.4:
@@ -305,6 +251,8 @@ def loop_builder(iterations, builder_func, infeed):
 
 
 def run_mnist(opts):
+    if opts.seed is not None:
+        utils.reset_ipu_seed(opts.seed)
     random_gen = np.random.default_rng(seed=opts.seed)
 
     # Use Keras to get the dataset:
@@ -320,10 +268,11 @@ def run_mnist(opts):
     num_train = y_train.shape[0]
     num_test = y_test.shape[0]
     data_shape = [None, num_pixels]
+    dtype = tf.float16 if opts.data_type == 'fp16' else tf.float32
 
     # Flatten the images and cast the labels:
-    x_train_flat = x_train.astype(np.float32).reshape(-1, num_pixels)
-    x_test_flat = x_test.astype(np.float32).reshape(-1, num_pixels)
+    x_train_flat = x_train.astype(dtype.as_numpy_dtype()).reshape(-1, num_pixels)
+    x_test_flat = x_test.astype(dtype.as_numpy_dtype()).reshape(-1, num_pixels)
     y_train = y_train.astype(np.int32)
     y_test = y_test.astype(np.int32)
 
@@ -342,11 +291,9 @@ def run_mnist(opts):
 
     # Put placeholders on the CPU host:
     with tf.device("cpu"):
-        place_x = tf.placeholder(dtype=tf.float32, shape=data_shape, name="input")
+        place_x = tf.placeholder(dtype=dtype, shape=data_shape, name="input")
         place_y = tf.placeholder(dtype=tf.int32, shape=[None], name="label")
-        lr_placeholder = tf.placeholder(tf.float32, shape=[])
-        for fc in fc_layers.values():
-            fc.create_placeholders(tf.float32)
+        lr_placeholder = tf.placeholder(dtype, shape=[])
 
     # Create dataset and IPU feeds:
     dataset = tf.data.Dataset.from_tensor_slices((place_x, place_y))
@@ -361,20 +308,37 @@ def run_mnist(opts):
     outfeed_test_queue = ipu_outfeed_queue.IPUOutfeedQueue(
         feed_name="test_outfeed")
 
-    # Use function binding to create all the builder functions that are neeeded:
-    bound_train_model = partial(model, fc_layers, opts.droprate, lr_placeholder, batches_per_step,
-                                True, outfeed_train_queue)
+    # Get optimiser
+    opt_cls, opt_kws = build_optimizer(opts.optimizer, opts.optimizer_arg)
+    logger.info('Optimiser %s, optimiser keywords %s', opt_cls.__name__, opt_kws)
+
+    # Use function binding to create all the builder functions that are needed:
+    bound_train_model = partial(
+        model, fc_layers, opts.droprate, lr_placeholder,
+        opt_cls, opt_kws, batches_per_step,
+        True, outfeed_train_queue)
     bound_train_loop = partial(
         loop_builder, batches_per_step, bound_train_model, infeed_train_queue)
-    bound_test_model = partial(model, fc_layers, opts.droprate, lr_placeholder, batches_per_step,
-                               False, outfeed_test_queue)
-    bound_test_loop = partial(loop_builder, test_batches,
-                              bound_test_model, infeed_test_queue)
+    bound_test_model = partial(
+        model, fc_layers, opts.droprate, lr_placeholder,
+        opt_cls, opt_kws, batches_per_step,
+        False, outfeed_test_queue)
+    bound_test_loop = partial(
+        loop_builder, test_batches,
+        bound_test_model, infeed_test_queue)
 
     # Use the bound builder functions to place the model on the IPU:
     with scopes.ipu_scope("/device:IPU:0"):
         train_loop = ipu_compiler.compile(bound_train_loop, inputs=[])
         test_loop = ipu_compiler.compile(bound_test_loop, inputs=[])
+
+    # Placeholders can only be created on cpu after all the slots have registered:
+    with tf.device("cpu"):
+        for fc in fc_layers.values():
+            fc.create_placeholders()
+
+    # Create update op on IPU:
+    with scopes.ipu_scope("/device:IPU:0"):
         update_representation = build_update_op(fc_layers)
 
     # Initialisers should go on the CPU:
@@ -398,11 +362,6 @@ def run_mnist(opts):
     total_steps = opts.steps_per_epoch * opts.epochs
     logger.info(f"Total steps: {total_steps}")
 
-    # Merge the feeds needed for all layers:
-    sparse_feed = {}
-    for fc in fc_layers.values():
-        sparse_feed.update(fc.feed_dict())
-
     if opts.log:
         # Open log and write header fields:
         log_file = open(opts.log, 'w')
@@ -421,8 +380,6 @@ def run_mnist(opts):
         sess.run(tf.global_variables_initializer())
         sess.run(infeed_train_queue.initializer, feed_dict={
                  place_x: x_train_flat, place_y: y_train})
-        # Must initialise the sparse layers separately:
-        sess.run(update_representation, feed_dict=sparse_feed)
 
         if opts.test_mode in ["all", "training"]:
             logger.info(f"Training...")
@@ -431,9 +388,16 @@ def run_mnist(opts):
             for e in progress:
                 for i in range(opts.steps_per_epoch):
                     sess.run(metrics_initializer)
-                    # Only need to feed an updated sparsity representation if we are running rig-L:
+                    # Only need to feed an updated sparsity representation if we are running
+                    # a prune and grow algorithm:
                     if not opts.disable_pruning:
+                        # Merge the feeds needed for all layers:
+                        sparse_feed = {}
+                        for fc in fc_layers.values():
+                            if fc.is_sparse():
+                                sparse_feed.update(fc.feed_dict())
                         sess.run(update_representation, feed_dict=sparse_feed)
+
                     sess.run(train_loop, feed_dict={lr_placeholder: scheduler(e, opts)})
                     last = sess.run(dequeue_train_outfeed)
 
@@ -442,7 +406,8 @@ def run_mnist(opts):
                     for name, fc in fc_layers.items():
                         if fc.is_sparse():
                             logger.info(f"Average weights for layer {name}: {np.mean(last[name+'_non_zeros'][0])}")
-                            logger.info(f"Average momentum for layer {name} : {np.mean(last[name+'_momentum'][0])}")
+                            for slot_name in fc.sparse_slots:
+                                logger.info(f"Average {slot_name} for layer {name} : {np.mean(last[name+f'_{slot_name}'][0])}")
                             if not opts.disable_pruning:
                                 logger.info(f"Starting prune and grow for layer {name}")
                                 t0 = time.perf_counter()
@@ -519,6 +484,21 @@ if __name__ == '__main__':
                         help="Proportion of each layer's non-zero values to prune and replace at each Rig-L update.")
     parser.add_argument("--records-path", type=str, default=None,
                         help="If specified masks and weights will be saved to this path.")
+    parser.add_argument("--optimizer", type=str, default="Momentum",
+                        choices=["GradientDescent", "Momentum", "Adam"],
+                        help="Which optimizer to use.")
+    parser.add_argument("--data-type", type=str,
+                        help="Choose the floating point type for the GRU cell's weights.",
+                        choices=['fp32', 'fp16'], default='fp32')
+
+    def parse_optimizer_arg(arg: str):
+        name, value = arg.split('=')
+        return (name, json.loads(value))
+
+    parser.add_argument("--optimizer-arg", type=parse_optimizer_arg, action="append",
+                        help="Extra argument for the chosen optimizer of the form argname=value. "
+                        "Example: `use_nesterov=false`. "
+                        "Can be input multiple times.")
     opts = parser.parse_args()
 
     logging.basicConfig(

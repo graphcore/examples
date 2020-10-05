@@ -1,11 +1,24 @@
 # Copyright 2019 Graphcore Ltd.
-import pytest
 import math
-import popart
-import numpy as np
 from typing import NamedTuple
+import pytest
+import numpy as np
+import popart
 from bert_optimizer import ScheduledOptimizerFactory, Schedule
 from bert import Iteration
+
+
+STEPWISE_LR_SCHEDULE = {0: 1e-10,
+                        500: 1e-9,
+                        1000: 1e-8,
+                        1200: 1e-8/2,
+                        1800: 1e-8/16}
+
+EPOCHWISE_LR_SCHEDULE = {1: 1e-10,
+                         4: 1e-9,
+                         8: 1e-8,
+                         12: 1e-8/2,
+                         16: 1e-8/4}
 
 
 class MockIteration:
@@ -66,280 +79,229 @@ class TestConfig(NamedTuple):
     squad_lr_scale: int = 1
 
 
-@pytest.mark.category1
-def test_scheduled_optimizer_factory():
+def run_scheduled_optimizer_factory_case(config, iteration, epoch_truth=None, step_truth=None, option_name="defaultLearningRate"):
+    """Runs a single case of the schedule optimizer factory tests. Simulates running through
+    every step of every epoch required by the config, and updates the optimizer factory as
+    defined by the schedule. Then checks the optimizer parameters to ensure they are correct."""
+    if epoch_truth is None:
+        epoch_truth = {}
 
-    def test_case(config, iteration, epoch_truth={}, step_truth={}, option_name="defaultLearningRate"):
-        factory = ScheduledOptimizerFactory(config, iteration)
-        for iteration.epoch in range(iteration.epochs):
-            for step in range(iteration.steps_per_epoch):
-                if factory.should_update(iteration):
-                    factory.update(iteration)
+    if step_truth is None:
+        step_truth = {}
 
-                if iteration.count in step_truth:
-                    lr = factory.option_values[option_name]
-                    assert(lr == step_truth[iteration.count])
-                iteration.count += 1
+    factory = ScheduledOptimizerFactory(config, iteration)
+    for iteration.epoch in range(iteration.epochs):
+        for _ in range(iteration.steps_per_epoch):
+            if factory.should_update(iteration):
+                factory.update(iteration)
 
-            if iteration.epoch in epoch_truth:
+            if iteration.count in step_truth:
                 lr = factory.option_values[option_name]
-                assert(lr == epoch_truth[iteration.epoch])
+                assert lr == step_truth[iteration.count]
+            iteration.count += 1
 
-    # =============================  Constant learning rate  ==============================
+        if iteration.epoch in epoch_truth:
+            lr = factory.option_values[option_name]
+            assert lr == epoch_truth[iteration.epoch]
+
+
+@pytest.mark.category1
+@pytest.mark.parametrize(
+    "config, epoch_truth, step_truth",
+    [
+        (
+            TestConfig(learning_rate=1e-8),
+            {0: 1e-8, 5: 1e-8, 10: 1e-8, 19: 1e-8},
+            {0: 1e-8, 25: 1e-8, 50: 1e-8, 99: 1e-8}
+        )
+    ])
+def test_scheduled_optimizer_factory_constant_lr(config, epoch_truth, step_truth):
+    """ Check that the learning rate doesn't change if no schedule is provided"""
     iteration = MockIteration(20, 100)
-    config = TestConfig(learning_rate=1e-8)
+    run_scheduled_optimizer_factory_case(config,
+                                         iteration,
+                                         epoch_truth=epoch_truth,
+                                         step_truth=step_truth)
 
-    epoch_truth = {0: 1e-8, 5: 1e-8, 10: 1e-8, 19: 1e-8}
-    step_truth = {0: 1e-8, 25: 1e-8, 50: 1e-8, 99: 1e-8}
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth)
 
-    #  ===================  Epoch schedule, with a given init 0 value  ====================
+@pytest.mark.category1
+@pytest.mark.parametrize(
+    "mode, option_name, sched, manual_truth",
+    [
+        (
+            "lr_schedule_by_epoch",
+            "defaultLearningRate",
+            {0: 1e-10, 5: 1e-9, 10: 1e-8, 12: 1e-8/2, 18: 1e-8/16},
+            {1: 1e-10, 3: 1e-10, 4: 1e-10, 8: 1e-9, 20: 1e-8/16}
+        ),
+        (
+            "lr_schedule_by_epoch",
+            "defaultLearningRate",
+            {1: 1e-10, 5: 1e-9, 10: 1e-8, 12: 1e-8/2, 18: 1e-8/16},
+            {0: TestConfig().learning_rate, 3: 1e-10, 4: 1e-10, 8: 1e-9, 20: 1e-8/16}
+        ),
+        (
+            "ls_schedule_by_epoch",
+            "lossScaling",
+            {1: 4, 4: 8, 8: 20, 12: 16, 16: 12},
+            {0: TestConfig().loss_scaling, 3: 4, 5: 8, 12: 16, 19: 12}
+        )
+    ])
+def test_scheduled_optimizer_factory_epochwise(mode, option_name, sched, manual_truth):
+    def generate_epoch_truth(epoch_sched, additional):
+        return {**epoch_sched, **additional}
+
+    def generate_step_truth(epoch_truth, steps_per_epoch):
+        return {e * steps_per_epoch: epoch_truth[e] for e in epoch_truth}
+
     iteration = MockIteration(20, 100)
-    lr_schedule_by_epoch = {0: 1e-10, 5: 1e-9,
-                            10: 1e-8, 12: 1e-8/2, 18: 1e-8/16}
-    config = TestConfig(lr_schedule_by_epoch=lr_schedule_by_epoch)
-    epoch_truth = {**lr_schedule_by_epoch, **
-                   {1: 1e-10, 3: 1e-10, 4: 1e-10, 8: 1e-9, 20: 1e-8/16}}
-    step_truth = dict([(e * iteration.steps_per_epoch, epoch_truth[e])
-                       for e in epoch_truth])
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth)
+    config = TestConfig(**{mode: sched})
 
-    #  ================  Epoch schedule, with an inferred init 0 value  ===================
+    epoch_truth = generate_epoch_truth(sched, manual_truth)
+    step_truth = generate_step_truth(epoch_truth, iteration.steps_per_epoch)
+    run_scheduled_optimizer_factory_case(config, iteration, epoch_truth=epoch_truth, step_truth=step_truth, option_name=option_name)
+
+
+@pytest.mark.category1
+@pytest.mark.parametrize(
+    "mode, option_name, sched, manual_truth",
+    [
+        (
+            "lr_schedule_by_step",
+            "defaultLearningRate",
+            {0: 1e-10, 500: 1e-9, 1000: 1e-8, 1200: 1e-8/2, 1800: 1e-8/16},
+            {10: 1e-10, 300: 1e-10, 600: 1e-9, 1100: 1e-8, 2000: 1e-8/16}
+        ),
+        (
+            "lr_schedule_by_step",
+            "defaultLearningRate",
+            {250: 1e-10, 500: 1e-9, 1000: 1e-8, 1200: 1e-8/2, 1800: 1e-8/16},
+            {0: TestConfig().learning_rate, 300: 1e-10, 600: 1e-9, 1100: 1e-8, 2000: 1e-8/16}
+        ),
+        (
+            "ls_schedule_by_step",
+            "lossScaling",
+            {100: 4, 500: 8, 1000: 20, 1200: 16, 1800: 12},
+            {0: TestConfig().loss_scaling, 300: 4, 600: 8, 1100: 20, 2000: 12}
+        )
+    ])
+def test_scheduled_optimizer_factory_stepwise(mode, option_name, sched, manual_truth):
+
+    def generate_step_truth(step_sched, additional):
+        return {**step_sched, **additional}
+
+    def generate_epoch_truth(step_truth, steps_per_epoch):
+        return {math.floor(c / steps_per_epoch): step_truth[c] for c in step_truth}
+
     iteration = MockIteration(20, 100)
-    lr_schedule_by_epoch = {1: 1e-10,
-                            5: 1e-9,
-                            10: 1e-8,
-                            12: 1e-8/2,
-                            18: 1e-8/16}
-    config = TestConfig(learning_rate=1e-8, lr_schedule_by_epoch=lr_schedule_by_epoch)
-    epoch_truth = {**lr_schedule_by_epoch, **{0: 1e-8,
-                                              3: 1e-10,
-                                              4: 1e-10,
-                                              8: 1e-9,
-                                              20: 1e-8/16}}
-    step_truth = dict([(e * iteration.steps_per_epoch, epoch_truth[e])
-                       for e in epoch_truth])
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth)
+    config = TestConfig(**{mode: sched})
 
-    #  ====================  Step schedule, with a given init 0 value  ====================
-    iteration = MockIteration(20, 100)
-    lr_schedule_by_step = {0: 1e-10,
-                           500: 1e-9,
-                           1000: 1e-8,
-                           1200: 1e-8/2,
-                           1800: 1e-8/16}
-    config = TestConfig(lr_schedule_by_step=lr_schedule_by_step)
-    step_truth = {**lr_schedule_by_step, **{10: 1e-10,
-                                            300: 1e-10,
-                                            600: 1e-9,
-                                            1100: 1e-8,
-                                            2000: 1e-8/16}}
-    epoch_truth = dict(
-        [(math.floor(c / iteration.steps_per_epoch), step_truth[c]) for c in step_truth])
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth)
+    step_truth = generate_step_truth(sched, manual_truth)
+    epoch_truth = generate_epoch_truth(step_truth, iteration.steps_per_epoch)
+    run_scheduled_optimizer_factory_case(config, iteration, epoch_truth=epoch_truth, step_truth=step_truth, option_name=option_name)
 
-    #  ====================  Step schedule, with a given init 0 value  ====================
-    iteration = MockIteration(20, 100)
-    lr_schedule_by_step = {0: 1e-10,
-                           500: 1e-9,
-                           1000: 1e-8,
-                           1200: 1e-8/2,
-                           1800: 1e-8/16}
-    config = TestConfig(learning_rate=1e-8, lr_schedule_by_step=lr_schedule_by_step)
-    step_truth = {**lr_schedule_by_step, **{0: 1e-10,
-                                            300: 1e-10,
-                                            600: 1e-9,
-                                            1100: 1e-8,
-                                            2000: 1e-8/16}}
-    epoch_truth = dict(
-        [(math.floor(c / iteration.steps_per_epoch), step_truth[c]) for c in step_truth])
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth)
 
-    #  ==========  Loss Scaling: Epoch schedule, with an inferred init 0 value  ===========
-    iteration = MockIteration(20, 100)
-    ls_schedule_by_epoch = {1: 4,
-                            4: 8,
-                            8: 20,
-                            12: 16,
-                            16: 12}
-    config = TestConfig(loss_scaling=3, ls_schedule_by_epoch=ls_schedule_by_epoch)
-    epoch_truth = {**ls_schedule_by_epoch, **{0: 3,
-                                              3: 4,
-                                              5: 8,
-                                              12: 16,
-                                              19: 12}}
-    step_truth = dict([(e * iteration.steps_per_epoch, epoch_truth[e])
-                       for e in epoch_truth])
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth, option_name="lossScaling")
-
-    #  ==========  Loss Scaling: Step schedule, with an inferred init 0 value  ============
+@pytest.mark.category1
+@pytest.mark.parametrize(
+    "manual_truth, option_name",
+    [
+        ({0: 3, 300: 4, 600: 8, 1100: 20, 2000: 12}, "lossScaling"),
+        ({10: STEPWISE_LR_SCHEDULE[0], 300: STEPWISE_LR_SCHEDULE[0], 600: STEPWISE_LR_SCHEDULE[500], 1100: STEPWISE_LR_SCHEDULE[1000], 2000: STEPWISE_LR_SCHEDULE[1800]}, "defaultLearningRate")
+    ])
+def test_scheduled_optimizer_factory_multiple_schedules(manual_truth, option_name):
+    """
+    LR and LS: Step schedule, with an inferred init 0 value
+    This test checks there's no interaction between the different schedules above."""
     iteration = MockIteration(20, 100)
     ls_schedule_by_step = {100: 4,
                            500: 8,
                            1000: 20,
                            1200: 16,
                            1800: 12}
-    config = TestConfig(loss_scaling=3, ls_schedule_by_step=ls_schedule_by_step)
-    step_truth = {**ls_schedule_by_step, **{0: 3,
-                                            300: 4,
-                                            600: 8,
-                                            1100: 20,
-                                            2000: 12}}
-    epoch_truth = dict(
-        [(math.floor(c / iteration.steps_per_epoch), step_truth[c]) for c in step_truth])
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth, option_name="lossScaling")
 
-    #  ============  LR and LS: Step schedule, with an inferred init 0 value  =============
-    # This test checks there's no interaction between the different schedules above.
-    iteration = MockIteration(20, 100)
-    ls_schedule_by_step = {100: 4,
-                           500: 8,
-                           1000: 20,
-                           1200: 16,
-                           1800: 12}
+    config = TestConfig(loss_scaling=3, learning_rate=STEPWISE_LR_SCHEDULE[0], ls_schedule_by_step=ls_schedule_by_step, lr_schedule_by_step=STEPWISE_LR_SCHEDULE)
 
-    lr_schedule_by_step = {100: 1e-10,
-                           500: 1e-9,
-                           1000: 1e-8,
-                           1200: 1e-8/2,
-                           1800: 1e-8/16}
-
-    config = TestConfig(loss_scaling=3, learning_rate = 1e-7,
-                        ls_schedule_by_step=ls_schedule_by_step,
-                        lr_schedule_by_step=lr_schedule_by_step)
+    if option_name == "lossScaling":
+        sched = ls_schedule_by_step
+    else:
+        sched = STEPWISE_LR_SCHEDULE
 
     # Check the loss scaling is correctly handled
-    step_truth = {**ls_schedule_by_step, **{0: 3,
-                                            300: 4,
-                                            600: 8,
-                                            1100: 20,
-                                            2000: 12}}
-    epoch_truth = dict(
-        [(math.floor(c / iteration.steps_per_epoch), step_truth[c]) for c in step_truth])
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth, option_name="lossScaling")
+    step_truth = {**sched, **manual_truth}
+    epoch_truth = dict([(math.floor(c / iteration.steps_per_epoch), step_truth[c]) for c in step_truth])
+    run_scheduled_optimizer_factory_case(config, iteration, epoch_truth=epoch_truth, step_truth=step_truth, option_name=option_name)
 
-    # Check the learning rate is correctly handled
+
+@pytest.mark.category1
+@pytest.mark.parametrize(
+    "config",
+    [
+        TestConfig(),
+        TestConfig(lr_schedule_by_step=STEPWISE_LR_SCHEDULE),
+        TestConfig(ls_schedule_by_epoch=EPOCHWISE_LR_SCHEDULE),
+        TestConfig(lr_schedule_by_step=STEPWISE_LR_SCHEDULE,
+                   ls_schedule_by_epoch=EPOCHWISE_LR_SCHEDULE)
+    ])
+def test_scheduled_optimiser_params_const_flag(config):
+    """Check that scheduled parameters are correctly set to non-const, with others remaining const"""
     iteration = MockIteration(20, 100)
-    step_truth = {**lr_schedule_by_step, **{10: 1e-7,
-                                            300: 1e-10,
-                                            600: 1e-9,
-                                            1100: 1e-8,
-                                            2000: 1e-8/16}}
-    epoch_truth = dict(
-        [(math.floor(c / iteration.steps_per_epoch), step_truth[c]) for c in step_truth])
-    test_case(config, iteration, epoch_truth=epoch_truth,
-              step_truth=step_truth, option_name="defaultLearningRate")
+    factory = ScheduledOptimizerFactory(config, iteration)
+
+    expected_non_const = []
+    if config.lr_schedule_by_epoch is not None or config.lr_schedule_by_step is not None:
+        expected_non_const.append("defaultLearningRate")
+    if config.ls_schedule_by_epoch is not None or config.ls_schedule_by_step is not None:
+        expected_non_const.append("lossScaling")
+
+    optimizer_options = factory.optimizer_options
+
+    for key, value in optimizer_options.items():
+        assert not value[1] if key in expected_non_const else value[1]
 
 
 @pytest.mark.category1
-def test_scheduled_optimiser_params_const_flag():
-
-    def test_case(config):
-        iteration = MockIteration(20, 100)
-        factory = ScheduledOptimizerFactory(config, iteration)
-
-        expected_non_const = []
-        if config.lr_schedule_by_epoch is not None or config.lr_schedule_by_step is not None:
-            expected_non_const.append("defaultLearningRate")
-        if config.ls_schedule_by_epoch is not None or config.ls_schedule_by_step is not None:
-            expected_non_const.append("lossScaling")
-
-        optimizer_options = factory.optimizer_options
-
-        for key, value in optimizer_options.items():
-            assert(not value[1] if key in expected_non_const else value[1])
-
-    lr_schedule_by_step = {0: 1e-10,
-                           500: 1e-9,
-                           1000: 1e-8,
-                           1200: 1e-8/2,
-                           1800: 1e-8/16}
-
-    ls_schedule_by_epoch = {1: 4,
-                            4: 8,
-                            8: 20,
-                            12: 16,
-                            16: 12}
-
-    configs = [TestConfig(),
-               TestConfig(lr_schedule_by_step=lr_schedule_by_step),
-               TestConfig(ls_schedule_by_epoch=ls_schedule_by_epoch),
-               TestConfig(lr_schedule_by_step=lr_schedule_by_step,
-                          ls_schedule_by_epoch=ls_schedule_by_epoch)]
-
-    for config in configs:
-        test_case(config)
-
-
-@pytest.mark.category1
-def test_schedule_key_parsing():
+@pytest.mark.parametrize(
+    "schedule, expected",
+    [
+        (
+            {0: 1e-10, 5: 1e-9, 10: 1e-8, 12: 5e-9, 18: 2.5e-9},
+            {0: 1e-10, 5: 1e-9, 10: 1e-8, 12: 5e-9, 18: 2.5e-9}
+        ),
+        (
+            {"0": 1e-10, "5": 1e-9, "10": 1e-8, "12": 5e-9, "18": 2.5e-9},
+            {0: 1e-10, 5: 1e-9, 10: 1e-8, 12: 5e-9, 18: 2.5e-9}
+        ),
+        (
+            {0: "1e-10", 5: "1e-9", 10: "1e-8", 12: "5e-9", 18: "2.5e-9"},
+            {0: 1e-10, 5: 1e-9, 10: 1e-8, 12: 5e-9, 18: 2.5e-9}
+        ),
+        (
+            {"0": "1e-10", "5": "1e-9", "10": "1e-8", "12": "5e-9", "18": "2.5e-9"},
+            {0: 1e-10, 5: 1e-9, 10: 1e-8, 12: 5e-9, 18: 2.5e-9}
+        )
+    ])
+def test_schedule_key_parsing(schedule, expected):
     """Tests the parser can handle variations of string, float and int representations"""
-    iteration = MockIteration(1, 550)
 
-    schedule_int_keys = {0: 1e-10,
-                         5: 1e-9,
-                         10: 1e-8,
-                         12: 5e-9,
-                         18: 2.5e-9}
+    epoch_schedule = Schedule.from_args("defaultLearningRate", schedule, None, 1e-3)
+    step_schedule = Schedule.from_args("defaultLearningRate", None, schedule, 1e-3)
 
-    schedule_str_keys = {"0": 1e-10,
-                         "5": 1e-9,
-                         "10": 1e-8,
-                         "12": 5e-9,
-                         "18": 2.5e-9}
-
-    schedule_str_vals = {0: 1e-10,
-                         5: 1e-9,
-                         10: 1e-8,
-                         12: 5e-9,
-                         18: 2.5e-9}
-
-    schedule_str_both = {"0": "1e-10",
-                         "5": "1e-9",
-                         "10": "1e-8",
-                         "12": "5e-9",
-                         "18": "2.5e-9"}
-
-    test_cases = [schedule_int_keys, schedule_str_keys,
-                  schedule_str_vals, schedule_str_both]
-
-    test_schedules_epoch = [Schedule.from_args(
-        "defaultLearningRate", case, None, 1e-3) for case in test_cases]
-    test_schedules_steps = [Schedule.from_args(
-        "defaultLearningRate", None, case, 1e-3) for case in test_cases]
-
-    equality = [test.schedule ==
-                test_schedules_epoch[0].schedule for test in test_schedules_epoch]
-    assert(all(equality))
-    equality = [test.schedule ==
-                test_schedules_epoch[0].schedule for test in test_schedules_steps]
-    assert(all(equality))
-
-
-iteration_test_lr_schedule_by_step = {0: 1e-10,
-                                      25: 1e-9,
-                                      50: 1e-8,
-                                      75: 1e-8/2,
-                                      100: 1e-8/16}
+    assert epoch_schedule.schedule == expected
+    assert step_schedule.schedule == expected
 
 
 @pytest.mark.category1
 @pytest.mark.parametrize(
     "start_epoch, steps_per_epoch, num_epochs, lr_schedule, expected",
     [
-        (0, 10, 10, iteration_test_lr_schedule_by_step, iteration_test_lr_schedule_by_step[0]),
-        (1, 10, 10, iteration_test_lr_schedule_by_step, iteration_test_lr_schedule_by_step[0]),
-        (3, 10, 10, iteration_test_lr_schedule_by_step, iteration_test_lr_schedule_by_step[25]),
-        (5, 10, 10, iteration_test_lr_schedule_by_step, iteration_test_lr_schedule_by_step[50])])
+        (0, 250, 10, STEPWISE_LR_SCHEDULE, STEPWISE_LR_SCHEDULE[0]),
+        (1, 250, 10, STEPWISE_LR_SCHEDULE, STEPWISE_LR_SCHEDULE[0]),
+        (3, 250, 10, STEPWISE_LR_SCHEDULE, STEPWISE_LR_SCHEDULE[500]),
+        (5, 250, 10, STEPWISE_LR_SCHEDULE, STEPWISE_LR_SCHEDULE[1200])
+    ])
 def test_schedule_with_continue_from_epoch(start_epoch, steps_per_epoch, num_epochs, lr_schedule, expected):
+    """Make sure the optimiser restarts the schedule from the correct point when resuming training
+    from a given epoch"""
 
     config = TestConfig(**{
         "continue_training_from_epoch": start_epoch,
@@ -356,11 +318,21 @@ def test_schedule_with_continue_from_epoch(start_epoch, steps_per_epoch, num_epo
 
     factory = ScheduledOptimizerFactory(config, iteration)
     lr = factory.option_values["defaultLearningRate"]
-    assert(lr == expected)
+    assert lr == expected
 
 
 @pytest.mark.category1
-def test_per_tensor_lr():
+@pytest.mark.ipus(1)
+@pytest.mark.parametrize(
+    "steps_per_epoch, lr_schedule_by_step, layer_inputs, offset, pipeline",
+    [
+        (2, {0: 0.5, 1: 0.1}, [100, 200, 300], 0.1, True),
+        (5, {0: 0.0008, 3: 0.00001}, [5, 3, 7], 0.25, True),
+        (5, {0: 0.0008, 3: 0.00001}, [5, 3, 7], 0.1, False)
+    ])
+def test_per_tensor_lr(steps_per_epoch, lr_schedule_by_step, layer_inputs, offset, pipeline):
+    """Ensure the learning rate is correctly applied to different tensors according to the per-tensor
+    scale factor and offset"""
 
     def expected_step_weights(iteration, config, layer_input, lr_scale):
         """Calculate the expected weight values after successive steps"""
@@ -495,38 +467,9 @@ def test_per_tensor_lr():
 
                 session.updateOptimizerFromHost(optimizer_step1)
 
-    #  ==============================  2 Steps, decayed LR  ===============================
-    iteration = MockIteration(1, 2)
-    lr_schedule_by_step = {0: 0.5,
-                           1: 0.1}
-
-    layer_inputs = [100, 200, 300]
-    test_case, config, true_scaling = generate_test_case(0.1,
-                                                         lr_schedule_by_step,
-                                                         layer_inputs)
-    test(config, iteration, true_scaling, test_case)
-
-    #  ========================== 5 Steps, slower decayed LR  =============================
-    iteration = MockIteration(1, 5)
-    lr_schedule_by_step = {0: 0.0008,
-                           3: 0.00001}
-
-    layer_inputs = [5, 3, 7]
-    test_case, config, true_scaling = generate_test_case(0.25,
-                                                         lr_schedule_by_step,
-                                                         layer_inputs)
-    test(config, iteration, true_scaling, test_case)
-
-    #  =================== 5 Steps, pipeline disabled (no scaled LR)  =====================
-    iteration = MockIteration(1, 5)
-    lr_schedule_by_step = {0: 0.0008,
-                           3: 0.00001}
-
-    layer_inputs = [5, 3, 7]
-    test_case, config, true_scaling = generate_test_case(0.1,
+    iteration = MockIteration(1, steps_per_epoch)
+    test_case, config, true_scaling = generate_test_case(offset,
                                                          lr_schedule_by_step,
                                                          layer_inputs,
-                                                         pipeline=False)
+                                                         pipeline=pipeline)
     test(config, iteration, true_scaling, test_case)
-
-

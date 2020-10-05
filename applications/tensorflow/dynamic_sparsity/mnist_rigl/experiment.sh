@@ -8,6 +8,9 @@ BS=20
 STEPS=4
 EPOCHS=10
 SPARSE_DROP=0.1
+OPT="Adam --optimizer-arg epsilon=1e-02"
+DTYPE=fp16
+PRUNE=0.8
 
 export PYTHONPATH=./
 
@@ -16,25 +19,28 @@ echo "" > experiment.out
 # Run 4 variations in parallel (requires one available IPU each):
 
 python mnist_rigl/sparse_mnist.py --batch-size=$BS --epochs=$EPOCHS --steps-per-epoch=$STEPS \
---densities 1 1 --log dense_acc.log --seed $SEED 2>&1 | tee -a experiment.out &
+--densities 1 1 --log dense_acc.log --seed $SEED --optimizer $OPT --data-type=$DTYPE 2>&1 | tee -a experiment.out &
 
 mkdir -p static_records
 rm static_records/*
 python mnist_rigl/sparse_mnist.py --batch-size=$BS --epochs=$EPOCHS --steps-per-epoch=$STEPS \
---densities $DENSITY1 $DENSITY2 --log static_records/acc.log --seed $SEED --records-path static_records \
+--densities $DENSITY1 $DENSITY2 --log static_records/acc.log --seed $SEED --optimizer $OPT  \
+--data-type=$DTYPE --records-path static_records \
 --disable-pruning --droprate $SPARSE_DROP 2>&1 | tee -a experiment.out &
 
 mkdir -p rand_records
 rm rand_records/*
 python mnist_rigl/sparse_mnist.py --batch-size=$BS --epochs=$EPOCHS --steps-per-epoch=$STEPS \
---densities $DENSITY1 $DENSITY2 --log rand_records/acc.log --seed $SEED  --records-path rand_records \
---regrow random --droprate $SPARSE_DROP 2>&1 | tee -a experiment.out &
+--densities $DENSITY1 $DENSITY2 --log rand_records/acc.log --seed $SEED --optimizer $OPT \
+--data-type=$DTYPE --records-path rand_records \
+--regrow random --droprate $SPARSE_DROP --prune-ratio $PRUNE 2>&1 | tee -a experiment.out &
 
 mkdir -p rigl_records
 rm rigl_records/*
 python mnist_rigl/sparse_mnist.py --batch-size=$BS --epochs=$EPOCHS --steps-per-epoch=$STEPS \
---densities $DENSITY1 $DENSITY2 --log rigl_records/acc.log --seed $SEED  --records-path rigl_records \
---regrow rigl --droprate $SPARSE_DROP 2>&1 | tee -a experiment.out &
+--densities $DENSITY1 $DENSITY2 --log rigl_records/acc.log --seed $SEED --optimizer $OPT \
+--data-type=$DTYPE --records-path rigl_records \
+--regrow rigl --droprate $SPARSE_DROP --prune-ratio $PRUNE 2>&1 | tee -a experiment.out &
 
 wait
 

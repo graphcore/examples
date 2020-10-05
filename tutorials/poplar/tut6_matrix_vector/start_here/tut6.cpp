@@ -95,9 +95,9 @@ int main(int argc, char **argv) {
   // Create an engine from the compute graph and control program.
   Engine engine(graph, prog);
   engine.load(Device::createCPUDevice());
-  engine.connectStream(inStreamV, hInput.data());
-  engine.connectStream(inStreamM, hMatrix.data());
-  engine.connectStream(outStream, hOutput.data());
+  engine.connectStream("inputVector", hInput.data());
+  engine.connectStream("inputMatrix", hMatrix.data());
+  engine.connectStream("out", hOutput.data());
 
   // Execute the program
   std::cout << "Running graph program to multiply matrix by vector\n";

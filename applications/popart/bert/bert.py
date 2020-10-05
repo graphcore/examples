@@ -17,7 +17,7 @@ import popart
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
-from bert_model import Bert, BertConfig
+from bert_model import ExecutionMode, get_model, BertConfig
 from bert_data import get_pretraining_dataset, get_squad_dataset
 from bert_tf_loader import load_initializers_from_tf
 from bert_optimizer import ScheduledOptimizerFactory
@@ -93,8 +93,11 @@ def bert_add_inputs(args, model):
     return indices, positions, segments, masks, labels
 
 
-def bert_logits_graph(model, indices, positions, segments, masks):
-    logits = model.build_graph(indices, positions, segments, masks)
+def bert_logits_graph(model, indices, positions, segments, masks, mode):
+    if mode == ExecutionMode.PHASED:
+        logits = model(indices, positions, segments, masks)
+    else:
+        logits = model.build_graph(indices, positions, segments, masks)
     return logits
 
 
@@ -115,13 +118,31 @@ def bert_infer_graph(model, logits, include_probs=True):
     # about loss
     probs = None
     if model.config.task == "SQUAD":
-        with model.squad_scope:
-            predictions = list(
-                model.builder.aiOnnx.argmax(
-                    [logit], axis=1, keepdims=0, debugPrefix=f"{logit}/ArgMax")
-                for logit in logits)
+        if model.config.execution_mode == ExecutionMode.PHASED:
+            with model.scope_provider(model.builder, model.squad_scope):
+                predictions = list(
+                    model.builder.aiOnnx.argmax([logit],
+                                                axis=1,
+                                                keepdims=0,
+                                                debugPrefix=f"{logit}/ArgMax")
+                    for logit in logits)
+                if include_probs:
+                    probs = list(
+                        model.builder.aiOnnx.softmax(
+                            [logit], axis=1, debugPrefix=f"{logit}/Softmax")
+                        for logit in logits)
 
-            if include_probs:
+                    for prob in probs:
+                        model.builder.setInplacePreferences(
+                            prob, {"SoftmaxInplace": -1})
+        else:
+            with model.squad_scope:
+                predictions = list(
+                    model.builder.aiOnnx.argmax([logit],
+                                                axis=1,
+                                                keepdims=0,
+                                                debugPrefix=f"{logit}/ArgMax")
+                    for logit in logits)
                 probs = list(
                     model.builder.aiOnnx.softmax(
                         [logit], axis=1, debugPrefix=f"{logit}/Softmax")
@@ -130,21 +151,36 @@ def bert_infer_graph(model, logits, include_probs=True):
                     model.builder.setInplacePreferences(
                         prob, {"SoftmaxInplace": -1})
     elif model.config.task == "PRETRAINING":
-        with model.nsp_scope:
-            nsp_predictions = model.builder.aiOnnx.argmax(
-                [logits[1]], axis=1, keepdims=0, debugPrefix="ArgMax")
-
-            if include_probs:
-                nsp_probs = model.builder.aiOnnx.softmax(
-                    [logits[1]], axis=1, debugPrefix="Softmax")
-        with model.mlm_scope:
-            mlm_predictions = model.builder.aiOnnx.argmax(
-                [logits[0]], axis=2, keepdims=0, debugPrefix="ArgMax")
-
-            if include_probs:
-                mlm_probs = model.builder.aiOnnx.softmax(
-                    [logits[0]], axis=2, debugPrefix="Softmax")
-
+        if model.config.execution_mode == ExecutionMode.PHASED:
+            with model.scope_provider(model.builder, model.nsp_scope):
+                nsp_predictions = model.builder.aiOnnx.argmax(
+                    [logits[1]], axis=1, keepdims=0, debugPrefix="ArgMax")
+                if include_probs:
+                    nsp_probs = model.builder.aiOnnx.softmax([logits[1]],
+                                                             axis=1,
+                                                             debugPrefix="Softmax")
+            with model.scope_provider(model.builder, model.mlm_scope):
+                mlm_predictions = model.builder.aiOnnx.argmax(
+                    [logits[0]], axis=2, keepdims=0, debugPrefix="ArgMax")
+                if include_probs:
+                    mlm_probs = model.builder.aiOnnx.softmax([logits[0]],
+                                                             axis=2,
+                                                             debugPrefix="Softmax")
+        else:
+            with model.nsp_scope:
+                nsp_predictions = model.builder.aiOnnx.argmax(
+                    [logits[1]], axis=1, keepdims=0, debugPrefix="ArgMax")
+                if include_probs:
+                    nsp_probs = model.builder.aiOnnx.softmax([logits[1]],
+                                                             axis=1,
+                                                             debugPrefix="Softmax")
+            with model.mlm_scope:
+                mlm_predictions = model.builder.aiOnnx.argmax(
+                    [logits[0]], axis=2, keepdims=0, debugPrefix="ArgMax")
+                if include_probs:
+                    mlm_probs = model.builder.aiOnnx.softmax([logits[0]],
+                                                             axis=2,
+                                                             debugPrefix="Softmax")
         predictions = [mlm_predictions, nsp_predictions]
         if include_probs:
             probs = [mlm_probs, nsp_probs]
@@ -153,26 +189,49 @@ def bert_infer_graph(model, logits, include_probs=True):
 
 def bert_loss_graph(model, probs, labels):
     def loss(prob, label):
-        if model.config.task == "SQUAD":
-            with model.squad_scope:
-                nllloss = model.builder.aiGraphcore.nllloss(
-                    [prob, label],
-                    reduction=popart.ReductionType.NoReduction,
-                    debugPrefix=f"{label}/loss")
-        elif 'nsp' in label:
-            with model.nsp_scope:
-                nllloss = model.builder.aiGraphcore.nllloss(
-                    [prob, label],
-                    reduction=popart.ReductionType.NoReduction,
-                    ignoreIndex=2,
-                    debugPrefix=f"{label}/loss")
+        if model.config.execution_mode == ExecutionMode.PHASED:
+            if model.config.task == "SQUAD":
+                with model.scope_provider(model.builder, model.squad_scope):
+                    nllloss = model.builder.aiGraphcore.nllloss(
+                        [prob, label],
+                        reduction=popart.ReductionType.NoReduction,
+                        debugPrefix=f"{label}/loss")
+
+            elif 'nsp' in label:
+                with model.scope_provider(model.builder, model.nsp_scope):
+                    nllloss = model.builder.aiGraphcore.nllloss(
+                        [prob, label],
+                        reduction=popart.ReductionType.NoReduction,
+                        ignoreIndex=2,
+                        debugPrefix=f"{label}/loss")
+            else:
+                with model.scope_provider(model.builder, model.mlm_scope):
+                    nllloss = model.builder.aiGraphcore.nllloss(
+                        [prob, label],
+                        reduction=popart.ReductionType.NoReduction,
+                        ignoreIndex=0,
+                        debugPrefix=f"{label}/loss")
         else:
-            with model.mlm_scope:
-                nllloss = model.builder.aiGraphcore.nllloss(
-                    [prob, label],
-                    reduction=popart.ReductionType.NoReduction,
-                    ignoreIndex=0,
-                    debugPrefix=f"{label}/loss")
+            if model.config.task == "SQUAD":
+                with model.squad_scope:
+                    nllloss = model.builder.aiGraphcore.nllloss(
+                        [prob, label],
+                        reduction=popart.ReductionType.NoReduction,
+                        debugPrefix=f"{label}/loss")
+            elif 'nsp' in label:
+                with model.nsp_scope:
+                    nllloss = model.builder.aiGraphcore.nllloss(
+                        [prob, label],
+                        reduction=popart.ReductionType.NoReduction,
+                        ignoreIndex=2,
+                        debugPrefix=f"{label}/loss")
+            else:
+                with model.mlm_scope:
+                    nllloss = model.builder.aiGraphcore.nllloss(
+                        [prob, label],
+                        reduction=popart.ReductionType.NoReduction,
+                        ignoreIndex=0,
+                        debugPrefix=f"{label}/loss")
 
         return nllloss
 
@@ -206,7 +265,11 @@ def bert_session_options(args, model):
     options.enableFloatingPointChecks = args.floating_point_exceptions
     options.enableStochasticRounding = args.stochastic_rounding
     options.enableGroupedMatmuls = False
+    options.enablePrefetchDatastreams = not args.low_latency_inference
     options.enableOutlining = not args.no_outlining
+    partials_type = "half" if args.enable_half_partials else "float"
+    options.partialsTypeMatMuls = partials_type
+    options.convolutionOptions = {'partialsType': partials_type}
     # Increasing the outlineThreshold prevents creating subgraphs of cheap Ops
     # such as add or reshapeInplace.
     # Instead only reusing ops with a highSubgraphValue such as matmul or normalisation.
@@ -214,11 +277,35 @@ def bert_session_options(args, model):
     if args.execution_mode == "PIPELINE":
         options.enablePipelining = True
         options.autoRecomputation = popart.RecomputationType.Pipeline
-    elif args.execution_mode == "PINGPONG":
-        options.virtualGraphMode = popart.VirtualGraphMode.PingPong
-        options.outlineThreshold = -np.inf
+    elif args.execution_mode == "PHASED":
+        options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
         options.enableOutliningCopyCostPruning = False
-        options.pingPongPhases = model.total_ping_pong_phases
+        options.outlineThreshold = -np.inf
+        options.executionPhaseSettings.phases = model.total_execution_phases
+        options.batchSerializationSettings.factor = args.batch_serialize
+        options.autoRecomputation = popart.RecomputationType.Standard
+        options.explicitRecomputation = True
+        options.aliasZeroCopy = True
+
+        options.activationTensorLocationSettings.location.storage = popart.TensorStorage.OffChip
+
+        varLocation = popart.TensorLocation()
+        varLocation.storage = popart.TensorStorage.OffChip
+        varLocation.loadTileSet = popart.TileSet.IO
+        varLocation.storageTileSet = popart.TileSet.IO
+        varLocation.replicatedTensorSharding = (popart.ReplicatedTensorSharding.On
+                                                if args.replicated_weight_sharding else
+                                                popart.ReplicatedTensorSharding.Off)
+
+        options.weightTensorLocationSettings.location = varLocation
+        options.optimizerStateTensorLocationSettings.location = varLocation
+        options.accumulatorTensorLocationSettings.location = varLocation
+
+        options.numIOTiles = args.num_io_tiles
+        options.timeLimitScheduler = -1
+        options.swapLimitScheduler = -1
+        engine_options["target.syncReplicasIndependently"] = "false"
+
     if args.gradient_accumulation_factor > 1:
         options.enableGradientAccumulation = True
         options.accumulationFactor = args.gradient_accumulation_factor
@@ -262,14 +349,17 @@ def bert_session_options(args, model):
     if args.group_host_syncs:
         options.groupHostSync = True
 
+    if args.internal_exchange_optimisation_target is not None:
+        engine_options["opt.internalExchangeOptimisationTarget"] = str(args.internal_exchange_optimisation_target)
+
     options.engineOptions = engine_options
 
     # Set synthetic data mode (if active)
-    if args.synthetic_data_type:
-        if args.synthetic_data_type == "random_normal":
-            options.syntheticDataMode = popart.SyntheticDataMode.RandomNormal
-        elif args.synthetic_data_type == "zeros":
+    if args.synthetic_data:
+        if args.synthetic_data_initializer == "zeros":
             options.syntheticDataMode = popart.SyntheticDataMode.Zeros
+        else:
+            options.syntheticDataMode = popart.SyntheticDataMode.RandomNormal
         logger.info(
             f"Running with Synthetic Data Type '{options.syntheticDataMode}'")
     return options
@@ -279,15 +369,17 @@ def bert_session_patterns(args):
     patterns = popart.Patterns()
     if args.task != "SQUAD":
         patterns.enablePattern("DisableAttnDropoutBwdPattern", False)
+
+    if args.execution_mode == ExecutionMode.PHASED:
+        patterns.enablePattern("TiedGatherPattern", False)
     return patterns
 
 
 def calc_required_ipus(args, model):
-    if args.execution_mode == "PINGPONG":
+    if args.execution_mode == "PHASED":
         num_ipus = 2
     else:
-        num_ipus = math.ceil(model.config.num_layers /
-                             model.config.layers_per_ipu) + model.layer_offset
+        num_ipus = model.total_ipus
     num_ipus *= args.replication_factor
     request_ipus = pow(2, math.ceil(math.log2(num_ipus)))
     logger.info(f"Need {num_ipus} IPUs. Requesting {request_ipus}")
@@ -312,13 +404,21 @@ def bert_training_session(model, args, feed, losses, device,
     patterns = bert_session_patterns(args)
 
     def final_loss(losses):
-        with model.final_loss_scope:
-            reduced_losses = []
-            for loss in losses:
-                reduced_losses.append(
-                    model.builder.aiOnnx.reducesum([loss], [0, 1], 0, f"Reduce{loss}"))
-            loss_sum = model.builder.aiOnnx.sum(reduced_losses, "FinalLoss")
-            return loss_sum
+        if model.config.execution_mode == ExecutionMode.PHASED:
+            with model.scope_provider(model.builder, model.final_loss_scope):
+                reduced_losses = []
+                for loss in losses:
+                    reduced_losses.append(
+                        model.builder.aiOnnx.reducesum([loss], [0, 1], 0, f"Reduce{loss}"))
+                loss_sum = model.builder.aiOnnx.sum(reduced_losses, "FinalLoss")
+        else:
+            with model.final_loss_scope:
+                reduced_losses = []
+                for loss in losses:
+                    reduced_losses.append(
+                        model.builder.aiOnnx.reducesum([loss], [0, 1], 0, f"Reduce{loss}"))
+                loss_sum = model.builder.aiOnnx.sum(reduced_losses, "FinalLoss")
+        return loss_sum
 
     loss = final_loss(losses)
     proto = model.builder.getModelProto()
@@ -403,7 +503,7 @@ def get_bert_dataset(model, args, inputs, embedding_dict=None, positional_dict=N
             replication_factor=args.replication_factor,
             duplication_factor=args.duplication_factor,
             shuffle=args.shuffle,
-            synthetic=args.synthetic_data,
+            generated_data=args.generated_data or args.synthetic_data,
             epochs_to_cache=args.epochs_to_cache,
             start_data_at_epoch=args.continue_training_from_epoch)
 
@@ -427,7 +527,7 @@ def get_bert_dataset(model, args, inputs, embedding_dict=None, positional_dict=N
             overwrite_cache=args.overwrite_cache,
             no_drop_remainder=args.no_drop_remainder,
             evaluate_script=args.squad_evaluate_script,
-            synthetic=args.synthetic_data,
+            generated_data=args.generated_data or args.synthetic_data,
             do_lower_case=args.do_lower_case,
             max_pipeline_stage=model.total_pipeline_stages if args.execution_mode == "PIPELINE" else 1,
             seed=args.seed,
@@ -698,9 +798,8 @@ def create_callback_stepio(data, anchors, start_times, end_times, batches_per_st
 
     # Input callback is called when the data is needed:
     def input_callback(id, is_prefetch: bool):
-        if is_prefetch:
-            input_time = time.perf_counter()
-            start_times[id].append(input_time)
+        input_time = time.perf_counter()
+        start_times[id].append(input_time)
 
         return data[id][micro_batch_indices[id]]
 
@@ -836,12 +935,10 @@ def bert_infer_loop(args, session,
                     dataset, inputs, logits, anchors,
                     labels, predictions, losses,
                     iteration):
-    save_results = args.task == "SQUAD" and not args.synthetic_data
+    save_results = args.task == "SQUAD" and not (args.synthetic_data or args.generated_data)
 
     if not losses:
         losses = None
-    else:
-        losses = [loss.output(0) for loss in losses]
 
     # Create the stepio once outside of the inference loop:
     static_data = {}
@@ -883,7 +980,7 @@ def acquire_device(args, request_ipus):
         device = popart.DeviceManager().createIpuModelDevice(model_opts)
     else:
         if args.execution_mode == "PINGPONG":
-            sync_pattern = popart.SyncPattern.PingPong
+            sync_pattern = popart.SyncPattern.ReplicaAndLadder
         elif args.execution_mode == "PIPELINE" and args.replication_factor <= 1:
             sync_pattern = popart.SyncPattern.SinglePipeline
         else:
@@ -900,6 +997,9 @@ def acquire_device(args, request_ipus):
 def bert_pretrained_initialisers(config, args):
     if args.synthetic_data:
         logger.info("Initialising from synthetic_data")
+        return None
+    if args.generated_data:
+        logger.info("Initialising from generated_data")
         return None
     if args.onnx_checkpoint:
         logger.info(
@@ -920,15 +1020,15 @@ def main(args):
 
     logger.info("Building Model")
     # Specifying ai.onnx opset9 for the slice syntax
-    model = Bert(config,
-                 builder=popart.Builder(
-                     opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}),
-                 initializers=initializers,
-                 execution_mode=args.execution_mode)
+    model = get_model(config,
+                      mode=args.execution_mode,
+                      initializers=initializers,
+                      block=None)
 
     # If config.host_embedding is enabled, indices and positions will have the matrices instead of the index vector.
     indices, positions, segments, masks, labels = bert_add_inputs(args, model)
-    logits = bert_logits_graph(model, indices, positions, segments, masks)
+    logits = bert_logits_graph(model, indices, positions, segments, masks,
+                               args.execution_mode)
 
     if args.inference:
 

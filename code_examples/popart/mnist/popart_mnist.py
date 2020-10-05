@@ -200,7 +200,7 @@ def train(opts):
 
 
     print("Creating ONNX model.")
-    proto, data_in, labels_in, output, loss = create_model(opts.batch_size)
+    proto, data_in, labels_in, output, loss = create_model(opts.samples_per_device)
 
     # Describe how to run the model
     anchor_desc = {output: popart.AnchorReturnType("ALL"),
@@ -225,12 +225,17 @@ def train(opts):
             userOpts.syntheticDataMode = popart.SyntheticDataMode.Zeros
 
     # Enable auto-sharding
-    if opts.num_ipus > 1:
+    if opts.num_ipus > opts.replication_factor:
         userOpts.virtualGraphMode = popart.VirtualGraphMode.Auto
 
     # Enable pipelining
     if opts.pipeline:
         userOpts.enablePipelining = True
+
+    # Enable replication
+    if opts.replication_factor > 1:
+        userOpts.enableReplicatedGraphs = True
+        userOpts.replicatedGraphCount = opts.replication_factor
 
     # A single device is shared between training and validation sessions
     device = get_device(opts.num_ipus, opts.simulation)
@@ -295,7 +300,8 @@ if __name__ == "__main__":
         '--batch-size',
         type=int,
         default=32,
-        help="Set the Batch size")
+        help="Set the Batch size."
+             " This must be a multiple of the replication factor.")
     parser.add_argument(
         '--batches-per-step',
         type=int,
@@ -311,12 +317,16 @@ if __name__ == "__main__":
         '--num-ipus',
         type=int,
         default=1,
-        help="Number of IPU's")
+        help="Number of IPUs")
     parser.add_argument(
         '--pipeline',
         action="store_true",
         default=False,
-        help="Pipeline the model over IPUs")
+        help="Pipeline the model over IPUs."
+             " Only valid for this model if the number of IPUs is twice the replication factor.")
+    parser.add_argument('--replication-factor', type=int, default=1,
+                        help="Number of times to replicate the graph to perform data parallel"
+                             " training. Must be a factor of the number of IPUs.")
     parser.add_argument(
         '--simulation',
         action='store_true',
@@ -324,21 +334,41 @@ if __name__ == "__main__":
     parser.add_argument(
         '--log-graph-trace',
         action='store_true',
-        help="Turn on ir logging to display the graph's ops.")
+        help="Turn on ir logging to display the graph\'s ops.")
     parser.add_argument(
         "--test-mode",
         choices=['training', 'inference'],
-        help="Output extra performance information, specify wit"
-        "h either 'training' or 'inference'",
+        help="Output extra performance information, specify with"
+        " either 'training' or 'inference'",
     )
     parser.add_argument(
         "--syn-data-type",
         choices=['random_normal', 'zeros'],
         default="off",
         help="Specify to use synthetic data with either 'random"
-             "_normal' or 'zeros' (no host to IPU IO done in this mode)",
+             "_normal' or 'zeros' (no host to IPU IO is done in this mode)",
     )
     opts = parser.parse_args()
+
+    if((opts.batch_size % opts.replication_factor) != 0):
+        raise Exception("Invalid Argument : Batch size ({}) must be a "
+                        "multiple of replication factor ({})"
+                        .format(opts.batch_size, opts.replication_factor))
+
+    if((opts.num_ipus % opts.replication_factor) != 0):
+        raise Exception("Invalid Argument : Number of IPUs ({}) must be a "
+                        "multiple of replication factor ({})"
+                        .format(opts.num_ipus, opts.replication_factor))
+    if opts.pipeline and opts.num_ipus <= opts.replication_factor:
+        raise Exception("Invalid Argument: Pipelining is only valid if "
+                        "number of IPUs ({}) > replication factor ({})"
+                        .format(opts.num_ipus, opts.replication_factor))
+    if opts.pipeline and opts.num_ipus != 2 * opts.replication_factor:
+        raise Exception("Invalid Argument: For this model, pipelining is only "
+                        "valid if each replica contains two IPUs.")
+    # The number of samples that the device will process currently
+    opts.samples_per_device = (int)(opts.batch_size / opts.replication_factor)
+
 
     # Set logging
     popart.getLogger('ir').setLevel('TRACE' if opts.log_graph_trace else 'CRITICAL')

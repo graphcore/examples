@@ -1,7 +1,7 @@
 # Copyright 2019 Graphcore Ltd.
 """Networks for VAE implementation in VCD paper"""
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 def encoder(X_input, Z_dim, dtype, n_hidden=200):

@@ -18,7 +18,7 @@ from .squad_utils import read_squad_examples, convert_examples_to_features, RawR
 logger = getLogger(__name__)
 
 
-def generate_synthetic_features(sequence_length, vocab_length, batch_size):
+def generate_random_features(sequence_length, vocab_length, batch_size):
     features = []
     for i in range(batch_size):
         features.append(InputFeatures(
@@ -287,7 +287,7 @@ def get_bert_dataset(tensor_shapes,
                      overwrite_cache=False,
                      no_drop_remainder=False,
                      evaluate_script=None,
-                     synthetic=False,
+                     generated_data=False,
                      do_lower_case=False,
                      max_pipeline_stage=1,
                      seed=0,
@@ -301,12 +301,12 @@ def get_bert_dataset(tensor_shapes,
 
     pad = 0
 
-    if synthetic:
-        features = generate_synthetic_features(
+    if generated_data:
+        features = generate_random_features(
             sequence_length, vocab_length, samples_per_step)
         examples = None
         output_dir = None
-        logger.info("Generating synthetic dataset")
+        logger.info("Generating random dataset")
     else:
         features, examples = load_or_cache_features(
             input_file,
@@ -316,7 +316,7 @@ def get_bert_dataset(tensor_shapes,
             overwrite_cache=overwrite_cache,
             do_lower_case=do_lower_case)
 
-    if no_drop_remainder and not synthetic:
+    if no_drop_remainder and not generated_data:
         # dataset will be padded to be divisible by batch-size and samples-per-step
         pad = int(np.ceil(len(features)/div_factor)) * div_factor - len(features)
 
@@ -329,7 +329,7 @@ def get_bert_dataset(tensor_shapes,
         sampler = ShuffledSampler(features, seed, pad)
     else:
         sampler = SequentialSampler(features, pad)
-    if no_drop_remainder and not synthetic:
+    if no_drop_remainder and not generated_data:
         logger.info(f"no_drop_remainder: Dataset padded by {pad} samples")
 
     dl = SquadDataLoader(

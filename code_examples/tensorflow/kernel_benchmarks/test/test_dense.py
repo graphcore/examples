@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import SubProcessChecker
+from examples_tests.test_util import SubProcessChecker
 
 working_path = Path(__file__).parent.parent
 
@@ -44,5 +44,12 @@ class TestTensorFlowDenseBenchmarks(SubProcessChecker):
     @pytest.mark.ipus(2)
     def test_replicas(self):
         self.run_command("python3 dense.py --replicas 2",
+                         working_path,
+                         [r"(\w+.\w+) items/sec"])
+
+    @pytest.mark.category1
+    @pytest.mark.ipus(1)
+    def test_matmul_options(self):
+        self.run_command("python3 dense.py --matmul-options={\"partialsType\":\"half\"} --size 128 --batch-size 4",
                          working_path,
                          [r"(\w+.\w+) items/sec"])

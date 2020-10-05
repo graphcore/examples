@@ -35,6 +35,7 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 | MCMC methods example | [code](code_examples/tensorflow/mcmc) |
 | CosmoFlow example using 3D Convolutions | [code](code_examples/tensorflow/cosmoflow) |
 | Grouped convolution kernel benchmarks | [code](code_examples/tensorflow/kernel_benchmarks) |
+| Click through rate: DIN (Deep Interest Network) | [code](applications/tensorflow/click_through_rate) |
 
 ### Application examples
 
@@ -54,5 +55,5 @@ The `tutorials/` folder contains tutorials to help you get started using the Gra
 
 The `utils/` folder contains utilities libraries and scripts that are used across the other code examples. Currently this is split into:
 
-* `utils/tests` - Common Python helper functions for the repo's unit tests.
+* `utils/examples_tests` - Common Python helper functions for the repo's unit tests.
 * `utils/benchmarks` - Common Python helper functions for running benchmarks on the IPU in different frameworks.

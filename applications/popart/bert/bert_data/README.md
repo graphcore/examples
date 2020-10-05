@@ -29,7 +29,7 @@ The following files are found in the `bert_data/` folder:
 
 The sample text is in a form that is already suitable to create the pretraining data. Run the script as:
 
-`python3 create_pretraining_data.py --input-file path/to/sample_text.txt --output-file data/sample_text.bin --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 -- mask-tokens 20 --duplication-factor 6`
+`python3 create_pretraining_data.py --input-file path/to/sample_text.txt --output-file data/sample_text.bin --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 --mask-tokens 20 --duplication-factor 6`
 
 ## Wikipedia pre-training data
 
@@ -46,17 +46,15 @@ Use the `wiki_downloader.sh` script to download the latest wikipedia dump:
 This will download the latest wikipedia dump and place it into the folder passed as an argument.
 It is then extracted into a `wikidump.xml` file that can be found inside the same folder.
 
-#### **2)** **Clone the WikiExtractor git repository**
+#### **2)** **Install WikiExtractor **
 
-Clone the WikiExtractor git repository as follows:
-
-`git clone https://github.com/attardi/wikiextractor.git`
+'pip install wikiextractor'
 
 **3)** **Extract the data**
 
-Perform the extraction using `extract_wiki.sh` giving the path to the dump, the path to the destination folder, and the path to the WikiExtractor as arguments:
+Perform the extraction using `extract_wiki.sh` giving the path to the dump, and the path to the destination folder
 
-`./extract_wiki.sh /path/to/the/dump.xml /target_folder /path/to/Google's/WikiExtractor`
+`./extract_wiki.sh /path/to/the/dump.xml /target_folder 
 
 Inside the target folder there will be a directory called `AA/` that contains files named `wiki_00`, `wiki_01`...
 

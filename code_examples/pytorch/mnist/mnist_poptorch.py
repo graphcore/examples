@@ -64,8 +64,25 @@ class Network(nn.Module):
         return x
 
 
+class TrainingModelWithLoss(torch.nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        self.loss = torch.nn.CrossEntropyLoss()
+
+    def forward(self, args, loss_inputs=None):
+        output = self.model(args)
+        if loss_inputs is None:
+            return output
+        else:
+            loss = self.loss(output, loss_inputs)
+            return output, loss
+
+
 def accuracy(predictions, labels):
     _, ind = torch.max(predictions, 1)
+    # provide labels only for samples, where prediction is available (during the training, not every samples prediction is returned for efficiency reasons)
+    labels = labels[-predictions.size()[0]:]
     accuracy = torch.sum(torch.eq(ind, labels)).item() / labels.size()[0] * 100.0
     return accuracy
 
@@ -104,8 +121,9 @@ if __name__ == '__main__':
 
     training_data, test_data = get_mnist_data(opts)
     model = Network()
-
-    training_model = poptorch.trainingModel(model, opts.batches_per_step, loss=nn.CrossEntropyLoss(), optimizer=optim.SGD(model.parameters(), lr=opts.lr))
+    model_with_loss = TrainingModelWithLoss(model)
+    model_opts = poptorch.Options().deviceIterations(opts.batches_per_step)
+    training_model = poptorch.trainingModel(model_with_loss, model_opts, optimizer=optim.SGD(model.parameters(), lr=opts.lr))
 
     inference_model = poptorch.inferenceModel(model)
 

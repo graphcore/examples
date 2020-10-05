@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Callable, Union
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from get_weights import get_weights
 from tensorflow.core.framework import graph_pb2
 from tensorflow.tools.graph_transforms import TransformGraph
@@ -70,7 +70,7 @@ class InferenceNetwork(object):
         raise NotImplementedError
 
     # Every child class must over-ride this method.
-    def build_graph(self, config: Dict) -> [Union[tf.Graph, tf.compat.v1.GraphDef], List]:
+    def build_graph(self, config: Dict) -> [Union[tf.Graph, tf.GraphDef], List]:
         """Build network that takes image input and generates classifier output.
 
         Args:
@@ -96,9 +96,9 @@ class InferenceNetwork(object):
             saver = tf.train.Saver()
             saver.restore(sess, tf.train.latest_checkpoint(checkpoint_dir))
             logging.info(f'Successfully restored imagenet weights for {network_name} model.')
-            graph_def = tf.compat.v1.graph_util.convert_variables_to_constants(sess,
-                                                                               tf.get_default_graph().as_graph_def(),
-                                                                               output_node_names)
+            graph_def = tf.graph_util.convert_variables_to_constants(sess,
+                                                                     tf.get_default_graph().as_graph_def(),
+                                                                     output_node_names)
         return graph_def
 
     @staticmethod
@@ -115,7 +115,8 @@ class InferenceNetwork(object):
         """
         logging.info('Starting graph optimization.')
         # Remove identity ops in initializers to allow fusing batch norm with conv in the next line
-        optimized_graph_def = tf.compat.v1.graph_util.remove_training_nodes(frozen_graph_def)
+        optimized_graph_def = tf.graph_util.remove_training_nodes(
+            frozen_graph_def)
         optimized_graph_def = fold_batch_norms(optimized_graph_def)
         transforms = ['remove_nodes(op=Identity, op=CheckNumerics)', 'strip_unused_nodes',
                       'fold_constants(ignore_errors=true)']

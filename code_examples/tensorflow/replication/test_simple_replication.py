@@ -5,7 +5,7 @@ import pytest
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import run_python_script_helper
+from examples_tests.test_util import run_python_script_helper
 
 
 def run_simple_replication(**kwargs):

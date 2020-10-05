@@ -179,9 +179,9 @@ int main(int argc, char **argv) {
   engine.load(dev);
 
   // Connect up the data streams
-  engine.connectStream(dataIn, &data[0], &data[numberOfImages * imageSize]);
-  engine.connectStream(labelIn, &labels[0], &labels[numberOfImages]);
-  engine.connectStream(numCorrectOut, &hNumCorrect);
+  engine.connectStream("data", &data[0], &data[numberOfImages * imageSize]);
+  engine.connectStream("labels", &labels[0], &labels[numberOfImages]);
+  engine.connectStream("hostNumCorrect", &hNumCorrect);
 
   // Initialize the weights and biases
   std::vector<float> initW = createRandomInitializers(W.numElements());

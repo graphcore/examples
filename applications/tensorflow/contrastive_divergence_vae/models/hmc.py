@@ -2,7 +2,7 @@
 # coding=utf-8
 from functools import partial
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tensorflow_probability as tfp
 
 

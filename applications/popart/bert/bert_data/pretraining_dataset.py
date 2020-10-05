@@ -194,21 +194,21 @@ class CachedDataLoader(BinaryDataLoader):
             self.file_index = 0
 
 
-class SyntheticDataLoader(BinaryDataLoader):
+class GeneratedDataLoader(BinaryDataLoader):
     """
     Same as the BinaryDataLoader but generates random data instead of reading from input_files
-    :param synthetic_ranges: Iterable of the max value each element of a sample can be. See data_ranges for the default
+    :param generated_ranges: Iterable of the max value each element of a sample can be. See data_ranges for the default
     """
     def __init__(self,
                  *args,
-                 synthetic_ranges=None,
+                 generated_ranges=None,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        self.synthetic_ranges = synthetic_ranges
+        self.generated_ranges = generated_ranges
         self.len = 1
 
-        if self.synthetic_ranges is None:
-            raise RuntimeError("keyword argument 'synthetic_ranges' must not be None")
+        if self.generated_ranges is None:
+            raise RuntimeError("keyword argument 'generated_ranges' must not be None")
 
     def __iter__(self):
         self.data_index = 0
@@ -218,7 +218,7 @@ class SyntheticDataLoader(BinaryDataLoader):
         if self.data_index >= self.len:
             raise StopIteration
         items = []
-        for size, max_value in zip(self.sample_sizes, self.synthetic_ranges):
+        for size, max_value in zip(self.sample_sizes, self.generated_ranges):
             items.append(np.random.randint(0, max_value, [self.batch_size, size]))
         self.data_index += 1
         return items
@@ -271,10 +271,10 @@ def get_bert_dataset(tensor_shapes,
                      accumulation_factor=1,
                      duplication_factor=1,
                      shuffle=True,
-                     synthetic=False,
+                     generated_data=False,
                      epochs_to_cache=0,
                      start_data_at_epoch=0):
-    if len(input_files) == 0 and not synthetic:
+    if len(input_files) == 0 and not generated_data:
         raise ValueError("No input files were provided for the BERT dataset.")
     data_loader_args = dict(
         input_files=input_files,
@@ -284,9 +284,9 @@ def get_bert_dataset(tensor_shapes,
         start_data_at_epoch=start_data_at_epoch,
         shuffle=shuffle
     )
-    if synthetic:
-        dl = SyntheticDataLoader(**data_loader_args,
-                                 synthetic_ranges=data_ranges(sequence_length, mask_tokens, vocab_length))
+    if generated_data:
+        dl = GeneratedDataLoader(**data_loader_args,
+                                 generated_ranges=data_ranges(sequence_length, mask_tokens, vocab_length))
     elif epochs_to_cache > 0:
         dl = CachedDataLoader(**data_loader_args,
                               epochs_to_cache=epochs_to_cache)

@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
 
   // Connect output
   std::vector<float> hOut(t.numElements());
-  eng.connectStream(outStream, hOut.data(),
+  eng.connectStream("out", hOut.data(),
                     std::next(hOut.data(), hOut.size()));
 
   // Run the program multiple times.
@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
     if (previous != in) {
       std::cout << "Set input callback\n";
       std::unique_ptr<FillCallback> cb{new FillCallback(in, t.numElements())};
-      eng.connectStreamToCallback(inStream, std::move(cb));
+      eng.connectStreamToCallback("in", std::move(cb));
     }
 
     std::cout << "Running\n";

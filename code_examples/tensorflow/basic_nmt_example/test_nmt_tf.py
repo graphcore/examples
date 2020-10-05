@@ -4,18 +4,14 @@ import re
 import sys
 import unittest
 import pytest
-from statistics import mean
 
 import pexpect
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import (
+from examples_tests.test_util import (
     run_python_script_helper,
     run_test_helper,
-    get_minimum_with_tolerance,
-    get_maximum_with_tolerance,
-    check_data_exists,
     parse_results_with_regex,
 )
 
@@ -42,7 +38,7 @@ class TestTensorflowNmtSequenceModelling(unittest.TestCase):
             "--num-layers": 1,
             "--seed": 1984,
             "--sequence-length": 20,
-            "--batches-per-step": 100,
+            "--batches-per-step": 1000,
             "--iterations": 10,
         }
 
@@ -54,7 +50,7 @@ class TestTensorflowNmtSequenceModelling(unittest.TestCase):
         py_args = self.generic_arguments.copy()
         train_and_infer_helper(
             py_args,
-            last_measured_loss=14.1
+            loss_maximum=10
         )
 
     @pytest.mark.ipus(1)
@@ -66,7 +62,7 @@ class TestTensorflowNmtSequenceModelling(unittest.TestCase):
         py_args["--host-embeddings"] = ""
         train_and_infer_helper(
             py_args,
-            last_measured_loss=18.4,
+            loss_maximum=10,
             infer=False
         )
 
@@ -79,7 +75,7 @@ class TestTensorflowNmtSequenceModelling(unittest.TestCase):
         py_args["--bi"] = ""
         train_and_infer_helper(
             py_args,
-            last_measured_loss=20.3
+            loss_maximum=10
         )
 
     @pytest.mark.ipus(1)
@@ -91,7 +87,7 @@ class TestTensorflowNmtSequenceModelling(unittest.TestCase):
         py_args["--attention"] = "bahdanau"
         train_and_infer_helper(
             py_args,
-            last_measured_loss=24.0
+            loss_maximum=10
         )
 
     @pytest.mark.ipus(1)
@@ -128,7 +124,7 @@ def train_and_infer_helper(
     py_args,
     last_measured_train_time=None,
     last_measured_infer_time=None,
-    last_measured_loss=None,
+    loss_maximum=None,
     time_tolerances=0.6,
     infer=True,
 ):
@@ -146,7 +142,7 @@ def train_and_infer_helper(
             measured time to train the model
         last_measured_infer_time: float representing the previously
             measured time to perform inference on the model
-        last_measured_loss: float representing the previously measured
+        loss_maximum: float representing the previously measured
             final loss of the model in training
         time_tolerances:  float representing the percentage tolerance
             on the previously measured values to be asserted against
@@ -165,10 +161,7 @@ def train_and_infer_helper(
 
     average_loss = get_results(out)
 
-    if last_measured_loss:
-        loss_minimum = get_minimum_with_tolerance(last_measured_loss, 0.2)
-        loss_maximum = get_maximum_with_tolerance(last_measured_loss, 0.2)
-        assert average_loss >= loss_minimum
+    if loss_maximum:
         assert average_loss <= loss_maximum
 
     if infer:

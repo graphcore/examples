@@ -94,7 +94,7 @@ def parser_from_NamedTuple(parser, ntuple, args={}):
             for _t in (str, int):
                 if t == List[_t]:
                     kwargs["type"] = _t
-                    kwargs["nargs"] = '*'
+                    kwargs["nargs"] = '+'
                     break
                 if t == Optional[_t]:
                     kwargs["type"] = _t
@@ -178,7 +178,8 @@ def parse_bert_args(args_string=None):
         "attention_heads": "Set the number of heads in self attention",
         "inference": "Create a model for inference. Otherwise a trainable model is created and trained.",
         "num_layers": "Set the number of transformer layers",
-        "layers_per_ipu": "Set the number of layers on each IPU",
+        "layers_per_ipu": "Set the number of layers on each IPU."
+                          "If specified as more than one value, the sum of the values must equal num_layers.",
         "no_dropout": "Don't use dropout",
         "no_attn_dropout": "Don't use dropout on attention scores",
         "dropout_prob": "Set the dropout probability",
@@ -202,15 +203,20 @@ def parse_bert_args(args_string=None):
                               Note: this is different to using PopART's setSerializeMatMul as the matmul will still be a single PopART Op \
                               meaning other operations cannot be scheduled between the serialised steps. \
                               BERT uses setSerializeMatMul so VarUpdate can execute between steps thus freeing the required gradient memory",
-        "squeeze_model": "Try to use fewer IPUs by placing the input embedding and loss onto the \
-                            same IPUs as the first and last tranformer layers respectively",
+        "squeeze_model": "UNSUPPORTED: Please use '--encoder-start-ipu' to specify which ipu the first Encoder layer should be placed",
         "no_mask": "Don't apply padding masks to the attention scores",
         "projection_serialization_steps": "Split the final MLM projection into this many steps",
         "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on the encoder matmuls.",
         "update_embedding_dict": "Include the sparse update to the word Embedding_Dict.",
         "no_cls_layer": "Don't include the CLS layer in pretraining. This layer comes after the encoders but before the projection for the MLM loss.",
-        "projection_bias": "Include bias to the projection layer."
+        "projection_bias": "Include bias to the projection layer.",
+        "embedding_serialization_vocab_steps": "Factor by which embedding layer is serialized, only supported in pingpong mode.",
+        "num_attention_splits": "Factor by which attention layer is serialized, only supported in pingpong mode.",
+        "num_ffwd_splits": "Factor by which feedforward layer is serialized, only supported in pingpong mode.",
+        "split_transformer": "Place attention and feedforward layers in separate pingpong scope."
     })
+    group.add_argument("--enable-half-partials", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Enable half partials for matmuls and convolutions globally.")
     group.add_argument("--use-ipu-model", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Target the IpuModel (acquires a real IPU device by default). \
                              WARNING: The custom ops do not have validated cycle estimates \
@@ -318,11 +324,15 @@ def parse_bert_args(args_string=None):
                        help="Regenerates the SQuAD dataset instead of loading the cache if available")
     group.add_argument("--no-drop-remainder", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Adjust the batches_per_step to perfectly divide the dataset so no data is missed. Only available for SQuAD.")
+    group.add_argument("--generated-data", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Generate a random dataset on the host machine. Creates enough data for one step per epoch. "
+                            "Increase --epochs for multiple performance measurements.")
     group.add_argument("--synthetic-data", type=str_to_bool, nargs="?", const=True, default=False,
-                       help="Generate a synthetic dataset. Creates enough data for one step per epoch. "
+                       help="Generate a synthetic dataset on the IPU device. Creates enough data for one step per epoch. "
+                            "Note that using this option will remove all Host I/O from the model. "
                             "Increase --epochs for multiple perfomance measurements.")
-    group.add_argument("--synthetic-data-type", type=str, choices=['random_normal', 'zeros'],
-                       help="Specify to use synthetic data with either 'random_normal' or 'zeros'. Note that using this option will remove all Host I/O from the model")
+    group.add_argument("--synthetic-data-initializer", type=str, choices=['random_normal', 'zeros'], default="random_normal",
+                       help="Specify to the synthetic data initializer with either 'random_normal' or 'zeros'. ")
     group.add_argument("--duplication-factor", type=int, default=1,
                        help="Set the number of times the dataset has been duplicated. This reduces the samples per epoch to"
                             " (# of samples in input-files)/duplication-factor")
@@ -336,7 +346,7 @@ def parse_bert_args(args_string=None):
     emode.add_argument("--pipeline", type=str_to_bool, nargs="?", const=True, default=None,
                        help="Build and execute the graph with Pipeline annotations.")
     emode.add_argument("--ping-pong", type=str_to_bool, nargs="?", const=True, default=None,
-                       help="Build and execute the graph with PingPong annotations.")
+                       help="Build and execute the graph with ExecutionPhase annotations.")
 
     group = parser.add_argument_group("Execution Config")
     group.add_argument("--batches-per-step", type=int, default=250,
@@ -408,6 +418,12 @@ def parse_bert_args(args_string=None):
     group.add_argument("--config", type=str,
                        help="Path to preset config")
 
+    group.add_argument('--internal-exchange-optimisation-target',
+                       type=str,
+                       default=None,
+                       choices=["balanced", "cycles", "memory"],
+                       help="""The optimisation approach for internal exchanges.""")
+
     defaults = dict(execution_mode="DEFAULT")
     if pargs.config is not None:
         with open(pargs.config, "r") as f:
@@ -425,6 +441,8 @@ def parse_bert_args(args_string=None):
     # Invalidate incompatible options
     if args.no_drop_remainder and args.task != "SQUAD":
         raise RuntimeError(f"--no-drop-remainder is only compatible with SQUAD and not with {args.task}, aborting")
+    if args.synthetic_data and args.generated_data:
+        raise RuntimeError("choose either --synthetic-data or --generated-data, not both. Aborting")
 
     # Append datetime string to checkpoints path and create the subdirectory
     args.checkpoint_dir = os.path.join(args.checkpoint_dir,
@@ -438,10 +456,10 @@ def set_execution_mode(args):
     if args.pipeline:
         args.execution_mode = "PIPELINE"
     elif args.ping_pong:
-        args.execution_mode = "PINGPONG"
+        args.execution_mode = "PHASED"
     elif args.virtual_graph or \
         args.execution_mode == "PIPELINE" and args.pipeline is False or \
-            args.execution_mode == "PINGPONG" and args.ping_pong is False:
+            args.execution_mode == "PHASED" and args.ping_pong is False:
         args.execution_mode = "DEFAULT"
     return args
 

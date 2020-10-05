@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import SubProcessChecker
+from examples_tests.test_util import SubProcessChecker
 
 working_path = Path(__file__).parent.parent
 
@@ -28,7 +28,7 @@ class TestTensorFlowLSTMBenchmarks(SubProcessChecker):
     @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_inference_b256_s25_h1024(self):
-        self.run_command("python3 lstm.py --batch-size 256 --timesteps 25 --hidden-size 1024 --use-data --popnn",
+        self.run_command("python3 lstm.py --batch-size 256 --timesteps 25 --hidden-size 1024 --use-generated-data --popnn",
                          working_path,
                          [r"(\w+.\w+) items/sec"])
 
@@ -56,7 +56,7 @@ class TestTensorFlowLSTMBenchmarks(SubProcessChecker):
     @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_train_b64_s25_h512(self):
-        self.run_command("python3 lstm.py --batch-size 64 --timesteps 25 --hidden-size 512 --train --use-data",
+        self.run_command("python3 lstm.py --batch-size 64 --timesteps 25 --hidden-size 512 --train --use-generated-data",
                          working_path,
                          [r"(\w+.\w+) items/sec"])
 

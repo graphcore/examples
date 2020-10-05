@@ -320,8 +320,6 @@ auto main(int argc, char **argv) -> int {
 
   builder->addOutputTensor(outputs[0]);
 
-  auto proto = builder->getModelProto();
-
   // step 2 : add additional information for training, currently not part of
   // the ONNX specification:
   // 2.1 an Optimiser.
@@ -329,7 +327,9 @@ auto main(int argc, char **argv) -> int {
 
   // 2.2 Loss(es).
   // 2.2.1 l1 loss : 0.1 * |output|_1
-  auto loss = builder->aiGraphcoreOpset1.l1loss({outputs[0]}, 0.1f, popart::ReductionType::Sum, "l1LossVal");
+  auto loss = builder->aiGraphcoreOpset1().l1loss({outputs[0]}, 0.1f, popart::ReductionType::Sum, "l1LossVal");
+
+  auto proto = builder->getModelProto();
 
   // 2.3 Data streaming.
   // We will stream

@@ -48,6 +48,7 @@ DATASET_CONSTANTS = {
 
 
 def data(opts, is_training=True):
+    from .imagenet_dataset import ImageNetData
     batch_size = opts["batch_size"]
     dtypes = opts["precision"].split('.')
     datatype = tf.float16 if dtypes[0] == '16' else tf.float32
@@ -71,20 +72,26 @@ def data(opts, is_training=True):
 
         cycle_length = 1 if opts['seed_specified'] else 4
         if opts["dataset"] == 'imagenet':
-            preprocess_fn = partial(imagenet_preprocess, is_training=training_preprocessing,
-                                    image_size=opts["image_size"],
-                                    dtype=datatype, seed=opts['seed'],
-                                    full_normalisation=opts["normalise_input"])
-            dataset_fn = tf.data.TFRecordDataset
-            if is_training and opts['distributed']:
-                # Shuffle after sharding
-                dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
-                dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
-                dataset = dataset.shuffle(ceil(len(filenames) / opts['distributed_worker_count']), seed=opts['seed'])
+            if not opts['standard_imagenet'] and not opts['distributed']:
+                dataset = ImageNetData(opts, filenames=filenames).get_dataset(batch_size=batch_size,
+                                                                              is_training=training_preprocessing,
+                                                                              datatype=datatype)
+                return dataset
             else:
-                dataset = tf.data.Dataset.list_files(filenames, shuffle=is_training, seed=opts['seed'])
-            dataset = dataset.interleave(dataset_fn, cycle_length=cycle_length,
-                                         block_length=cycle_length, num_parallel_calls=cycle_length)
+                preprocess_fn = partial(imagenet_preprocess, is_training=training_preprocessing,
+                                        image_size=opts["image_size"],
+                                        dtype=datatype, seed=opts['seed'],
+                                        full_normalisation=None if opts['no_hostside_norm'] else opts['normalise_input'],)
+                dataset_fn = tf.data.TFRecordDataset
+                if is_training and opts['distributed']:
+                    # Shuffle after sharding
+                    dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
+                    dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
+                    dataset = dataset.shuffle(ceil(len(filenames) / opts['distributed_worker_count']), seed=opts['seed'])
+                else:
+                    dataset = tf.data.Dataset.list_files(filenames, shuffle=is_training, seed=opts['seed'])
+                dataset = dataset.interleave(dataset_fn, cycle_length=cycle_length,
+                                             block_length=cycle_length, num_parallel_calls=cycle_length)
         elif 'cifar' in opts["dataset"]:
             preprocess_fn = partial(cifar_preprocess, is_training=training_preprocessing, dtype=datatype,
                                     dataset=opts['dataset'], seed=opts['seed'])
@@ -95,13 +102,15 @@ def data(opts, is_training=True):
             raise ValueError("Unknown Dataset {}".format(opts["dataset"]))
 
         if is_training:
-            dataset = dataset.cache()
+            if not opts['no_dataset_cache']:
+                dataset = dataset.cache()
             shuffle_buffer = DATASET_CONSTANTS[opts['dataset']]['SHUFFLE_BUFFER']
             dataset = dataset.shuffle(shuffle_buffer, seed=opts['seed'])
         else:
             dataset = dataset.take(opts["validation_batches_per_step"] *
                                    opts["validation_iterations"]*opts["validation_total_batch_size"])
-            dataset = dataset.cache()
+            if not opts['no_dataset_cache']:
+                dataset = dataset.cache()
         dataset = dataset.repeat()
 
         # We can't get repeatable results with parallel calls
@@ -198,7 +207,8 @@ def cifar_preprocess(raw_record, is_training, dtype, dataset, seed):
 def imagenet_preprocess(raw_record, is_training, dtype, seed, image_size, full_normalisation):
     image, label = imagenet_preprocessing.parse_record(raw_record, is_training, dtype,
                                                        image_size,
-                                                       seed, full_normalisation=full_normalisation)
+                                                       full_normalisation,
+                                                       seed,)
 
     label -= 1
 
@@ -218,6 +228,8 @@ def add_arguments(parser):
                        help="Number of images to process in parallel")
     group.add_argument('--synthetic-data', action="store_true",
                        help="Use synthetic data")
+    group.add_argument('--no-dataset-cache', action="store_true",
+                       help="Don't cache dataset to host RAM")
     group.add_argument('--normalise-input', action="store_true",
                        help='''Normalise inputs to zero mean and unit variance.
                            Default approach just translates [0, 255] image to zero mean. (ImageNet only)''')
@@ -225,6 +237,10 @@ def add_arguments(parser):
                        help="Size of image (ImageNet only)")
     group.add_argument('--train-with-valid-preprocessing', action="store_true",
                        help="Use validation image preprocessing when training")
+    group.add_argument('--no-hostside-norm', action='store_true',
+                       help="Moves ImageNet image normalisation to the IPU")
+    group.add_argument('--standard-imagenet', action='store_true',
+                       help='Use the standard ImageNet preprocessing pipeline.')
     return parser
 
 

@@ -3,7 +3,7 @@ import os
 import pytest
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import SubProcessChecker
+from examples_tests.test_util import SubProcessChecker
 from pathlib import Path
 
 

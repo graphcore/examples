@@ -1,4 +1,4 @@
-numpy
+numpy>=1.19
 pybind11
 unidecode
 requests
@@ -7,3 +7,5 @@ matplotlib
 pandas
 seaborn
 pytest
+scipy
+tensorboard

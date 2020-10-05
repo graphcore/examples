@@ -6,21 +6,20 @@ from functools import partial
 from pathlib import Path
 from typing import Dict
 
-import tensorflow as tf
-
+import tensorflow.compat.v1 as tf
 # Add models module to path
 models_path = Path(Path(__file__).absolute().parent.parent)
 sys.path.append(str(models_path))
-from models.official_keras.densenet_base import DenseNet
-from models.official_keras.inceptionv1_base import InceptionV1
-from models.official_keras.inceptionv3_base import InceptionV3
-from models.official_keras.mobilenet_base import MobileNet
-from models.official_keras.mobilenetv2_base import MobileNetV2
-from models.official_keras.nasnet_mobile_base import NASNetMobile
-from models.official_keras.resnet50_base import ResNet50
-from models.official_keras.xception_base import Xception
+from models.official_keras.densenet_base import DenseNet  # noqa
+from models.official_keras.inceptionv1_base import InceptionV1  # noqa
+from models.official_keras.inceptionv3_base import InceptionV3  # noqa
+from models.official_keras.mobilenet_base import MobileNet  # noqa
+from models.official_keras.mobilenetv2_base import MobileNetV2  # noqa
+from models.official_keras.nasnet_mobile_base import NASNetMobile  # noqa
+from models.official_keras.resnet50_base import ResNet50  # noqa
+from models.official_keras.xception_base import Xception  # noqa
 
-from inference_network_base import InferenceNetwork
+from inference_network_base import InferenceNetwork  # noqa
 
 
 class DenseNet121Infer(InferenceNetwork):
@@ -194,13 +193,13 @@ class EfficientNetInfer(InferenceNetwork):
             tar.extractall()
         graph = tf.Graph()
         with tf.Session(graph=graph) as sess:
-            tf.compat.v1.saved_model.loader.load(
+            tf.saved_model.loader.load(
                 export_dir=f'{config["model"]}/saved_model',
-                sess=sess, tags=[tf.compat.v1.saved_model.tag_constants.SERVING])
+                sess=sess, tags=[tf.saved_model.tag_constants.SERVING])
             graph_def = tf.get_default_graph().as_graph_def()
-            frozen_graph_def = tf.compat.v1.graph_util.convert_variables_to_constants(sess,
-                                                                                      graph_def,
-                                                                                      ["Softmax"])
+            frozen_graph_def = tf.graph_util.convert_variables_to_constants(sess,
+                                                                            graph_def,
+                                                                            ["Softmax"])
         return frozen_graph_def, ["Softmax"]
 
 

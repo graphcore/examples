@@ -10,7 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from test_common import run_train, run_restore, cifar10_data_dir
-from tests.test_util import SubProcessChecker
+from examples_tests.test_util import SubProcessChecker
 
 working_path = Path(__file__).parent.parent
 

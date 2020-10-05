@@ -4,7 +4,7 @@ import unittest
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import run_python_script_helper, run_test_helper, \
+from examples_tests.test_util import run_python_script_helper, run_test_helper, \
     parse_results_for_accuracy
 
 

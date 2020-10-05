@@ -27,9 +27,8 @@ def create_dataset():
     return train_ds.repeat()
 
 
-# The model.  Because this model does not have a specific shape for its inputs
-# it will be constructed when it is first called (in the `train` function). So
-# it does not need to be an IPU device targeted model.
+# Create the model using the IPU-specific Sequential class instead of the
+# standard tf.keras.Sequential class
 def create_model():
     model = ipu.keras.Sequential([
         keras.layers.Flatten(),

@@ -4,7 +4,9 @@ import tensorflow as tf
 from tensorflow.python import ipu
 
 from tensorflow.python.ipu.keras.layers import Embedding, LSTM
+from tensorflow.python.keras.layers import Concatenate
 from tensorflow.python.keras.layers import Dense
+from tensorflow.python.keras.layers import Input
 from tensorflow.python.keras.datasets import imdb
 from tensorflow.python.keras.preprocessing import sequence
 from tensorflow.python.keras.optimizer_v2.adam import Adam
@@ -12,10 +14,9 @@ from tensorflow.python.keras.optimizer_v2.adam import Adam
 if tf.__version__[0] != '2':
     raise ImportError("TensorFlow 2 is required for this example")
 
-
 max_features = 20000
 minibatch_size = 32
-pipeline_depth = 16
+gradient_accumulation_count = 16
 
 
 # Define the dataset.
@@ -33,11 +34,18 @@ def get_dataset():
 
 # Define the model.
 def get_model():
-    return ipu.keras.PipelinedModel(
-        [[Embedding(max_features, 128)],
-         [LSTM(128, dropout=0.2),
-          Dense(1, activation='sigmoid')]],
-        pipeline_depth=pipeline_depth)
+    input_layer = Input(shape=(80), dtype=tf.int32, batch_size=minibatch_size)
+
+    with ipu.keras.PipelineStage(0):
+        x = Embedding(max_features, 128)(input_layer)
+
+    with ipu.keras.PipelineStage(1):
+        x = LSTM(128, dropout=0.2)(x)
+        x = Dense(1, activation='sigmoid')(x)
+
+    return ipu.keras.PipelineModel(input_layer,
+                                   x,
+                                   gradient_accumulation_count=gradient_accumulation_count)
 
 
 def main():
@@ -52,7 +60,7 @@ def main():
 
         model = get_model()
 
-        # The effective batch size is minibatch_size x pipeline_depth, so choose LR
+        # The effective batch size is minibatch_size x gradient_accumulation_count, so choose LR
         # appropriately.
         model.compile(loss='binary_crossentropy', optimizer=Adam(0.005))
         model.fit(get_dataset(), steps_per_epoch=768, epochs=2)

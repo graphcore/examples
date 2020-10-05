@@ -1,7 +1,8 @@
 # Copyright 2019 Graphcore Ltd.
 from typing import Any, List, Optional, Tuple, Union
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+from tensorflow import contrib
 from tensorflow.python.ipu.ops import normalization_ops
 from tensorflow_core.python.keras.backend import unique_object_name
 
@@ -31,7 +32,7 @@ def conv(input_tensor: tf.Tensor, kernel_size: Union[int, Tuple[int, int]], filt
         w_shape = [kernel_size, kernel_size, filters_in, filters_out]
     else:
         w_shape = kernel_size + (filters_in, filters_out)
-    w_init = tf.contrib.layers.xavier_initializer(dtype=dtype)
+    w_init = contrib.layers.xavier_initializer(dtype=dtype)
     if name is None:
         name = unique_object_name("conv2d", zero_based=True)
 
@@ -232,7 +233,7 @@ def fully_connected(input_tensor: tf.Tensor, num_outputs: int, dtype: Optional[A
         A 2-D Tensor computing matmul(x, weights) + biases, dimensions [batch, num_outputs]
     """
     num_inputs = input_tensor.get_shape()[1]
-    w_init = tf.contrib.layers.xavier_initializer(dtype=dtype)
+    w_init = contrib.layers.xavier_initializer(dtype=dtype)
     b_init = tf.constant_initializer(0.0, dtype=dtype)
 
     with tf.variable_scope(name):
@@ -380,7 +381,7 @@ def separable_conv(input_tensor: tf.Tensor, kernel_size: Union[int, Tuple[int, i
         depthwise_kernel_shape = [kernel_size, kernel_size, filters_in, 1]
     else:
         depthwise_kernel_shape = kernel_size + (filters_in, 1)
-    w_init = tf.contrib.layers.xavier_initializer(dtype=dtype)
+    w_init = contrib.layers.xavier_initializer(dtype=dtype)
 
     pointwise_kernel_shape = [1, 1, filters_in, filters_out]
 
@@ -435,7 +436,7 @@ def depthwise_conv(input_tensor: tf.Tensor, kernel_size: Union[int, Tuple[int, i
         depthwise_kernel_shape = [kernel_size, kernel_size, filters_in, 1]
     else:
         depthwise_kernel_shape = kernel_size + (filters_in, 1)
-    w_init = tf.contrib.layers.xavier_initializer(dtype=dtype)
+    w_init = contrib.layers.xavier_initializer(dtype=dtype)
 
     name_scope = tf.get_default_graph().get_name_scope()
     if name_scope not in ["", None]:

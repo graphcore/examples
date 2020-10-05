@@ -177,7 +177,6 @@ def get_options(opts, training=True):
     if opts.replication_factor > 1:
         options.enableReplicatedGraphs = True
         options.replicatedGraphCount = opts.replication_factor
-        options.enablePrefetchDatastreams = False
 
     if opts.gradient_accumulation_factor > 1:
         if training:
@@ -186,6 +185,11 @@ def get_options(opts, training=True):
 
     # Don't pull the accumulation tensors off the device
     options.disableGradAccumulationTensorStreams = True
+
+    # Use half-partials (fp16) for convolutions and MatMuls
+    if opts.half_partials:
+        options.convolutionOptions = {'partialsType': 'half'}
+        options.partialsTypeMatMuls = "half"
 
     # Enable recomputation
     if opts.recompute:
@@ -503,9 +507,12 @@ if __name__ == '__main__':
     group.add_argument(
         '--fp-exceptions', action="store_true", default=False,
         help="Enable floating point (FP) exceptions. This halts execution and prints debugging output when an FP exception is encountered.")
+    group.add_argument(
+        '--half-partials', action="store_true", default=False,
+        help="Use half-precision (fp16) partials in convolution and MatMul operations.")
+
     # -------------- TRAINING ------------------
     group = parser.add_argument_group('Training')
-
     group.add_argument(
         '--base-learning-rate', type=int, default=-6,
         help="Base learning rate exponent (2**N). blr = lr /  bs")
@@ -593,8 +600,7 @@ if __name__ == '__main__':
     log_dir_components = [timestamp, str(args.size), str(args.log_dir_string)]
     log_path = str(args.log_dir)
 
-    if not os.path.exists(log_path):
-        os.mkdir(log_path)
+    os.makedirs(log_path, exist_ok=True)
 
     for component in log_dir_components:
         path = os.path.join(log_path, component)
@@ -610,7 +616,8 @@ if __name__ == '__main__':
                " Precision {precision}\n"
                " Num Workers {num_workers}\n"
                " Stochastic Rounding {prng}\n"
-               " Floating Point Exceptions {fp_exceptions}\n\n"
+               " Floating Point Exceptions {fp_exceptions}\n"
+               " Convolutions and MatMuls Use Half-Precision Partials: {half_partials}\n\n"
                " Batch Size {batch_size}.\n"
                " Replication Factor {replication_factor}.\n"
                " Gradient Accumulation Factor {gradient_accumulation_factor}.\n"

@@ -4,7 +4,7 @@ Training CNNs on Graphcore IPUs.
 
 See the README and the --help option for more information.
 """
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import os
 import re
 import time
@@ -30,6 +30,7 @@ from tensorflow.python.ipu.ops import pipelining_ops
 from ipu_optimizer import IPUOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope
 import Datasets.data as dataset
+from Datasets import imagenet_dataset
 from weight_avg import average_ckpts, save_ckpt
 DATASET_CONSTANTS = dataset.DATASET_CONSTANTS
 
@@ -112,6 +113,9 @@ def basic_training_step(image, label, model, opts, learning_rate):
     """
     A basic training step that will work on all hardware
     """
+    if opts['no_hostside_norm']:
+        image = imagenet_dataset.accelerator_side_preprocessing(image, opts=opts)
+
     logits = model(opts, training=True, image=image)
     loss, cross_entropy, accuracy = calculate_loss(logits, label, opts)
 
@@ -127,7 +131,10 @@ def basic_training_step(image, label, model, opts, learning_rate):
 
 def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, iterations_per_step=1):
 
-    def first_stage(learning_rate, image, label,  pipeline_stage=None):
+    def first_stage(learning_rate, image, label,  pipeline_stage=None, idx=None):
+        if opts['no_hostside_norm'] and idx == 0:
+            image = imagenet_dataset.accelerator_side_preprocessing(image, opts=opts)
+
         return learning_rate, pipeline_stage(image), label,
 
     def final_stage(learning_rate, x, label,  pipeline_stage=None):
@@ -136,7 +143,7 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
         return loss, cross_entropy, accuracy, learning_rate / opts["lr_scale"]
 
     model_stages = model(opts)
-    computational_stages = [partial(first_stage, pipeline_stage=model_stages[x]) for x in range(len(model_stages) - 1)]
+    computational_stages = [partial(first_stage, pipeline_stage=model_stages[idx], idx=idx) for idx in range(len(model_stages) - 1)]
     computational_stages.append(partial(final_stage, pipeline_stage=model_stages[-1]))
 
     def optimizer_function(loss, _, __, lr):
@@ -295,11 +302,16 @@ def training_graph(model, opts, iterations_per_step=1):
                              number_of_replicas=opts['replicas'],
                              max_cross_replica_buffer_size=opts["max_cross_replica_buffer_size"],
                              fp_exceptions=opts["fp_exceptions"],
+                             half_partials=opts["enable_half_partials"],
+                             conv_dithering=opts["enable_conv_dithering"],
                              xla_recompute=opts["xla_recompute"],
                              seed=opts["seed"],
                              profile=opts['profile'],
                              availableMemoryProportion=globalAMP,
-                             stable_norm=opts["stable_norm"])
+                             stable_norm=opts["stable_norm"],
+                             internalExchangeOptimisationTarget=opts[
+                                 "internal_exchange_optimisation_target"
+                             ])
 
     ipu.utils.configure_ipu_system(ipu_options)
     train_sess = tf.Session(graph=train_graph, config=sess_config, target=sess_target)
@@ -355,11 +367,6 @@ def train_process(model, LR_Class, opts):
     train.session.run(train.init)
     train.session.run(train.iterator.initializer)
 
-    # -------------- BUILD VALIDATION GRAPH ----------------
-
-    if opts['validation']:
-        valid = validation.initialise_validation(model, opts)
-
     # -------------- SAVE AND RESTORE --------------
     if opts.get('init_path'):
         train.saver.restore(train.session, opts['init_path'])
@@ -376,7 +383,7 @@ def train_process(model, LR_Class, opts):
         latest_checkpoint = filenames[-1]
         logging.print_to_file_and_screen("Restoring training from latest checkpoint: {}".format(latest_checkpoint), opts)
         ckpt_pattern = re.compile(".*ckpt-([0-9]+)$")
-        i = int(ckpt_pattern.match(latest_checkpoint).groups()[0]) + 1
+        i = int(ckpt_pattern.match(latest_checkpoint).groups()[0])
         train.saver.restore(train.session, latest_checkpoint)
         epoch = float(opts["total_batch_size"] * (i + iterations_per_step)) / DATASET_CONSTANTS[opts['dataset']][
             'NUM_IMAGES']
@@ -493,8 +500,13 @@ def train_process(model, LR_Class, opts):
                 save_ckpt(V, ckpts[-1][3], filename)
                 validation_points.append((final_iteration, final_epoch, False, filename))
 
-    # ------------ RUN VALIDATION ------------
+
+    # ------------ VALIDATION ------------
     if 'validation_points' in locals() and opts['validation']:
+        # -------------- BUILD VALIDATION GRAPH ----------------
+        valid = validation.initialise_validation(model, opts)
+
+        # ------------ RUN VALIDATION ------------
         for iteration, epoch, first_run, filepath in validation_points:
             validation.validation_run(valid, filepath, iteration, epoch, first_run, opts)
 
@@ -577,7 +589,6 @@ def add_training_arguments(parser):
                           help="Number of checkpoints to average over")
     tr_group.add_argument('--weight-avg-exp', nargs='+', type=float, default=None,
                           help="Decay factor for averaging weights")
-
     return parser
 
 
@@ -628,6 +639,8 @@ def add_ipu_arguments(parser):
     group = parser.add_argument_group('IPU')
     group.add_argument('--precision', type=str, default="16.16", choices=["16.16", "16.32", "32.32"],
                        help="Precision of Ops(weights/activations/gradients) and Master data types: 16.16, 16.32, 32.32")
+    group.add_argument('--enable-half-partials', action="store_true", default=False,
+                       help="Use half (fp16) partials for both convolutions and matmuls")
     group.add_argument('--no-stochastic-rounding', action="store_true",
                        help="Disable Stochastic Rounding")
     group.add_argument('--batches-per-step', type=int, default=1000,
@@ -651,7 +664,11 @@ def add_ipu_arguments(parser):
                             "to reduce memory usage.")
     group.add_argument('--disable-variable-offloading', action="store_true",
                        help="Disable offloading of variables to remote memory. This may increase live memory usage")
-
+    group.add_argument('--enable-conv-dithering', action="store_true", default=False,
+                       help="Enable dithering of the convolution start tile to improve tile memory balance")
+    group.add_argument('--internal-exchange-optimisation-target', type=str, default=None,
+                       choices=["balanced", "cycles", "memory"],
+                       help="""The optimisation approach for internal exchanges.""")
     return parser
 
 
@@ -696,18 +713,22 @@ def set_ipu_defaults(opts):
     if opts['seed']:
         # Seed the various random sources
         seed = int(opts['seed'])
-        opts['seed_specified'] = opts['seed'] is not None
-        random.seed(seed)
-        # Set other seeds to different values for extra safety
-        tf.set_random_seed(random.randint(0, 2**32 - 1))
-        np.random.seed(random.randint(0, 2**32 - 1))
-        reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
+        opts['seed_specified'] = True
+        set_seeds(seed)
         opts['seed'] = seed
     else:
         opts['seed_specified'] = False
 
     opts['summary_str'] += (' {hostname}\n'
                             ' {datetime}\n')
+
+
+def set_seeds(seed):
+    random.seed(seed)
+    # Set other seeds to different values for extra safety
+    tf.set_random_seed(random.randint(0, 2**32 - 1))
+    np.random.seed(random.randint(0, 2**32 - 1))
+    reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
 
 
 def create_parser(model, lr_schedule, parser):

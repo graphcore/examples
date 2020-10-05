@@ -2,19 +2,19 @@
 import sys
 from pathlib import Path
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.python.ipu import utils
 
 # Add model module to path
 models_path = Path(Path(__file__).absolute().parent.parent)
 sys.path.append(str(models_path))
-from models.resnet import TensorflowResNet
+from models.resnet import TensorflowResNet  # noqa
 
 # Add utils module to path
 bench_path = Path(Path(__file__).absolute().parent.parent.parent.parent.parent,
                   'utils')
 sys.path.append(str(bench_path))
-from benchmarks.tensorflow.benchmark import Benchmark, parse_opts, run
+from benchmarks.tensorflow.benchmark import Benchmark, parse_opts, run  # noqa
 
 
 class OptimizedResNet(TensorflowResNet):

@@ -29,7 +29,7 @@ def run(benchmark, opts):
 
     # Create a session to compile and execute the graph
     options = popart.SessionOptions()
-    if not opts.use_data:
+    if not opts.use_generated_data:
         options.syntheticDataMode = popart.SyntheticDataMode.Zeros
     options.instrumentWithHardwareCycleCounter = opts.report_hw_cycle_count
     options.engineOptions = {
@@ -124,7 +124,7 @@ def parse_opts(benchmark, arg_string=None):
     # Default Arguments
     parser.add_argument('--mode', choices=["infer", "eval", "train"], default='infer',
                         help='Which graph to run: infer/eval/train')
-    parser.add_argument('--use-data', action="store_true",
+    parser.add_argument('--use-generated-data', action="store_true",
                         help="Add data transfer ops. Models execution with IO but unbounded by the CPU pipeline.")
     parser.add_argument('--report', action="store_true",
                         help="Generate Graph and Execution Reports")

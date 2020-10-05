@@ -5,7 +5,7 @@ import unittest
 import pytest
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests.test_util import run_python_script_helper, run_test_helper, \
+from examples_tests.test_util import run_python_script_helper, run_test_helper, \
     parse_results_for_accuracy
 
 
@@ -65,11 +65,50 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
 
     @pytest.mark.ipus(2)
     @pytest.mark.category2
+    def test_mnist_train_replicated(self):
+        """Generic test on default arguments in training over 2 IPUs
+           with replication"""
+        py_args = self.generic_arguments.copy()
+        py_args["--num-ipus"] = 2
+        py_args["--replication-factor"] = 2
+        out = run_test_helper(
+            run_popart_mnist_training,
+            **py_args
+        )
+        expected_accuracy = [
+            88.88, 89.63, 89.83, 90.01, 90.12, 90.22, 90.40, 90.59, 90.65, 90.70
+        ]
+        parse_results_for_accuracy(
+            out, expected_accuracy, self.accuracy_tolerances
+        )
+
+    @pytest.mark.ipus(2)
+    @pytest.mark.category2
     def test_mnist_train_sharded_pipelined(self):
         """Generic test on default arguments in training over 2 IPUs
            and pipelined"""
         py_args = self.generic_arguments.copy()
         py_args["--num-ipus"] = 2
+        py_args["--pipeline"] = ""
+        out = run_test_helper(
+            run_popart_mnist_training,
+            **py_args
+        )
+        expected_accuracy = [
+            88.11, 88.69, 88.91, 88.94, 88.92, 88.98, 89.05, 89.14, 89.18, 89.25
+        ]
+        parse_results_for_accuracy(
+            out, expected_accuracy, self.accuracy_tolerances
+        )
+
+    @pytest.mark.ipus(4)
+    @pytest.mark.category2
+    def test_mnist_train_replicated_pipelined(self):
+        """Generic test on default arguments in training over 2 IPUs
+           and pipelined"""
+        py_args = self.generic_arguments.copy()
+        py_args["--num-ipus"] = 4
+        py_args["--replication-factor"] = 2
         py_args["--pipeline"] = ""
         out = run_test_helper(
             run_popart_mnist_training,

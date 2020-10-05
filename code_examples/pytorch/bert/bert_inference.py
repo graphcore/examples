@@ -68,8 +68,8 @@ if __name__ == '__main__':
 
 
     # Wrap PyTorch model insde a PopTorch InferenceModel. This will make the model run on the IPU.
-    inference_model = poptorch.inferenceModel(
-        model, device_iterations=batch_size, profile=False)
+    opts = poptorch.Options().deviceIterations(batch_size)
+    inference_model = poptorch.inferenceModel(model, options=opts)
 
     # Process inputs in batches.
     for batch_idx in range(num_batches):

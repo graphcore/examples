@@ -10,7 +10,7 @@ import time
 from collections import namedtuple, deque
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import util
 from autoencoder_data import AutoencoderData
 from autoencoder_model import AutoencoderModel

@@ -42,13 +42,17 @@ def test_outline_dropout_pattern_one(custom_ops):
     x = builder.aiOnnx.dropout([x], 1)[0]
     loss = builder.aiGraphcore.l1loss([x], 0.1, debugPrefix='loss')
 
+    patterns = popart.Patterns()
+    patterns.enablePattern("OutlineDropoutPattern", True)
+    patterns.enablePattern("PostNRepl", True)
+
     session = run_py(
         builder.getModelProto(),
         data={d0: input_data},
         outputs=x,
         loss=loss,
         optimizer=popart.ConstSGD(0.1),
-        patterns=popart.Patterns(["OutlineDropoutPattern", "PostNRepl"]),
+        patterns=patterns,
         user_options={
             "outlineThreshold": -1
         },
@@ -112,13 +116,17 @@ def test_outline_dropout_pattern_many(custom_ops):
     x = builder.aiOnnx.dropout([x], 1)[0]
     loss = builder.aiGraphcore.l1loss([x], 0.1, debugPrefix='loss')
 
+    patterns = popart.Patterns(popart.PatternsLevel.Minimal)
+    patterns.enablePattern("OutlineDropoutPattern", True)
+    patterns.enablePattern("PostNRepl", True)
+
     session = run_py(
         builder.getModelProto(),
         data={d0: input_data},
         outputs=x,
         loss=loss,
         optimizer=popart.ConstSGD(0.1),
-        patterns=popart.Patterns(["OutlineDropoutPattern", "PostNRepl"]),
+        patterns=patterns,
         user_options={
             "outlineThreshold": -np.inf
         },

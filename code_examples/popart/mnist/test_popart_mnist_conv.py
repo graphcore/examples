@@ -5,7 +5,7 @@ import unittest
 import pytest
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
-from tests import test_util
+from examples_tests import test_util
 
 
 def run_popart_mnist_training(**kwargs):
@@ -68,11 +68,10 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
             **py_args
         )
 
-    @pytest.mark.ipus(1)
-    @pytest.mark.category2
+    @pytest.mark.category3
     def test_mnist_conv_simulation(self):
         """Simulation test with basic arguments - This simulation takes
-           around 838s (~14 minutes) complete"""
+           around 838s (~14 minutes) to complete"""
         py_args = self.generic_arguments.copy()
         py_args["--simulation"] = ""
         py_args["--batch-size"] = 1

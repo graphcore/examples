@@ -3,7 +3,8 @@
 from io import BytesIO
 import numpy as np
 from PIL import Image
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+import tensorflow.contrib as contrib
 
 _BINARISED_MNIST_TR = 'http://www.cs.toronto.edu/~larocheh/public/datasets/binarized_mnist/binarized_mnist_train.amat'
 _BINARISED_MNIST_TEST = 'http://www.cs.toronto.edu/~larocheh/public/datasets/binarized_mnist/binarized_mnist_test.amat'
@@ -150,7 +151,7 @@ def make_iterator_from_np(np_arrays, batch_size, shuffle=True, shuffle_buffer=50
         # https://www.cs.toronto.edu/~rsalakhu/papers/dbn_ais.pdf
         tf_data_batched = tf_data_batched.map(_random_binarisation)
 
-    tf_data_batched = tf_data_batched.prefetch(tf.contrib.data.AUTOTUNE)
-    tf_data_iter = tf_data_batched.make_initializable_iterator()
+    tf_data_batched = tf_data_batched.prefetch(contrib.data.AUTOTUNE)
+    tf_data_iter = tf.data.make_initializable_iterator(tf_data_batched)
 
     return tf_data_iter, tf_data_batched

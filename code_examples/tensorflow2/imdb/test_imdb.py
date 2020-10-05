@@ -3,18 +3,41 @@ import unittest
 import os
 import pytest
 import tensorflow as tf
-from tests.test_util import SubProcessChecker
+from examples_tests.test_util import SubProcessChecker
 
 working_path = os.path.dirname(__file__)
 
 
-@pytest.mark.category1
-@pytest.mark.ipus(2)
 class TensorFlow2Imdb(SubProcessChecker):
     """Integration tests for TensorFlow 2 IMDB example"""
-
+    @pytest.mark.category1
+    @pytest.mark.ipus(2)
     @unittest.skipIf(tf.__version__[0] != '2', "Needs TensorFlow 2")
-    def test_default_commandline(self):
+    def test_pipeline(self):
         self.run_command("python imdb.py",
                          working_path,
                          "Epoch 2/")
+
+    @pytest.mark.category1
+    @pytest.mark.ipus(2)
+    @unittest.skipIf(tf.__version__[0] != '2', "Needs TensorFlow 2")
+    def test_sequential_pipeline(self):
+        self.run_command("python imdb_sequential.py",
+                         working_path,
+                         "Epoch 2/")
+
+    @pytest.mark.category1
+    @pytest.mark.ipus(1)
+    @unittest.skipIf(tf.__version__[0] != '2', "Needs TensorFlow 2")
+    def test_single_ipu(self):
+        self.run_command("python imdb_single_ipu.py",
+                         working_path,
+                         "Epoch 3/")
+
+    @pytest.mark.category1
+    @pytest.mark.ipus(1)
+    @unittest.skipIf(tf.__version__[0] != '2', "Needs TensorFlow 2")
+    def test_single_ipu_sequential(self):
+        self.run_command("python imdb_single_ipu_sequential.py",
+                         working_path,
+                         "Epoch 3/")

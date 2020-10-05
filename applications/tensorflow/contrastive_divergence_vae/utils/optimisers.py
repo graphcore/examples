@@ -3,7 +3,7 @@
 """
 Custom tensorflow optimisers
 """
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops, control_flow_ops
@@ -36,7 +36,7 @@ class VcdRMSPropOptimizer(tf.train.RMSPropOptimizer):
         """Initialise variables to 0.01 (instead of 1. in standard tf RMSProp"""
         for v in var_list:
             if v.get_shape().is_fully_defined():
-                init_rms = init_ops.constant_initializer(value=0.01, dtype=v.dtype.base_dtype)
+                init_rms = init_ops.constant_initializer(value=0.01)
             else:
                 init_rms = array_ops.ones_like(v) * 0.01
             self._get_or_make_slot_with_initializer(v, init_rms, v.get_shape(),
@@ -45,7 +45,7 @@ class VcdRMSPropOptimizer(tf.train.RMSPropOptimizer):
             if self._centered:
                 self._zeros_slot(v, "mg", self._name)
             self._zeros_slot(v, "momentum", self._name)
-            self._get_or_make_slot_with_initializer(v, init_ops.zeros_initializer(dtype=v.dtype.base_dtype),
+            self._get_or_make_slot_with_initializer(v, init_ops.zeros_initializer(),
                                                     tf.TensorShape(()),
                                                     v.dtype.base_dtype,
                                                     'is_first_iter',

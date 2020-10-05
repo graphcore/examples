@@ -1,6 +1,7 @@
 {
     "task": "SQUAD",
-    "layers_per_ipu": 6,
+    "encoder_start_ipu": 0,
+    "layers_per_ipu": [6],
     "num_layers": 12,
     "hidden_size": 768,
     "attention_heads": 12,
@@ -24,7 +25,6 @@
     "shuffle": false,
     "execution_mode": "PIPELINE",
     "inference": true,
-    "squeeze_model": true,
     "use_default_available_memory_proportion": true,
     "low_latency_inference": true,
     "max_copy_merge_size": -1,

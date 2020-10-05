@@ -1,7 +1,7 @@
 {
     "task": "PRETRAINING",
     "num_layers": 12,
-    "layers_per_ipu": 1,
+    "layers_per_ipu": [1],
     "hidden_size": 768,
     "attention_heads": 12,
     "sequence_length": 128,

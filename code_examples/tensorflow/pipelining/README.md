@@ -10,13 +10,15 @@ consisting of just dense layers.
 
 * `pipelining.py` The main TensorFlow file showcasing pipelining.
 * `README.md` This file.
+* `requirements.txt` Required modules for testing.
 * `test_pipelining.py` Script for testing this example.
 
 ### How to use this demo
 
 1) Prepare the TensorFlow environment.
 
-   Install the poplar-sdk following the README provided. Make sure to source the `enable.sh` scripts
+   Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
+   Make sure to source the `enable.sh` scripts
    for poplar and gc_drivers, and activate a Python virtualenv with gc_tensorflow installed.
 
 2) Run the script.
@@ -25,4 +27,14 @@ consisting of just dense layers.
 
 #### Options
 
-Run pipelining.py with -h option to list all the command line options.
+Run pipelining.py with the -h option to list all the command line options.
+
+### Tests
+
+1) Install the requirements.
+
+    `pip install -r requirements.txt`
+
+2) Run the tests.
+
+    `python -m pytest test_pipelining.py`

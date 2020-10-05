@@ -343,10 +343,10 @@ def fold_batch_norms(input_graph_def):
         offset_op = node_def_pb2.NodeDef()
         offset_op.op = "Const"
         offset_op.name = conv_op.name + "_bn_offset"
-        offset_op.attr["dtype"].CopyFrom(mean_op.attr["dtype"])
+        offset_op.attr["dtype"].CopyFrom(weights_op.attr["dtype"])
         offset_op.attr["value"].CopyFrom(
             attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
-                offset_value, mean_value.dtype.type, offset_value.shape)))
+                offset_value, weights.dtype.type, offset_value.shape)))
         bias_add_op = node_def_pb2.NodeDef()
         bias_add_op.op = "BiasAdd"
         bias_add_op.name = node.name

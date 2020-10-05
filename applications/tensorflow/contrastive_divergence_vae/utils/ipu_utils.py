@@ -1,7 +1,7 @@
 # Copyright 2019 Graphcore Ltd.
 # coding=utf-8
 import os
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.contrib.compiler import xla
 
 

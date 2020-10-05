@@ -74,7 +74,8 @@ def run_py(proto: onnx.ModelProto,
            ipus: Optional[int] = None,
            batches_per_step: int = 1,
            user_options: Optional[Mapping[str, Any]] = None,
-           skip_execution: bool = False):
+           skip_execution: bool = False,
+           execution_mode: str = 'DEFAULT'):
     outputs = make_tuple(outputs)
 
     # Setting up the Session
@@ -85,24 +86,32 @@ def run_py(proto: onnx.ModelProto,
     if user_options is None:
         user_options = {}
     options = popart.SessionOptions()
-    options.enableGroupedMatmuls = False
-    options.enableStochasticRounding = False
-    options.constantWeights = True
-    options.outlineThreshold = 10.0
-    options.reportOptions = {
-        "showVarStorage": "true"
-    }
-    if ipus is not None and ipus > 1:
-        options.virtualGraphMode = popart.VirtualGraphMode.Manual
+    options.reportOptions = {"showVarStorage": "true"}
+    if execution_mode == 'PHASED':
+        options.enableOutlining = True
+        options.outlineThreshold = -np.inf
+        options.enableOutliningCopyCostPruning = False
+        options.autoRecomputation = popart.RecomputationType.Standard
+        options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
+        options.explicitRecomputation = True
+        options.aliasZeroCopy = True
+        options.batchSerializationSettings.factor = user_options[
+            "batchSerializationFactor"]
+        options.executionPhaseSettings.phases = user_options["executionPhases"]
+        ipus = 2
     else:
-        ipus = 1
-    if return_stats:
-        options.engineOptions = {
-            "debug.allowOutOfMemory": "true",
-            "debug.instrument": "true"
-        }
+        options.enableGroupedMatmuls = False
+        options.enableStochasticRounding = False
+        options.constantWeights = True
+        options.outlineThreshold = 10.0
+        if ipus is not None and ipus > 1:
+            options.virtualGraphMode = popart.VirtualGraphMode.Manual
+        else:
+            ipus = 1
+
     for key, value in user_options.items():
-        setattr(options, key, value)
+        if key not in ["batchSerializationFactor", "executionPhases"]:
+            setattr(options, key, value)
 
     if return_stats:
         options.engineOptions = {

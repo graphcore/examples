@@ -246,6 +246,9 @@ line).
 
 `--fp-exceptions` : Turns on floating point exceptions.
 
+`--no-hostside-norm` : Moves the image normalisation from the CPU to the IPU. This can help improve throughput if
+the bottleneck is on the host CPU, but marginally increases the workload and code size on the IPU.
+
 `--gc-profile` : Allows profiling for gc-profile tool, Python must be run with gc-profile:
 "gc-profile -d profile_dir -- python train.py --gc-profile "
 
@@ -307,6 +310,13 @@ chance of gradients becoming zero in half precision. The default value should be
 
 `--seed` : Setting an integer as a seed will make training runs reproducible. At present this also limits the
 pre-processing pipeline on the CPU to a single thread which has significant performance implications.
+
+`--standard-imagenet` : By default the ImageNet preprocessing pipeline uses optimisations to split the dataset in
+order to maximise CPU throughput. This option allow you to revert to the standard ImageNet preprocessing pipeline.
+
+`--no-dataset-cache` : Don't keep a cache of the ImageNet dataset in host RAM. Using a cache gives a speed boost
+after the first epoch is complete but does use a lot of memory. It can be useful to turn off the cache if multiple
+training runs are happening on a single host machine.
 
 
 # Resuming training runs
