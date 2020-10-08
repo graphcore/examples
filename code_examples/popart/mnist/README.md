@@ -20,7 +20,7 @@ This example trains a network on the MNIST dataset using PopART.
 1) Prepare the environment.
 
    Install the Poplar SDK following the instructions in the Getting Started guide for your IPU System.
-   Make sure to source the `enable.sh` scripts for poplar, gc_drivers (if running on hardware) and popart.
+   Make sure to source the `enable.sh` scripts for poplar and popart.
 
    The PopART Python API only supports Python 3. It is recommended to use a virtualenv.
 

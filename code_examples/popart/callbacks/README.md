@@ -17,8 +17,8 @@ result on the host is computed and displayed for a range of different data sizes
 
 1) Prepare the environment.
 
-   Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-    scripts for poplar, gc_drivers (if running on hardware) and PopART.
+   Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh`
+    scripts for poplar and PopART.
 
 2) Run the example. Note that the PopART Python API only supports Python 3.
 

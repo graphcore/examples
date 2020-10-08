@@ -63,7 +63,7 @@ The common files this model need:
 ###### 1) Download the Poplar SDK
 
 Install the Poplar SDK following the Getting Started guide for your IPU system. Make sure to source the `enable.sh`
-scripts for poplar, gc_drivers (if running on hardware).
+script for poplar.
 
 ###### 2) Python
 

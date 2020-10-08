@@ -20,8 +20,8 @@ the results with the custom op match those from the built-in op.
 
 1) Prepare the environment.
 
-   Install the `poplar-sdk` (version 1.2 or later) following the README provided. Make sure to source the `enable.sh`
-   scripts for poplar and gc_drivers.
+   Install the `poplar-sdk` (version 1.2 or later) following the instructions in the Getting Started guide for your IPU system. 
+   Make sure to source the `enable.sh` scripts for poplar.
 
 2) Build the custom op and then run the python code:
 

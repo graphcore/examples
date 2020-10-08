@@ -19,9 +19,8 @@ This simple example shows how to generate Poplar reports from TensorFlow.
 
 ##### 1) Download the Poplar SDK
 
-Install the `poplar-sdk` following the README provided. 
-Make sure to source the `enable.sh`
-scripts for poplar, gc_drivers (if running on hardware) and popART.
+Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. 
+Make sure to source the `enable.sh` scripts for poplar and popART.
 
 ##### 2) Python
 

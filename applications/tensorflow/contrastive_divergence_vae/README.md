@@ -34,8 +34,8 @@ The structure of the repo is as follows:
 
 **1) Download the Poplar SDK**
 
-  Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-  scripts for poplar and gc_drivers (if running on hardware).
+  Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh`
+  script for poplar.
 
 ##### 2) Python
 

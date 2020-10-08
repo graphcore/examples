@@ -19,7 +19,7 @@ consisting of just dense layers.
 
    Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
    Make sure to source the `enable.sh` scripts
-   for poplar and gc_drivers, and activate a Python virtualenv with gc_tensorflow installed.
+   for poplar, and activate a Python virtualenv with gc_tensorflow installed.
 
 2) Run the script.
 

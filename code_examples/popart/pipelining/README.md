@@ -15,8 +15,8 @@ consisting of two dense layers. Run one pipeline length and compute loss.
 
 1) Prepare the environment.
 
-   Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-    scripts for poplar, gc_drivers (if running on hardware) and popart.
+   Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh`
+    scripts for poplar and popart.
 
 2) Run the graph. Note that the PopART Python API only supports Python 3.
 

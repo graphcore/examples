@@ -27,8 +27,8 @@ features of Poplar than the SDK tutorials. This includes:
 
 1) Prepare the environment.
 
-   Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-    scripts for poplar, gc_drivers (if running on hardware).
+   Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh`
+    script for poplar.
 
    The example also uses boost::program_options. You can install boost via your package manager.
 

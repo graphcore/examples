@@ -41,7 +41,8 @@ The autoencoder model uses the Netflix Prize training dataset, as shown below:
 ## Quick start guide
 
 1)	Prepare the TensorFlow environment. 
-	Install the Poplar SDK following the README provided with the SDK. Make sure to source the `enable.sh` scripts for Poplar and gc_drivers.
+	Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
+    Make sure to source the `enable.sh` scripts for Poplar.
 
 2)	Download the data. Execute the following command: 
 ```

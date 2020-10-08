@@ -8,7 +8,7 @@ requirements:
 
     pip install -r requirements.txt
 
-Source the `enable.sh` scripts for poplar and the drivers, as described in the
+Source the `enable.sh` scripts for poplar as described in the
 Getting Started Guide for your IPU system.
 
 Then run the tests using pytest:

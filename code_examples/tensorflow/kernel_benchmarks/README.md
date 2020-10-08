@@ -36,8 +36,8 @@ The structure of the repo is as follows:
 
 ### Prepare the environment
 
-  Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-  scripts for poplar, gc_drivers (if running on hardware) and popART, and activate a Python
+  Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh`
+  scripts for poplar and popART, and activate a Python
   virtualenv with gc_tensorflow installed.
 
 ### Run the programs

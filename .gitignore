@@ -13,6 +13,7 @@
 __pycache__
 .cache
 *.csv
+*.json
 *.log
 *.so
 report.txt
@@ -29,7 +30,7 @@ report.txt
 *.swp
 
 # C++ examples build into the "build" directory
-**/build
+**/build/
 .vscode
 
 # Virtual environments

@@ -17,8 +17,8 @@ of ONNX that targets Graphcore's Poplar libraries.
 
    Create a Python 3.6 environment with virtualenv: `virtualenv python36 -p python3.6`
    Download and unpack the poplar-sdk found on [Downloads](https://downloads.graphcore.ai/).
-   Install the `poplar-sdk` following the README provided. Make sure to source the `enable.sh`
-    scripts for Poplar, gc_drivers (if running on hardware) and PopART.
+   Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh`
+    scripts for Poplar and PopART.
    Install the Horovod PopART extension from the poplar-sdk folder by running: `pip3 install horovod-*-cp36m-linux_x86_64.whl`
 
 2) Download the data.

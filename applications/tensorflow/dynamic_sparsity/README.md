@@ -22,8 +22,8 @@ NOTE: Although dynamic sparsity has been supported since Poplar SDK
 
 1) Prepare the environment.
 
-   Install the `poplar-sdk` (version 1.3 or later) following the README provided. Make sure to source the `enable.sh`
-   scripts for poplar and gc_drivers.
+   Install the `poplar-sdk` (version 1.3 or later) following the the instructions in the Getting Started guide for your IPU system.
+   Make sure to source the `enable.sh` script for poplar.
 
 2) Install required pip modules:
 
