@@ -7,8 +7,6 @@
 **/data
 **/logs
 
-!tensorflow/sequence-modeling/nmt/data/
-
 *.pyc
 __pycache__
 .cache

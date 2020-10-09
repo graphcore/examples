@@ -1,22 +1,32 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (C) 2019 Graphcore Ltd.
+# Copyright (C) 2018 Pierluigi Ferrari
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This file has been modified by Graphcore Ltd.
+
 """
 SSD implementation based on Vgg-16 entry network as originally published by Liu et al.
 
-This version processes a single image at a time without the use of in-feeds.
+This version processes a single image at a time without the use of infeed and outfeed queues.
 
 This is an implementation of the Single Shot MultiBox Detector (SSD) using a dual-device, single-graph
 framework as deployed for inference. The convolutional component of the model is entirely deployed
 on the IPU, while the decoding component lives entirely on host.
 
-The current code is heavily derived from the code base presented by Pierluigi Ferrari
-in his Github repository:
-
-https://github.com/pierluigiferrari/ssd_keras
-
 The code can be run with randomly generated weights for purely synthetic benchmarking purposes,
 or trained weights can be loaded to run actual detections. Further details can be found in the README
 file included in this directory.
-
 """
 
 import numpy as np
@@ -32,19 +42,15 @@ from typing import Tuple, Union
 
 # Layer imports
 import tf_layers as layers
-from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+
+# IPU imports
 from tensorflow.python import ipu
 
-# IPU TF Imports
-from tensorflow.python.ipu import ops as ipu_ops
-from tensorflow.python.ipu import utils
-from gcprofile import save_tf_report
-
-# Custom Keras Imports
+# Custom Keras imports
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
 
-# General Keras Imports
+# General Keras imports
 from tensorflow.keras.preprocessing import image
 
 # Weight loading dictionary
@@ -60,10 +66,12 @@ RANDOM_WEIGHTS = True
 if not RANDOM_WEIGHTS:
     trained_weight_path = os.getcwd()+'/trained_weights/VGG_VOC0712_SSD_300x300_iter_120000.h5'
 
-# Reporting flag
+# Reporting flag and location for profiling information
 REPORT = False
+REPORT_DIR = "ssd_single_image_reports"
 
 # Save output flag
+# Download trained weights to see the detections in the output image
 SAVE_IMAGE = False
 
 # Number of IPUs
@@ -117,7 +125,7 @@ classes = ['background', 'aeroplane', 'bicycle', 'bird', 'boat',
            'sofa', 'train', 'tvmonitor']
 
 # Test image
-image_path = './example_images/fish-bike.jpg'
+image_path = './example_images/car_pedestrian.jpg'
 
 
 def prepare_image(path_to_image: str):
@@ -476,16 +484,12 @@ for var in tf.trainable_variables():
     placeholder = tf.placeholder(var.dtype, var.shape, var.name.split(':')[0]+'_setter')
     param_setters[var.name] = (tf.assign(var, placeholder), placeholder)
 
-# Capture IPU event trace for reporting
-if REPORT:
-    with tf.device('cpu'):
-        report = gen_ipu_ops.ipu_event_trace()
-
 # Setup IPU configuration and build session
-cfg = ipu.utils.create_ipu_config(profiling=REPORT, use_poplar_text_report=False,
-                                  profile_execution=REPORT)
+cfg = ipu.utils.create_ipu_config(profiling=REPORT,
+                                  profile_execution=REPORT,
+                                  report_directory=REPORT_DIR)
 cfg = ipu.utils.auto_select_ipus(cfg, num_ipus=NUM_IPUS)
-cfg = utils.set_convolution_options(cfg, convolution_options={"availableMemoryProportion": "0.4"})
+cfg = ipu.utils.set_convolution_options(cfg, convolution_options={"availableMemoryProportion": "0.4"})
 ipu.utils.configure_ipu_system(cfg)
 ipu.utils.move_variable_initialization_to_cpu()
 
@@ -530,9 +534,3 @@ with tf.Session() as sess:
     print("Done running inference.")
     duration = time.time() - start
     print("Duration: {:.3f} seconds\n".format(duration))
-    if REPORT:
-        rep_out = sess.run(report)
-        save_tf_report(rep_out)
-        rep = utils.extract_all_strings_from_event_trace(rep_out)
-        with open(str(WIDTH) + "x" + str(HEIGHT) + "_ipus" + str(NUM_IPUS) + "_ssd_report.txt", "w") as f:
-            f.write(rep)

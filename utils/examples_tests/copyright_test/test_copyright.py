@@ -21,8 +21,7 @@ EXCLUDED = ['applications/tensorflow/cnns/training/Datasets/imagenet_preprocessi
             'applications/popart/bert/bert_data/tokenization.py',
             'applications/popart/bert/bert_data/squad_utils.py',
             'applications/popart/bert/bert_data/create_pretraining_data.py',
-            'applications/popart/bert/tests/torch_bert.py',
-            'code_examples/tensorflow/basic_nmt_example/seq2seq_edits/decoder.py']
+            'applications/popart/bert/tests/torch_bert.py']
 
 
 def check_file(path, language, amend):
