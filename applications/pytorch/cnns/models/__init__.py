@@ -1,1 +1,1 @@
-from .models import get_model, available_models
+from .models import get_model, available_models, replace_bn

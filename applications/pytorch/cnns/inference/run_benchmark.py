@@ -4,11 +4,12 @@ import argparse
 import torch
 import poptorch
 import numpy as np
-from data import get_dataloader, datasets_shape
+from data import get_dataloader, datasets_info
 import sys
 import logging
 sys.path.append('..')
-import models
+import models  # noqa: E402
+import utils  # noqa: E402
 
 
 # Set up logging
@@ -21,47 +22,62 @@ def benchmark(inference_model, test_data, opts):
     fps = []
     with torch.no_grad():
         for data in test_data:
+            # Convert the input for the correct precision
+            if opts.precision == "half":
+                data = data.half()
             data = data.contiguous()
             start = time.time()
             result = inference_model(data)
             end = time.time()
             fps.append(data.size()[0]/(end-start))
-    # Remove the first few and the last to eliminate the compile and the last possibly smaller batch
+    # Remove the first few measurements to eliminate startup overhead
     fps = fps[2:]
     print("-------------------------------------------------------------------------------------------")
     print("Throughput at bs={}, data_mode={}, data_type={},"
-          " num_ipus={}, of {}: min={} imgs/s, max={} imgs/sec, mean={} imgs/sec, std={} imgs/sec.".format(opts.batch_size,
-                                                                                                           opts.data,
-                                                                                                           result.data.dtype,
-                                                                                                           opts.replicas*(len(opts.pipeline_splits)+1),
-                                                                                                           opts.model,
-                                                                                                           min(fps),
-                                                                                                           max(fps),
-                                                                                                           np.mean(fps),
-                                                                                                           np.std(fps)))
+          " num_ipus={}, of {}: min={} imgs/s, max={} imgs/s, mean={} imgs/s, std={} imgs/s.".format(opts.batch_size,
+                                                                                                     opts.data,
+                                                                                                     result.data.dtype,
+                                                                                                     opts.replicas*(len(opts.pipeline_splits)+1),
+                                                                                                     opts.model,
+                                                                                                     min(fps),
+                                                                                                     max(fps),
+                                                                                                     np.mean(fps),
+                                                                                                     np.std(fps)))
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='CNN training in PopTorch')
-    parser.add_argument('--batch-size', type=int, default=1, help='batch size for training (default: 1)')
-    parser.add_argument('--model', choices=models.available_models.keys(),  default='resnet18', help="Choose model")
+    common_parser = utils.get_common_parser()
+    parser = argparse.ArgumentParser(parents=[common_parser], description='CNN inference in PopTorch')
     parser.add_argument('--data', choices=['real', 'synthetic'], default='real', help="Choose data")
-    parser.add_argument('--pipeline-splits', type=str, nargs='+', default=[], help="List of the splitting layers")
-    parser.add_argument('--replicas', type=int, default=1, help="Number of IPU replicas")
-    parser.add_argument('--device-iteration', type=int, default=1, help="Device Iteration")
-    parser.add_argument('--precision', choices=['full', 'half'], default='full', help="Floating Point precision")
-
+    parser.add_argument('--iterations', type=int, default=100, help='number of program iterations')
     opts = parser.parse_args()
     return opts
+
 
 if __name__ == '__main__':
     opts = parse_arguments()
     logging.info(opts)
-    model = models.get_model(opts, datasets_shape[opts.data])
+    utils.setup_logging_folder(opts)
+    model = models.get_model(opts, datasets_info[opts.data], pretrained=True)
     model.eval()
 
-    data = get_dataloader(opts.batch_size*opts.device_iteration*opts.replicas, opts.data == "synthetic")
-    model_opts = poptorch.Options().replicationFactor(opts.replicas) \
-                                   .deviceIterations(opts.device_iteration)
+    batch_size = opts.batch_size*opts.replicas*opts.device_iteration
+    model_opts = poptorch.Options()
+    model_opts.replicationFactor(opts.replicas)
+    model_opts.deviceIterations(opts.device_iteration)
+    data = get_dataloader(opts.batch_size, model_opts, opts.iterations, opts.data == "synthetic")
+
+    if opts.data == "synthetic":
+        model_opts.Popart.set("syntheticDataMode", 2)
+    if opts.half_partial:
+        model_opts.Popart.set("partialsTypeMatMuls", "half")
+        model_opts.Popart.set("convolutionOptions", {'partialsType': 'half'})
+
+    num_stages = len(opts.pipeline_splits)+1
+    if len(opts.available_memory_proportion) == 1:
+        model_opts.setAvailableMemoryProportion({f'IPU{i}': opts.available_memory_proportion[0] for i in range(num_stages)})
+    elif len(opts.available_memory_proportion) > 1:
+            model_opts.setAvailableMemoryProportion({f'IPU{i}': amp for i, amp in enumerate(opts.available_memory_proportion)})
+
     inference_model = poptorch.inferenceModel(model, model_opts)
     benchmark(inference_model, data, opts)
