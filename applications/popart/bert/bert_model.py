@@ -1,4 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import popart
 import numpy as np
 from scipy.stats import truncnorm
@@ -19,7 +32,7 @@ import numpy as np
 from scipy.stats import truncnorm
 
 import popart
-from pingpong.scope_manager import ScopeProvider
+from phased_execution.scope_manager import ScopeProvider
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +48,6 @@ class BertConfig(NamedTuple):
     sequence_length: int = 128
     max_positional_length: int = 512
 
-    # Choices: "DEFAULT", "TRANSFORMER", "SIMPLIFIED"
-    positional_embedding_init_fn: str = "DEFAULT"
     # Look up embedding on CPU
     # Possible values:
     #   NONE  = all embeddings on IPU
@@ -75,8 +86,17 @@ class BertConfig(NamedTuple):
     # Or a list specifying the placement on each IPU.
     layers_per_ipu: List[int] = [2]
 
-    # UNSUPPORTED: Try and fit the model onto fewer IPUs. Intended for inference modes:
-    squeeze_model: bool = False
+    # Specify the available memory proportion to be used by the Encoder MatMuls.
+    # The same as `layers_per_ipu` this can be a single element list or a
+    # list providing a specific value for each IPU.
+    available_memory_proportion: List[float] = [0.1525878906]
+
+    # This controls how recomputation is handled in pipelining.
+    # If True the output of each layer will be stashed keeping the max liveness
+    # of activations to be at most one Encoder layer on each IPU.
+    # However, the stash size scales with the number of pipeline stages so this may not always be beneficial.
+    # The added stash + code could be greater than the reduction in temporary memory.
+    recompute_checkpoint_every_layer: bool = True
 
     split_transformer: bool = False
 
@@ -94,6 +114,10 @@ class BertConfig(NamedTuple):
     # {N, hidden_size} x {hidden_size, hidden_size}.
     # This is required for sequence length 384.
     split_linear_layers: bool = False
+
+    split_qkv: bool = False
+
+    replicated_weight_sharding: bool = False
 
     no_mask: bool = False
 
@@ -119,7 +143,6 @@ class BertConfig(NamedTuple):
 
     # In PRETRAINING this sets how many steps to serialise both the
     # embedding and projection
-    projection_serialization_steps: int = 5
     embedding_serialization_vocab_steps: int = 1
 
     update_embedding_dict: bool = True
@@ -130,16 +153,15 @@ class BertConfig(NamedTuple):
 
     projection_bias: bool = False
 
-    max_matmul_memory: int = 40000
-
     num_attention_splits: int = 1
     num_ffwd_splits: int = 1
+    batch_serialize: int = 1
 
     execution_mode: ExecutionMode = ExecutionMode.DEFAULT
+    num_io_tiles: int = 0
+    phased_execution_type: str = "DUAL"
 
-    @property
-    def available_memory_proportion(self):
-        return self.max_matmul_memory / (2**18)
+    squad_single_output: bool = True
 
 
 class DeviceScope(object):
@@ -161,7 +183,7 @@ class DeviceScope(object):
 
     def __enter__(self):
         self.stack = ExitStack()
-        # ExecutionPhase will automatically set the virtualGraph attributes based on ping pong phase
+        # ExecutionPhase will automatically set the virtualGraph attributes based on execution phase
         if self.execution_mode != ExecutionMode.PHASED \
                 and self.virtualGraph is not None:
             self.stack.enter_context(
@@ -280,10 +302,6 @@ class Bert(Model):
         # Precompute offset for masks, which are prepared in phase 0 and 1
         self.execution_phase_precompute_offset = 2
 
-        if self.config.squeeze_model:
-            raise Exception("Config squeeze_model is no longer supported. "
-                            "Please use `encoder_start_ipu` to specify which ipu the first Encoder layer should be placed.")
-
         layer_offset = self.config.encoder_start_ipu
 
         # Embedding
@@ -293,7 +311,7 @@ class Bert(Model):
         self.embedding_split_scope = self.device_scope(
             ipu, ipu, ipu + self.execution_phase_precompute_offset)
         # Transformer Layers
-        pipeline_stage = self.encoder_ipu(self.config.num_layers - 1) + 1
+        pipeline_stage = self.encoder_layer_ipu(self.config.num_layers - 1) + 1
         execution_phase = pipeline_stage + self.execution_phase_precompute_offset
         # Task Layers
         if self.config.task in ("NSP", "PRETRAINING"):
@@ -302,7 +320,7 @@ class Bert(Model):
             self.cls_scope = self.device_scope(
                 self.embedding_split_scope.virtualGraph, pipeline_stage, execution_phase, "CLS")
         if self.config.task == "PRETRAINING":
-            if (layer_offset - 1) != 0:
+            if self.embedding_scope.virtualGraph != self.embedding_split_scope.virtualGraph:
                 pipeline_stage += 1
                 execution_phase += 1
             self.mlm_scope = self.device_scope(
@@ -331,15 +349,15 @@ class Bert(Model):
 
     @property
     def total_ipus(self):
-        return self.encoder_ipu(self.config.num_layers - 1) + 1
+        return self.encoder_layer_ipu(self.config.num_layers - 1) + 1
 
     def encoder_scope(self, layer_index):
-        ipu = self.encoder_ipu(layer_index)
+        ipu = self.encoder_layer_ipu(layer_index)
         execution_phase = ipu + self.execution_phase_precompute_offset
         logger.debug(f"Encoder Layer {layer_index} -> IPU {ipu}")
         return self.device_scope(ipu, ipu, execution_phase, f"Layer{layer_index}")
 
-    def encoder_ipu(self, layer_index):
+    def _encoder_layer_ipu_offset(self, layer_index):
         encoder_index = 0
         if len(self.config.layers_per_ipu) == 1:
             encoder_index = layer_index // self.config.layers_per_ipu[0]
@@ -349,7 +367,37 @@ class Bert(Model):
                 if layer_index < 0:
                     encoder_index = ipu
                     break
-        return encoder_index + self.config.encoder_start_ipu
+        return encoder_index
+
+    def encoder_layer_ipu(self, layer_index):
+        return self._encoder_layer_ipu_offset(layer_index) + self.config.encoder_start_ipu
+
+    def should_checkpoint(self, layer_index):
+        '''Only checkpoint tensors that are not to be copied to the next pipelineStage'''
+        if not self.config.recompute_checkpoint_every_layer:
+            return False
+
+        encoder_index = self._encoder_layer_ipu_offset(layer_index)
+        if len(self.config.layers_per_ipu) == 1:
+            layers = self.config.layers_per_ipu[0]
+            layer_index -= encoder_index*layers
+        else:
+            layers = self.config.layers_per_ipu[encoder_index]
+            layer_index -= sum(self.config.layers_per_ipu[:encoder_index])
+        return layer_index < (layers - 1)
+
+    def set_available_memory_proportion(self, x):
+        if self.config.use_default_available_memory_proportion:
+            return x
+
+        if len(self.config.available_memory_proportion) == 1:
+            amp = self.config.available_memory_proportion[0]
+        else:
+            vgraph = self.builder.getVirtualGraph()
+            amp = self.config.available_memory_proportion[vgraph - self.config.encoder_start_ipu]
+
+        self.builder.setAvailableMemoryProportion(x, amp)
+        return x
 
     def build_graph(self, indices, positions, segments, masks=None):
         # Embedding
@@ -371,6 +419,9 @@ class Bert(Model):
 
                 with self.builder.nameScope("FF"):
                     x = self.feed_forward(x)
+
+                if self.should_checkpoint(i):
+                    x = self.builder.checkpointOutput([x])[0]
         outputs = []
 
         # PreTraining tasks
@@ -472,14 +523,12 @@ class Bert(Model):
                                               0,
                                               "B")
             x = self.builder.aiOnnx.matmul([input_x, weight1])
+            self.set_available_memory_proportion(x)
             if self.config.split_linear_layers:
                 self.builder.setSerializeMatMul({x},
                                                 'output_channels',
                                                 num_splits,
                                                 keep_precision=True)
-            if not self.config.use_default_available_memory_proportion:
-                self.builder.setAvailableMemoryProportion(
-                    x, self.config.available_memory_proportion)
             x = self.builder.aiOnnx.add([x, bias1])
 
         x = self.intermediate_activation_function(x)
@@ -495,14 +544,12 @@ class Bert(Model):
                                               0,
                                               "B")
             x = self.builder.aiOnnx.matmul([x, weight2])
+            self.set_available_memory_proportion(x)
             if self.config.split_linear_layers:
                 self.builder.setSerializeMatMul({x},
                                                 'reducing_dim',
                                                 num_splits,
                                                 keep_precision=True)
-            if not self.config.use_default_available_memory_proportion:
-                self.builder.setAvailableMemoryProportion(
-                    x, self.config.available_memory_proportion)
             x = self.builder.aiOnnx.add([x, bias2])
 
         # google-research/bert puts dropout here
@@ -550,53 +597,86 @@ class Bert(Model):
             [np.sin(scaled_time), np.cos(scaled_time)], axis=1)
         return signal
 
-    def get_embedding_data(self, dtype, shape, init_fn, debug_name=""):
-        # Unless specifcally set, fall back to normal tensor initialisation
-        if init_fn not in ("TRANSFORMER", "SIMPLIFIED"):
-            return self.normal_init_data(dtype, shape, 0, 0.02, debug_name)
-
-        data = self.initializers.get(
-            self.builder.getNameScope(debug_name), None)
-        if data is None:
-            if init_fn == "TRANSFORMER":
-                data = self.generate_transformer_periodic_pos_data(
-                    dtype, shape)
-            else:
-                data = self.generate_simplified_periodic_pos_data(dtype, shape)
-        else:
-            if np.any(data.shape != np.array(shape)):
-                raise RuntimeError(f"Initializer {self.builder.getNameScope(debug_name)} does not match shapes. \n"
-                                   f" Provided {data.shape}. Required {shape}")
-        return data
-
-    def embedding_init_tensor(self, dtype, shape, init_fn, debug_name=""):
-        # Unless specifcally set, fall back to normal tensor initialisation
-        data = self.get_embedding_data(dtype, shape, init_fn, debug_name)
-        tensor = self.builder.addInitializedInputTensor(data, debug_name)
-        self._add_to_tensor_map(tensor)
-        return tensor
-
     def get_model_embeddings(self):
         embedding_dict = None
         positional_dict = None
         if self.config.host_embedding in ("ALL", "WORD", "MERGE"):
             with self.builder.nameScope("Embedding"):
-                embedding_dict = self.get_embedding_data(self.config.dtype,
-                                                         (self.config.vocab_length, self.config.hidden_size),
-                                                         "DEFAULT",
-                                                         "Embedding_Dict")
+                embedding_dict = self.normal_init_data(self.config.dtype,
+                                                       (self.config.vocab_length, self.config.hidden_size),
+                                                       0, 0.02,
+                                                       "Embedding_Dict")
                 if self.config.host_embedding in ("ALL", "MERGE"):
-                    positional_dict = self.get_embedding_data(self.config.dtype,
-                                                              (self.config.max_positional_length, self.config.hidden_size),
-                                                              self.config.positional_embedding_init_fn,
-                                                              "Positional_Dict")
+                    positional_dict = self.normal_init_data(self.config.dtype,
+                                                            (self.config.max_positional_length, self.config.hidden_size),
+                                                            0, 0.02,
+                                                            "Positional_Dict")
         return embedding_dict, positional_dict
+
+
+    def _split_word_embedding_initializer(self):
+        def get_split(idx, full_t):
+            num_splits = self.config.embedding_serialization_vocab_steps
+            vocab_axis = full_t.shape.index(self.config.vocab_length)
+            return np.split(full_t, num_splits, axis=vocab_axis)[idx]
+
+        num_splits = self.config.embedding_serialization_vocab_steps
+        embedding_dict = self.initializers["Embedding/Embedding_Dict"]
+
+        embedding_dict_split = {}
+        for i in range(num_splits):
+            embedding_dict_split[f"Embedding/Embedding_Dict/split{i}"] = get_split(i, embedding_dict)
+
+        self.initializers.update(embedding_dict_split)
+        del self.initializers["Embedding/Embedding_Dict"]
+
+
+    def word_embedding_serialized(self, indices, num_splits):
+        def mask_input_indices(x_in, i):
+            split_input_dim = self.config.vocab_length // num_splits
+            x_split = self.builder.aiOnnx.sub([
+                x_in,
+                self.constant_tensor(i * split_input_dim,
+                                     np.uint32)
+            ])
+            mask = self.builder.aiOnnx.less([
+                x_split,
+                self.constant_tensor(split_input_dim,
+                                     np.uint32)
+            ])
+            mask = self.detach(mask)
+            masked_indices = self.builder.aiOnnx.mul([x_split,
+                                                      self.builder.aiOnnx.cast([mask], "UINT32")])
+            return masked_indices, mask
+
+        if self.initializers and self.config.embedding_serialization_vocab_steps > 1:
+            self._split_word_embedding_initializer()
+
+        x_sum = None
+        for i in range(num_splits):
+            masked_indices, mask = mask_input_indices(indices, i)
+            x = self.gather(masked_indices,
+                            self.config.vocab_length // num_splits,
+                            f"Embedding_Dict/split{i}")
+            fp_mask = self.builder.aiOnnx.cast([mask], self.config.popart_dtype)
+            fp_mask = self.builder.aiOnnx.unsqueeze([fp_mask], [1])
+            x = self.builder.aiOnnx.mul([x, fp_mask])
+
+            if x_sum:
+                x_sum = self.builder.aiOnnx.add([x, x_sum])
+            else:
+                x_sum = x
+        return x_sum
+
 
     def embedding(self, indices, positions, segments):
         with self.embedding_scope:
-            x = self.gather(indices,
-                            self.config.vocab_length,
-                            "Embedding_Dict")
+            if self.config.task != "PRETRAINING" and self.config.embedding_serialization_vocab_steps > 1:
+                x = self.word_embedding_serialized(indices, self.config.embedding_serialization_vocab_steps)
+            else:
+                x = self.gather(indices,
+                                self.config.vocab_length,
+                                "Embedding_Dict")
 
         with self.embedding_split_scope:
 
@@ -614,8 +694,7 @@ class Bert(Model):
             if self.config.host_embedding != "MERGE":
                 x_pos = self.gather(positions,
                                     self.config.max_positional_length,
-                                    "Positional_Dict",
-                                    init_fn=self.config.positional_embedding_init_fn)
+                                    "Positional_Dict")
                 x = self.builder.aiOnnx.add([x, x_pos])
             x = self.builder.aiOnnx.add([x, x_seg])
 
@@ -628,18 +707,18 @@ class Bert(Model):
             x = self.dropout(x)
         return x
 
-    def gather(self, indices, embedding_size, name, init_fn="DEFAULT"):
+    def gather(self, indices, embedding_size, name):
         if self.config.host_embedding in ("ALL", "WORD", "MERGE") and name == "Embedding_Dict":
             return indices
         if self.config.host_embedding in ("ALL", "MERGE") and name == "Positional_Dict":
             return indices
-        if name == "Embedding_Dict" and self.config.task == "PRETRAINING":
+        if name.startswith("Embedding_Dict") and self.config.task == "PRETRAINING":
             # Important that the tied gather/matmul weight with transpose before the gather.
             # This will ensure it matches the custom_ops/tied_gather_pattern.
-            embedding_dict = self.embedding_init_tensor(
+            embedding_dict = self.normal_init_tensor(
                 self.config.dtype,
                 (self.config.hidden_size, embedding_size),
-                init_fn,
+                0, 0.02,
                 name)
             self.embedding_dict = embedding_dict
 
@@ -651,10 +730,10 @@ class Bert(Model):
                                                        attributes={})[0]
             embedding_dict = self.builder.aiOnnx.transpose([embedding_dict])
         else:
-            embedding_dict = self.embedding_init_tensor(
+            embedding_dict = self.normal_init_tensor(
                 self.config.dtype,
                 (embedding_size, self.config.hidden_size),
-                init_fn,
+                0, 0.02,
                 name)
 
         x = self.builder.aiOnnx.gather([embedding_dict, indices])
@@ -725,18 +804,35 @@ class Bert(Model):
             self.masks[mask_idx] = final_mask
         return final_mask
 
+    def qkv_weights(self):
+        if self.config.split_qkv:
+            weights = []
+            full_t = self.initializers.get(
+                self.builder.getNameScope("QKV"), None)
+            for idx, name in enumerate("QKV"):
+                if full_t is not None:
+                    long_name = self.builder.getNameScope(name)
+                    self.initializers[long_name] = np.split(full_t, 3, axis=1)[idx]
+                weights.append(self.normal_init_tensor(
+                    self.config.dtype,
+                    [self.config.hidden_size, self.config.hidden_size],
+                    0, 0.02,
+                    name))
+            qkv = self.builder.aiOnnx.concat(weights, axis=1)
+        else:
+            qkv = self.normal_init_tensor(
+                self.config.dtype,
+                [self.config.hidden_size, 3 * self.config.hidden_size],
+                0, 0.02,
+                "QKV")
+        return qkv
+
     def attention(self, input_x, masks=None):
-        qkv_weights = self.normal_init_tensor(
-            self.config.dtype,
-            [self.config.hidden_size, 3 * self.config.hidden_size],
-            0, 0.02,
-            "QKV")
+        qkv_weights = self.qkv_weights()
         qkv = self.builder.aiOnnx.matmul([input_x, qkv_weights])
+        self.set_available_memory_proportion(qkv)
         if self.config.split_linear_layers:
             self.builder.setSerializeMatMul({qkv}, 'output_channels', 3, True)
-        if not self.config.use_default_available_memory_proportion:
-            self.builder.setAvailableMemoryProportion(
-                qkv, self.config.available_memory_proportion)
 
         x = self.attention_onnx(qkv, masks)
 
@@ -746,9 +842,7 @@ class Bert(Model):
             0, 0.02,
             "Out")
         x = self.builder.aiOnnx.matmul([x, projection_weights])
-        if not self.config.use_default_available_memory_proportion:
-            self.builder.setAvailableMemoryProportion(
-                x, self.config.available_memory_proportion)
+        self.set_available_memory_proportion(x)
 
         x = self.dropout(x)
         x = self.builder.aiOnnx.add([input_x, x])
@@ -759,33 +853,34 @@ class Bert(Model):
         comb_shape = [self.config.batch_size, self.config.sequence_length,
                       self.config.attention_heads, self.config.qkv_length]
 
+        if isinstance(qkv, list):
+            split_qkv = qkv
+        else:
+            split_qkv = self.builder.aiOnnx.split(
+                [qkv],
+                num_outputs=3,
+                axis=1,
+                split=[self.config.hidden_size]*3,
+                debugPrefix="QKV_Split")
+
         def extract_heads(tensor, transpose=False):
             tensor = self.builder.reshape_const(
                 self.builder.aiOnnx, [tensor], comb_shape)
             perm = [0, 2, 1, 3] if not transpose else [0, 2, 3, 1]
             return self.builder.aiOnnx.transpose([tensor], perm=perm)
 
-        split_qkv = self.builder.aiOnnx.split(
-            [qkv],
-            num_outputs=3,
-            axis=1,
-            split=[self.config.hidden_size]*3,
-            debugPrefix="QKV_Split")
-
         q, kt, v = [extract_heads(t, i == 1) for i, t in enumerate(split_qkv)]
 
         # Attention calculation
         with self.builder.nameScope('Z'):
             x = self.builder.aiOnnx.matmul([q, kt])
-            if not self.config.use_default_available_memory_proportion:
-                self.builder.setAvailableMemoryProportion(
-                    x, self.config.available_memory_proportion)
+            self.set_available_memory_proportion(x)
 
             c = self.constant_tensor(
                 1 / np.sqrt(self.config.qkv_length), self.config.dtype)
             x = self.builder.aiOnnx.mul([x, c])
 
-            if self.config.no_mask or masks is not None:
+            if not self.config.no_mask or masks is not None:
                 mask = self.attention_mask(masks)
                 x = self.builder.aiOnnx.add([x, mask], "ApplyMask")
 
@@ -796,9 +891,7 @@ class Bert(Model):
 
             # x[batch_size, attention_heads, sequence_length, sequence_length] * v[batch_size, attention_heads, sequence_length, qkv_length]
             z = self.builder.aiOnnx.matmul([x, v])
-            if not self.config.use_default_available_memory_proportion:
-                self.builder.setAvailableMemoryProportion(
-                    z, self.config.available_memory_proportion)
+            self.set_available_memory_proportion(z)
 
             # [batch_size, attention_heads, sequence_length, qkv_length] -> [batch_size, sequence_length, attention_heads, qkv_length]
             z = self.builder.aiOnnx.transpose([z], perm=[0, 2, 1, 3])
@@ -826,7 +919,7 @@ class Bert(Model):
             self._add_to_tensor_map(weight)
 
         x = self.builder.aiOnnx.matmul([x, weight])
-        num_splits = self.config.projection_serialization_steps
+        num_splits = self.config.embedding_serialization_vocab_steps
         self.builder.setSerializeMatMul(
             {x}, 'output_channels', num_splits, True)
 
@@ -845,6 +938,10 @@ class Bert(Model):
                                          "SquadW")
         bias = self.constant_init_tensor(self.config.dtype, (2,), 0, "SquadB")
         x = self.builder.aiOnnx.gemm([input_x, weight, bias])
+
+        if self.config.inference and self.config.squad_single_output:
+            return [x]
+
         # x.shape: [batch_size * sequence_length, 2]
         start_logits = self.builder.aiOnnxOpset9.slice(
             [x], axes=[1], starts=[0], ends=[1])
@@ -919,7 +1016,7 @@ class Bert(Model):
         return x
 
 
-def get_model(config, mode, block=None, initializers={}):
+def get_model(config, mode, block=None, initializers=None):
     # Specifying ai.onnx opset9 for the slice syntax
     builder = popart.Builder(opsets={
         "ai.onnx": 9,
@@ -928,16 +1025,17 @@ def get_model(config, mode, block=None, initializers={}):
     })
 
     if mode == ExecutionMode.PHASED:
-        scope_provider = ScopeProvider()
+        scope_provider = ScopeProvider(phased_execution_type=config.phased_execution_type)
         if not block:
-            from pingpong.bert_ping_pong import BertModel
+            from phased_execution.bert_phased import BertModel
             return BertModel(config,
                              builder=builder,
                              initializers=initializers,
-                             scope_provider=scope_provider)
+                             scope_provider=scope_provider,
+                             tensors=[[]])
 
         if block.lower() == 'embedding':
-            from pingpong.bert_layers_serialised import BertEmbedding
+            from phased_execution.bert_layers_serialised import BertEmbedding
             return BertEmbedding(config.vocab_length,
                                  config.hidden_size,
                                  config.sequence_length,
@@ -948,19 +1046,19 @@ def get_model(config, mode, block=None, initializers={}):
                                  config.dropout_prob,
                                  mode,
                                  config.dtype,
-                                 config.update_embedding_dict,
+                                 not config.update_embedding_dict,
                                  weight_transposed=False,
                                  builder=builder,
                                  scope_provider=scope_provider)
 
         if block.lower() == 'attention':
-            from pingpong.bert_layers import Attention
+            from phased_execution.bert_layers import Attention
             attention_params = {
                 'input_size': config.hidden_size,
                 'hidden_size': config.hidden_size,
                 'num_heads': config.attention_heads,
                 'serialize_matmul': config.split_linear_layers,
-                'avail_mem_prop': config.available_memory_proportion,
+                'available_memory_proportion': config.available_memory_proportion,
                 'epsilon': config.layer_norm_eps,
                 'dropout': not config.no_dropout,
                 'dropout_prob': config.dropout_prob,
@@ -975,7 +1073,7 @@ def get_model(config, mode, block=None, initializers={}):
             return Attention('Attention', **attention_params, builder=builder, scope_provider=scope_provider)
 
         if block.lower() == 'feedforward':
-            from pingpong.bert_layers import FeedForward
+            from phased_execution.bert_layers import FeedForward
             return FeedForward('FF',
                                config.hidden_size,
                                config.ff_size,

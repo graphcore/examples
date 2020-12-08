@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 """
 Benchmark a multi-layer LSTM model with a dense final layer.
 

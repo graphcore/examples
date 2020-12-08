@@ -50,23 +50,20 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Download the data
+Download the the COCO dataset (COCOval2014) from http://images.cocodataset.org/zips/val2014.zip and unzip.
+
 ### Prepare the dataset and model
 The following script can be run to prepare the data and add the configured model to the directory `models/resnext101_32x4d/`.
 
 ```
-(popart) $ ./model_prep_helper.sh /localdata/datasets/coco/val2014 datasets
+(popart) $ ./model_prep_helper.sh path/to/coco/val2014 datasets
 ```
-the first argument being the path to the COCO dataset, the second being the output directory for the processed datasets.
+The first argument is the path to the COCO dataset, the second is the output directory for the processed datasets.
 
-NOTE: If this the above script is run, the `Prepare the dataset` and `Prepare the model` sections can be skipped.
+NOTE: If this script is run, the `Prepare the dataset` and `Prepare the model` sections below can be skipped.
 
 #### Prepare the dataset
-
-**1) Download the dataset**
-
-Download the the COCO dataset (COCOval2014) from here: http://images.cocodataset.org/zips/val2014.zip)
-
-**2) Partition the dataset** 
 
 Assuming you are running on 8 IPUs, the COCO dataset should be partitioned into 8 distinct directories so each one can be read and streamed onto an IPU by a different process. To set the dataset partition up, make a directory to contain the data subsets, and then run `partition_dataset.py` as follows:
 

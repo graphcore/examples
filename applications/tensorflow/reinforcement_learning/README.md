@@ -35,7 +35,8 @@ The following files are included in this repo:
 ## Quick start guide
 
 1. Prepare the TensorFlow environment.
-   Install the poplar-sdk following the README provided. Make sure to run the enable.sh scripts and activate a Python virtualenv with gc_tensorflow installed.
+   Install the Poplar SDK following the the instructions in the Getting Started guide for your IPU system.
+   Make sure to run the enable.sh script and activate a Python virtualenv with gc_tensorflow installed.
 2. Run the training program.
    `python3 rl_benchmark.py --batch_size 8 --time_steps 16 --num_ipus 8`
 

@@ -1,4 +1,16 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import tensorflow as tf
 from collections import namedtuple
 from functools import partial
@@ -9,6 +21,7 @@ from six.moves import xrange
 import string
 from tensorflow.python.ipu import normalization_ops
 from tensorflow.python.keras import layers
+from .batch_norm import batch_norm
 
 
 BlockArgs = collections.namedtuple('BlockArgs', [
@@ -107,11 +120,10 @@ def conv2d_basic(x, ksize, stride, filters_out, bias=False, groups=None, group_d
         return x
 
 
-def norm(x, is_training=True, norm_type=None, BN_decay=None, epsilon=1e-6, groups=None):
+def norm(x, is_training=True, norm_type=None, epsilon=1e-6, groups=None):
     if norm_type == 'batch':
-        x = tf.layers.batch_normalization(x, fused=True, center=True, scale=True,
-                                          training=is_training, trainable=True,
-                                          momentum=BN_decay, epsilon=epsilon)
+        x = batch_norm(x, center=True, scale=True, training=is_training,
+                       trainable=True, epsilon=epsilon)
     elif norm_type == 'group':
         x = normalization_ops.group_norm(x, groups=min(int(x.get_shape()[3]), groups), epsilon=epsilon)
     else:
@@ -317,7 +329,6 @@ class EfficientNet(ModelBase):
         self.norm = partial(norm,
                             is_training=is_training,
                             norm_type=opts['norm_type'],
-                            BN_decay=opts["BN_decay"],
                             groups=opts["groups"],
                             epsilon=opts["norm_epsilon"]
                             )
@@ -537,10 +548,11 @@ def set_defaults(opts):
     opts['name'] = "EfficientNet-{}".format(opts['model_size'])
 
     opts['name'] += "_bs{}".format(opts['batch_size'])
-    if opts.get('gradients_to_accumulate') > 1:
-        opts['name'] += "x{}a".format(opts['gradients_to_accumulate'])
-    if opts['pipeline_depth'] > 1:
-        opts['name'] += "x{}p".format(opts['pipeline_depth'])
+    if opts['pipeline']:
+        opts['name'] += "x{}p".format(opts['gradient_accumulation_count'])
+    elif opts.get('gradient_accumulation_count') > 1:
+        opts['name'] += "x{}a".format(opts['gradient_accumulation_count'])
+
     if opts.get('replicas') > 1:
         opts['name'] += "x{}r".format(opts['replicas'])
 

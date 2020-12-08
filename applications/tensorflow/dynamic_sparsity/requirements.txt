@@ -1,6 +1,5 @@
-numpy>=1.19
+numpy==1.18.5
 pybind11
-unidecode
 requests
 tqdm
 matplotlib
@@ -9,3 +8,6 @@ seaborn
 pytest
 scipy
 tensorboard
+jax
+jaxlib
+wandb==0.9.7

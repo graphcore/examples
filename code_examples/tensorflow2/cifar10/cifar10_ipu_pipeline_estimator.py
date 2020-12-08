@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 from functools import partial
 import tensorflow as tf
 from tensorflow import keras
@@ -27,7 +27,7 @@ def estimator_model(opts, mode):
     stages = [stage0, final_stage]
     return ipu.ipu_pipeline_estimator.IPUPipelineEstimatorSpec(mode=mode,
                                                                computational_stages=stages,
-                                                               pipeline_depth=opts.pipeline_depth,
+                                                               gradient_accumulation_count=opts.gradient_accumulation_count,
                                                                optimizer_function=optimizer_fn,
                                                                eval_metrics_fn=metric_fn,
                                                                pipeline_schedule=None)
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     data = CIFAR10_Data()
 
     print("Initialize the model")
-    test_steps = len(data.y_test) // (opts.batch_size * opts.pipeline_depth)
+    test_steps = len(data.y_test) // (opts.batch_size * opts.gradient_accumulation_count)
     training_steps = 5 * test_steps
     config = create_ipu_config(training_steps, test_steps, num_shards=opts.ipus)
     ipu_estimator = ipu.ipu_pipeline_estimator.IPUPipelineEstimator(config=config, model_fn=partial(estimator_model, opts))

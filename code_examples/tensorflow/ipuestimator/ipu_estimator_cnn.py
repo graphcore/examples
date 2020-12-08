@@ -1,4 +1,24 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+# All contributions by François Chollet:
+# Copyright (c) 2015 - 2019, François Chollet.
+# All rights reserved.
+#
+# All contributions by Google:
+# Copyright (c) 2015 - 2019, Google, Inc.
+# All rights reserved.
+#
+# All contributions by Microsoft:
+# Copyright (c) 2017 - 2019, Microsoft, Inc.
+# All rights reserved.
+#
+# All other contributions:
+# Copyright (c) 2015 - 2019, the respective contributors.
+# All rights reserved.
+#
+# Each contributor holds copyright over their respective contributions.
+# The project versioning (Git) records all such contribution source information
+#
+# See https://github.com/keras-team/keras/blob/1a3ee8441933fc007be6b2beb47af67998d50737/examples/cifar10_cnn.py
 import argparse
 import time
 
@@ -15,7 +35,8 @@ NUM_CLASSES = 10
 
 
 def model_fn(features, labels, mode, params):
-    """A simple CNN based on https://keras.io/examples/cifar10_cnn/"""
+    """A simple CNN based on
+    https://github.com/keras-team/keras/blob/1a3ee8441933fc007be6b2beb47af67998d50737/examples/cifar10_cnn.py"""
 
     model = Sequential()
     model.add(Conv2D(32, (3, 3), padding="same"))

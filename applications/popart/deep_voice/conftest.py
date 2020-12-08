@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 import os
 from pathlib import Path
 from subprocess import run

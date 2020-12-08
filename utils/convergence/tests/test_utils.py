@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 from contextlib import contextmanager
 import random

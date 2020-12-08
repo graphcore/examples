@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 import argparse
 import datetime
 import fileinput
@@ -6,8 +7,6 @@ import inspect
 import os
 import re
 import sys
-import unittest
-
 
 C_FILE_EXTS = ['c', 'cpp', 'C', 'cxx', 'c++', 'h', 'hpp']
 
@@ -21,7 +20,9 @@ EXCLUDED = ['applications/tensorflow/cnns/training/Datasets/imagenet_preprocessi
             'applications/popart/bert/bert_data/tokenization.py',
             'applications/popart/bert/bert_data/squad_utils.py',
             'applications/popart/bert/bert_data/create_pretraining_data.py',
-            'applications/popart/bert/tests/torch_bert.py']
+            'applications/popart/bert/tests/torch_bert.py',
+            'applications/tensorflow/click_through_rate/common/Dice.py',
+            'code_examples/tensorflow/cosmoflow/models/resnet.py']
 
 
 def check_file(path, language, amend):
@@ -38,7 +39,8 @@ def check_file(path, language, amend):
             first_line_index += 1
             first_line = f.readline()
 
-        regexp = r'{} Copyright \d+ Graphcore Ltd.'.format(comment)
+        regexp = r"{} Copyright \(c\) \d+ Graphcore Ltd. All rights reserved.".format(comment)
+
         if re.match(regexp, first_line):
             found_copyright = True
 
@@ -46,8 +48,7 @@ def check_file(path, language, amend):
         if amend:
             now = datetime.datetime.now()
             year = now.year
-            copyright_msg = '{} Copyright {} Graphcore Ltd.\n'.format(comment,
-                                                                      year)
+            copyright_msg = '{} Copyright (c) {} Graphcore Ltd. All rights reserved.'.format(comment, year)
             index = 0
             for line in fileinput.FileInput(path, inplace=1):
                 if index == first_line_index:
@@ -67,7 +68,7 @@ def test_copyrights(amend=False):
 
     bad_files = []
     excluded = [os.path.join(root_path, p) for p in EXCLUDED]
-    for path, subdir, files in os.walk(root_path):
+    for path, _, files in os.walk(root_path):
         for file_name in files:
             file_path = os.path.join(path, file_name)
 

@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 import argparse
 import os
@@ -12,25 +12,22 @@ from tensorflow.python.ipu.scopes import ipu_scope, ipu_shard
 import tensorflow_probability as tfp
 
 
-# Model and sampling parameters
+# Sampling parameters from the command line
 # Note: increasing model size, number of steps, or dataset size may cause out of memory errors
+parser = argparse.ArgumentParser()
+parser.add_argument("--num_ipus", type=int, default=2)
+parser.add_argument("--num_results_per_ipu", type=int, default=400)
+parser.add_argument("--num_burnin_steps", type=int, default=100)
+parser.add_argument("--num_leapfrog_steps", type=int, default=1000)
+parser.add_argument("--dataset_dir", default=".", help="Path to data")
+args = parser.parse_args()
+
+# Models and dataset parameters
 first_layer_size = 40
-num_burnin_steps = 100
-num_ipus = 2
-num_results = 400
-num_leapfrog_steps = 1000
 useful_features = 22
 num_skip_columns = 2
 output_file = "output_samples.txt"
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--dataset-dir",
-    type=str,
-    default=".",
-    help="Path to datasets"
-)
-args = parser.parse_args()
 
 input_file = os.path.join(
     args.dataset_dir, "returns_and_features_for_mcmc.txt"
@@ -39,10 +36,10 @@ input_file = os.path.join(
 # Print the about message
 print("\nMCMC sampling example with TensorFlow Probability\n"
       " Single precision\n"
-      f" Number of IPUs {num_ipus} (one MCMC chain per IPU)\n"
-      f" Number of results per IPU {num_results}\n"
-      f" Number of burn-in steps {num_burnin_steps}\n"
-      f" Number of leapfrog steps {num_leapfrog_steps}\n"
+      f" Number of IPUs {args.num_ipus} (one MCMC chain per IPU)\n"
+      f" Number of results per IPU {args.num_results_per_ipu}\n"
+      f" Number of burn-in steps {args.num_burnin_steps}\n"
+      f" Number of leapfrog steps {args.num_leapfrog_steps}\n"
       f" First layer size {first_layer_size}")
 
 
@@ -165,19 +162,19 @@ def build_graph(scope_id):
             hmc_kernel = tfp.mcmc.TransformedTransitionKernel(
                 inner_kernel=tfp.mcmc.HamiltonianMonteCarlo(
                     target_log_prob_fn=target_log_prob_fn,
-                    num_leapfrog_steps=num_leapfrog_steps,
+                    num_leapfrog_steps=args.num_leapfrog_steps,
                     step_size=step_size,
                     step_size_update_fn=tfp.mcmc.make_simple_step_size_update_policy(
                         target_rate=0.2,
-                        num_adaptation_steps=num_burnin_steps,
+                        num_adaptation_steps=args.num_burnin_steps,
                         decrement_multiplier=0.1),
                     state_gradients_are_stopped=False),
                 bijector=unconstraining_bijectors)
 
             # Graph to sample from the chain
             return tfp.mcmc.sample_chain(
-                num_results=num_results,
-                num_burnin_steps=num_burnin_steps,
+                num_results=args.num_results_per_ipu,
+                num_burnin_steps=args.num_burnin_steps,
                 current_state=initial_chain_state,
                 kernel=hmc_kernel)
 
@@ -187,7 +184,7 @@ def build_graph(scope_id):
 
 # Place the graphs on IPUs
 ops = []
-for i in range(num_ipus):
+for i in range(args.num_ipus):
     with ipu_scope('/device:IPU:'+str(i)):
         ops.append(build_graph(scope_id=str(i)))
 
@@ -195,7 +192,7 @@ for i in range(num_ipus):
 # Configure IPU
 config = utils.create_ipu_config()
 # Create num_chips TF devices, with 1 IPU per device
-config = utils.auto_select_ipus(config, [1]*num_ipus)
+config = utils.auto_select_ipus(config, [1]*args.num_ipus)
 utils.configure_ipu_system(config)
 utils.move_variable_initialization_to_cpu()
 

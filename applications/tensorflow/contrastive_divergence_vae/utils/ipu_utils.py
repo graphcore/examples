@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 # coding=utf-8
 import os
 import tensorflow.compat.v1 as tf

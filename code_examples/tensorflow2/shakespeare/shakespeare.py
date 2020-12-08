@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 # Based on the Google colab shakespeare on TPU example, licenced under
 # the Apache License, Version 2.0. Original URL:

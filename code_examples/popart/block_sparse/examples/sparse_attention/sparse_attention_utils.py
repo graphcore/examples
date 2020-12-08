@@ -1,5 +1,4 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-
 import numpy as np
 from scipy import sparse
 from matplotlib import pyplot as plt

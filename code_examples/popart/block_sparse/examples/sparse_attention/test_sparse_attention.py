@@ -1,5 +1,5 @@
-
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 import os
 import unittest
 import re
@@ -43,11 +43,11 @@ class TestSparseAttention(unittest.TestCase):
                 prob = float(re.match(r"Probability mean (-?[\d]+(?:.[\d]+)?(?:e[+-]?\d+)?)", line).groups()[0])
             elif re.match(r"Logits grad mean (-?[\d]+(?:.[\d]+)?(?:e[+-]?\d+)?)", line):
                 grad = float(re.match(r"Logits grad mean (-?[\d]+(?:.[\d]+)?(?:e[+-]?\d+)?)", line).groups()[0])
-            if prob is None:
-                assert False, "'Probability mean {}' pattent was not found in  the output"
-            else:
-                assert abs(prob_expected - prob) < prob_tol
-            if grad is None:
-                assert False, "'Logits grad mean {}' pattent was not found in  the output"
-            else:
-                assert abs(grad_expected - grad) < grad_tol
+        if prob is None:
+            assert False, "'Probability mean ...' pattern was not found in  the output"
+        else:
+            assert abs(prob_expected - prob) < prob_tol
+        if grad is None:
+            assert False, "'Logits grad mean ...' pattern was not found in  the output"
+        else:
+            assert abs(grad_expected - grad) < grad_tol

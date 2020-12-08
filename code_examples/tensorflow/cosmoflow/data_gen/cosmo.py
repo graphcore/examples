@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 """CosmoFlow dataset specification"""
 
 import os

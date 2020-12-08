@@ -1,5 +1,4 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-
 import pdb
 import os
 import numpy as np
@@ -8,8 +7,9 @@ import ctypes
 import popart
 from sparse_attention_utils import Heads, Convert
 
+
 so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                       "../custom_ops.so")
+                       "../../custom_ops.so")
 ctypes.cdll.LoadLibrary(so_path)
 
 np.random.seed(0)
@@ -129,7 +129,7 @@ anchor_desc = {loss: popart.AnchorReturnType("ALL"),
 dataFlow = popart.DataFlow(1, anchor_desc)
 session = popart.TrainingSession(fnModel = builder.getModelProto(),
                                  loss = loss,
-                                 deviceInfo = popart.DeviceManager().createIpuModelDevice({}),
+                                 deviceInfo = popart.DeviceManager().acquireAvailableDevice(1),
                                  optimizer = popart.ConstSGD(0.01),
                                  dataFlow = dataFlow)
 

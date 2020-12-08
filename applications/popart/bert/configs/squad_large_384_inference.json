@@ -10,7 +10,6 @@
     "no_dropout": true,
     "loss_scaling": 1.0,
     "stochastic_rounding": true,
-    "custom_ops": [],
     "batches_per_step": 16,
     "epochs": 1,
     "epochs_per_save": 1,

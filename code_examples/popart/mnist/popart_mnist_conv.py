@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 """
 A simple program that uses the PopART library ONNX builder to create
@@ -303,12 +303,12 @@ def train(opts):
         if i > 0:
             training.session.resetHostWeights(onnx_file_name)
         training.session.weightsFromHost()
-        for data, labels in training_set:
+        for step, (data, labels) in enumerate(training_set):
             stepio = popart.PyStepIO(
                 {data_in: data, labels_in: labels}, training.anchors)
 
             start = time()
-            training.session.run(stepio)
+            training.session.run(stepio, 'Epoch ' + str(i) + ' training step' + str(step))
             if opts.test_mode == "training":
                 log_run_info(training,
                              start,
@@ -323,12 +323,12 @@ def train(opts):
         validation.session.weightsFromHost()
 
         # Evaluation
-        for data, labels in test_set:
+        for step, (data, labels) in enumerate(test_set):
             stepio = popart.PyStepIO(
                 {data_in: data, labels_in: labels}, validation.anchors)
 
             start = time()
-            validation.session.run(stepio)
+            validation.session.run(stepio, 'Epoch ' + str(i) + ' evaluation step ' + str(step))
             if opts.test_mode == "inference":
                 log_run_info(validation,
                              start,

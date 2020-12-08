@@ -1,8 +1,22 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import tensorflow as tf
 from collections import namedtuple
 from functools import partial
 from tensorflow.python.ipu import normalization_ops
+from .batch_norm import batch_norm
 from .model_base import ModelBase
 
 
@@ -101,14 +115,12 @@ def norm(x, opts, is_training=True, zero_gamma_init = False):
         else None
     )
     if norm_type == "BATCH":
-        x = tf.layers.batch_normalization(
+        x = batch_norm(
             x,
-            fused=True,
             center=True,
             scale=True,
             training=is_training,
             trainable=True,
-            momentum=opts["BN_decay"],
             epsilon=1e-5,
             gamma_initializer = p_init['gamma'],
             beta_initializer = p_init['beta']
@@ -258,9 +270,6 @@ def block3(x, stride, filters, name, use_shortcut, shortcut_type, norm, conv,
 
 def fixed_padding(inputs, kernel_size, data_format):
     """Pads the input along the spatial dimensions independently of input size.
-
-    Further details of this is necessary can be found at:
-    https://www.tensorflow.org/versions/r1.8/api_guides/python/nn#Convolution
     """
     pad_total = kernel_size - 1
     pad_beg = pad_total // 2

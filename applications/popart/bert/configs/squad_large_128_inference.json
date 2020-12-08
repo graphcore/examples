@@ -17,7 +17,7 @@
         "data/squad/dev-v1.1.json"
     ],
     "vocab_file": "data/ckpts/uncased_L-12_H-768_A-12/vocab.txt",
-    "do-lower-case" : true,
+    "do_lower_case" : true,
     "squad_results_dir": "data/squad/results",
     "squad_evaluate_script": "data/squad/evaluate-v1.1.py",
     "shuffle": false,
@@ -27,5 +27,5 @@
     "use_default_available_memory_proportion": false,
     "low_latency_inference": true,
     "max_copy_merge_size": -1,
-    "max_matmul_memory": 104858
+    "available_memory_proportion": [0.4]
 }

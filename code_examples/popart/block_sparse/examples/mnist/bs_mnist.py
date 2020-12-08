@@ -12,8 +12,9 @@ import popart
 import os
 import ctypes
 
+
 so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                       "custom_ops.so")
+                       "../../custom_ops.so")
 ctypes.cdll.LoadLibrary(so_path)
 
 Session = namedtuple('Session', ['session', 'anchors'])
@@ -274,18 +275,18 @@ def train(opts):
     for i in range(opts.epochs):
         # Training
         training.session.weightsFromHost()
-        for data, labels in training_set:
+        for step, (data, labels) in enumerate(training_set):
             stepio = popart.PyStepIO({data_in: data, labels_in: labels}, training.anchors)
-            training.session.run(stepio)
+            training.session.run(stepio, 'Epoch ' + str(i) + ' training step' + str(step))
         aggregated_loss = 0
         aggregated_accuracy = 0
         training.session.modelToHost('ckpt.onnx')
         validation.session.resetHostWeights('ckpt.onnx')
         validation.session.weightsFromHost()
         # Evaluation
-        for data, labels in test_set:
+        for step, (data, labels) in enumerate(test_set):
             stepio = popart.PyStepIO({data_in: data, labels_in: labels}, validation.anchors)
-            validation.session.run(stepio)
+            validation.session.run(stepio, 'Epoch ' + str(i) + ' evaluation step ' + str(step))
             # Loss
             aggregated_loss += np.mean(validation.anchors[loss])
             # Accuracy

@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 """
 Keras example model factory functions.
 """

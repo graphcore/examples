@@ -1,9 +1,22 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import numpy as np
 import json
 import pytest
 import popart
-from tests.utils import run_py, check_tensors, check_onnx_model
+from tests.utils import run_py, check_tensors, check_onnx_model, requires_remote_buffers
 
 
 def model(splits=1):
@@ -29,29 +42,45 @@ def model(splits=1):
     return builder.getModelProto(), {d0: input_data}, x, loss
 
 
-def session(train=False, skip_execution=False, include_patterns=True, splits=1, outline=False):
+def session(train=False, skip_execution=False, include_patterns=True, splits=1, outline=False, optim="Sgd"):
     proto, data, x, loss = model(splits=splits)
     # Required
     extraPatterns = []
     if include_patterns:
-        extraPatterns += ["TiedGatherPattern", "TiedGatherGradPattern"]
+        extraPatterns += ["TiedGatherPattern", "TiedGatherAccumulatePattern"]
     patterns = popart.Patterns()
     for extraPattern in extraPatterns:
         patterns.enablePattern(extraPattern, True)
+
+    user_options = {
+        "enableOutlining": outline,
+        "enableGradientAccumulation": True,
+        "accumulationFactor": 2,
+    }
+
+    if optim == "Lamb":
+        optimizer = popart.Adam({
+            "defaultLearningRate": (0.1, True),
+            "lossScaling": (20, False),
+        }, mode=popart.AdamMode.LambNoBias)  # NoBias to increase the error of incorrect gradients
+        user_options["optimizerStateTensorLocationSettings"] = popart.TensorLocationSettings(
+            popart.TensorStorage.OffChip, 0)
+    else:
+        optimizer = popart.SGD({
+            "defaultLearningRate": (0.1, True),
+            "defaultMomentum": (0.9, True),
+            "defaultDampening": (0, True),  # 0 dampening to increase the error of incorrect gradients
+            "lossScaling": (20, False)})
+
     if train:
         return run_py(
             proto,
             data=data,
             outputs=x,
             loss=loss,
-            optimizer=popart.SGD({
-                "defaultLearningRate": (0.1, True),
-                "defaultMomentum": (0.9, True),
-                "defaultDampening": (0, True)}),  # 0 dampening to increase the error of incorrect gradients
+            optimizer=optimizer,
             patterns=patterns,
-            user_options={
-                "enableOutlining": outline
-            },
+            user_options=user_options,
             skip_execution=skip_execution)
     else:
         return run_py(
@@ -66,11 +95,16 @@ def session(train=False, skip_execution=False, include_patterns=True, splits=1, 
             skip_execution=skip_execution)
 
 
-@pytest.mark.parametrize(['phase', 'splits'], [(phase, splits) for phase in ["fwd", "bwd"] for splits in (1, 4)])
-def test_tied_gather_pattern_ir(phase, splits, custom_ops):
+@pytest.mark.sanity
+@pytest.mark.parametrize('splits', (1, 4))
+@pytest.mark.parametrize(['phase', 'optimizer'], [
+    ("fwd", None),
+    ("bwd", "Sgd"),
+    requires_remote_buffers("bwd", "Lamb")])
+def test_tied_gather_pattern_ir(splits, phase, optimizer, custom_ops):
     train = phase == "bwd"
 
-    sess = session(train, skip_execution=True, splits=splits)
+    sess = session(train, skip_execution=True, splits=splits, optim=optimizer)
 
     ir = json.loads(
         sess._serializeIr(popart.IrSerializationFormat.JSON))
@@ -87,22 +121,28 @@ def test_tied_gather_pattern_ir(phase, splits, custom_ops):
                           ir["maingraph"])))
 
     if train:
-        assert len(list(filter(lambda op: op["type"] == "SparseSGD1Accumulate", ops))) == splits
+        assert len(list(filter(lambda op: op["type"] == "SparseAccumulate", ops))) == splits
 
 
-@pytest.mark.parametrize(['phase', 'splits'], [(phase, splits) for phase in ["fwd", "bwd"] for splits in (1, 4)])
-def test_tied_gather_pattern_correctness(phase, splits, custom_ops):
+@pytest.mark.sanity
+@pytest.mark.parametrize('splits', (1, 4))
+@pytest.mark.parametrize(['phase', 'optimizer'], [
+    ("fwd", None),
+    ("bwd", "Sgd"),
+    requires_remote_buffers("bwd", "Lamb")])
+def test_tied_gather_pattern_correctness(splits, phase, optimizer, custom_ops):
     train = phase == "bwd"
 
-    outputs_1, proto_1 = session(train, skip_execution=False, splits=splits)
+    outputs_1, proto_1 = session(train, skip_execution=False, splits=splits, optim=optimizer)
 
-    outputs_2, proto_2 = session(train, skip_execution=False, include_patterns=False, splits=splits)
+    outputs_2, proto_2 = session(train, skip_execution=False, include_patterns=False, splits=splits, optim=optimizer)
 
     check_tensors(outputs_1, outputs_2)
     if train:
         check_onnx_model(proto_1, proto_2)
 
 
+@pytest.mark.sanity
 @pytest.mark.parametrize(['phase'], [(phase,) for phase in ["fwd", "bwd"]])
 def test_tied_gather_pattern_outlining_correctness(phase, custom_ops):
     train = phase == "bwd"

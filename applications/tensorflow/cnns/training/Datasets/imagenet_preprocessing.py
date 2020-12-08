@@ -38,7 +38,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 '''
-FROM https://github.com/tensorflow/models/blob/master/official/resnet/imagenet_main.py
+FROM https://github.com/tensorflow/models/blob/master/official/vision/image_classification/resnet/imagenet_preprocessing.py
 '''
 
 NUM_CLASSES = 1000
@@ -141,11 +141,6 @@ def parse_record(raw_record, is_training, dtype, image_size, full_normalisation,
     image = tf.cast(image, dtype)
 
     return image, label
-
-
-'''
-FROM https://github.com/tensorflow/models/blob/master/official/resnet/imagenet_preprocess.py
-'''
 
 
 def _decode_crop_and_flip(image_buffer, bbox, num_channels, seed=None):

@@ -1,10 +1,24 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import numpy as np
 import tensorflow as tf
 
-## TensorFlow helper functions
+# TensorFlow helper functions
 
 WEIGHT_DECAY_KEY = 'WEIGHT_DECAY'
+
 
 def _relu(x, leakness=0.0, name=None):
     if leakness > 0.0:
@@ -16,15 +30,15 @@ def _relu(x, leakness=0.0, name=None):
 
 
 def _conv(x, filter_size, out_channel, strides, pad='SAME', input_q=None, output_q=None, name='conv'):
-    if (input_q == None)^(output_q == None):
+    if (input_q is None) ^ (output_q is None):
         raise ValueError('Input/Output splits are not correctly given.')
 
     in_shape = x.get_shape()
     with tf.variable_scope(name):
         # Main operation: conv2d
         kernel = tf.get_variable('kernel', [filter_size, filter_size, in_shape[3], out_channel],
-                        x.dtype, initializer=tf.random_normal_initializer(
-                            stddev=np.sqrt(2.0/filter_size/filter_size/out_channel)))
+                                 x.dtype, initializer=tf.random_normal_initializer(
+                                 stddev=np.sqrt(2.0/filter_size/filter_size/out_channel)))
         if kernel not in tf.get_collection(WEIGHT_DECAY_KEY):
             tf.add_to_collection(WEIGHT_DECAY_KEY, kernel)
             # print('\tadded to WEIGHT_DECAY_KEY: %s(%s)' % (kernel.name, str(kernel.get_shape().as_list())))
@@ -40,13 +54,13 @@ def _conv(x, filter_size, out_channel, strides, pad='SAME', input_q=None, output
 
 
 def _fc(x, out_dim, input_q=None, output_q=None, name='fc'):
-    if (input_q == None)^(output_q == None):
+    if (input_q is None) ^ (output_q is None):
         raise ValueError('Input/Output splits are not correctly given.')
 
     with tf.variable_scope(name):
         # Main operation: fc
         w = tf.get_variable('weights', [x.get_shape()[1], out_dim],
-                        x.dtype, initializer=tf.random_normal_initializer(
+                            x.dtype, initializer=tf.random_normal_initializer(
                             stddev=np.sqrt(1.0/out_dim)))
         b = tf.get_variable('biases', [out_dim], x.dtype,
                             initializer=tf.constant_initializer(0.0))
@@ -65,7 +79,7 @@ def _fc(x, out_dim, input_q=None, output_q=None, name='fc'):
 def _get_split_q(ngroups, dim, name='split', l2_loss=False):
     with tf.variable_scope(name):
         # alpha = tf.get_variable('alpha', shape=[ngroups, dim], dtype=tf.float32,
-                              # initializer=tf.random_normal_initializer(stddev=0.1))
+        # initializer=tf.random_normal_initializer(stddev=0.1))
         # q = tf.nn.softmax(alpha, dim=0, name='q')
         std_dev = 0.01
         init_val = np.random.normal(0, std_dev, (ngroups, dim))
@@ -78,6 +92,7 @@ def _get_split_q(ngroups, dim, name='split', l2_loss=False):
                 tf.add_to_collection(WEIGHT_DECAY_KEY, q*2.236)
 
     return q
+
 
 def _merge_split_q(q, merge_idxs, name='merge'):
     assert len(q.get_shape()) == 2
@@ -127,8 +142,8 @@ def _add_split_loss(w, input_q, output_q):
             for j in range(ngroups):
                 if i == j:
                     continue
-                T_list.append(tf.reduce_sum(input_q[i,:] * input_q[j,:]))
-            U_list.append(tf.square(tf.reduce_sum(input_q[i,:])))
+                T_list.append(tf.reduce_sum(input_q[i, :] * input_q[j, :]))
+            U_list.append(tf.square(tf.reduce_sum(input_q[i, :])))
     if output_q not in tf.get_collection('OVERLAP_LOSS_WEIGHTS'):
         print('\t\tAdd overlap & split loss for %s' % output_q.name)
         tf.add_to_collection('OVERLAP_LOSS_WEIGHTS', output_q)
@@ -136,8 +151,8 @@ def _add_split_loss(w, input_q, output_q):
             for j in range(ngroups):
                 if i == j:
                     continue
-                T_list.append(tf.reduce_sum(output_q[i,:] * output_q[j,:]))
-            U_list.append(tf.square(tf.reduce_sum(output_q[i,:])))
+                T_list.append(tf.reduce_sum(output_q[i, :] * output_q[j, :]))
+            U_list.append(tf.square(tf.reduce_sum(output_q[i, :])))
     if T_list:
         tf.add_to_collection('OVERLAP_LOSS', tf.add_n(T_list))
     if U_list:
@@ -147,14 +162,14 @@ def _add_split_loss(w, input_q, output_q):
     for i in range(ngroups):
         if len(w.get_shape()) == 4:
             w_reduce = tf.reduce_mean(tf.square(w), [0, 1])
-            wg_row = tf.matmul(tf.matmul(tf.diag(tf.square(1 - input_q[i,:])), w_reduce), tf.diag(tf.square(output_q[i,:])))
+            wg_row = tf.matmul(tf.matmul(tf.diag(tf.square(1 - input_q[i, :])), w_reduce), tf.diag(tf.square(output_q[i, :])))
             wg_row_l2 = tf.reduce_sum(tf.sqrt(tf.reduce_sum(wg_row, 1)))
-            wg_col = tf.matmul(tf.matmul(tf.diag(tf.square(input_q[i,:])), w_reduce), tf.diag(tf.square(1 - output_q[i,:])))
+            wg_col = tf.matmul(tf.matmul(tf.diag(tf.square(input_q[i, :])), w_reduce), tf.diag(tf.square(1 - output_q[i, :])))
             wg_col_l2 = tf.reduce_sum(tf.sqrt(tf.reduce_sum(wg_col, 0)))
         else:  # len(w.get_shape()) == 2
-            wg_row = tf.matmul(tf.matmul(tf.diag(1 - input_q[i,:]), w), tf.diag(output_q[i,:]))
+            wg_row = tf.matmul(tf.matmul(tf.diag(1 - input_q[i, :]), w), tf.diag(output_q[i, :]))
             wg_row_l2 = tf.reduce_sum(tf.sqrt(tf.reduce_sum(wg_row * wg_row, 1)))
-            wg_col = tf.matmul(tf.matmul(tf.diag(input_q[i,:]), w), tf.diag(1 - output_q[i,:]))
+            wg_col = tf.matmul(tf.matmul(tf.diag(input_q[i, :]), w), tf.diag(1 - output_q[i, :]))
             wg_col_l2 = tf.reduce_sum(tf.sqrt(tf.reduce_sum(wg_col * wg_col, 0)))
         S_list.append(wg_row_l2 + wg_col_l2)
     S = tf.add_n(S_list)
@@ -163,30 +178,28 @@ def _add_split_loss(w, input_q, output_q):
     # Add histogram for w if split losses are added
     scope_name = tf.get_variable_scope().name
     tf.histogram_summary("%s/weights" % scope_name, w)
-    print('\t\tAdd split loss for %s(%dx%d, %d groups)' \
+    print('\t\tAdd split loss for %s(%dx%d, %d groups)'
           % (tf.get_variable_scope().name, in_dim, out_dim, ngroups))
 
     return
 
 
 def _bn(x, is_train, name='bn'):
-    moving_average_decay = 0.9
-
     with tf.variable_scope(name):
         batch_mean, batch_var = tf.nn.moments(x, [0, 1, 2])
 
         mu = tf.get_variable('mu', batch_mean.get_shape(), tf.float16,
-                        initializer=tf.zeros_initializer(), trainable=False)
+                             initializer=tf.zeros_initializer(), trainable=False)
         sigma = tf.get_variable('sigma', batch_var.get_shape(), tf.float16,
-                        initializer=tf.ones_initializer(), trainable=False)
+                                initializer=tf.ones_initializer(), trainable=False)
         beta = tf.get_variable('beta', batch_mean.get_shape(), tf.float16,
-                        initializer=tf.zeros_initializer())
+                               initializer=tf.zeros_initializer())
         gamma = tf.get_variable('gamma', batch_var.get_shape(), tf.float16,
-                        initializer=tf.ones_initializer())
+                                initializer=tf.ones_initializer())
 
         bn = tf.nn.batch_normalization(x, mu, sigma, beta, gamma, 1e-5)
 
     return bn
 
 
-## Other helper functions
+# Other helper functions

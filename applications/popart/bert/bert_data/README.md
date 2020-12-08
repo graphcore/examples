@@ -21,7 +21,6 @@ The following files are found in the `bert_data/` folder:
 * `squad_utils.py`: utils function for SQuAD
 * `sample_text.txt`:  sample text used as minimal example to pre-train BERT
 * `wiki_downloader.sh`: downloads latest compressed xml file from wikipedia page
-* `extract_wiki.sh`: parses wikipedia into articles
 * `wikipedia_preprocessing.py`: outputs txt files that can be used as input for  `create_pretraining_data.py`
 * `tokenization.py` Tokenizer file used to create pretraining data
 
@@ -39,22 +38,21 @@ All the instructions given below should be executed from the `bert_data/` folder
 
 #### **1)** **Download the latest wikipedia dump**
 
-Use the `wiki_downloader.sh` script to download the latest wikipedia dump:
+The `wiki_downloader.sh` script can be used to download the latest wikipedia dump. Wikipedia dumps are licensed under a [CC-BY-SA license 3.0](https://dumps.wikimedia.org/legal.html). 
 
 `./wiki_downloader.sh path-to-target-folder-for-wikipedia-download-file`
 
 This will download the latest wikipedia dump and place it into the folder passed as an argument.
 It is then extracted into a `wikidump.xml` file that can be found inside the same folder.
 
-#### **2)** **Install WikiExtractor **
+#### **2)** **Extract training data from dump**
 
-'pip install wikiextractor'
+WikiExtractor, https://github.com/attardi/wikiextractor, can then be used to extract training data from the wikipedia dump. 
+A command line example to perform the extraction is the following:
 
-**3)** **Extract the data**
-
-Perform the extraction using `extract_wiki.sh` giving the path to the dump, and the path to the destination folder
-
-`./extract_wiki.sh /path/to/the/dump.xml /target_folder 
+```shell
+python  wikiextractor.py -b 1000M --processes 16 --filter_disambig_pages -o /output/path/ /path/to/the/wikidump.xml
+```
 
 Inside the target folder there will be a directory called `AA/` that contains files named `wiki_00`, `wiki_01`...
 
@@ -77,7 +75,7 @@ and so on.
 
 If different filtering is required then use the WikiExtractor directly. A comprehensive list of options is shown here: https://github.com/attardi/wikiextractor.
 
-**4)** **Preprocess the files**
+**3)** **Preprocess the files**
 
 The files from step 3 require further preprocessing with the `wikipedia_preprocessing.py` script:
 
@@ -85,7 +83,7 @@ The files from step 3 require further preprocessing with the `wikipedia_preproce
 
 where `target_folder/AA` contains the files from step 3 and `preprocessed_target_folder` will contain the new files (wiki_00_cleaned, wiki_01_cleaned, ...). The structure of the text in these files is now the same as the structure of the text in the `sample_text.txt` file.
 
-**5) Tokenise the data**
+**4) Tokenise the data**
 
 The data can now be tokenised to create the pre-training dataset for BERT. For this step a vocabulary file is required. A vocabulary can be downloaded from the pre-trained model checkpoints at https://github.com/google-research/bert. We recommend to use the pre-trained BERT-Base Uncased model checkpoints. 
 
@@ -103,7 +101,7 @@ The wikipedia dataset is now ready to be used in the Graphcore BERT model.
 
 **1) Homemade BookCorpus**
 
-Acquire the Homemade BookCorpus scripts from github and install their requirements:
+The Homemade BookCorpus scripts can be downloaded from github and setup:
 ```bash
 git clone https://github.com/soskek/bookcorpus.git ~/bookcorpus
 cd ~/bookcorpus
@@ -111,7 +109,7 @@ pip3 install -r requirements.txt
 ```
 
 **2) URL list and File Download**
-The following commands get the URL list and then download all the files in that list. For more details on these scripts consult the Homemade BookCorpus documentation.
+The following commands can be used to get the URL list and then download all the files in that list. For more details on these scripts consult the Homemade BookCorpus documentation.
 ```bash
 python3 -u download_list.py > url_list.json
 python3 download_files.py --list url_list.json --out files --trash-bad-count
@@ -138,11 +136,9 @@ The files ~/bookcorpus/tokenised_128 and ~/bookcorpus/tokenised_384 can now be u
 
 **1) Training files**
 
-Get Google's SQuaD 1.1 training files as described in the README file here:
+Google describe how to access SQuAD 1.1 training files in its [BERT GitHub repository](https://github.com/google-research/bert).
 
- https://github.com/google-research/bert
-
-Use this command:
+This command can be used to download the SQuAD training files:
 
 ```bash
 curl --create-dirs -L https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json -o data/squad/train-v1.1.json
@@ -150,7 +146,7 @@ curl --create-dirs -L https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v
 
 **2) Pre-trained weights**
 
-Get Google's pre-trained weights (or produce your own by pre-training on the IPU). For example to get pre-trained weights for `BERT Base, uncased`:
+Weights can be pre-trained using the IPU. If you wish to use pre-trained weights Google's are available from the [BERT GitHub repository](https://github.com/google-research/bert). For example to download pre-trained weights for `BERT Base, uncased`:
 
 `curl --create-dirs -L https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip -o data/ckpts/uncased_L-12_H-768_A-12.zip`
 
@@ -162,11 +158,9 @@ Unzip the weights with:
 
 **1) SQuAD Inference files**
 
-Get Google's SQuaD 1.1 inference files as described in the README file here:
+Google describe how to access SQuAD 1.1 files in its [BERT GitHub repository](https://github.com/google-research/bert).
 
- https://github.com/google-research/bert
-
-Use this command:
+These commands can be used to download the SQuAD dev set and evaluation script:
 
 ```bash
 curl --create-dirs -L https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json -o data/squad/dev-v1.1.json

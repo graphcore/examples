@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import os
 import subprocess
 import unittest
@@ -10,7 +10,7 @@ import threading
 import torch
 import sys
 sys.path.append('..')
-import models  # noqa: E402
+import models
 
 
 def run_script(script_name, parameters):
@@ -35,151 +35,116 @@ def get_train_accuracy(output):
     return float(output[pos_start+len(prefix)+1:pos_end])
 
 
-class TestWeightSync(unittest.TestCase):
-    @staticmethod
-    def create_opts():
-        class Opts:
-            def __init__(self):
-                self.model = "resnet18"
-                self.pipeline_splits = ""
-                self.precision = "full"
-                self.normlayer = "batch"
-                self.data = "imagenet"
-        return Opts()
-
-    @pytest.mark.category2
-    @pytest.mark.ipus(1)
-    def test_implicit_weightcopy_inference(self):
-        x = torch.ones([1] + list(datasets_info["cifar10"]["in"]))
-        opts = TestWeightSync.create_opts()
-        model = models.get_model(opts, datasets_info["imagenet"], pretrained=True)
-        model.eval()
-        poptorch_model = poptorch.inferenceModel(model)
-        y = model(x)
-        for _ in range(10):
-            y_poptorch = poptorch_model(x)
-            assert torch.allclose(y, y_poptorch, atol=0.0001)
-
-    @pytest.mark.category2
-    @pytest.mark.ipus(1)
-    def test_explicit_weightcopy_inference(self):
-        x = torch.ones([1] + list(datasets_info["cifar10"]["in"]))
-        opts = TestWeightSync.create_opts()
-        model = models.get_model(opts, datasets_info["imagenet"], pretrained=True)
-        model.eval()
-        poptorch_model = poptorch.inferenceModel(model)
-        y = model(x)
-        for _ in range(10):
-            poptorch_model.copyWeightsToDevice()
-            y_poptorch = poptorch_model(x)
-            assert torch.allclose(y, y_poptorch, atol=0.0001)
+@pytest.mark.category3
+@pytest.mark.ipus(1)
+@pytest.mark.parametrize("precision", ["16.16", "32.32"])
+def test_synthetic(precision):
+    run_script("train.py", f"--data synthetic --model resnet18 --epoch 1 --precision {precision} --no-validation --lr 0.001 --gradient-accumulation 64 --batch-size 1")
 
 
-class TestTrainCIFAR10(unittest.TestCase):
+class TestSynthetic:
     @pytest.mark.category3
-    @pytest.mark.ipus(1)
-    def test_single_ipu(self):
-        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 4 --precision full --no-validation --lr 0.1 --gradient-accumulation 64")
-        acc = get_train_accuracy(out)
-        self.assertGreater(acc, 20.0)
+    @pytest.mark.ipus(2)
+    def test_synthetic_mixed_precision(self):
+        run_script("train.py", "--data synthetic --model resnet18 --epoch 1 --precision 16.32 --pipeline-splits layer4/0 --enable-pipeline-recompute "
+                   "--no-validation --lr 0.001 --gradient-accumulation 64")
 
 
+class TestTrainCIFAR10:
     @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_single_ipu_validation_groupnorm(self):
-        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 10 --precision full --lr 0.1 --gradient-accumulation 64 --normlayer group")
+        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 3 --precision 16.16 --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
+                                     "--norm-type group --norm-num-groups 32 --enable-stochastic-rounding")
         acc = get_test_accuracy(out)
-        self.assertGreater(acc, 20.0)
+        assert acc > 15.0
 
 
     @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_single_ipu_validation_batchnorm(self):
-        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 10 --precision half --lr 0.1 --gradient-accumulation 32 --normlayer batch --batch-size 2")
+        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 3 --precision 16.16 --lr 0.1 --gradient-accumulation 32 "
+                                     "--norm-type batch --batch-size 2 --enable-stochastic-rounding")
         acc = get_test_accuracy(out)
-        self.assertGreater(acc, 20.0)
+        assert acc > 15.0
 
 
     @pytest.mark.category3
     @pytest.mark.ipus(2)
     def test_replicas(self):
-        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 4 --replicas 2 --precision full --no-validation --lr 0.1 --gradient-accumulation 32")
+        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 2 --replicas 2 --precision 16.16 --no-validation --lr 0.1 "
+                                     "--gradient-accumulation 32 --enable-stochastic-rounding")
         acc = get_train_accuracy(out)
-        self.assertGreater(acc, 20.0)
+        assert acc > 15.0
 
 
     @pytest.mark.category3
     @pytest.mark.ipus(2)
     def test_efficient_net(self):
-        out = run_script("train.py", "--data cifar10 --epoch 4 --model efficientnet-b0 --precision half --no-validation --lr 0.1 --gradient-accumulation 64 --pipeline-splits _blocks/4/_bn1 --normlayer group --groupnorm-group-num 4")
+        out = run_script("train.py", "--data cifar10 --epoch 2 --model efficientnet-b0 --precision 16.16 --no-validation --lr 0.1 --gradient-accumulation 64 "
+                                     "--pipeline-splits _blocks/4/_bn1 --norm-type group --norm-num-groups 4 --enable-stochastic-rounding")
         acc = get_train_accuracy(out)
-        self.assertGreater(acc, 20.0)
+        assert acc > 15.0
 
 
     @pytest.mark.category3
     @pytest.mark.ipus(1)
-    def test_halfprecision(self):
-        out = run_script("train.py", "--data cifar10 --epoch 4 --model resnet18 --precision half --lr 0.1 --batch-size 1 --gradient-accumulation 64")
+    def test_full_precision(self):
+        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 32.32 --lr 0.1 --batch-size 1 --gradient-accumulation 64")
         acc = get_train_accuracy(out)
-        self.assertGreater(acc, 20.0)
+        assert acc > 15.0
 
 
     @pytest.mark.category3
-    @pytest.mark.ipus(1)
-    def test_group_normalization(self):
-        out = run_script("train.py", "--data cifar10 --epoch 4 --model resnet18 --precision full --normlayer group --no-validation --lr 0.1 --gradient-accumulation 64")
+    @pytest.mark.ipus(2)
+    def test_mixed_precision(self):
+        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --pipeline-splits layer4/0 --enable-pipeline-recompute --precision 16.32 "
+                                     "--lr 0.1 --batch-size 1 --gradient-accumulation 64 --no-validation")
         acc = get_train_accuracy(out)
-        self.assertGreater(acc, 20.0)
+        assert acc > 15.0
 
 
-class TestRestoreCheckpoint(unittest.TestCase):
-    def setup_method(self, method):
-        method = method.__name__
-
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        out = run_script("train.py", "--data cifar10 --epoch 2 " +
-                         "--model resnet18 --data cifar10 " +
-                         "--checkpoint-path restore_test_path_" + method + " "
-                         "--precision full --lr 0.1 " +
-                         "--gradient-accumulation 64 --normlayer group")
-        self.saved_train_acc = get_train_accuracy(out)
-        self.saved_test_acc = get_test_accuracy(out)
-        # rename last checkpoint for the validation: this prevents an overwrite of the restoring
-        os.rename(
-            os.path.join(script_dir, "restore_test_path_" + method,
-                         "resnet18_cifar10_2.pt"),
-            os.path.join(script_dir, "restore_test_path_" + method,
-                         "resnet18_validation.pt"))
-
-    def teardown_method(self, method):
-        method = method.__name__
-
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        shutil.rmtree(os.path.join(script_dir, "restore_test_path_" + method))
-
+class TestRestoreCheckpoint:
     @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_restore_train(self):
+        # create a model
+        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 16.16 --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
+                                     "--no-validation --norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_restore_train")
+        saved_train_acc = get_train_accuracy(out)
+        # reload the model
         out = run_script("restore.py", "--checkpoint-path restore_test_path_test_restore_train/resnet18_cifar10_1.pt")
         acc = get_train_accuracy(out)
-        self.assertGreater(acc, self.saved_train_acc-5.0)
+        assert acc > saved_train_acc - 5.0
+        # remove folder
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        shutil.rmtree(os.path.join(script_dir, "restore_test_path_test_restore_train"))
 
 
     @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_validation(self):
-        out = run_script("validate.py", "--checkpoint-path restore_test_path_test_validation/resnet18_validation.pt")
+        # create a model
+        out = run_script("train.py", "--data cifar10 --epoch 1 --model resnet18 --precision 16.16 --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
+                                     "--norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_validation")
+        saved_test_acc = get_test_accuracy(out)
+        # validate the model
+        out = run_script("validate.py", "--checkpoint-path restore_test_path_test_validation/resnet18_cifar10_1.pt")
         acc = get_test_accuracy(out)
-        self.assertEqual(self.saved_test_acc, acc)
+        # close enough
+        assert abs(saved_test_acc - acc) < 0.01
+        # remove folder
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        shutil.rmtree(os.path.join(script_dir, "restore_test_path_test_validation"))
 
 
-class TestGroupNormConversion(unittest.TestCase):
+class TestGroupNormConversion:
     @staticmethod
     def create_opts():
         class Opts:
             def __init__(self):
-                self.normlayer = "group"
-                self.groupnorm_group_num = 2
+                self.norm_type = "group"
+                self.norm_num_groups = 2
         return Opts()
 
 

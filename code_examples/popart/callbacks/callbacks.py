@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import time
 
 import numpy as np
@@ -104,7 +104,7 @@ def build_and_run_graph(data_size):
     )
 
     # Run the graph and return timings:
-    session.run(stepio)
+    session.run(stepio, 'AddAndMulCallback')
     print(rtts)
     return rtts
 

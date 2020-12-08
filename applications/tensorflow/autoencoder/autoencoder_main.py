@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 # Original paper:
 # Training Deep AutoEncoders for Collaborative Filtering
 # By Oleksii Kuchaiev and Boris Ginsburg

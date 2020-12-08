@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.python import ipu

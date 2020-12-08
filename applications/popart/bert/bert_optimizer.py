@@ -1,7 +1,22 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import enum
 import popart
 import logging
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -13,23 +28,31 @@ class ScheduleMode(enum.Enum):
 
 
 class BaseOptimizerFactory():
-    def __init__(self, args, iteration, tensors=None):
+    def __init__(self, args, iteration, opt_type="SGD", tensors=None):
 
-        self.option_values = {
-            "defaultLearningRate": args.learning_rate,
-            "defaultMomentum": args.momentum,
-            "defaultDampening": args.dampening or args.momentum,
-            "defaultVelocityScaling": args.velocity_scaling,
-            "lossScaling": args.loss_scaling,
-        }
+        self.opt_type = opt_type
+
+        if self.opt_type == "SGD":
+            self.option_values = {
+                "defaultLearningRate": args.learning_rate,
+                "defaultMomentum": args.momentum,
+                "defaultDampening": args.dampening or args.momentum,
+                "defaultVelocityScaling": args.velocity_scaling,
+                "lossScaling": args.loss_scaling,
+            }
+        else:
+            self.option_values = {
+                "defaultLearningRate": args.learning_rate,
+                "defaultBeta1": args.beta1,
+                "defaultBeta2": args.beta2,
+                "lossScaling": args.loss_scaling,
+                "maxWeightNorm": args.max_weight_norm if args.max_weight_norm is not None else np.finfo(np.float16).max
+            }
 
         self._options_created = False
         self._non_const_options = set()
 
         self.iteration = iteration
-
-        self.projection_lr_scaling = args.task == "PRETRAINING"
-        self.projection_lr_scale = args.projection_lr_scale
 
         self.squad_lr_scaling = args.task == "SQUAD"
         self.squad_lr_scale = args.squad_lr_scale
@@ -80,7 +103,19 @@ class BaseOptimizerFactory():
     def create(self):
         self.iteration.learning_rate = self.optimizer_options["defaultLearningRate"][0]
 
-        optimizer = popart.SGD(self.optimizer_options)
+        if self.opt_type == "SGD":
+            optimizer = popart.SGD(self.optimizer_options)
+        elif self.opt_type == "ADAM":
+            optimizer = popart.Adam(self.optimizer_options)
+        elif self.opt_type == "ADAM_NO_BIAS":
+            optimizer = popart.Adam(self.optimizer_options,
+                                    mode=popart.AdamMode.AdamNoBias)
+        elif self.opt_type == "LAMB":
+            optimizer = popart.Adam(self.optimizer_options,
+                                    mode=popart.AdamMode.Lamb)
+        elif self.opt_type == "LAMB_NO_BIAS":
+            optimizer = popart.Adam(self.optimizer_options,
+                                    mode=popart.AdamMode.LambNoBias)
 
         projection_scale_added = False
         weight_decay_tensor_list = []
@@ -110,32 +145,18 @@ class BaseOptimizerFactory():
                     specific_parameters["dampening"] = (dampening, True)
 
                 for tensor_id in self.tensors[stage]:
-
                     if self.include_for_weight_decay(tensor_id):
                         specific_parameters["weightDecay"] = (self.weight_decay, True)
                         weight_decay_tensor_list.append(tensor_id)
 
-                    # Special case for embedding/projection variable
-                    if self.projection_lr_scaling and "Embedding_Dict" in tensor_id:
-                        lr = specific_parameters.get("learningRate", self.optimizer_options["defaultLearningRate"])
-                        params = specific_parameters.copy()
-                        params["learningRate"] = (lr[0] * self.projection_lr_scale, lr[1])
-                        optimizer.insertSpecific(tensor_id, params)
-                        projection_scale_added = True
-                    elif self.squad_lr_scaling and "Squad" in tensor_id:
-                        logger.info(f"Setting SQuAD LR scaling for tensor [{tensor_id}]: {self.squad_lr_scale}")
+                    if self.squad_lr_scaling and "Squad" in tensor_id:
+                        logger.debug(f"Setting SQuAD LR scaling for tensor [{tensor_id}]: {self.squad_lr_scale}")
                         lr = specific_parameters.get("learningRate", self.optimizer_options["defaultLearningRate"])
                         params = specific_parameters.copy()
                         params["learningRate"] = (lr[0] * self.squad_lr_scale, lr[1])
                         optimizer.insertSpecific(tensor_id, params)
                     else:
                         optimizer.insertSpecific(tensor_id, specific_parameters)
-
-            if self.projection_lr_scaling and not projection_scale_added:
-                lr = self.optimizer_options["defaultLearningRate"]
-                optimizer.insertSpecific(
-                    "Embedding/Embedding_Dict",
-                    {"learningRate": (lr[0] * self.projection_lr_scale, lr[1])})
 
         else:
             for tensor_id in self.tensors[0]:
@@ -145,7 +166,7 @@ class BaseOptimizerFactory():
                     optimizer.insertSpecific(tensor_id, specific_parameters)
 
         if len(weight_decay_tensor_list) != 0:
-            logger.info(f" Weight decay of {self.weight_decay} applied to: {weight_decay_tensor_list}")
+            logger.debug(f" Weight decay of {self.weight_decay} applied to: {weight_decay_tensor_list}")
 
         return optimizer
 
@@ -244,8 +265,8 @@ class Schedule(object):
 
 
 class ScheduledOptimizerFactory(BaseOptimizerFactory):
-    def __init__(self, args, iteration, tensors=None):
-        super().__init__(args, iteration, tensors)
+    def __init__(self, args, iteration, opt_type="SGD", tensors=None):
+        super().__init__(args, iteration, opt_type, tensors)
 
         self._schedules = {}
         self.awaiting_update = []

@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import unittest
 import os
 import sys
@@ -89,6 +89,25 @@ class TestPopARTResNetSyntheticBenchmarks(unittest.TestCase):
                             '--norm-type': 'GROUP',
                             '--mode': 'train',
                             '--shards': 2})
+
+    @pytest.mark.ipus(2)
+    def test_resnet_50_train_pipelined_batch_size_1(self):
+        out = run_resnet(**{'--size': "50",
+                            '--batch-size': 1,
+                            '--norm-type': 'GROUP',
+                            '--mode': 'train',
+                            '--shards': 2,
+                            '--pipeline': ''})
+
+    @pytest.mark.ipus(2)
+    def test_resnet_50_train_pipelined_recompute(self):
+        out = run_resnet(**{'--size': "50",
+                            '--batch-size': 2,
+                            '--norm-type': 'GROUP',
+                            '--mode': 'train',
+                            '--shards': 2,
+                            '--pipeline': '',
+                            '--recompute': ''})
 
     @pytest.mark.ipus(1)
     def test_resnet_20_train_batch_size_32(self):

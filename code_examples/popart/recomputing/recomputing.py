@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 '''
 Code Example showing how to use recomputing in PopART
 on a simple model consisting of seven dense layers.

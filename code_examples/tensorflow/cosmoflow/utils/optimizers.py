@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 """
 Utilty code for constructing optimizers and scheduling learning rates.
 """

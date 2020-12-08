@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import tensorflow as tf
 
 from tensorflow.python import ipu
@@ -50,8 +50,6 @@ def main():
 
         model = get_model()
 
-        # The effective batch size is minibatch_size x pipeline_depth, so choose LR
-        # appropriately.
         model.compile(loss='binary_crossentropy', optimizer=Adam(0.005))
         model.fit(get_dataset(), steps_per_epoch=768, epochs=3)
 

@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 import time
 from datetime import datetime
 import os

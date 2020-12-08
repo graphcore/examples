@@ -8,8 +8,9 @@ This example uses an LSTM model for benchmarking. LSTM (Long Short-Term Memory) 
 
 ## Quick start guide
 
-1. Prepare the environment. Install the poplar-sdk following the README provided. Make sure to run the `enable.sh` scripts.
-2. Run the training program. For example: 
+1. Prepare the environment. Install the Poplar SDK following the the instructions
+   in the Getting Started guide for your IPU system. Make sure to run the `enable.sh` scripts.
+2. Run the training program. For example:
    `python3 lstm.py`
    Use `--help` to show all available options.
 

@@ -2,7 +2,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
-from collections import defaultdict
 import pandas as pd
 
 
@@ -17,6 +16,7 @@ def load_plot_data(filename):
         headers = f.readline().split()[1:]
         for line in f:
             tokens = line.split()
+
             itr = int(tokens[0])
             tensor_dict[itr] = [float(t) for t in tokens[1:]]
 

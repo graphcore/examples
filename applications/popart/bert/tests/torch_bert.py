@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # From https://github.com/huggingface/transformers/blob/master/transformers/modeling_bert.py
+# This file has been modified by Graphcore Ltd.
+
 import sys
 import math
 import torch
@@ -43,6 +45,8 @@ class BertConfig(object):
                  num_labels=2,
                  # Added to match PopART BERT
                  mask_tokens=20,
+                 no_cls_layer=True,
+                 update_embedding_dict=False,
                  ):
         """Constructs BertConfig.
         Args:
@@ -68,6 +72,8 @@ class BertConfig(object):
                 initializing all weight matrices.
             layer_norm_eps: The epsilon used by LayerNorm.
             mask_tokens: Maximum number of masked tokens in the sequence (NOTE: Added to match PopART BERT).
+            no_cls_layer: If True, don't apply BertPredictionHeadTransform in the BertLMPredictionHead.
+            update_embedding_dict: If True, update embedding dict in the embedding stage.
         """
         if isinstance(vocab_size_or_config_json_file, str) or (sys.version_info[0] == 2
                                                                and isinstance(vocab_size_or_config_json_file, unicode)):
@@ -90,6 +96,8 @@ class BertConfig(object):
             self.layer_norm_eps = layer_norm_eps
             self.num_labels = num_labels
             self.mask_tokens = mask_tokens
+            self.no_cls_layer = no_cls_layer
+            self.update_embedding_dict = update_embedding_dict
         else:
             raise ValueError("First argument must be either a vocabulary size (int)"
                              "or the path to a pretrained model config file (str)")
@@ -155,6 +163,7 @@ class BertEmbeddings(nn.Module):
             config.max_position_embeddings, config.hidden_size)
         self.token_type_embeddings = nn.Embedding(
             config.type_vocab_size, config.hidden_size)
+        self.update_embedding_dict = config.update_embedding_dict
 
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
@@ -177,7 +186,8 @@ class BertEmbeddings(nn.Module):
 
         # MAJOR CHANGE: No Token Type Embedding
         # MAJOR CHANGE: Don't update the word_embedding
-        words_embeddings = words_embeddings.detach()
+        if not self.update_embedding_dict:
+            words_embeddings = words_embeddings.detach()
         embeddings = words_embeddings + position_embeddings + token_type_embeddings
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
@@ -416,7 +426,10 @@ class BertLMPredictionHead(nn.Module):
     def __init__(self, config):
         super(BertLMPredictionHead, self).__init__()
         self.mask_tokens = config.mask_tokens
-        self.transform = BertPredictionHeadTransform(config)
+        if not config.no_cls_layer:
+            self.transform = BertPredictionHeadTransform(config)
+        else:
+            self.transform = None
 
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
@@ -428,11 +441,10 @@ class BertLMPredictionHead(nn.Module):
         # self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
     def forward(self, hidden_states):
-        hidden_states = self.transform(hidden_states)
-
         # MAJOR CHANGE. We move the masked tokens to the front. As such we only need to project the first max_mask_tokens in the output layer.
         hidden_states = hidden_states[:, :self.mask_tokens, :]
-
+        if self.transform is not None:
+            hidden_states = self.transform(hidden_states)
         hidden_states = self.decoder(hidden_states)  # + self.bias
         return hidden_states
 
@@ -724,7 +736,7 @@ def load_tf_weights_in_bert(model, config, tf_checkpoint_path):
     init_vars = tf.train.list_variables(tf_path)
 
     layer_id_regex = re.compile(r"layer_(\d+)")
-    
+
     names = []
     arrays = []
     for name, shape in init_vars:

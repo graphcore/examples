@@ -8,6 +8,7 @@ from examples_tests.test_util import SubProcessChecker
 working_path = Path(__file__).parent.parent
 
 
+@pytest.mark.usefixtures("ipu_sparse_ops")
 class TestTensorFlowSparseFcBenchmarks(SubProcessChecker):
     """High-level integration tests for TensorFlow dynamic sparse FC layer benchmarks"""
 
@@ -21,6 +22,13 @@ class TestTensorFlowSparseFcBenchmarks(SubProcessChecker):
     @pytest.mark.ipus(1)
     def test_default(self):
         self.run_command("python3 dynamic_sparse_fc.py",
+                         working_path,
+                         [r"(\w+.\w+) items/sec (\w+.\w+) TFLOPS/sec"])
+
+    @pytest.mark.category1
+    @pytest.mark.ipus(1)
+    def test_16x16_blocks(self):
+        self.run_command("python3 dynamic_sparse_fc.py --block-size 16 --batch-size=1 --input-size=160 --output-size=160",
                          working_path,
                          [r"(\w+.\w+) items/sec (\w+.\w+) TFLOPS/sec"])
 
@@ -41,13 +49,13 @@ class TestTensorFlowSparseFcBenchmarks(SubProcessChecker):
     @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_train(self):
-        self.run_command("python3 dynamic_sparse_fc.py --train",
+        self.run_command("python3 dynamic_sparse_fc.py --mode train",
                          working_path,
                          [r"(\w+.\w+) items/sec (\w+.\w+) TFLOPS/sec"])
 
     @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_train_real_data(self):
-        self.run_command("python3 dynamic_sparse_fc.py --train --use-generated-data",
+        self.run_command("python3 dynamic_sparse_fc.py --mode train --use-generated-data",
                          working_path,
                          [r"(\w+.\w+) items/sec (\w+.\w+) TFLOPS/sec"])

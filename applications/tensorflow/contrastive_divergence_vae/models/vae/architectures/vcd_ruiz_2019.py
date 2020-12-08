@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 """Networks for VAE implementation in VCD paper"""
 import numpy as np
 import tensorflow.compat.v1 as tf

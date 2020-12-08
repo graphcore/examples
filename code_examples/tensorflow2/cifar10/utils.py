@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 import argparse
 from tensorflow.python import ipu
 
@@ -7,9 +9,9 @@ def parse_params(enable_multi_ipu=False, enable_pipelining=False):
     parser.add_argument('--batch-size', type=int, default=16, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=150, help='number of epochs to train')
     if enable_multi_ipu:
-        parser.add_argument('--ipus', type=int, default=2, help='number of IPUS')
+        parser.add_argument('--ipus', type=int, default=2, help='number of IPUs')
     if enable_pipelining:
-        parser.add_argument('--pipeline-depth', type=int, default=8, help='Depth of the pipeline')
+        parser.add_argument('--gradient-accumulation-count', type=int, default=8, help='The number of times each pipeline stage will be executed')
         parser.add_argument('--model_shard_position', type=int, default=7, help='The layer number, where the model is sharded into two parts (range:1..17)')
     opts = parser.parse_args()
     return opts

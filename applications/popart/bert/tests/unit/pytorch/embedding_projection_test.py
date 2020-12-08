@@ -1,7 +1,21 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import numpy as np
 import torch
 from torch import nn
+import pytest
 import popart
 import onnx
 
@@ -70,13 +84,14 @@ def test_embedding_projection_fwd(custom_ops):
         "ai.graphcore": 1
     })
     config = BertConfig(vocab_length=9728,
-                        projection_serialization_steps=4,
+                        embedding_serialization_vocab_steps=4,
                         batch_size=1,
                         hidden_size=768,
                         sequence_length=128,
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
+                        no_cls_layer=False,
                         inference=True)
     popart_model = Bert(config, builder=builder)
 
@@ -113,7 +128,8 @@ def test_embedding_projection_fwd(custom_ops):
         TorchBertConfig(config.vocab_length,
                         config.hidden_size,
                         max_position_embeddings=config.max_positional_length,
-                        layer_norm_eps=config.layer_norm_eps))
+                        layer_norm_eps=config.layer_norm_eps,
+                        no_cls_layer=config.no_cls_layer))
 
     torch_model.eval()
 
@@ -126,6 +142,7 @@ def test_embedding_projection_fwd(custom_ops):
     check_tensors(torch_outputs, outputs)
 
 
+@pytest.mark.sanity
 def test_embedding_projection_bwd(custom_ops):
     l1_lambda = 0.1
 
@@ -136,13 +153,14 @@ def test_embedding_projection_bwd(custom_ops):
         "ai.graphcore": 1
     })
     config = BertConfig(vocab_length=9728,
-                        projection_serialization_steps=4,
+                        embedding_serialization_vocab_steps=4,
                         batch_size=1,
-                        hidden_size=768,
+                        hidden_size=288,
                         sequence_length=128,
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
+                        no_cls_layer=False,
                         # Currently updating embedding dict with projection is only
                         # available with momentum. And PopART != Pytorch momentum
                         # due to a bootstrapping step on iter 0.
@@ -190,7 +208,9 @@ def test_embedding_projection_bwd(custom_ops):
         TorchBertConfig(config.vocab_length,
                         config.hidden_size,
                         max_position_embeddings=config.max_positional_length,
-                        layer_norm_eps=config.layer_norm_eps))
+                        layer_norm_eps=config.layer_norm_eps,
+                        no_cls_layer=config.no_cls_layer,
+                        update_embedding_dict=config.update_embedding_dict))
     # Turn off dropout
     torch_model.eval()
 

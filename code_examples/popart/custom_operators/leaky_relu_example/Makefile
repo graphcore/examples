@@ -18,4 +18,4 @@ leaky_relu_custom_op: leaky_relu_custom_op.cpp
 
 .PHONY: clean
 clean:
-	rm -r  $(BUILD_DIR)
+	rm -rf  $(BUILD_DIR)

@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 """
 Tests covering various CNN training options using the EfficientNet-B0 model.
 """
@@ -19,7 +19,7 @@ class TestBasicFunctionality(unittest.TestCase):
 
 @pytest.mark.category2
 @pytest.mark.ipus(2)
-class TestEfficientNetB0Pipelineing2IPUs(unittest.TestCase):
+class TestEfficientNetB0Pipelining2IPUs(unittest.TestCase):
     """EfficientNet-B0 example over 2 IPUs.
     """
 
@@ -29,7 +29,8 @@ class TestEfficientNetB0Pipelineing2IPUs(unittest.TestCase):
                            '--dataset': 'ImageNet',
                            '--model': 'efficientnet',
                            '--shards': 2,
-                           '--pipeline-depth': 256,
+                           '--pipeline': '',
+                           '--gradient-accumulation-count': 256,
                            '--batch-size': 2,
                            '--no-validation': '',
                            '--xla-recompute': '',
@@ -64,7 +65,8 @@ class TestModifiedEfficientNetB0Pipelining2IPUs(unittest.TestCase):
                            '--model': 'EfficientNet',
                            '--model-size': 'B0',
                            '--shards': 2,
-                           '--pipeline-depth': 128,
+                           '--pipeline': '',
+                           '--gradient-accumulation-count': 128,
                            '--batch-size': 4,
                            '--no-validation': '',
                            '--xla-recompute': '',
@@ -95,7 +97,8 @@ class TestEfficientNetB0Pipelining2IPUs2Replicas(unittest.TestCase):
                            '--model-size': 'B0',
                            '--shards': 2,
                            '--replicas': 2,
-                           '--pipeline-depth': 128,
+                           '--pipeline': '',
+                           '--gradient-accumulation-count': 128,
                            '--pipeline-schedule': 'Grouped',
                            '--batch-size': 2,
                            '--no-validation': '',

@@ -97,6 +97,19 @@ pip install <path to gc_tensorflow.whl>
 
 Note: TensorFlow is required by `bert_tf_loader.py`. You can use the standard TensorFlow version for this BERT example, however using the Graphcore TensorFlow version allows this virtual environment to be used for other TensorFlow programs targeting the IPU.
 
+##### 4) Reproduce base training
+
+If you just want to reproduce base training and don't care how it all works then you can run the following command:
+
+```bash
+./scripts/base_training.sh
+```
+
+This script first downloads, preprocesses and tokenises the Wikipedia dataset. It then runs pretraining on Wikipedia, followed by fine-tuning on SQuAD v1.1.
+
+**NOTE:** You may want to change some of the paths in the script if the disk on which this README resides isn't very large.  The final tokenised Wikipedia dataset for both sequence length 128 and 384 totals around 800GB.
+
+
 ### Generate pre-training data (small sample)
 
 As an example we will create data from a small sample: `bert_data/sample_text.txt`, however the steps are the same for a large corpus of text. As described above, see `bert_data/README.md` for instructions on how to generate data for the Wikipedia and SQuAD datasets.

@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 """Model specification for CosmoFlow
 
 This module contains the v1 implementation of the benchmark model.

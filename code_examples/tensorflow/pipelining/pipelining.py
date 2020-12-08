@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import argparse
 import os
 
@@ -26,11 +26,11 @@ def parse_args():
                         help="Total number of epochs to train for.")
     parser.add_argument("--learning-rate", type=float, default=0.01,
                         help="The learning rate used with stochastic gradient descent.")
-    parser.add_argument('--pipeline-depth', type=int, default=16,
-                        help="Depth of pipeline to use.")
+    parser.add_argument('--gradient-accumulation-count', type=int, default=16,
+                        help="The number of times each pipeline stage will be executed.")
     parser.add_argument('--pipeline-schedule', type=str, default="Grouped",
                         choices=pipeline_schedule_options,
-                        help="Pipelining scheduler. In the 'Grouped' schedule the forward passes"
+                        help="Pipelining schedule. In the 'Grouped' schedule the forward passes"
                         " are grouped together, and the backward passes are grouped together. "
                         "With 'Interleaved' the forward and backward passes are interleaved. "
                         "'Sequential' mimics a non-pipelined execution.")
@@ -113,7 +113,7 @@ def model(lr):
     with tf.variable_scope("FCModel", use_resource=True):
         pipeline_op = ipu.pipelining_ops.pipeline(
             computational_stages=[stage1, stage2],
-            pipeline_depth=args.pipeline_depth,
+            gradient_accumulation_count=args.gradient_accumulation_count,
             repeat_count=args.repeat_count,
             inputs=[lr],
             infeed_queue=infeed_queue,
@@ -145,11 +145,11 @@ if __name__ == "__main__":
     infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(dataset, "infeed")
     outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue("outfeed")
 
-    # With batch size BS, pipeline depth PD and repeat count RPT,
-    # at every step n = (BS * PD * RPT) examples are used.
+    # With batch size BS, gradient accumulation count GAC and repeat count RPT,
+    # at every step n = (BS * GAC * RPT) examples are used.
     # So in order to evaluate at least N total examples, do ceil(N / n) steps
     num_train_examples = int(args.epochs * n_examples)
-    examples_per_step = args.batch_size * args.pipeline_depth * args.repeat_count
+    examples_per_step = args.batch_size * args.gradient_accumulation_count * args.repeat_count
     steps = ((num_train_examples - 1) // examples_per_step) + 1
 
     with tf.device('cpu'):

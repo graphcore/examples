@@ -1,0 +1,77 @@
+resnet50: &resnet50
+  model: resnet50
+  data: imagenet
+  precision: "16.16"
+  enable_stochastic_rounding: true
+  label_smoothing: 0.1
+  weight_decay: 0.0001
+  lr: 0.5
+  lr_schedule: cosine
+  momentum: 0.85
+  warmup_epoch: 5
+  epoch: 80
+  norm_type: group
+  norm_num_groups: 32
+  loss_scaling: 128
+  lr_scheduler_freq: 16 
+  
+
+resnet50-16ipu-mk1:
+  <<: *resnet50
+  batch_size: 4
+  gradient_accumulation: 64
+  device_iterations: 1
+  pipeline_splits: [layer1/2, layer2/3, layer3/4]
+  enable_pipeline_recompute: true
+  replicas: 4
+
+
+resnet50-16ipu-mk2:
+  <<: *resnet50
+  batch_size: 7
+  gradient_accumulation: 37
+  device_iterations: 1
+  pipeline_splits: []
+  enable_pipeline_recompute: false
+  replicas: 16
+
+
+efficientnet-b0: &efficientnet-b0
+  model: efficientnet-b0
+  data: imagenet
+  epoch: 350
+  warmup_epoch: 5
+  precision: "16.32"
+  label_smoothing: 0.1
+  enable_stochastic_rounding: true
+  optimizer: rmsprop
+  lr: 0.1
+  lr_schedule: exponential
+  lr_decay: 0.98
+  lr_scheduler_freq: 0.416
+  momentum: 0.9
+  weight_decay: 1e-5
+  loss_scaling: 128
+  norm_type: group
+  norm_num_groups: 4
+
+
+efficientnet-b0-16ipu-mk1:
+  <<: *efficientnet-b0
+  pipeline_splits: [_blocks/1/_project_conv _blocks/4/_bn1]
+  device_iteration: 1
+  available_memory_proportion: 0.1
+  enable_pipeline_recompute: true
+  batch_size: 2
+  gradient_accumulation: 128
+
+
+efficientnet-b0-16ipu-mk2:
+  <<: *efficientnet-b0
+  pipeline_splits: [_blocks/1/_project_conv, _blocks/4, _blocks/8/_project_conv]
+  device_iteration: 1
+  enable_pipeline_recompute: false
+  batch_size: 16
+  gradient_accumulation: 128
+
+

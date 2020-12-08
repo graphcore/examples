@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 """
 Main training script for the CosmoFlow Keras benchmark
 """

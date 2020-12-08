@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import torchaudio
 import random
 import numpy as np
@@ -28,21 +28,17 @@ class PadSpectrogram(object):
         return self.__class__.__name__ + '()'
 
 
-class TransformedVCTKDataSet(torchaudio.datasets.VCTK):
+class TransformedVCTKDataSet(torchaudio.datasets.VCTK_092):
     def __init__(self, conf, download=True, transform=None):
         self.conf = conf
         if conf.generated_data:
             # using dummy generated data (no need for setup)
-            self.num_steps_train_set = 100
+            # create dummy data corresponding to 50K samples
+            self.num_steps_train_set = int(5e4 // (conf.batch_size * conf.batches_per_step))
             self.num_steps_valid_set = self.num_steps_train_set
             return
         super(TransformedVCTKDataSet, self).__init__(conf.data_dir,
-                                                     download=download,
-                                                     transform=transform)
-
-        # folder 'p315' will be ignored due to non-existent text files.
-        _except_folder = "p315"
-        self._walker = list(filter(lambda w: _except_folder not in w, self._walker))
+                                                     download=download)
 
         self.spectrogram_pad_fn = PadSpectrogram(conf.max_spectrogram_length * conf.n_frames_per_pred)
 
@@ -70,7 +66,7 @@ class TransformedVCTKDataSet(torchaudio.datasets.VCTK):
                                                        a=self.mel_basis)
 
         # assign each speaker name a unique id
-        speaker_name_set = set([x.split('_')[0] for x in self._walker])
+        speaker_name_set = set(self._speaker_ids)
         self.speaker_id_dict = dict((speaker_name, ind) for ind, speaker_name in enumerate(speaker_name_set))
 
         self.proportion_train_set = conf.proportion_train_set

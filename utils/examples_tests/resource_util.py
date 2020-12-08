@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 import os
 import subprocess
 import six
@@ -13,7 +14,7 @@ def fetch_resources(script_name, test_file, cwd):
             raise Exception('Unable to find ' + script_name)
         # The script may contain relative paths, therefore we
         # must set use the cwd passed in
-        subprocess.check_call([os.path.join(cwd,script_name)], cwd=cwd)
+        subprocess.check_call([os.path.join(cwd, script_name)], cwd=cwd)
 
 
 @contextmanager

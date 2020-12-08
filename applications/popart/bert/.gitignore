@@ -6,3 +6,4 @@ __*
 !__*.py
 test_results
 custom_ops/plugin_version
+wandb

@@ -1,5 +1,4 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-
 all: custom_ops/plugin_version custom_ops.so
 
 custom_ops/plugin_version: custom_ops/compile_time_version.*

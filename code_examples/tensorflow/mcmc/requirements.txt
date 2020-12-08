@@ -1,4 +1,4 @@
 tensorflow-probability==0.8
-numpy==1.19.1
+numpy==1.19.0
 pytest==5.4.1
 pytest-pythonpath==0.7.3

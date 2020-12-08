@@ -1,4 +1,5 @@
-// Copyright 2019 Graphcore Ltd.
+// Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 //
 // This example demonstrates how to create a custom operator for PopART, in this
 // case an op that will take a tensor and cube all the elements

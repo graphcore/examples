@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 import random
 import string
@@ -6,6 +6,7 @@ import os
 import logging
 import json
 import sys
+import csv
 
 
 def get_random_str(strlen=3):
@@ -18,30 +19,90 @@ def get_random_str(strlen=3):
     return rnd_str
 
 
-def setup_logging_folder(opts):
+class Logger:
+    @classmethod
+    def setup_logging_folder(cls, opts):
+        # If it's already configured, skip the reconfiguration
+        if hasattr(cls, "logdirname"):
+            return
 
-    # get POPLAR_ENGINE_OPTIONS if it exists, as a Python dictionary
-    eng_opts = json.loads(os.environ.get("POPLAR_ENGINE_OPTIONS", "{}"))
+        # get POPLAR_ENGINE_OPTIONS if it exists, as a Python dictionary
+        eng_opts = json.loads(os.environ.get("POPLAR_ENGINE_OPTIONS", "{}"))
+        profile_path = eng_opts.get("autoReport.directory", None)
+        options = vars(opts)
+        options["POPLAR_ENGINE_OPTIONS"] = eng_opts
+        # save to wandb
+        if hasattr(opts, "wandb"):
+            cls.wandb_logging = opts.wandb
+        else:
+            cls.wandb_logging = False
+        if cls.wandb_logging:
+            import wandb
+            try:
+                wandb.init(project="pytorch-cnn", config=options)
+            except:
+                # Failed to connect the server --> The logging is offline
+                os.environ["WANDB_MODE"] = "dryrun"
+                wandb.init(project="pytorch-cnn", config=options)
+                logging.info("W&B logging in offline mode")
 
-    # check if we are doing logging
-    if any([key.startswith("autoReport") for key in eng_opts.keys()]):
+        # Determine saving folder
+        if hasattr(opts, "checkpoint_path") and not opts.checkpoint_path == "":
+            cls.logdirname = opts.checkpoint_path
+        elif profile_path is not None:
+            cls.logdirname = profile_path
+        else:
+            basename = f'{opts.model}_bs{opts.batch_size}_{opts.precision}fp_r{opts.replicas}_di{opts.device_iterations}'
+            while True:
+                logdirname = os.path.join("logs", basename + "_" + get_random_str())
+                if not os.path.exists(logdirname):
+                    break
+            cls.logdirname = logdirname
+        if not os.path.exists(cls.logdirname):
+            os.makedirs(cls.logdirname)
+        with open(os.path.join(cls.logdirname, 'app.json'), "w") as f:
+            json.dump(options, f)
 
-        # check if autoReport.directory exists and treat it as a parent folder
-        parent = eng_opts.get("autoReport.directory", ".")
-        # check if parent is directory
-        if os.path.exists(parent) and not os.path.isdir(parent):
-            raise ValueError(f"{parent} is not a directory!")
-        elif not os.path.exists(parent):
-            os.makedirs(parent)
+        # Set up logging
+        log = logging.getLogger()
+        log.setLevel(logging.INFO)
+        # remove stderr output logging
+        if len(log.handlers) > 0:
+            log.handlers.pop()
+        stdout = logging.StreamHandler(sys.stdout)
+        stdout_formatter = logging.Formatter('[%(levelname)s] %(message)s')
+        stdout.setFormatter(stdout_formatter)
+        log.addHandler(stdout)
+        fileh = logging.FileHandler(os.path.join(cls.logdirname, 'log.txt'), 'a')
+        file_formatter = logging.Formatter('%(asctime)s - [%(levelname)s] - %(module)s - %(funcName)s: %(message)s')
+        fileh.setFormatter(file_formatter)
+        log.addHandler(fileh)
 
-        basename = f'{opts.model}_bs{opts.batch_size}_{opts.precision}fp_r{opts.replicas}_di{opts.device_iteration}'
-        for _ in range(10):
-            logdirname = os.path.join(parent, basename + "_" + get_random_str())
-            if not os.path.exists(logdirname):
-                break
-        eng_opts["autoReport.directory"] = logdirname
-        os.environ["POPLAR_ENGINE_OPTIONS"] = json.dumps(eng_opts)
-        logging.info(f"logging to {logdirname}")
-        logging.info(f"POPLAR_ENGINE_OPTIONS: {json.dumps(eng_opts)}")
+
+    @classmethod
+    def log_train_results(cls, results):
+        write_to_csv(os.path.join(cls.logdirname, 'training.csv'), results)
+        if cls.wandb_logging:
+            write_to_wandb(results)
+
+    @classmethod
+    def log_validate_results(cls, results):
+        write_to_csv(os.path.join(cls.logdirname, 'validation.csv'), results)
+        if cls.wandb_logging:
+            write_to_wandb(results)
+
+
+def write_to_csv(filename, results):
+    if os.path.exists(filename):
+        new_file = False
     else:
-        logging.info("No logging...")
+        new_file = True
+    with open(os.path.join(filename), 'a+') as f:
+        w = csv.DictWriter(f, results.keys())
+        if new_file:
+            w.writeheader()
+        w.writerow(results)
+
+
+def write_to_wandb(results):
+    wandb.log(results)

@@ -1,4 +1,16 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import os
 import sys
@@ -63,6 +75,7 @@ def run_fine_tuning_store_ckpt(bert_args,
                           recording_steps=bert_args.aggregate_metrics_over_steps)
     optimizer_factory = ScheduledOptimizerFactory(bert_args,
                                                   iteration,
+                                                  "SGD",
                                                   model.tensors)
 
     for iteration.epoch in range(iteration.start_epoch, bert_args.epochs):
@@ -84,7 +97,7 @@ def training_run(bert_args, config, initializers, checkpoint_paths):
                  execution_mode=bert_args.execution_mode)
 
     indices, positions, segments, masks, labels = bert_add_inputs(bert_args, model)
-    logits = bert_logits_graph(model, indices, positions, segments, masks)
+    logits = bert_logits_graph(model, indices, positions, segments, masks, bert_args.execution_mode)
 
     predictions, probs = bert_infer_graph(model, logits)
     losses = bert_loss_graph(model, probs, labels)
@@ -113,6 +126,7 @@ def training_run(bert_args, config, initializers, checkpoint_paths):
         recording_steps=bert_args.aggregate_metrics_over_steps)
     optimizer_factory = ScheduledOptimizerFactory(bert_args,
                                                   iteration,
+                                                  "SGD",
                                                   model.tensors)
     session, anchors = bert_training_session(
         model, bert_args, data_flow, losses, device, optimizer_factory)

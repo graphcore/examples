@@ -1,10 +1,25 @@
-// Copyright 2019 Graphcore Ltd.
+// Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <popart/graph.hpp>
 #include <popart/ir.hpp>
 #include <popart/op.hpp>
+#include <popart/topocons.hpp>
 #include <popart/tensor.hpp>
 #include <popart/logging.hpp>
 #include <popart/op/dropout.hpp>
+#include <popart/op/remote.hpp>
 
 #include "detach.cpp"
 #include "seed_modify.cpp"
@@ -29,19 +44,29 @@ class OutlineDropoutPattern : public popart::PreAliasPattern {
     mutable uint32_t seed = SEED_MODIFIER + 1;
 public:
     bool matches(popart::Op *op) const override {
+        auto &ir = op->getIr();
         // Don't run in inference
-        if (!op->getIr().canTrain()) {
+        if (!ir.canTrain()) {
             return false;
         }
         // Only run if outlining the graph
-        if (!op->getIr().getSessionOptions().enableOutlining) {
+        if (!ir.getSessionOptions().enableOutlining) {
             return false;
         }
         // Seeds are connected after the forwards pass preAliasPattern run, so wait until the next possible moment
-        if (!op->getIr().hasConstructedBackwards()) {
+        if (!ir.hasConstructedBackwards()) {
             return false;
         }
+
+        // In Phased execution mode we wait until the RemoteLoads have been added to the graph
+        // so we can use topocons to position the SeedModifyOp in the schedule
+        if (ir.getSessionOptions().executionPhaseSettings.phases > 1 &&
+            !ir.hasDecomposedOptimizers()) {
+            return false;
+        }
+
         if (dynamic_cast<popart::DropoutOp *>(op)) {
+            // Check we haven't already applied the pattern.
             return !search_producers_for<SeedModifyOp>(op->input->tensor(op->getSeedInIndex()), 1);
         }
         return false;
@@ -53,8 +78,9 @@ public:
         auto &graph = op->getGraph();
 
         if (!op->input->hasIndex(op->getSeedInIndex())) {
-            throw popart::internal_error("Op {} does not have a connected seed tensor after the backwards pass"
-                                         " has been constructed. Has the Ir::prepare been reordered?", op->debugName());
+            throw popart::error("CustomOps Error: Op {} does not have a connected seed tensor after the backwards pass"
+                                " has been constructed. Has the Ir::prepare been reordered?",
+                                op->debugName());
         }
 
         auto s = op->input->id(op->getSeedInIndex());
@@ -90,6 +116,23 @@ public:
 
         op->disconnectInTensor(op->getSeedInIndex(), graph.getTensors().get(s));
         op->connectInTensor(op->getSeedInIndex(), modified_seed_tensor);
+
+        if (op->getIr().getSessionOptions().executionPhaseSettings.phases > 1) {
+            // Put the SeedModify Ops before all the remoteLoadOps in an executionphase as 
+            // priority isn't respected in phased execution mode
+            auto phase = modify->getExecutionPhase();
+            auto added_topocon = false;
+            for (auto op : op->getIr().getAllOps()) {
+                if (op->getExecutionPhase() == (phase - 1) && op->isConvertibleTo<popart::RemoteLoadOp>()) {
+                    popart::logging::info("Adding topocon for outlinable dropout in Phased Execution mode");
+                    graph.topoCons->insert(modify, op);
+                    added_topocon = true;
+                }
+            }
+            if (added_topocon) {
+                modify->setExecutionPhase(phase - 1);
+            }
+        }
 
         return true;
     }

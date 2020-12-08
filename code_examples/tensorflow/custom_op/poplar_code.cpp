@@ -1,4 +1,5 @@
-// Copyright 2020 Graphcore Ltd.
+// Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 #include <poplar/Graph.hpp>
 #include <poplar/Tensor.hpp>
 #include <poputil/Util.hpp>
@@ -7,9 +8,10 @@
 
 #include <iostream>
 
-// Export the API level symbol
+/// Check the Targeting the IPU from TensorFlow document for
+/// the API level required for the version of the Poplar SDK that you are using.
 extern "C" {
-  int32_t custom_op_api_level = 1;
+  int32_t custom_op_api_level = 2;
 }
 
 // If an operation takes one or more tensors of the same shape,

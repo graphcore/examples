@@ -4,8 +4,7 @@
 #include <popsparse/FullyConnected.hpp>
 #include <poputil/exceptions.hpp>
 #include <popsparse/codelets.hpp>
-#include <popnn/Loss.hpp>
-#include <popops/ElementWise.hpp>
+#include <poplar/VariableMappingMethod.hpp>
 #include "utils.hpp"
 
 extern "C" {
@@ -31,11 +30,33 @@ void Build_metadata(std::vector<std::int64_t>& allocating_indices,
 
 // Return a planning cache that is global in this shared
 // object (but have one per thread):
-popsparse::dynamic::PlanningCache* getCache() {
-  thread_local popsparse::dynamic::PlanningCache global_cache;
-  return &global_cache;
+popsparse::dynamic::PlanningCache* getSparseCache() {
+  thread_local popsparse::dynamic::PlanningCache global_sparse_cache;
+  return &global_sparse_cache;
 }
 
+poplin::matmul::PlanningCache* getDenseCache() {
+  thread_local poplin::matmul::PlanningCache global_dense_cache;
+  return &global_dense_cache;
+}
+
+/** 
+ * Build the fwd pass of sparse matmul:
+ *   dense-activation = matrix_multiply(sparse_weights, dense_input)
+ *
+ * The fwd function requires 5 inputs. Input at position [0] is the
+ * dense input, positions [1]/[2] are two sparse weight representation
+ * tensors: where [1] is the metainfo (encodes the positions
+ * of the non-zeros) and [2] are the non-zero weight values themselves.
+ * Note: as tensors in their own right these two inputs are dense
+ * (i.e. all entries are used to execute the describe the sparse op).
+ *
+ * Input positions [3] and [4] are placeholders for use in
+ * the backwards pass so are not used in this function.
+ * 
+ * Extra information describing the sparse op is carried in the attributes
+ * parameter string encoded as JSON.
+**/
 poplar::program::Program Build(
   poplar::Graph& graph, const std::vector<poplar::Tensor>& inputs,
   std::vector<poplar::Tensor>& outputs,
@@ -45,7 +66,6 @@ poplar::program::Program Build(
   auto json_args = read_json_args(attributes);
   poplar::OptionFlags options = getSparseMulDefaultOptions(json_args.matmul_options);
 
-  popsparse::addCodelets(graph);
   using namespace popsparse::dynamic;
 
   if (inputs.size() != 5) {
@@ -58,13 +78,15 @@ poplar::program::Program Build(
   auto metainfo = inputs[1].reinterpret(metaInfoType);
   auto nzvalues = inputs[2];
 
+  auto blockSize = json_args.block_size;
   auto batchSize = json_args.batch_size;
   auto inputSize = json_args.input_size;
   auto outputSize = json_args.output_size;
-  auto sparsityFactor = json_args.max_non_zeros / float(inputSize * outputSize);
+  auto sparsityFactor = computeDensity(json_args);
   auto numGroups = json_args.group_size;
 
-  SparsityParams sparsityParams(SparsityType::Element, SparsityStructure::Unstructured);
+  SparsityParams sparsityParams(
+    SparsityType::Element, SparsityStructure::Unstructured, {blockSize, blockSize});
   auto params = FullyConnectedParams::createWithNzRatio(
     sparsityParams, sparsityFactor, batchSize, numGroups, inputSize, outputSize);
 
@@ -73,9 +95,9 @@ poplar::program::Program Build(
   const auto op_name = debug_prefix + "/sparse_matmul_fwd";
 
   auto weights = SparseTensor(metainfo, nzvalues);
-  auto sparseResult = fullyConnectedFwd(
-      graph, weights, lhs, params, prog, op_name, options, getCache());
-  outputs.push_back(sparseResult);
+  auto denseActivations = fullyConnectedFwd(
+      graph, weights, lhs, params, prog, op_name, options, getSparseCache());
+  outputs.push_back(denseActivations);
   return prog;
 }
 
@@ -88,35 +110,38 @@ poplar::Tensor Build_allocator(
   auto json_args = read_json_args(attributes);
   poplar::OptionFlags options = getSparseMulDefaultOptions(json_args.matmul_options);
   auto dataType = json_args.data_type;
+  auto blockSize = json_args.block_size;
   auto batchSize = json_args.batch_size;
   auto inputSize = json_args.input_size;
   auto outputSize = json_args.output_size;
-  auto sparsityFactor = json_args.max_non_zeros / float(inputSize * outputSize);
+  auto sparsityFactor = computeDensity(json_args);
   auto numGroups = json_args.group_size;
 
   using namespace popsparse::dynamic;
 
-  SparsityParams sparsityParams(SparsityType::Element, SparsityStructure::Unstructured);
+  SparsityParams sparsityParams(
+    SparsityType::Element, SparsityStructure::Unstructured, {blockSize, blockSize});
   auto params = FullyConnectedParams::createWithNzRatio(
     sparsityParams, sparsityFactor, batchSize, numGroups, inputSize, outputSize);
 
   if (operand == 0) {
     // Allocate the dense layer input:
+    auto op_name = debug_prefix + "/dense_lhs";
     return createFullyConnectedInput(
-      graph, dataType, params, "dense_lhs", options, getCache());
+      graph, dataType, params, op_name, options, getSparseCache());
   }
 
   if (operand == 1) {
     // Allocate the sparse metainfo for the weights:
     const SparseTensor weights = createFullyConnectedWeights(
-	        graph, dataType, params, "sparse_fc_weights", options, getCache());
+	        graph, dataType, params, "sparse_fc_weights", options, getSparseCache());
     return weights.getMetaInfoTensor().reinterpret(poplar::HALF);
   }
 
   if (operand == 2) {
     // Allocate the sparse non-zero values for the weights:
     const SparseTensor weights = createFullyConnectedWeights(
-	        graph, dataType, params, "sparse_fc_weights", options, getCache());
+	        graph, dataType, params, "sparse_fc_metainfo", options, getSparseCache());
     return weights.getNzValuesTensor();
   }
 
@@ -137,20 +162,6 @@ void Build_grad_metadata(std::vector<std::int64_t>& allocating_indices,
   is_stateless = true;
 }
 
-poplar::Tensor topKIndices(
-    poplar::Graph& graph,
-    unsigned k,
-    const poplar::Tensor gradient,
-    poplar::program::Sequence &prog,
-    const std::string& debug_prefix) {
-  // top-k only works on flat indices:
-  auto absGradsFlat = popops::abs(
-    graph, gradient.reshape({1, gradient.numElements()}), prog);
-  auto indices = poplar::Tensor();
-  popnn::topK(graph, absGradsFlat, indices, k, true, prog, debug_prefix + "/indices");
-  return indices;
-}
-
 poplar::program::Program Build_grad(
     poplar::Graph& graph, int input_grad_index,
     const std::vector<poplar::Tensor>& gradients,
@@ -163,7 +174,8 @@ poplar::program::Program Build_grad(
   using namespace popsparse::dynamic;
 
   auto json_args = read_json_args(attributes);
-  poplar::OptionFlags options = getSparseMulDefaultOptions(json_args.matmul_options);
+  poplar::OptionFlags sparse_options = getSparseMulDefaultOptions(json_args.matmul_options);
+  poplar::OptionFlags dense_options = getDenseGradMulDefaultOptions(json_args.dense_grad_matmul_options);
 
   auto metaInfoType = poplar::UNSIGNED_SHORT;
   auto lhs = fwd_inputs[0];
@@ -171,13 +183,16 @@ poplar::program::Program Build_grad(
   auto nzvalues = fwd_inputs[2];
   auto doDenseGradComputation = fwd_inputs[3];
 
+  auto blockSize = json_args.block_size;
   auto batchSize = json_args.batch_size;
   auto inputSize = json_args.input_size;
   auto outputSize = json_args.output_size;
-  auto sparsityFactor = json_args.max_non_zeros / float(inputSize * outputSize);
+  auto sparsityFactor = computeDensity(json_args);
   auto numGroups = json_args.group_size;
+  auto poolingType = json_args.pooling_type;
 
-  SparsityParams sparsityParams(SparsityType::Element, SparsityStructure::Unstructured);
+  SparsityParams sparsityParams(
+    SparsityType::Element, SparsityStructure::Unstructured, {blockSize, blockSize});
   auto params = FullyConnectedParams::createWithNzRatio(
     sparsityParams, sparsityFactor, batchSize, numGroups, inputSize, outputSize);
 
@@ -186,16 +201,16 @@ poplar::program::Program Build_grad(
 
   poplar::program::Sequence prog;
 
-  auto lossWrtInput = fullyConnectedGradA(
+  auto gradOfLossWrtInput = fullyConnectedGradA(
     graph, weights, inflowingGrad, params, prog,
-    debug_prefix + "/sparse_matmul_gradA", options, getCache());
+    debug_prefix + "/sparse_matmul_gradA", sparse_options, getSparseCache());
 
-  auto lossWrtNzValues = fullyConnectedSparseGradW(
+  auto gradOfLossWrtNzValues = fullyConnectedSparseGradW(
     graph, weights.getMetaInfoTensor(), inflowingGrad, lhs, params, prog,
-    debug_prefix + "/sparse_matmul_gradW", options, getCache());
+    debug_prefix + "/sparse_matmul_gradW", sparse_options, getSparseCache());
 
-  outputs.push_back(lossWrtInput);
-  outputs.push_back(lossWrtNzValues);
+  outputs.push_back(gradOfLossWrtInput);
+  outputs.push_back(gradOfLossWrtNzValues);
 
   // As an additional step we conditionally return the full weight grad.
   // Eventually this will be seruaklused in a memory efficient way (and)
@@ -203,21 +218,37 @@ poplar::program::Program Build_grad(
   poplar::program::Sequence conditionalProg;
   auto inputsTransposed = lhs.dimShuffle({1, 0});
 
-  auto splits = fullyConnectedDenseGradWSerialSplits(
-    graph, inputsTransposed.elementType(), params, options, getCache());
-  /// TODO: use the splits to serialize the following matmul:
-  auto gradOfLossWrtWeights =
-    poplin::matMul(graph, inputsTransposed, inflowingGrad,
-                   conditionalProg, debug_prefix + "/dense_matmul_gradW");
+  // Retrieve recommended split number for dense grad matmul
+  auto [ tmp, inSplits, outSplits ] = fullyConnectedDenseGradWSerialSplits(
+    graph, inputsTransposed.elementType(), params, sparse_options, getSparseCache());
+
+  // Compute the dense grad matmul, in a serialized fashio if needed
+  auto gradOfLossWrtWeights = serializedMatmul(graph, conditionalProg,
+                                               inputsTransposed, inflowingGrad,
+                                               inSplits, outSplits,
+                                               debug_prefix + "/dense_matmul_gradW",
+                                               false, dense_options, getDenseCache());
+
+  auto pooledGradsWrtWeights =
+    pool(graph, poolingType, blockSize, gradOfLossWrtWeights,
+         conditionalProg, debug_prefix + "/dense_matmul_gradW_pooling");
+
+  // Make sure the dense grad don't remain live when not needed
+  auto killDenseGrad = poplar::program::Sequence();
+  killDenseGrad.add(poplar::program::WriteUndef(pooledGradsWrtWeights));
+
+  if (json_args.debug_printing) {
+    conditionalProg.add(poplar::program::PrintTensor("Computed dense grad for '" + debug_prefix + "'", doDenseGradComputation));
+  }
 
   auto ifProg = poplar::program::If(doDenseGradComputation,
-    conditionalProg, poplar::program::Sequence());
+    conditionalProg, killDenseGrad);
   prog.add(ifProg);
 
   // The standard weight grad seen by TF is the sparse one so the dense
   // one has to be requested separately by using tf.gradients() with a
   // dummy var:
-  outputs.push_back(gradOfLossWrtWeights);
+  outputs.push_back(pooledGradsWrtWeights);
 
   return prog;
 }

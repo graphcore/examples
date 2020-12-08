@@ -1,1 +1,2 @@
 libboost-dev
+libspdlog-dev

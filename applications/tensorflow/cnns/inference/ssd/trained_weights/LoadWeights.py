@@ -1,4 +1,6 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
+
 # Key list to load weights & biases from HDF5 file
 hdf5_key_list = {'SSDGraph//biasesconv1_1:0':  '/conv1_1/conv1_1/bias:0',
                  'SSDGraph//weightsconv1_1:0': '/conv1_1/conv1_1/kernel:0',

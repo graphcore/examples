@@ -1,4 +1,5 @@
-// Copyright 2019 Graphcore Ltd.
+// Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 // Copyright (c) 2019, Graphcore Ltd, All rights reserved.
 
 #ifdef __POPC__

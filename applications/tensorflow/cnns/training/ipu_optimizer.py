@@ -1,9 +1,23 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from tensorflow import distribute
 from tensorflow.python.ipu import sharding
 from tensorflow.compiler.plugin.poplar.ops import gen_poputil_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ipu import ipu_multi_worker_strategy
 from tensorflow.python.ipu.ops import cross_replica_ops
 from tensorflow.python.training import optimizer
 
@@ -13,7 +27,7 @@ class IPUOptimizer(optimizer.Optimizer):
                  optimizer,
                  sharded,
                  replicas,
-                 gradients_to_accumulate,
+                 gradient_accumulation_count,
                  pipelining=False,
                  grad_scale=1.0,
                  weight_decay=0.0,
@@ -24,7 +38,7 @@ class IPUOptimizer(optimizer.Optimizer):
         self._optimizer = optimizer
         self._sharded = sharded
         self._replicas = replicas
-        self._gradients_to_accumulate = gradients_to_accumulate
+        self._gradient_accumulation_count = gradient_accumulation_count
         self._pipelining = pipelining
         self._grad_scale = grad_scale
         self._weight_decay = weight_decay
@@ -45,8 +59,8 @@ class IPUOptimizer(optimizer.Optimizer):
         grads_and_vars = self._optimizer.compute_gradients(loss, var_list=var_list, **kwargs)
         if not self._pipelining:
             grads_and_vars = self.add_WD(grads_and_vars)
-        if self._gradients_to_accumulate > 1:
-            grads_and_vars = [(grad/self._gradients_to_accumulate, var)
+        if self._gradient_accumulation_count > 1:
+            grads_and_vars = [(grad/self._gradient_accumulation_count, var)
                               for grad, var in grads_and_vars]
         if self._sharded:
             sharding.propagate_sharding(ops.get_default_graph())
@@ -60,16 +74,16 @@ class IPUOptimizer(optimizer.Optimizer):
             else:
                 with ops.colocate_with(grad):
                     # gradient accumulation
-                    if self._gradients_to_accumulate > 1 and not self._pipelining:
+                    if self._gradient_accumulation_count > 1 and not self._pipelining:
                         grad = gen_poputil_ops.ipu_stateful_gradient_accumulate(grad,
-                                                                                num_mini_batches=self._gradients_to_accumulate)
+                                                                                num_mini_batches=self._gradient_accumulation_count)
 
                     # replication
                     if self._replicas > 1:
                         grad = gen_poputil_ops.ipu_replication_normalise(cross_replica_ops.cross_replica_sum(grad))
 
-                    # distribution
-                    if distribute.has_strategy():
+                    # distribution with IPUMultiWorkerStrategy needs additional normalisation by the number of workers
+                    if isinstance(distribute.get_strategy(), ipu_multi_worker_strategy.IPUMultiWorkerStrategy):
                         grad /= distribute.get_strategy().num_replicas_in_sync
 
                     grad = math_ops.cast(grad, var.dtype)

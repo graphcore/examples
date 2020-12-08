@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 """
 Tests covering ResNeXt training.
 """
@@ -113,13 +114,14 @@ class TestPipelineResNeXt14(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        out = run_train(**{'--iterations': 1000,
+        out = run_train(**{'--iterations': 500,
                            '--dataset': 'imagenet',
                            '--model': 'resnext',
                            '--model-size': 14,
                            '--synthetic-data': '',
                            '--shards': 2,
-                           '--pipeline-depth': 128,
+                           '--pipeline': '',
+                           '--gradient-accumulation-count': 128,
                            '--batch-size': 1,
                            '--no-validation': '',
                            '--pipeline-splits': 'b2/0/relu'})
@@ -128,8 +130,7 @@ class TestPipelineResNeXt14(unittest.TestCase):
 
     def test_results(self):
         # test_iterations_completed
-        self.assertEqual(self.training['iteration'][-1], 1000)
-        self.assertEqual(self.training['step'][-1], 2)
+        self.assertEqual(self.training['iteration'][-1], 500)
 
         # test_number_of_parameters
         self.assertTrue('9411880' in self.out)

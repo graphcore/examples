@@ -19,14 +19,16 @@ of TensorFlow that targets Graphcore's Poplar libraries.
 
 1) Prepare the TensorFlow environment.
 
-   Install the poplar-sdk following the README provided. Make sure to run the enable.sh scripts and activate a Python virtualenv with gc_tensorflow installed.
+   Install the Poplar SDK following the instructions in the Getting Started guide
+   for your IPU system. Make sure to run the enable.sh script and activate a
+   Python virtualenv with gc_tensorflow installed.
 
 2) Download the images and weights.
 
        ./get_images_and_weights.sh
 
-  This will create and populate the `images/` and `weights/` directories. 
-  
+  This will create and populate the `images/` and `weights/` directories.
+
 2) Run the graph. For example to classify a single image:
 
        python classify_images.py images/zebra.jpg
@@ -56,13 +58,13 @@ The module can also be used in a Python interactive session. For example:
     >>> ic = ImageClassifier()
         ... wait while graph is compiled ...
     >>> ic.classify_image('images/zebra.jpg')
-   
+
     Filename : zebra.jpg
     Class 340: zebra 98.3%
     Class 292: tiger, Panthera tigris 0.905%
     Class 353: gazelle 0.186%
     Class 282: tiger cat 0.175%
-    Class 352: impala, Aepyceros melampus 0.0706% 
+    Class 352: impala, Aepyceros melampus 0.0706%
 
 ### Troubleshooting
 

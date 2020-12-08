@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 
 """
 A simple program that uses PyTorch to create a linear model and then

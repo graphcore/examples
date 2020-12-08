@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import os
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of

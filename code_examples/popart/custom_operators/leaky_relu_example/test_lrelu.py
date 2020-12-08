@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import os
 import re
 import subprocess
@@ -7,6 +7,13 @@ import sys
 import numpy as np
 import pytest
 import run_leaky_relu
+from pathlib import Path
+
+
+def setup_module(module):
+    build_dir = Path(__file__).parent.resolve()
+    subprocess.run("make clean", cwd=build_dir, shell=True, check=True)
+    subprocess.run("make", cwd=build_dir, shell=True, check=True)
 
 
 # Returns array of expected Leaky ReLU output given an input and alpha value

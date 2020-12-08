@@ -1,4 +1,17 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import popart
 import numpy as np
 from collections import defaultdict
@@ -15,9 +28,7 @@ from bert import (set_library_seeds,
                   calc_required_ipus,
                   bert_inference_session,
                   create_callback_stepio,
-                  enable_realtime_scheduling,
-                  bert_process_infer_data,
-                  disable_realtime_scheduling)
+                  bert_process_infer_data)
 from bert_model import Bert
 from tests.utils import TestFailureError
 import logging
@@ -89,8 +100,6 @@ def run_embedding_layer(args):
         else:
             stepio = None
 
-        enable_realtime_scheduling(args)
-
         output = []
         logger.info(dataset)
         for data in dataset:
@@ -102,8 +111,6 @@ def run_embedding_layer(args):
                 output.append(result)
             break
 
-        disable_realtime_scheduling(args)
-
         device.detach()
         return output
 
@@ -112,10 +119,11 @@ def run_embedding_layer(args):
 
 @pytest.mark.ipus(2)
 @pytest.mark.category1
-def test_host_embedding():
+def test_host_embedding(custom_ops):
     args_string = ["--config",
                    'configs/squad_base_128_inference.json',
                    '--host-embedding=ALL',
+                   '--device-connection-type=ondemand',
                    '--generated-data=true'
                    ]
     args = utils.parse_bert_args(args_string)

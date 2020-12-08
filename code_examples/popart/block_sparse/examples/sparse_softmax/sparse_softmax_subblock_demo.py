@@ -1,5 +1,4 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-
 import numpy as np
 import scipy as sp
 from scipy import sparse
@@ -7,8 +6,11 @@ import os
 import ctypes
 import popart
 
+import sys
+sys.path.append('/path/to/application/app/folder')
+
 so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                       "../custom_ops.so")
+                       "../../custom_ops.so")
 ctypes.cdll.LoadLibrary(so_path)
 
 """
@@ -100,7 +102,7 @@ dataFlow = popart.DataFlow(1, anchor_desc)
 
 session = popart.TrainingSession(fnModel = builder.getModelProto(),
                                  loss = loss,
-                                 deviceInfo = popart.DeviceManager().createIpuModelDevice({}),
+                                 deviceInfo = popart.DeviceManager().acquireAvailableDevice(1),
                                  optimizer = popart.ConstSGD(0.01),
                                  dataFlow = dataFlow)
 
@@ -130,12 +132,11 @@ dprobs = anchors[upstream_grad]
 dprobs = dprobs.reshape([dprobs.shape[0], *blocksize])
 dprobs = sp.sparse.bsr_matrix((dprobs, bsr.indices, bsr.indptr))
 
-print("TEST: Verifying forward pass result")
 for i in range(n_sequence):
     row = result.getrow(i)
     # Check that the row sums to approximately 1
     tol = 1e-5
-    assert abs(np.sum(row) - 1) < tol, f"TEST Failed in row {i}. Probabilities do not sum to 1 with tolerance {tol}"
+    assert abs(np.sum(row) - 1) < tol, f"Error in a row {i}. Probabilities do not sum to 1 with tolerance {tol}"
 
     # Verify each element is uniform prob if it's mask is 1 and 0 if mask is 0
     mask = global_mask.getrow(i)
@@ -150,15 +151,14 @@ for i in range(n_sequence):
         # The mask is accurate at the subblock level
         if position in mask:
             tol = 1e-6
-            assert abs(value - uniform_prob) < tol, f"TEST Failed in row {i}. Probability {pos[1]} is {value} but should be {uniform_prob} with tolerance {tol}"
+            assert abs(value - uniform_prob) < tol, f"Error in a row {i}. Probability {pos[1]} is {value} but should be {uniform_prob} with tolerance {tol}"
         # Other positions should be verifyably near 0
         else:
             tol = 1e-20
-            assert abs(value) < tol, f"TEST Failed in row {i}. Probability {pos[1]} is {value} but should be 0 with tolerance {tol}"
-print("TEST FWD PASSED.")
+            assert abs(value) < tol, f"Error in a row {i}. Probability {pos[1]} is {value} but should be 0 with tolerance {tol}"
+print("FWD PASSED.")
 
 
-print("TEST: Verifying backward pass result")
 result = result.tocsc()  # efficient row slicing
 dresult = dresult.tocsr()  # efficient row slicing
 dprobs = dprobs.tocsr()  # efficient row slicing
@@ -173,9 +173,9 @@ for i in range(n_sequence):
     drow = dresult.getrow(i).toarray().squeeze()
     tol = 1e-6
     try:
-        assert np.allclose(erow, drow, tol), f"TEST Failed in row {i}. Gradients of softmax are not within {tol} tolerance."
+        assert np.allclose(erow, drow, tol), f"Error in a row {i}. Gradients of softmax are not within {tol} tolerance."
     except:
         print(f"\n Difference for row {i}: \n", np.around(erow-drow, 2), "\n Argmax of difference:\n", np.argmax(np.abs(erow-drow)))
         raise
 
-print("TEST BWD PASSED.")
+print("BWD PASSED.")

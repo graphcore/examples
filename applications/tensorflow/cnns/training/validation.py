@@ -1,4 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 The validation code used in train.py.
 
@@ -56,7 +69,7 @@ def validation_graph(model, opts):
                     return total_accuracy + (tf.cast(accuracy, tf.float32) / opts["validation_batches_per_step"])
                 accuracy = loops.repeat(int(opts["validation_batches_per_step"]),
                                         body, [tf.constant(0, tf.float32)], valid_iterator)
-                if opts['replicas'] > 1:
+                if opts['replicas']*opts['shards'] > 1:
                     accuracy = cross_replica_ops.cross_replica_sum(accuracy) / (opts['replicas']*opts['shards'])
                 return accuracy
 
@@ -75,8 +88,8 @@ def validation_graph(model, opts):
 
     ipu_options = get_config(ipu_id=opts["select_ipu"],
                              prng=not opts["no_stochastic_rounding"],
-                             shards=1,
-                             number_of_replicas=opts['replicas']*opts['shards'],
+                             shards=opts['shards'],
+                             number_of_replicas=opts['replicas'],
                              max_cross_replica_buffer_size=opts["max_cross_replica_buffer_size"],
                              fp_exceptions=opts["fp_exceptions"],
                              half_partials=opts["enable_half_partials"],

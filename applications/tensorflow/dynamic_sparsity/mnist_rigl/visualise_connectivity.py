@@ -7,8 +7,13 @@ import os
 
 
 # Convert weights to a 0/1 mask:
-def weights_to_mask(weights):
+def weights_to_mask(weights, inverse_permutation):
     mask = weights.copy()
+
+    if inverse_permutation is not None:
+        print("Undoing input permutation")
+        mask = mask[inverse_permutation]
+
     mask_idx = np.nonzero(mask)
     mask[mask_idx] = 1
     return mask
@@ -46,8 +51,19 @@ if __name__ == '__main__':
                         help="If selected output frames for all files in records-path.")
     args = parser.parse_args()
 
-    np_files = [f for f in os.listdir(args.records_path) if f.endswith('.npy')]
+    np_files = [
+        f for f in os.listdir(args.records_path)
+        if f.startswith('weights_') and f.endswith('.npy')]
     np_files.sort()
+
+    inverse_permutation = None
+    try:
+        permutation = np.load(os.path.join(args.records_path, "pixel_permutation.npy"))
+        inverse_permutation = np.empty_like(permutation)
+        # one-hot transposition
+        inverse_permutation[permutation] = np.arange(permutation.size)
+    except IOError:
+        print("No permutation file")
 
     if not args.animate:
         print(f"Processing first and last record: {np_files[0]} {np_files[-1]}")
@@ -58,11 +74,11 @@ if __name__ == '__main__':
         axis[2].get_shared_y_axes().join(axis[0], axis[1])
 
         first_weights = np.load(os.path.join(args.records_path, np_files[0]))
-        first_mask = weights_to_mask(first_weights)
+        first_mask = weights_to_mask(first_weights, inverse_permutation)
         plot_mnist_connectivity(first_mask, 'Initial', axis[0], axis[2], args)
 
         last_weights = np.load(os.path.join(args.records_path, np_files[-1]))
-        last_mask = weights_to_mask(last_weights)
+        last_mask = weights_to_mask(last_weights, inverse_permutation)
         plot_mnist_connectivity(last_mask, 'Final', axis[1], axis[2], args)
 
         plt.savefig(os.path.join(args.records_path, "connectivity.png"))
@@ -70,7 +86,7 @@ if __name__ == '__main__':
         for i, f in enumerate(np_files):
             print(f"Plotting: {f}")
             weights = np.load(os.path.join(args.records_path, f))
-            mask = weights_to_mask(weights)
+            mask = weights_to_mask(weights, inverse_permutation)
             plt.clf()
             fig, ax = plt.subplots()
             plot_mnist_connectivity(mask, f"MNIST: Connections per pixel (rig-l steps: {i:02})", ax, None, args)

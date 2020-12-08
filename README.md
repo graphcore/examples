@@ -1,6 +1,6 @@
 # Graphcore code examples
 
-This repository contains sample applications and code examples for use with
+This repository contains sample applications, code examples and tutorials for use with
 Graphcore IPUs.
 
 If you are interested in finding out more about Graphcore, including
@@ -12,10 +12,10 @@ repository. If you are actively using this repository and want to report any iss
 
 The latest version of the documentation for the Poplar software stack, and other developer resources, is available at https://www.graphcore.ai/developer.
 
->  The code presented here requires using Poplar SDK 1.3.x
+>  The code presented here requires using Poplar SDK 1.4.x
 
-Please install and enable the Poplar SDK following the instructions in the Getting Started guide for your IPU system. 
-Note that for SDK 1.3 and later you no longer need to source a separate `enable.sh` for the Graphcore drivers. 
+Please install and enable the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
+Note that for SDK 1.3 and later you no longer need to source a separate `enable.sh` for the Graphcore drivers.
 
 Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE referenced at the top level applies to the files in this repository.
 
@@ -26,19 +26,20 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 | Example | Link |
 | ------- | ---- |
 | BERT | [code](applications/popart/bert) |
-| DeepVoice3 | [code](applications/popart/deep_voice) |
-| CNN Training (including ResNet, ResNeXt & EfficientNet | [code](applications/tensorflow/cnns/training) |
-| CNN Inference (including ResNet, MobileNet & EfficientNet | [code](applications/tensorflow/cnns/inference) |
-| ResNext Inference | [code](applications/popart/resnext_inference) |
-| Recommendation using Autoencoders | [code](applications/tensorflow/autoencoder) |
-| Sales forecasting example | [code](applications/tensorflow/sales_forecasting) |
-| Recurrent layer kernel benchmarks | [code](code_examples/tensorflow/kernel_benchmarks) |
-| Constrastive Divergence VAE using MCMC methods | [code](applications/tensorflow/contrastive_divergence_vae) |
-| Example reinforcement learning policy model | [code](applications/tensorflow/reinforcement_learning) |
-| MCMC methods example | [code](code_examples/tensorflow/mcmc) |
-| CosmoFlow example using 3D Convolutions | [code](code_examples/tensorflow/cosmoflow) |
-| Grouped convolution kernel benchmarks | [code](code_examples/tensorflow/kernel_benchmarks) |
-| Click through rate: DIN (Deep Interest Network) | [code](applications/tensorflow/click_through_rate) |
+| BERT (TensorFlow) | [code](applications/tensorflow/bert) |
+| DeepVoice3 (PopART) | [code](applications/popart/deep_voice) |
+| CNN Training including ResNet, ResNeXt & EfficientNet (TensorFlow) | [code](applications/tensorflow/cnns/training) |
+| CNN Inference including ResNet, MobileNet & EfficientNet (TensorFlow) | [code](applications/tensorflow/cnns/inference) |
+| CNN Training & Inference including ResNet, ResNeXt & EfficientNet (PyTorch) | [code](applications/pytorch/cnns) |
+| ResNet Training (PopART) | [code](applications/popart/resnet) |
+| ResNext Inference (PopART) | [code](applications/popart/resnext_inference) |
+| Recommendation using Autoencoders (TensorFlow) | [code](applications/tensorflow/autoencoder) |
+| Sales forecasting example (TensorFlow) | [code](applications/tensorflow/sales_forecasting) |
+| Contrastive Divergence VAE using MCMC methods (TensorFlow) | [code](applications/tensorflow/contrastive_divergence_vae) |
+| Example reinforcement learning policy model (TensorFlow)| [code](applications/tensorflow/reinforcement_learning) |
+| Click through rate: Deep Interest Network (TensorFlow) | [code](applications/tensorflow/click_through_rate) |
+| Dynamic Sparsity: MNIST RigL (TensorFlow) | [code](applications/tensorflow/dynamic_sparsity/mnist_rigl) |
+| Dynamic Sparsity: Autoregressive Language Modelling (TensorFlow) | [code](applications/tensorflow/dynamic_sparsity/language_modelling) |
 
 ### Application examples
 
@@ -50,13 +51,16 @@ The `code_examples/` folder contains small code examples showing you how to use 
 
 ### Tutorials
 
-The `tutorials/` folder contains tutorials to help you get started using the Graphcore tools. Currently, this contains:
+The `tutorials/` folder contains tutorials to help you get started using the Poplar SDK and Graphcore tools. Currently, this contains:
 
-* `tutorials/poplar` - A set of tutorials to introduce the Poplar framework and the Poplibs libraries.
+* `tutorials/poplar` - A set of tutorials to introduce the Poplar graph programming framework and the PopLibs libraries.
+* `tutorials/pytorch` - A tutorial to introduce the PyTorch framework support for the IPU.
+
+The README files for the tutorials are best viewed on GitHub.
 
 ### Utilities
 
-The `utils/` folder contains utilities libraries and scripts that are used across the other code examples. Currently this is split into:
+The `utils/` folder contains utilities libraries and scripts that are used across the other code examples. This includes:
 
-* `utils/examples_tests` - Common Python helper functions for the repo's unit tests.
+* `utils/examples_tests` - Common Python helper functions for the repository's unit tests.
 * `utils/benchmarks` - Common Python helper functions for running benchmarks on the IPU in different frameworks.

@@ -1,4 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Run image classification inference on chosen model."""
 
 import argparse
@@ -293,7 +306,7 @@ def construct_graph(network_class: Type[InferenceNetwork],
 
 def main(model_arch: str, images: List, batch_size: int,
          batches_per_step: int, loop: bool, num_iterations: int, num_ipus: int, mode: str, data: str,
-         available_memory_proportion: float, gen_report: bool, save_graph_pb: bool) -> None:
+         available_memory_proportion: float, gen_report: bool, save_graph_pb: bool, use_ipu_model: bool) -> None:
     """Run inference on chosen model.
 
     Args:
@@ -310,6 +323,7 @@ def main(model_arch: str, images: List, batch_size: int,
          temporary memory for matmul and convolution execution
         gen_report: Generate a report after 1 iteration.
         save_graph_pb: If true, export frozen graph to event file to view in Tensorboard
+        use_ipu_model: Run code with a CPU based IPU simulator.
 
     """
     if (model_arch == "densenet121") and (mode != "sharded"):
@@ -334,6 +348,12 @@ def main(model_arch: str, images: List, batch_size: int,
             os.environ["TF_POPLAR_FLAGS"] = "--use_synthetic_data --synthetic_data_initializer=random"
     else:
         os.environ["TF_POPLAR_FLAGS"] = ""
+
+    if use_ipu_model:
+        if "TF_POPLAR_FLAGS" in os.environ:
+            os.environ["TF_POPLAR_FLAGS"] += " --use_ipu_model"
+        else:
+            os.environ["TF_POPLAR_FLAGS"] = "--use_ipu_model"
 
     # Select model architecture
     model_cls = model_dict[model_arch]
@@ -385,6 +405,9 @@ if __name__ == "__main__":
                         choices=["real", "synthetic"])
     parser.add_argument('--num-ipus', dest='num_ipus', type=int, default=1,
                         help="Number of ipus to utilize for inference.")
+    parser.add_argument('--use-ipu-model', dest="use_ipu_model",
+                        action="store_true",
+                        help="Run code with a CPU based IPU simulator.")
     parser.add_argument('--available-mem-prop', dest='available_mem_prop', type=float, default=None,
                         help="Float between 0.05 and 1.0: Proportion of tile memory available as temporary " +
                              "memory for matmul and convolutions execution (default:0.6 and 0.2 for Mobilenetv2)")
@@ -423,4 +446,4 @@ if __name__ == "__main__":
 
     main(args.model_arch, image_filenames, args.batch_size, args.batches_per_step, args.loop,
          args.num_iterations, args.num_ipus, args.mode, args.data, args.available_mem_prop,
-         args.gen_report, args.save_graph_pb)
+         args.gen_report, args.save_graph_pb, args.use_ipu_model)

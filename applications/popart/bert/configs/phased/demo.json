@@ -1,0 +1,18 @@
+{
+  "num_layers": 2,
+  "execution_mode": "PHASED",
+  "no_dropout": true,
+  "popart_dtype": "FLOAT16",
+  "batch_size": 1,
+  "batches_per_step": 20,
+  "epochs": 150,
+  "epochs_per_save": -1,
+  "batch_serialize": 1,
+  "replicated_weight_sharding": false,
+  "embedding_serialization_vocab_steps": 4,
+  "num_io_tiles": 0,
+  "input_files": [
+    "data/sample_text.bin"
+  ],
+  "no_validation": true
+}

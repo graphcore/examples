@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 import argparse
 import time
 import json
@@ -45,6 +46,12 @@ def run(benchmark, opts):
             options.virtualGraphMode = popart.VirtualGraphMode.Manual
 
     options.enablePipelining = opts.pipeline
+
+    if opts.recompute:
+        if opts.pipeline:
+            options.autoRecomputation = popart.RecomputationType.Pipeline
+        else:
+            options.autoRecomputation = popart.RecomputationType.Standard
 
     # Select a device
     deviceManager = popart.DeviceManager()
@@ -140,6 +147,8 @@ def parse_opts(benchmark, arg_string=None):
                         help="Use auto sharding")
     parser.add_argument('--pipeline', action="store_true",
                         help="Pipeline the model over 'shards' IPUs")
+    parser.add_argument('--recompute', action="store_true", default=False,
+                        help="Enable recomputations of activations in backward pass")
     parser.add_argument('--simulation', action="store_true",
                         help="Run the program on the IPU Model")
     parser.add_argument('--save-graph', action="store_true",

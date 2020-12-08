@@ -1,4 +1,4 @@
-# Copyright (C) 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
 # Copyright (C) 2018 Pierluigi Ferrari
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

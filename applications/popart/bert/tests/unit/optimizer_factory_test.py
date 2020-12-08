@@ -1,4 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 from typing import NamedTuple
 import pytest
@@ -6,7 +19,6 @@ import numpy as np
 import popart
 from bert_optimizer import ScheduledOptimizerFactory, Schedule
 from bert import Iteration
-
 
 STEPWISE_LR_SCHEDULE = {0: 1e-10,
                         500: 1e-9,
@@ -19,6 +31,12 @@ EPOCHWISE_LR_SCHEDULE = {1: 1e-10,
                          8: 1e-8,
                          12: 1e-8/2,
                          16: 1e-8/4}
+
+STEPWISE_LS_SCHEDULE = {100: 4,
+                        500: 8,
+                        1000: 20,
+                        1200: 16,
+                        1800: 20}
 
 
 class MockIteration:
@@ -75,6 +93,7 @@ class TestConfig(NamedTuple):
     replication_factor: int = 1
 
     inference_lm_perplexity: bool = False
+    inference: bool = False
 
     squad_lr_scale: int = 1
 
@@ -213,16 +232,11 @@ def test_scheduled_optimizer_factory_multiple_schedules(manual_truth, option_nam
     LR and LS: Step schedule, with an inferred init 0 value
     This test checks there's no interaction between the different schedules above."""
     iteration = MockIteration(20, 100)
-    ls_schedule_by_step = {100: 4,
-                           500: 8,
-                           1000: 20,
-                           1200: 16,
-                           1800: 12}
 
-    config = TestConfig(loss_scaling=3, learning_rate=STEPWISE_LR_SCHEDULE[0], ls_schedule_by_step=ls_schedule_by_step, lr_schedule_by_step=STEPWISE_LR_SCHEDULE)
+    config = TestConfig(loss_scaling=3, learning_rate=STEPWISE_LR_SCHEDULE[0], ls_schedule_by_step=STEPWISE_LS_SCHEDULE, lr_schedule_by_step=STEPWISE_LR_SCHEDULE)
 
     if option_name == "lossScaling":
-        sched = ls_schedule_by_step
+        sched = STEPWISE_LS_SCHEDULE
     else:
         sched = STEPWISE_LR_SCHEDULE
 
@@ -415,7 +429,12 @@ def test_per_tensor_lr(steps_per_epoch, lr_schedule_by_step, layer_inputs, offse
         opts.reportOptions = {"showExecutionSteps": "true"}
         opts.enableGroupedMatmuls = False
         pat = popart.Patterns(popart.PatternsLevel.Default)
-        device = popart.DeviceManager().acquireAvailableDevice(1)
+        dm = popart.DeviceManager()
+        dm.setOnDemandAttachTimeout(int(1e4))
+        device = dm.acquireAvailableDevice(
+            1,
+            connectionType=popart.DeviceConnectionType.OnDemand,
+            selectionCriterion=popart.DeviceSelectionCriterion.Random)
         if device is None:
             raise OSError("Failed to acquire IPU.")
 
@@ -428,7 +447,7 @@ def test_per_tensor_lr(steps_per_epoch, lr_schedule_by_step, layer_inputs, offse
         }
 
         factory = ScheduledOptimizerFactory(
-            config, iteration, tensors=mock_tensor_map)
+            config, iteration, "SGD", tensors=mock_tensor_map)
         assert_scaled_lr(factory, true_scaling)
 
         optimizer_step0 = factory.create()

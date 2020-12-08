@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 # coding=utf-8
 """
 VAE trained with the Variational Contrastive Divergence loss proposed by Ruiz and Titsias, ICML 2019. See paper:

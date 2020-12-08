@@ -199,7 +199,7 @@ static OpCreator<BsMatMulOp> BsMatMulOpCreator(
       type = attr.getAttribute<Attributes::String>("pp_type");
       poplar::Type ppType  = (type == "float32") ? poplar::FLOAT : poplar::HALF;
 
-      std::string partitionMethod = attr.getAttribute<Attributes::String>("partition_method", "block-naive");
+      std::string partitionMethod = attr.getAttribute<Attributes::String>("partition_method", "block-group2");
 
       float memoryCycleRatio             =
       attr.getAttribute<Attributes::Float>("memory_cycle_ratio", 1.0);

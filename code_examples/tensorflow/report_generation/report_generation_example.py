@@ -1,4 +1,5 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 """Simple code example of how to handle profiling reports in Tensorflow
 
 Base script for all tests.

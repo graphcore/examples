@@ -25,11 +25,11 @@ highly optimised for IPU devices.
 A similar ``addCodelets`` call is required for each of the Poplibs libraries you
 use in your program.
 
-* Compile and run the code (remember to link in the ``popops`` library):
+* Compile and run the code (remember to link in the ``popops`` and ``poputil`` libraries):
 
   .. code-block:: bash
 
-    $ g++ --std=c++11 tut2.cpp -lpoplar -lpopops -o tut2
+    $ g++ --std=c++11 tut2.cpp -lpoplar -lpopops -lpoputil -o tut2
     $ ./tut2
 
 The code doesn't do anything at the moment so let's add an operation to

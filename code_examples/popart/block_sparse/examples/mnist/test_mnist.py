@@ -1,9 +1,9 @@
-
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
+import pytest
 import os
 import unittest
 
-import pytest
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository
 from examples_tests.test_util import run_python_script_helper, run_test_helper, \

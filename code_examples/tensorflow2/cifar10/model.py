@@ -1,4 +1,24 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+# All contributions by François Chollet:
+# Copyright (c) 2015 - 2019, François Chollet.
+# All rights reserved.
+#
+# All contributions by Google:
+# Copyright (c) 2015 - 2019, Google, Inc.
+# All rights reserved.
+#
+# All contributions by Microsoft:
+# Copyright (c) 2017 - 2019, Microsoft, Inc.
+# All rights reserved.
+#
+# All other contributions:
+# Copyright (c) 2015 - 2019, the respective contributors.
+# All rights reserved.
+#
+# Each contributor holds copyright over their respective contributions.
+# The project versioning (Git) records all such contribution source information
+#
+# See https://github.com/keras-team/keras/blob/1a3ee8441933fc007be6b2beb47af67998d50737/examples/cifar10_cnn.py
 from functools import partial
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Conv2D, Dropout, Activation, MaxPooling2D, Flatten

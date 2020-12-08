@@ -35,12 +35,12 @@
     "stochastic_rounding": true,
     "batches_per_step": 2048,
     "epochs": 3,
-    "aggregate_epochs_over_steps": 1,
     "input_files": [
         "data/squad/train-v1.1.json"
     ],
     "vocab_length": 30400,
     "split_linear_layers": true,
+    "recompute_checkpoint_every_layer": false,
     "vocab_file": "data/ckpts/uncased_L-24_H-1024_A-16/vocab.txt",
     "tf_checkpoint": "data/ckpts/uncased_L-24_H-1024_A-16/bert_model.ckpt",
     "do_lower_case": true,

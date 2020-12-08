@@ -7,9 +7,12 @@ import os
 import inspect
 import logging
 import numpy as np
+from functools import partial
 
 import tensorflow.compat.v1 as tf
 from tensorflow.python.ipu import utils, scopes, ipu_outfeed_queue
+from tensorflow.python.ipu.scopes import ipu_scope
+from tensorflow.python.ipu import ipu_compiler
 
 cwd = os.path.dirname(os.path.abspath(__file__))
 os.sys.path.insert(1, os.path.join(cwd, '..', '..', '..', 'applications', 'tensorflow', 'dynamic_sparsity'))
@@ -25,14 +28,11 @@ tf.disable_v2_behavior()
 def add_args(parser):
     TransformerOptions.add_all_arguments(parser)
     SparseModelOptions.add_all_arguments(parser)
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--train", dest="train", action='store_true', help="Compute loss and optimization pass")
-    group.add_argument("--inference", dest="train", action='store_false', help="Just inference pass")
-
+    parser.add_argument("--mode", choices=['train', 'infer'], default="infer", help="mode choices: [train, infer]")
     parser.add_argument("--compute-dense-grad", default=False, help="If training, compute dense grads in backward pass")
 
     defaults = dict(
-        embedding_dtype=tf.float32,
+        dtype=tf.float32,
         batch_size=1,
         sparsity=0.9,
         source_sequence_length=256,
@@ -47,7 +47,7 @@ def add_args(parser):
 
 
 def inputs(opts, index):
-    value = tf.cast(index, tf.float32)
+    value = tf.cast(index, opts.dtype)
     inputs = tf.broadcast_to(value, [opts.batch_size, opts.source_sequence_length, opts.hidden_length])
     return {"input_activation": inputs}
 
@@ -55,12 +55,14 @@ def inputs(opts, index):
 def graph_builder(opts, inputs):
     input_activation = inputs["input_activation"]
     transformer = DynsparseTransformer(opts)
-    transformer.compute_dense_grad = opts.compute_dense_grad and opts.train
-    output_activation = transformer.feed_forward(input_activation)
+    transformer.compute_dense_grad = opts.compute_dense_grad and opts.mode == 'train'
+    output_activation = transformer.feed_forward(input_activation,
+                                                 compute_dense_grad=opts.compute_dense_grad and
+                                                 opts.mode == 'train')
     loss = tf.reduce_sum(output_activation)
     output = loss
 
-    if opts.train:
+    if opts.mode == 'train':
         with tf.variable_scope("train", reuse=tf.AUTO_REUSE, use_resource=True):
             global_step = tf.train.get_or_create_global_step()
             optimizer = optimizers.SparseOptimizer(tf.train.AdamOptimizer)
@@ -82,7 +84,7 @@ def get_ffn_flops(opts):
     H, F = opts.hidden_length, opts.ff_length
     forward_work = B * S * (H * 2) * F + B * S * (F * 2) * H
     backward_work = 2 * forward_work
-    work = forward_work + backward_work * int(opts.train)
+    work = forward_work + backward_work * int(opts.mode == 'train')
     work *= (1 - opts.sparsity)
     return work
 
@@ -92,6 +94,11 @@ def iteration_report(opts, time):
     tflops_per_sec = opts.batches_per_step * opts.replicas * work * 1e-12 / time
     tokens_per_sec = opts.batch_size * opts.source_sequence_length * opts.batches_per_step * opts.replicas / time
     return f"{tokens_per_sec:.1f} tokens/sec, problem size {work*1e-9:.1f} GFLOPS, {tflops_per_sec:.3f} TFLOPS/sec"
+
+
+def out_shape(builder, opts, inputs):
+    with ipu_scope('/device:IPU:0'):
+        return ipu_compiler.compile(partial(builder, opts), [inputs])[0]
 
 
 if __name__ == '__main__':
@@ -109,7 +116,9 @@ if __name__ == '__main__':
         inputs,
         tf.global_variables_initializer,
         add_args,
-        iteration_report
+        iteration_report,
+        None,
+        out_shape
     )
 
     opts = benchmark.parse_opts(module, False)
@@ -120,7 +129,7 @@ if __name__ == '__main__':
     if opts.replicas > 1:
         raise NotImplementedError("--replicas option has not been implemented with this example")
 
-    print(f" Dynamic Sparse Transformer Feed-forward Layer {'Train' if opts.train else 'Inference'} Synthetic benchmark.\n"
+    print(f" Dynamic Sparse Transformer Feed-forward Layer {'Train' if opts.mode == 'train' else 'Inference'} Synthetic benchmark.\n"
           f" Batch size {opts.batch_size}.\n"
           f" Batches per Step {opts.batches_per_step if not opts.report else 'n/a'}.\n"
           f" Sequence length {opts.source_sequence_length}\n"

@@ -4,7 +4,7 @@
 
 ## Dependencies:
 
-SDK released by Graphcore of version 1.2 or later
+Poplar SDK version 1.4 or later
 
 ## Quick start guide
 
@@ -23,6 +23,11 @@ Create a virtualenv and install the required packages:
 virtualenv venv -p python3.6
 source venv/bin/activate
 pip install -r requirements.txt
+```
+
+Add a path to block_sparse/examples directory:
+```bash
+export PYTHONPATH=.../block_sparse/examples:$PYTHONPATH
 ```
 
 ### Create custom_ops.so with provided makefile

@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 """Configurable model specification for CosmoFlow"""
 
 import tensorflow as tf

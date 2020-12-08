@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 """
 Tests covering various CNN training options using the EfficientNet-B1 model.
 """
@@ -11,7 +11,7 @@ from test_common import get_csv, parse_csv, run_train, cifar10_data_dir
 
 @pytest.mark.category2
 @pytest.mark.ipus(4)
-class TestEfficientNetB1Pipelineing2IPUs(unittest.TestCase):
+class TestEfficientNetB1Pipelining2IPUs(unittest.TestCase):
     """EfficientNet-B1 example over 4 IPUs.
     """
 
@@ -22,7 +22,8 @@ class TestEfficientNetB1Pipelineing2IPUs(unittest.TestCase):
                            '--model': 'efficientnet',
                            '--model-size': 'B1',
                            '--shards': 4,
-                           '--pipeline-depth': 128,
+                           '--pipeline': '',
+                           '--gradient-accumulation-count': 128,
                            '--batch-size': 4,
                            '--no-validation': '',
                            '--xla-recompute': '',

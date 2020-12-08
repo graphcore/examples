@@ -1,4 +1,5 @@
-// Copyright 2020 Graphcore Ltd.
+// Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 #include <cstdlib>
 #include <vector>
 

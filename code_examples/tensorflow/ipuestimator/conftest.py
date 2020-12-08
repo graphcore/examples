@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 from tensorflow.keras.datasets import cifar10
 
 

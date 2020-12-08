@@ -49,6 +49,7 @@ void BsSoftmaxOpx::grow(poplar::program::Sequence &prog) const {
           blockSize,
           op->getSparsity(),
           subblockMask,
+          1,
           prog,
           debugStr);
     setOutTensor(0, probs);
@@ -103,6 +104,7 @@ void BsSoftmaxOpx::grow(poplar::program::Sequence &prog) const {
                 blockSize,
                 sparsityMask,
                 subblockMask,
+                1,
                 prog,
                 debugStr + "[" + std::to_string(idxIg) + "]");
       assert(out.shape() == logitsSlice.shape());

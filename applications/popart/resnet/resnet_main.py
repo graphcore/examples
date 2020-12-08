@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import numpy as np
 import popart
 import argparse
@@ -198,6 +198,12 @@ def get_options(opts, training=True):
         else:
             options.autoRecomputation = popart.RecomputationType.Standard
 
+    # GCL
+    if opts.syncless_collectives:
+        options.gclOptions['useSynclessCollectives'] = opts.syncless_collectives
+    if opts.max_bytes_per_tile:
+        options.gclOptions['maxBytesPerTile'] = str(opts.max_bytes_per_tile)
+
     return options
 
 
@@ -298,9 +304,6 @@ def train_process(opts):
                                             training=False,
                                             gcpLogDir=opts.gc_profile_log_dir)
 
-    # Copy weights and optimization parameters onto the device
-    training_session.weightsFromHost()
-
     batch_losses = deque(maxlen=opts.steps_per_log)
     batch_accs = deque(maxlen=opts.steps_per_log)
     batch_run_duration = deque(maxlen=opts.steps_per_log)
@@ -311,6 +314,9 @@ def train_process(opts):
 
     # Iterations
     for e in range(opts.epochs):
+
+        # Write the training weights to the device
+        training_session.weightsFromHost()
 
         # Set the timing start point for training
         training_start_point = time.time()
@@ -404,59 +410,57 @@ def train_process(opts):
                 # Reset the training start point
                 training_start_point = time.time()
 
+        if opts.no_validation:
+            return
+
         # Evaluation
-        if not opts.no_validation:
+        # The onnx file that is the graph we created, with weights set by current state of training
+        onnx_file_name = opts.ckpt
 
-            # The onnx file that is the graph we created, with weights set by current state of training
-            onnx_file_name = "ckpt.onnx"
+        training_session.modelToHost(onnx_file_name)
 
-            training_session.modelToHost(onnx_file_name)
+        # Copy weights and optimization parameters onto the device
+        validation_session.resetHostWeights(onnx_file_name)
+        validation_session.weightsFromHost()
 
-            # Copy weights and optimization parameters onto the device
-            validation_session.resetHostWeights(onnx_file_name)
-            validation_session.weightsFromHost()
+        validation_start_point = time.time()
+        for validation_data in validation_dataset:
 
-            validation_start_point = time.time()
-            for validation_data in validation_dataset:
+            validation_images = validation_data[0]
+            validation_labels = validation_data[1]
 
-                validation_images = validation_data[0]
-                validation_labels = validation_data[1]
+            validation_stepio = popart.PyStepIO(
+                {
+                    image: validation_images,
+                    label: validation_labels
+                }, validation_anchors)
 
-                validation_stepio = popart.PyStepIO(
-                    {
-                        image: validation_images,
-                        label: validation_labels
-                    }, validation_anchors)
+            validation_session.run(validation_stepio)
 
-                validation_session.run(validation_stepio)
+            # Get the loss and 'predicted' labels
+            validation_nll_loss_anch = validation_anchors[loss]
+            validation_arg_max_anch = validation_anchors[argmax]
 
-                # Get the loss and 'predicted' labels
-                validation_nll_loss_anch = validation_anchors[loss]
-                validation_arg_max_anch = validation_anchors[argmax]
+            validation_losses.append(validation_nll_loss_anch)
+            validation_accs.append(
+                100 * np.mean(validation_arg_max_anch == validation_labels))
 
-                validation_losses.append(validation_nll_loss_anch)
-                validation_accs.append(
-                    100 * np.mean(validation_arg_max_anch == validation_labels))
+        print("Validation accuracy epoch {:6.2f}, img/sec:{:6.2f} "
+              "accuracy: {:6.3f}% loss: {:6.3f}"
+              .format(
+                  epoch,
+                  (
+                      len(validation_dataset) *
+                      opts.batch_size *
+                      opts.batches_per_step /
+                      (time.time() - validation_start_point)
+                  ),
+                  np.mean(validation_accs),
+                  np.mean(validation_losses)))
 
-            print("Validation accuracy epoch {:6.2f}, img/sec:{:6.2f} "
-                  "accuracy: {:6.3f}% loss: {:6.3f}"
-                  .format(
-                      epoch,
-                      (
-                          len(validation_dataset) *
-                          opts.batch_size *
-                          opts.batches_per_step /
-                          (time.time() - validation_start_point)
-                      ),
-                      np.mean(validation_accs),
-                      np.mean(validation_losses)))
+        writer.add_scalar('val_acc', np.mean(validation_accs), total_steps)
 
-            writer.add_scalar('val_acc', np.mean(validation_accs), total_steps)
-
-            training_session.resetHostWeights(onnx_file_name)
-
-            # Write the training weights to the device
-            training_session.weightsFromHost()
+        training_session.resetHostWeights(onnx_file_name)
 
 
 if __name__ == '__main__':
@@ -561,6 +565,15 @@ if __name__ == '__main__':
     group.add_argument(
         '--gradient-accumulation-factor', type=int, default=1,
         help="Accumulate a number of gradients before updating the weights")
+    group.add_argument(
+        '--ckpt', type=str, default="ckpt.onnx",
+        help="File name of ckpt file.")
+    group.add_argument(
+        '--syncless-collectives', choices=['true', 'false', 'auto'],
+        help='Selects syncless/syncful or combined/auto detection for collective operations')
+    group.add_argument(
+        '--max-bytes-per-tile', type=int,
+        help='Max bytes per tile for syncless collective operations')
     # -------------- LOGGING ------------------
     group = parser.add_argument_group('Logging')
     group.add_argument(

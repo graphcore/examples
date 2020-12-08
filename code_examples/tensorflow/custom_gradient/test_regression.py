@@ -1,4 +1,6 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
+import pytest
 from examples_tests.test_util import SubProcessChecker
 from pathlib import Path
 
@@ -13,6 +15,8 @@ class TestBuildAndRun(SubProcessChecker):
     def tearDown(self):
         self.run_command("make clean", build_dir, [])
 
+    @pytest.mark.category1
+    @pytest.mark.ipus(1)
     def test_run_regression(self):
         self.run_command("python3 regression.py",
                          build_dir,

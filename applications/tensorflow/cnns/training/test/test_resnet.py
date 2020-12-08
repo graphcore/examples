@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 """
 Tests covering various CNN training options using the ResNet model.
 """
@@ -9,6 +9,7 @@ import os
 import portpicker
 import statistics
 import subprocess
+import sys
 import tempfile
 import tensorflow as tf
 import time
@@ -26,7 +27,7 @@ class TestBasicFunctionality(unittest.TestCase):
         self.assertNotEqual(help_out.find("usage: train.py"), -1)
 
 
-@pytest.mark.category1
+@pytest.mark.category2
 @pytest.mark.ipus(1)
 class TestMisc(unittest.TestCase):
     """Some miscellaneous options"""
@@ -53,7 +54,7 @@ class TestMisc(unittest.TestCase):
         self.assertNotEqual(self.logdir.find('penguin'), -1)
 
 
-@pytest.mark.category1
+@pytest.mark.category2
 @pytest.mark.ipus(1)
 class TestCifar10Training(unittest.TestCase):
     """Testing some basic training parameters"""
@@ -71,12 +72,12 @@ class TestCifar10Training(unittest.TestCase):
     def test_results(self):
         # test_final_validation_accuracy
         final_acc = self.validation['val_acc'][-1]
-        self.assertGreater(final_acc, 81)
+        self.assertGreater(final_acc, 80)
         self.assertLess(final_acc, 87)
 
         # test_final_training_accuracy
         final_acc = self.training['train_acc_avg'][-1]
-        self.assertGreater(final_acc, 81)
+        self.assertGreater(final_acc, 80)
         self.assertLess(final_acc, 87)
 
         # test_learning_rates
@@ -87,7 +88,7 @@ class TestCifar10Training(unittest.TestCase):
         self.assertEqual(round(self.training['epoch'][-1]), 10)
 
 
-@pytest.mark.category1
+@pytest.mark.category2
 @pytest.mark.ipus(1)
 class TestCifar10FullTraining(unittest.TestCase):
     """Fast training of Cifar-10 to good accuracy"""
@@ -163,7 +164,8 @@ class TestResNet50Pipelining2IPUs(unittest.TestCase):
                            '--synthetic-data': '',
                            '--model-size': 50,
                            '--shards': 2,
-                           '--pipeline-depth': 256,
+                           '--pipeline': '',
+                           '--gradient-accumulation-count': 256,
                            '--batch-size': 2,
                            '--no-validation': '',
                            '--xla-recompute': '',
@@ -173,6 +175,7 @@ class TestResNet50Pipelining2IPUs(unittest.TestCase):
 
     def test_iterations_completed(self):
         self.assertEqual(self.training['iteration'][-1], 10)
+        self.assertGreater(self.training['loss_batch'][-1], 0)
 
 
 @pytest.mark.category2
@@ -191,7 +194,8 @@ class TestResNet50Pipelining2IPUs2Replicas(unittest.TestCase):
                            '--model-size': 50,
                            '--shards': 2,
                            '--replicas': 2,
-                           '--pipeline-depth': 128,
+                           '--pipeline': '',
+                           '--gradient-accumulation-count': 128,
                            '--pipeline-schedule': 'Grouped',
                            '--batch-size': 2,
                            '--no-validation': '',
@@ -202,9 +206,10 @@ class TestResNet50Pipelining2IPUs2Replicas(unittest.TestCase):
 
     def test_iterations_completed(self):
         self.assertEqual(self.training['iteration'][-1], 10)
+        self.assertGreater(self.training['loss_batch'][-1], 0)
 
 
-@pytest.mark.category1
+@pytest.mark.category2
 @pytest.mark.ipus(2)
 class TestReplicatedTraining(unittest.TestCase):
     """Using replicas for data parallelism"""
@@ -264,10 +269,103 @@ class TestLotsOfOptions(unittest.TestCase):
         self.assertEqual(int(self.validation['epoch'][-1] + 0.5), 10)
 
 
+@pytest.mark.category1
+@pytest.mark.ipus(16)
+class TestPopdist(unittest.TestCase):
+    """Testing training with popdist launched using poprun."""
+
+    def test_resnet8(self):
+
+        TIMEOUT_SECONDS = 5 * 60
+        NUM_TOTAL_REPLICAS = 4
+        NUM_INSTANCES = 2
+        NUM_LOCAL_REPLICAS = NUM_TOTAL_REPLICAS // NUM_INSTANCES
+
+        with tempfile.TemporaryDirectory() as logdir:
+            # The buildbot runs as root, so let's allow that.
+            cmd = [
+                'poprun',
+                '--mpi-global-args=--tag-output --allow-run-as-root',
+                '--num-replicas=' + str(NUM_TOTAL_REPLICAS),
+                '--num-instances=' + str(NUM_INSTANCES),
+                sys.executable,
+                'train.py',
+                '--dataset=cifar-10',
+                '--synthetic-data',
+                '--model-size=8',
+                '--batch-size=1',
+                '--batches-per-step=10',
+                '--gradient-accumulation-count=10',
+                '--no-validation',
+                '--no-stochastic-rounding',
+                '--iterations=100',
+                '--log-dir', logdir,
+                '--name-suffix', 'popdist_instance',
+            ]
+
+            # Add the MPI library dirs on the LD_LIBRARY_PATH, as these are not
+            # always searched by default (e.g. on CentOS). A user would normally
+            # do "module load mpi/openmpi-x86_64" on CentOS to achieve this instead.
+            libdirs = subprocess.check_output(["mpic++", "--showme:libdirs"])
+            libdirs = libdirs.decode().strip().replace(" ", ":")
+            ld_library_path = "{}:{}".format(os.environ["LD_LIBRARY_PATH"], libdirs)
+
+            # Add some debug logging, and use executable cache which is shared between instances.
+            extra_env = {
+                'POPRUN_LOG_LEVEL': 'TRACE',
+                'TF_CPP_VMODULE': 'poplar_compiler=1,poplar_executor=1',
+                'TF_POPLAR_FLAGS': f"--executable_cache_path={logdir}/exec_cache",
+                'LD_LIBRARY_PATH': ld_library_path,
+            }
+
+            cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            env = os.environ.copy()
+            env.update(extra_env)
+            subprocess.check_call(cmd, cwd=cwd, env=env, timeout=TIMEOUT_SECONDS)
+
+            instance_logdirs = glob.glob(f"{logdir}/*_popdist_instance_*")
+            self.assertEqual(len(instance_logdirs), NUM_INSTANCES)
+
+            training_logs = []
+
+            for instance_logdir in instance_logdirs:
+                # Check that each instance got the correct number of replicas from popdist.
+                with open(os.path.join(instance_logdir, 'arguments.json'), 'r') as f:
+                    argument_log = json.load(f)
+                self.assertEqual(argument_log['replicas'], NUM_LOCAL_REPLICAS)
+
+                # Check that the final accuracy is decent.
+                training_log = parse_csv(os.path.join(instance_logdir, 'training.csv'))
+                self.assertGreater(training_log['train_acc_avg'][-1], 95)
+                training_logs.append(training_log)
+
+            # The final training accuracy should be the same on all instances.
+            for i in range(1, NUM_INSTANCES):
+                self.assertEqual(
+                    training_logs[0]['train_acc_avg'][-1],
+                    training_logs[i]['train_acc_avg'][-1])
+
+            # The final training loss should be the same on all instances.
+            for i in range(1, NUM_INSTANCES):
+                self.assertEqual(
+                    training_logs[0]['loss_avg'][-1],
+                    training_logs[i]['loss_avg'][-1])
+
+            # The final weights should be the same on all instances.
+            var_names_and_shapes = tf.train.list_variables(instance_logdirs[0])
+
+            for var_name, _ in var_names_and_shapes:
+                value_instance_0 = tf.train.load_variable(instance_logdirs[0], var_name)
+
+                for i in range(1, NUM_INSTANCES):
+                    value_instance_i = tf.train.load_variable(instance_logdirs[i], var_name)
+                    self.assertListEqual(value_instance_0.tolist(), value_instance_i.tolist())
+
+
 @pytest.mark.category3
 @pytest.mark.ipus(16)
 class TestDistributedTraining(unittest.TestCase):
-    """Testing distributed training with multiple processes on a single machine."""
+    """Testing distributed training with multiple processes on a single machine with 16 IPUs."""
 
     def test_resnet_50_from_readme(self):
 
@@ -283,7 +381,8 @@ class TestDistributedTraining(unittest.TestCase):
                 '--batch-size=4',
                 '--batches-per-step=1',
                 '--shards=4',
-                '--pipeline-depth=64',
+                '--pipeline',
+                '--gradient-accumulation-count=64',
                 '--pipeline-splits', 'b1/2/relu', 'b2/3/relu', 'b3/5/relu',
                 '--xla-recompute',
                 '--replicas=2',  # Instead of 4 to make two processes fit on one machine.

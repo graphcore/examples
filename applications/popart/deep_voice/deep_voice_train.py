@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import numpy as np
 import popart
 import time
@@ -315,7 +315,7 @@ if __name__ == '__main__':
 
     if not conf.no_pre_load_data:
         if not conf.generated_data:
-            logger.info("Loading full training dataset into memory (this may take about 7 mins)")
+            logger.info("Loading full training dataset into memory (this may take a few minutes)")
         all_step_data = []
 
         dataset_iterator = dataset.get_step_data_iterator()
@@ -348,15 +348,17 @@ if __name__ == '__main__':
 
         if not conf.no_pre_load_data:
             tqdm_iter = tqdm(all_step_data, disable=not sys.stdout.isatty())
-            val_tqdm_iter = tqdm(val_all_step_data,
-                                 disable=not sys.stdout.isatty() or conf.generated_data)
+            if not conf.no_validation:
+                val_tqdm_iter = tqdm(val_all_step_data,
+                                     disable=not sys.stdout.isatty() or conf.generated_data)
         else:
             dataset_iterator = dataset.get_step_data_iterator()
-            val_dataset_iterator = dataset.get_step_data_iterator(train_mode=False)
-
             tqdm_iter = tqdm(dataset_iterator, disable=not sys.stdout.isatty())
-            val_tqdm_iter = tqdm(val_dataset_iterator,
-                                 disable=not sys.stdout.isatty() or conf.generated_data)
+
+            if not conf.no_validation:
+                val_dataset_iterator = dataset.get_step_data_iterator(train_mode=False)
+                val_tqdm_iter = tqdm(val_dataset_iterator,
+                                     disable=not sys.stdout.isatty() or conf.generated_data)
 
         epoch_start_time = time.time()
         for step_data in tqdm_iter:

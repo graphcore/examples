@@ -1,4 +1,3 @@
-
 Graphcore
 ---
 ## Image classification inference
@@ -20,6 +19,13 @@ The following models can be run on a single IPU using this inference harness.
 The following models require multiple IPUs to be able to run using this inference harness.
 1. DenseNet (up to bs=4 (with sharding=2), fp16)
 
+The application example downloads pre-trained weights using the `tensorflow.compat.v1.keras.applications` API.
+Further details can be found [on the TensorFlow website](https://www.tensorflow.org/api_docs/python/tf/keras/applications/).
+
+InceptionV1 pre-trained weights are available from [this TensorFlow link](http://download.tensorflow.org/models/inception_v1_2016_08_28.tar.gz) from the [TensorFlow models repository](https://github.com/tensorflow/models/).
+
+EfficentNet pre-trained weights are available from the [TensorFlow TPU repository](https://github.com/tensorflow/tpu/tree/master/models/official/efficientnet/edgetpu).
+
 ### File structure
 
 * `run_benchmark.py` Driver script for running inference.
@@ -36,13 +42,14 @@ The following models require multiple IPUs to be able to run using this inferenc
 
 1) Prepare the TensorFlow environment.
 
-   Install the latest poplar-SDK following the README provided. Make sure to run the enable.sh scripts and 
+   Install the Poplar SDK following the the instructions in the Getting Started
+   guide for your IPU system. Make sure to run the enable.sh script and
    activate a Python virtualenv with gc_tensorflow installed.
-   
+
    Install additional python packages specified in requirements.txt
-  
+
     (gc_virtualenv)$ pip3 install -r requirements.txt
-   
+
 2) Download the images.
 
        ./get_images.sh

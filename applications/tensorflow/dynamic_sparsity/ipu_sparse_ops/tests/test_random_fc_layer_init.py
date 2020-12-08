@@ -10,9 +10,10 @@ sys.path.insert(1, os.path.join(cwd, '..', '..'))
 
 
 def assert_not_equal(a, b):
-    assert not np.array_equal(a, b, equal_nan=True)
+    assert not np.array_equal(a, b)
 
 
+@pytest.mark.usefixtures("ipu_sparse_ops")
 class TestBuildAndRun(SubProcessChecker):
 
     @pytest.mark.category1
@@ -22,18 +23,20 @@ class TestBuildAndRun(SubProcessChecker):
         random_gen = np.random.default_rng(seed=random_seed)
         fc1 = layers.SparseFcLayer.from_random_generator(
             64, [128, 256], 0.1,
+            block_size=1,
             values_initialiser_gen=random_gen.standard_normal,
             indices_initialiser_gen=random_gen,
             matmul_options={"metaInfoBucketOversizeProportion": 0.1},
             name='sparse_fc_from_random',
-            bias=False, relu=False)
+            use_bias=False, relu=False)
         fc2 = layers.SparseFcLayer.from_random_generator(
             64, [128, 256], 0.1,
+            block_size=1,
             values_initialiser_gen=random_gen.standard_normal,
             indices_initialiser_gen=random_gen,
             matmul_options={"metaInfoBucketOversizeProportion": 0.1},
             name='sparse_fc_from_random',
-            bias=False, relu=False)
+            use_bias=False, relu=False)
         t1 = fc1.get_triplets()
         t2 = fc2.get_triplets()
         for a, b in zip(t1, t2):

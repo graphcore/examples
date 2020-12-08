@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-
 import transformers
 import torch
 import poptorch
@@ -63,8 +62,8 @@ if __name__ == '__main__':
     num_batches = num_questions // batch_size
 
     # Pipeline the model over two IPUs. You must have at least as many batches (questions) as you have IPUs.
-    model.bert.embeddings.position_embeddings = poptorch.IPU(
-        ipu_id=1, layer_to_call=model.bert.embeddings.position_embeddings)
+    model.bert.embeddings.position_embeddings = poptorch.BeginBlock(
+        layer_to_call=model.bert.embeddings.position_embeddings, ipu_id=1)
 
 
     # Wrap PyTorch model insde a PopTorch InferenceModel. This will make the model run on the IPU.

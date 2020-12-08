@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import argparse
 import ctypes
 import os
@@ -16,8 +16,8 @@ def build_and_run_graph(input_data, alpha, run_on_ipu):
     input_tensor = builder.addInputTensor(popart.TensorInfo("FLOAT", [input_len]))
 
     output_tensor = builder.customOp(opName="LeakyRelu",
-                                     opVersion=6,
-                                     domain="ai.onnx",
+                                     opVersion=1,
+                                     domain="custom.ops",
                                      inputs=[input_tensor],
                                      attributes={"alpha": alpha})[0]
 
@@ -47,7 +47,7 @@ def build_and_run_graph(input_data, alpha, run_on_ipu):
 
     stepio = popart.PyStepIO({input_tensor: X},
                              result)
-    session.run(stepio)
+    session.run(stepio, 'LeakyReLU')
 
     return result
 

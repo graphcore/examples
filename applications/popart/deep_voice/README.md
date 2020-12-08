@@ -34,13 +34,13 @@ pip install -r requirements.txt
 ```
 	
 4.  Dataset: Currently, we use the VCTK dataset which is a multi-speaker dataset. For more details see:
-https://homepages.inf.ed.ac.uk/jyamagis/page3/page58/page58.html
+https://datashare.is.ed.ac.uk/handle/10283/3443
 
-Download and unzip the dataset to a suitable location. The size of the downloaded file is big (around 10GB).
+Download and unzip the dataset to a suitable location. The size of the downloaded file is big (around 11GB).
 
 ```
-wget http://homepages.inf.ed.ac.uk/jyamagis/release/VCTK-Corpus.tar.gz
-tar -zxvf VCTK-Corpus.tar.gz
+wget https://datashare.is.ed.ac.uk/bitstream/handle/10283/3443/VCTK-Corpus-0.92.zip
+unzip VCTK-Corpus-0.92.zip -d VCTK-Corpus-0.92
 ```
 
 Also, to download the Carnegie Mellon Pronouncing Dictionary, just run:
@@ -61,21 +61,22 @@ If you want to do training or run tests without gradient-clipping, do not build 
 	For a default batch-size of 2:
 	
 ```
-python3 deep_voice_train.py --data_dir /path/to/VCTK-Corpus/ --model_dir /path/to/trained/model
+python3 deep_voice_train.py --data_dir /path/to/dataset/ --model_dir /path/to/trained/model
 ```
 
+The dataset path provided as input must be the parent folder of the VCTK-Corpus-0.92 folder to which the data was extracted.
 To use multiple IPUs in a data-parallel fashion for higher effective batch-sizes, 
 one can use the `--num_ipus` and `--replication-factor` options. For e.g. to use
 two IPUs for a batch-size of 4, one can do:
 
 ```
-python3 deep_voice_train.py --data_dir /path/to/VCTK-Corpus/ --model_dir /path/to/trained/model --num_ipus 2 --replication_factor 2 --batch_size 4
+python3 deep_voice_train.py --data_dir /path/to/dataset/ --model_dir /path/to/trained/model --num_ipus 2 --replication_factor 2 --batch_size 4
 ```
 Here, the batch-size must be a multiple of the replication factor. One can also specifiy the IPU to use with the `--select_ipu` option. 
 For e.g. to use the MultiIPU 18 for data-parallel training, use:
 
 ```
-python3 deep_voice_train.py --data_dir /path/to/VCTK-Corpus/ --model_dir /path/to/trained/model --num_ipus 2 --replication_factor 2 --batch_size 4 --select_ipu 18
+python3 deep_voice_train.py --data_dir /path/to/dataset/ --model_dir /path/to/trained/model --num_ipus 2 --replication_factor 2 --batch_size 4 --select_ipu 18
 ```
 
 ### Synthesize audio using the forward pass of the training graph
@@ -127,3 +128,15 @@ Use `--help` to show the available options. Here are a few important options:
 Note that the number of IPUs must be equal to or a multiple of the replication factor.
 
 `--select_ipu` specifies the ID of the IPU or MultiIPU to use for the session.
+
+
+#### License
+
+This application is licensed under the MIT license - see the LICENSE file at the top-level of this repository.
+
+The code for this application is based on the Carnegie Mellon Pronouncing Dictionary. For license information, see here:
+http://svn.code.sf.net/p/cmusphinx/code/trunk/cmudict/00README_FIRST.txt
+
+The VCTK dataset used here is licensed under the Creative Commons License: Attribution 4.0 International.
+See https://datashare.is.ed.ac.uk/bitstream/handle/10283/3443/license_text
+

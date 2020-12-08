@@ -1,13 +1,14 @@
-// Copyright 2020 Graphcore Ltd.
+// Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 #include <poplar/Graph.hpp>
 #include <poplin/MatMul.hpp>
 #include <popops/ElementWise.hpp>
 #include <poputil/exceptions.hpp>
 
-/// We are using a stateless op which requires
-/// API level 1 or higher.
+/// Check the Targeting the IPU from TensorFlow document for
+/// the API level required for the version of the Poplar SDK that you are using.
 extern "C" {
-  int32_t custom_op_api_level = 1;
+  int32_t custom_op_api_level = 2;
 }
 
 /// Meta data function sets properties of the forward op.
@@ -86,7 +87,7 @@ poplar::program::Program Build_grad(
               weightsTransposed.broadcast(gradients[0].dim(0), 0),
               prog,
               debug_prefix + "/dLdX");
-  
+
   outputs.push_back(gradOfLossWrtInput);
   outputs.push_back(gradOfLossWrtWeights);
 

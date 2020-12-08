@@ -1,4 +1,5 @@
 # coding=utf-8
+# Copyright (c) 2020 Graphcore Ltd. All Rights Reserved.
 # Copyright 2018 The Google AI Language Team Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# This file has been modified by Graphcore Ltd.
+
 """
 This script has been adapated from the original google-research/bert repo found here:
   https://github.com/google-research/bert/blob/master/create_pretraining_data.py
 
 Main changes:
-  Remove dependency on Tensorflow
+  Remove dependency on TensorFlow
   Save files as binaries
   Rearrange examples to match the input requirements for the IPU version of BERT. For more details see README.md
 """

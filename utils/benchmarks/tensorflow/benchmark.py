@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+
 '''
 Benchmarks a TensorFlow graph.
 
@@ -20,15 +21,18 @@ from tensorflow.python.ipu import utils, loops, ipu_infeed_queue, ipu_compiler
 
 Benchmark = namedtuple(
     'Benchmark', [
-        'graph_builder',     # opts,inputs -> [fetches]
-        'inputs',            # opts,index -> inputs. This maps index -> tensors to be consumed by graph_builder
+        'graph_builder',     # opts, inputs -> [fetches]
+        'inputs',            # opts, index -> inputs. This maps index -> tensors to be consumed by graph_builder
         'initializer',       # -> [fetches]
         'add_args',          # parser -> parser
-        'iteration_report',  # opts,duration -> string
+        'iteration_report',  # opts, duration -> string
         'initializer_sess',  # sess -> None. Run an initialiser with direct access to the session.
+        'out_shape'          # graph_builder, opts, inputs -> np.array. Return array wirth correct output dtype and shape
+                             # so that the benchmark does not have to deduce the size by constructing
+                             # a graph.
     ]
 )
-Benchmark.__new__.__defaults__ = (lambda parser: parser, lambda *_: "")
+Benchmark.__new__.__defaults__ = (None,) * len(Benchmark._fields)
 
 
 def run(benchmark, opts):
@@ -59,7 +63,10 @@ def run(benchmark, opts):
                 dummy_opts = copy.deepcopy(opts)
                 dummy_opts.shards = 1
                 d = benchmark.inputs(dummy_opts, tf.constant(0))
-                out = benchmark.graph_builder(dummy_opts, d)
+                if benchmark.out_shape is None:
+                    out = benchmark.graph_builder(dummy_opts, d)
+                else:
+                    out = benchmark.out_shape(benchmark.graph_builder, dummy_opts, d)
             input = tf.constant(0, out.dtype, shape=out.shape)
 
             def body(inout, *args, **kwargs):

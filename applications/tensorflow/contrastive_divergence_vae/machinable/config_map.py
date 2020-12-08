@@ -1,3 +1,5 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 """
 Derived work of Chris Redford released at https://github.com/drgrib/dotmap under the following terms:
 

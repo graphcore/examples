@@ -5,9 +5,9 @@ First, the environment need to be prepared according to the instructions in the 
 
 Then, the pytests packing need to be invoked from the root bert folder.
 
-Run all tests:
+Run all tests in parallel:
 ```
-pytest
+pytest -n 16 --forked
 ```
 
 Run selected tests e.g. custom_ops unit tests only:

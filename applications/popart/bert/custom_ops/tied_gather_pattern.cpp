@@ -1,9 +1,23 @@
-// Copyright 2019 Graphcore Ltd.
+// Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <popart/graph.hpp>
 #include <popart/op.hpp>
 #include <popart/opidentifier.hpp>
 #include <popart/topocons.hpp>
 #include <popart/optimizer.hpp>
+#include <popart/adam.hpp>
 #include <popart/tensor.hpp>
 #include <popart/tensorinfo.hpp>
 #include <popart/logging.hpp>
@@ -17,7 +31,7 @@
 
 #include <map>
 
-#include "sparse_sgd1_accumulate.cpp"
+#include "sparse_accumulate.cpp"
 #include "detach.cpp"
 #include "tied_gather.cpp"
 #include "utils.cpp"
@@ -34,7 +48,7 @@ using SerialiseSettings = popart::MatMulBaseOp::SerialiseSettings;
 //
 // And performs the following transformations:
 //    1) Disable FullyConnectedPass on MatMul
-//    2) Add Detach between the Gather and the Weight so no SGD ops are created (they will be added later by TiedGatherGradPattern)
+//    2) Add Detach between the Gather and the Weight so no SGD ops are created (they will be added later by TiedGatherAccumulatePattern)
 //    3) Replace Gather with TiedGather
 // Resulting in:
 //              Weight
@@ -64,16 +78,30 @@ using SerialiseSettings = popart::MatMulBaseOp::SerialiseSettings;
 //                        \ |
 //                        Add
 //
-static bool produced_by_transpose(popart::Tensor *t) {
+namespace {
+bool produced_by_transpose(popart::Tensor *t) {
     return t->hasProducer() && t->getProducer()->isConvertibleTo<popart::TransposeBaseOp>();
+}
+
+bool is_remote_optimizer(popart::Ir &ir) {
+    return ir.getSessionOptions().optimizerStateTensorLocationSettings.location.isRemote();
+}
+
+bool is_adam_optimizer(popart::Ir &ir) {
+    return dynamic_cast<const popart::Adam *>(&ir.getOptimizer()) != nullptr;
+}
 }
 
 class TiedGatherPattern : public popart::PreAliasPattern {
     mutable std::map<popart::Op *, popart::MatMulBaseOp *> tied_op_map;
 public:
     bool matches(popart::Op *op) const override {
+        auto &ir = op->getIr();
         // Only run in the fwd pass
         if (op->getIr().hasConstructedBackwards()) {
+            return false;
+        }
+        if (op->getIr().isTraining() && !op->getIr().getSessionOptions().enableGradientAccumulation) {
             return false;
         }
         if (op->isConvertibleTo<popart::GatherOp>() && !op->isConvertibleTo<TiedGatherOp>()) {
@@ -110,7 +138,6 @@ public:
         gather->disconnectAllOutputs();
 
         // (2)
-        // Note: the detach can be before or after the transpose
         auto detach_up = std::make_unique<DetachOp>(
             CustomOperators::Detach,
             popart::Op::Settings(graph, "TiedGatherDetach"),
@@ -162,7 +189,7 @@ public:
         } else {
             // (4)
             if (serialisation.mode != SerialiseSettings::Mode::OutputChannels) {
-                throw popart::error("Tied Gather Pattern only supports Serialisation::Mode::OutputChannels");
+                throw popart::error("CustomOps Error: Tied Gather Pattern only supports Serialisation::Mode::OutputChannels");
             }
 
             auto slice_op = [&](int64_t starts, int64_t ends, const std::string &debugPrefix) {
@@ -264,12 +291,10 @@ public:
 //    |              \     
 // TiedGatherGrad   MatMul
 //                    |
-//         Accl  -  SGD1Accumulate
-//                    |
-//                  SGD1VarUpdate
+//         Accl  -  Accumulate
 //
 // And will perform the following transformation
-//   1) Replace TiedGatherGrad with SparseSGD1Accumulate
+//   1) Replace TiedGatherGrad with SparseAccumulate
 //
 // Resulting in:
 //
@@ -277,25 +302,24 @@ public:
 //    |              \     
 //    |             MatMul
 //    |               |
-//    |    Accl  -  SGD1Accumulate
-//    |     |                   |
-// SparseSGD1Accumulate --> SGD1VarUpdate
+//    |    Accl  -  Accumulate
+//    |     |          |         
+// SparseAccumulate  - Optimizer
 //
 // (--> is a topocon)
 
-class TiedGatherGradPattern : public popart::PreAliasPattern { 
+class TiedGatherAccumulatePattern : public popart::PreAliasPattern { 
 public:
     bool matches(popart::Op *op) const override {
-        // Only run after the bwds has been created
-        if (!op->getIr().hasConstructedBackwards()) {
+        // Only works with gradient accumulation
+        if (!op->getIr().getSessionOptions().enableGradientAccumulation) {
             return false;
         }
-        auto gather_grad = dynamic_cast<TiedGatherGradOp *>(op);
-        if (gather_grad) {
-            return weight_consumed_by<popart::MatMulOp>(
-                gather_grad->fwd_op->input->tensor(popart::GatherOp::dataInIndex()));
+        // Only run after the optimizers have been created
+        if (!op->getIr().hasDecomposedOptimizers()) {
+            return false;
         }
-        return false;
+        return op->isConvertibleTo<TiedGatherGradOp>();
     }
 
     std::vector<const popart::Tensor *> touches(popart::Op *) const override { return {}; }
@@ -305,26 +329,70 @@ public:
         auto gather = gather_grad->fwd_op;
         auto root_weight = get_variable(gather->input->tensor(popart::GatherOp::dataInIndex()));
 
-        // Get all the SGD1Accumulators and GatherOps of dataInIndex.
-        auto update_ops = find_all_consumers<popart::SGD1VarUpdateOp>(root_weight);
-        if (update_ops.size() < 1) {
-            // SGD1DecomposePattern has not run.
-            return false;
-        }
-        std::vector<popart::AccumulateOp *> accumulate_ops(update_ops.size());
-        for (size_t i = 0; i < update_ops.size(); i++) {
-            auto var_update = update_ops[i];
-            auto accl_op = search_producers_for<popart::AccumulateOp>(var_update->input->tensor(popart::SGD1VarUpdateOp::getUpdaterInIndex()), 3);
-            if (!accl_op) {
-                throw popart::error("Could not find AccumulateOp for SGD1VarUpdateOp {}", var_update->name());
-            }
-            accumulate_ops[i] = accl_op;
-        }
-        
         auto gather_ops = find_all_consumers<TiedGatherOp>(root_weight);
 
+        auto &ir = op->getIr(); 
+        if (!is_adam_optimizer(ir) && is_remote_optimizer(ir)) {
+            throw popart::error("CustomOps Error: TiedGatherPattern does not support Remote Optimizer State with Non-Adam based optimizers. "
+                                "Please disable it using 'patterns.enablePattern(\"TiedGatherPattern\", False)'");
+        }
+        bool is_remote_adam = is_adam_optimizer(ir) && is_remote_optimizer(ir);
+
+        // Get all the Accumulate ops in the normal context
+        std::vector<popart::AccumulateOp *> accumulate_ops;
+
+        auto update_ops = find_all_consumers<popart::VarUpdateWithUpdaterOp, popart::ExecutionContext::AccumulateOuterFragment>(root_weight);
+        if (update_ops.size() < 1) {
+            // SGD1DecomposePattern has not run.
+            throw popart::error("CustomOps Error: Could not find update ops for weight {}", root_weight->id);
+        }
+
+        for (size_t i = 0; i < update_ops.size(); i++) {
+            auto var_update = update_ops[i];
+            popart::Tensor *accum;
+
+            if (is_remote_adam) {
+                // Need to do a little zizag when using Adam and Remote optimizer state. The optimizer will only operate on the 
+                // loaded tensor (<tensor_id>_l*). Graph will look like this:
+                //  Normal Fragment
+                //    Accl_g(accum, grad)
+                //  Accumulate Outer Fragment
+                //    Accl_1(accl1_l0, accum)
+                //    AdamUpdater(updater, accl1_l0)
+                //    AdamVarUpdate(updater)
+                //
+                // So we traverse consumers of 'accl1_l0' to find Accl_1Op then traverse producers to find Accl_g
+                auto updater = var_update->input->tensor(popart::VarUpdateWithUpdaterOp::getUpdaterInIndex());
+                auto updater_op = search_producers_for<popart::AdamUpdaterOp, popart::ExecutionContext::AccumulateOuterFragment>(updater);
+                if (!updater_op) {
+                    popart::logging::info("CustomOps Warning: Could not find outer AdamUpdaterOp for remote optimizer state via tensor {}.", updater->id);
+                    continue;
+                }
+                auto accl_1 = updater_op->input->tensor(popart::AdamUpdaterOp::getAccl1InIndex());
+                auto accl_1_op = search_producers_for<popart::AccumulateOp, popart::ExecutionContext::AccumulateOuterFragment>(accl_1);
+                if (!accl_1_op) {
+                    throw popart::error("CustomOps Error: Could not find outer AcclOp for remote optimizer state via tensor {}.", accl_1->id);
+                }
+                accum = accl_1_op->input->tensor(popart::VarUpdateWithUpdaterOp::getUpdaterInIndex());
+            } else {
+                accum = var_update->input->tensor(popart::VarUpdateWithUpdaterOp::getUpdaterInIndex());
+            }
+
+            // Accumulate Ops in the normal fragment are Gradient Accumulation.
+            auto accl_op = search_producers_for<popart::AccumulateOp, popart::ExecutionContext::Normal>(accum, 10);
+
+            if (accl_op) {
+                auto exists = std::find_if(accumulate_ops.begin(), accumulate_ops.end(), [&accl_op](popart::Op* op){ return op->id == accl_op->id; });
+                if (exists == accumulate_ops.end()) {
+                    accumulate_ops.push_back(accl_op);
+                }
+            } else {
+                popart::logging::info("CustomOps Warning: Could not find outer AccumulateOp gradient accumulation via accumulator {}.", accum->id);
+            }
+        }
+
         if (accumulate_ops.size() != gather_ops.size()) {
-            throw popart::error("The number of gather ops ({}) does not match the number of accumulate ops ({}).", gather_ops.size(), accumulate_ops.size());
+            throw popart::error("CustomOps Error: The number of gather ops ({}) does not match the number of accumulate ops ({}).", gather_ops.size(), accumulate_ops.size());
         }
 
         // Match up gather serial index to SGD1Accumulator's matmul index.
@@ -341,26 +409,26 @@ public:
 
         auto itr = std::find(gather_ops.begin(), gather_ops.end(), gather);
         if (itr == gather_ops.end()) {
-            throw popart::error("Could not find {} in the consumers of {}.", gather->name(), root_weight->id);
+            throw popart::error("CustomOps Error: Could not find {} in the consumers of {}.", gather->name(), root_weight->id);
         }
 
         unsigned serial_index = std::distance(gather_ops.begin(), itr);
 
         auto dense_accl = accumulate_ops[serial_index];
 
-        auto accl_id = dense_accl->input->tensor(popart::AccumulateOp::getVarToUpdateInIndex())->id;
-        auto weight_id = update_ops[serial_index]->input->tensor(popart::SGD1VarUpdateOp::getVarToUpdateInIndex())->id;
+        auto accl_id = dense_accl->inId(popart::AccumulateOp::getVarToUpdateInIndex());
+        auto weight_id = gather->inId(popart::GatherOp::dataInIndex());
         popart::logging::pattern::info("Using tied accumulator {} for {}", accl_id, gather->name());
 
         // Transpose must be inplace so the accumulator is actually updated
         accl_id    = transpose_inplace(accl_id, gather_grad);
-        weight_id  = transpose_inplace(weight_id, gather_grad);
+        // weight_id  = transpose_inplace(weight_id, gather_grad);
 
         auto &graph = op->getGraph();
 
         // TODO: Find a way to share this code between sparse_sgd1_pattern
         // Add sparseSGD1AccumulateOp.
-        auto sparse_accl_up = std::make_unique<SparseSGD1AccumulateOp>(
+        auto sparse_accl_up = std::make_unique<SparseAccumulateOp>(
             accl_id,
             dense_accl->getFactor(),
             gather_grad->getAxis(),
@@ -372,25 +440,25 @@ public:
 
         // Inputs
         // Accumulator
-        sparse_accl->connectInTensor(SparseSGD1AccumulateOp::getVarToUpdateInIndex(),
+        sparse_accl->connectInTensor(SparseAccumulateOp::getVarToUpdateInIndex(),
                                      accl_id);
         // Gradients
-        sparse_accl->connectInTensor(SparseSGD1AccumulateOp::getUpdaterInIndex(),
+        sparse_accl->connectInTensor(SparseAccumulateOp::getUpdaterInIndex(),
                                      gather_grad->inId(popart::GatherGradOp::gradInIndex()));
         // Scale
         if (!dense_accl->getFactor().isConst()) {
             sparse_accl->connectInTensor(
                 // the index at which the dampening scale factor is received,
-                SparseSGD1AccumulateOp::getDpsf1InIndex(),
+                SparseAccumulateOp::getDpsf1InIndex(),
                 // the name of the dampening scale factor
                 dense_accl->inId(popart::AccumulateOp::getFactorInIndex()));
         }
         // Indices
-        sparse_accl->connectInTensor(SparseSGD1AccumulateOp::getIndicesInIndex(),
+        sparse_accl->connectInTensor(SparseAccumulateOp::getIndicesInIndex(),
                                      gather_grad->inId(popart::GatherGradOp::indicesInIndex()));
 
         // Original weight to be cloned
-        sparse_accl->connectInTensor(SparseSGD1AccumulateOp::getOriginalVarInIndex(),
+        sparse_accl->connectInTensor(SparseAccumulateOp::getOriginalVarInIndex(),
                                      weight_id);
 
         // Transfer TopoCons
@@ -405,7 +473,7 @@ public:
         graph.eraseOp(gather_grad->id);
 
         // Outputs
-        sparse_accl->createAndConnectOutTensor(SparseSGD1AccumulateOp::getUpdatedVarOutIndex(), sparse_accl->name() + ":0");
+        sparse_accl->createAndConnectOutTensor(SparseAccumulateOp::getUpdatedVarOutIndex(), sparse_accl->name() + ":0");
         
         // remove the gatherGrad output
         graph.getTensors().remove(grad_Id);
@@ -413,22 +481,6 @@ public:
         // Finalise sparse op
         sparse_accl->setup();
 
-        auto var_update = update_ops[serial_index];
-        if (should_insert_topocon(sparse_accl, var_update)) {
-            graph.topoCons->insert(sparse_accl, var_update);
-        }
-
-        return true;
-    }
-
-    bool should_insert_topocon(popart::Op *sparse_accl, popart::Op *var_update) const {
-        auto &opts = var_update->getIr().getSessionOptions();
-        if (opts.enablePipelining) {
-            return var_update->getPipelineStage() >= sparse_accl->getPipelineStage();
-        }
-        if (opts.executionPhaseSettings.phases > 1) {
-            return var_update->getExecutionPhase() >= sparse_accl->getExecutionPhase();
-        }
         return true;
     }
 
@@ -456,4 +508,4 @@ public:
 };
 
 static popart::PatternCreator<TiedGatherPattern> TiedGatherPatternCreator("TiedGatherPattern", true);
-static popart::PatternCreator<TiedGatherGradPattern> TiedGatherGradPatternCreator("TiedGatherGradPattern", true);
+static popart::PatternCreator<TiedGatherAccumulatePattern> TiedGatherAccumulatePatternCreator("TiedGatherAccumulatePattern", true);

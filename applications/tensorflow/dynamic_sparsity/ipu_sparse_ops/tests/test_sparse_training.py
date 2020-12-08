@@ -10,9 +10,10 @@ sys.path.insert(1, os.path.join(cwd, '..', '..'))
 
 
 def assert_equal(a, b):
-    assert np.array_equal(a, b, equal_nan=True)
+    assert np.array_equal(a, b)
 
 
+@pytest.mark.usefixtures("ipu_sparse_ops")
 class TestBuildAndRun(SubProcessChecker):
 
     @pytest.mark.category1
@@ -51,7 +52,7 @@ class TestBuildAndRun(SubProcessChecker):
             [[1, 1, 1, 1, 1000],  # largest grad in this row is at index (0, 4)
              [1, 1, 1000, 1, 1]])  # largest grad in this row is at index (1, 2)
         a = sparse.triplets_from_dense(dense)
-        t = sparse_training.regrow_rigl(a, g, sparse_training.zero_values_generator, 2, "test")
+        t = sparse_training.regrow_rigl(a, g, sparse_training.zero_values_generator, 2, True, "test")
         # Coords of largest grads are (0, 4) and (1, 2):
         assert_equal(t[0], [0, 1])  # row indices
         assert_equal(t[1], [4, 2])  # col indices
@@ -67,7 +68,7 @@ class TestBuildAndRun(SubProcessChecker):
             [[1, 1, 0, 0.1, 0],  # largest grad in this row is at index (0, 3)
              [1, 1, 0, 0, 0]])
         a = sparse.triplets_from_dense(dense)
-        t = sparse_training.regrow_rigl(a, g, sparse_training.zero_values_generator, 2, "test")
+        t = sparse_training.regrow_rigl(a, g, sparse_training.zero_values_generator, 2, True, "test")
         print(t)
         # No guarantee about index of second value because we don't use stable sort in regrow_rigl
         # so only test the first index:

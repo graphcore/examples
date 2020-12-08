@@ -1,4 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import argparse
 import numpy as np
 import popart
@@ -230,8 +230,8 @@ def create_session_anchors(proto, loss, device, dataFlow,
         session.prepareDevice()
         logger.info("{0} graph preparation complete.".format(session_type.capitalize(),))
 
-    except popart.PrepareDeviceException as e:
-        logger.warn("Caught PrepareDeviceException")
+    except popart.OutOfMemoryException as e:
+        logger.warn("Caught Exception while Preparing Device")
         # Dump the profiled result before raising exception and exit
         if profile:
             from gcprofile import save_popart_report

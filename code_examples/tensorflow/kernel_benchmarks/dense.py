@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 """
 Benchmark a single Dense layer.
 

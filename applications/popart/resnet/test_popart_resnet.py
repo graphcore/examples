@@ -1,5 +1,4 @@
-# Copyright 2020 Graphcore Ltd.
-import unittest
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import os
 import sys
 import subprocess
@@ -22,7 +21,7 @@ def run_popart_resnet_training(**kwargs):
     return out
 
 
-class TestPopARTResnetImageClassification(unittest.TestCase):
+class TestPopARTResnetImageClassification():
     """High-level integration tests training ResNets in popART"""
 
     @pytest.mark.ipus(4)
@@ -38,11 +37,12 @@ class TestPopARTResnetImageClassification(unittest.TestCase):
                     '--epochs': 5,
                     '--no-prng': '',
                     '--data-dir': datadir,
-                    '--num-workers': 0
+                    '--num-workers': 0,
+                    '--ckpt': os.path.join(datadir, "ckpt.onnx"),
                 }
             )
         expected_accuracy = [48.5, 53.6, 61.6, 64.6, 65.1]
-        parse_results_for_accuracy(out, expected_accuracy, 4)
+        parse_results_for_accuracy(out, expected_accuracy, 6)
 
     @pytest.mark.ipus(4)
     @pytest.mark.category2
@@ -58,11 +58,12 @@ class TestPopARTResnetImageClassification(unittest.TestCase):
                     '--pipeline': '',
                     '--no-prng': '',
                     '--data-dir': datadir,
-                    '--num-workers': 0
+                    '--num-workers': 0,
+                    '--ckpt': os.path.join(datadir, "ckpt.onnx"),
                 }
             )
         expected_accuracy = [42.6, 48.8, 63.7, 62.5, 61.0]
-        parse_results_for_accuracy(out, expected_accuracy, 4)
+        parse_results_for_accuracy(out, expected_accuracy, 6)
 
     @pytest.mark.ipus(8)
     @pytest.mark.category2
@@ -79,8 +80,9 @@ class TestPopARTResnetImageClassification(unittest.TestCase):
                     '--replication-factor': 2,
                     '--no-prng': '',
                     '--data-dir': datadir,
-                    '--num-workers': 0
+                    '--num-workers': 0,
+                    '--ckpt': os.path.join(datadir, "ckpt.onnx"),
                 }
             )
         expected_accuracy = [42.25, 48.55, 59.4, 62.35, 61.0]
-        parse_results_for_accuracy(out, expected_accuracy, 4)
+        parse_results_for_accuracy(out, expected_accuracy, 6)

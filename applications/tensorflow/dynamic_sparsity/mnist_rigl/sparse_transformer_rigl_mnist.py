@@ -15,19 +15,24 @@ from tensorflow.python.ipu.ipu_outfeed_queue import IPUOutfeedQueue
 from sparse_mnist import build_optimizer
 os.sys.path.append("../")  # dynamic_sparsity
 from ipu_sparse_ops import optimizers  # noqa: E402
+from ipu_sparse_ops.model_baseclass import SparseModelOptions  # noqa: E402
 from ipu_sparse_ops.transformer.transformer_baseclass import TransformerOptions   # noqa: E402
 from ipu_sparse_ops.transformer.transformer_dynsparse import DynsparseTransformer  # noqa: E402
 
 tf.disable_eager_execution()
 tf.disable_v2_behavior()
 
+logger = logging.getLogger(__file__)
+
 
 def get_program_options():
     parser = TransformerOptions()
+    SparseModelOptions.add_all_arguments(parser)
     parser.add_argument("--mode", choices=['train', 'test', 'all'],
                         default="all", help="Choices are [training, test, all]")
     parser.add_argument("--train-checkpoint-path", type=str,
                         help="Path to which to save the trained model or load model from.")
+    parser.add_argument("--nepochs", default=1, type=int, help="Number of training epochs")
     parser.add_argument("--steps-per-epoch", type=int, default=5, help="Number of times to run prune and grow every epoch")
     parser.add_argument("--optimizer", type=str, default="Adam", choices=["GradientDescent", "Momentum", "Adam"],
                         help="Which optimizer to use.")
@@ -44,19 +49,17 @@ def get_program_options():
     default_settings = dict(
         batch_size=2,
         nepochs=1,
-        batches_per_step=5000,
         num_shards=1,
         sparsity=0.90,
         prune_ratio=0.30,
-        embedding_dtype=tf.float32,
+        dtype=tf.float32,
         source_sequence_length=28,
         target_vocab_length=10,
-        embedding_length=28,
         hidden_length=96,
         ff_length=48,
         attention_heads=16,
         qkv_length=32,
-        log_level="INFO",
+        log_level="DEBUG",
         regrow_type="rigl",
         train_checkpoint_path=tempfile.mkdtemp(),
         mode="all"
@@ -69,7 +72,15 @@ def get_program_options():
     return opts
 
 
-def forward_pass(opts, transformer, lr, iterations_per_step, is_training, outfeed, source, target):
+def forward_pass(opts, transformer, lr, iterations_per_step, is_training,
+                 outfeed, png_outfeed, source, target):
+    # Input may require padding for some block-sizes as
+    B, S, H = source.shape.as_list()
+    if (H % opts.block_size) != 0:
+        pad_size = (1 + (H // opts.block_size)) * opts.block_size - H
+        source = tf.pad(source, [[0, 0], [0, 0], [0, pad_size]])
+    transformer.embedding_length = source.shape.as_list()[-1]
+
     with tf.variable_scope("counter", reuse=tf.AUTO_REUSE, use_resource=True):
         itr_counter = tf.get_variable("iterations", [], tf.int32)
         mod_itrs = tf.math.floormod(itr_counter, iterations_per_step)
@@ -93,8 +104,19 @@ def forward_pass(opts, transformer, lr, iterations_per_step, is_training, outfee
         # Each token position then produces logits independently.
         # The model logits is the sum over all output tokens
         with transformer.namescope("output"):
-            x = transformer.sparseLinear(x, transformer.sparsity,
-                                         transformer.target_vocab_length, last_itr, use_bias=False)
+            # The output dimension may need to be padded to conform to block size
+            T = transformer.target_vocab_length
+            output_pad_size = 0
+            if (T % opts.block_size) != 0:
+                output_pad_size = (1 + (T // opts.block_size)) * opts.block_size - T
+
+            # Compute output
+            x = transformer.sparseLinear(x, transformer.sparsity, T + output_pad_size, last_itr, use_bias=False)
+
+            # Remove padding
+            if output_pad_size > 0:
+                x = x[:, :, :T]
+
             model_output = tf.reduce_sum(x, axis=1)  # [B, S, 10] -> [B, 10]
 
     with tf.variable_scope("metrics", reuse=tf.AUTO_REUSE, use_resource=True):
@@ -109,30 +131,28 @@ def forward_pass(opts, transformer, lr, iterations_per_step, is_training, outfee
         with tf.variable_scope("training", reuse=tf.AUTO_REUSE, use_resource=True):
             optimizer_class, optimizer_kwargs = build_optimizer(opts.optimizer, opts.optimizer_arg)
             optimizer = optimizers.SparseOptimizer(optimizer_class)
-            optimizer = optimizer(learning_rate=lr, **optimizer_kwargs, sparse_layers=transformer.sparse_layers.values())
+            optimizer = optimizer(learning_rate=lr, **optimizer_kwargs,
+                                  sparse_layers=transformer.sparse_layers.values(),
+                                  prune_and_grow_outfeed=png_outfeed,
+                                  dense_gradient_condition=last_itr)
             train_op = optimizer.minimize(loss)
 
-        # Prepare tensors that should stream back to host
-        streamOps = {'mean_loss': mean_loss, 'acc': acc}
-        transformer.streamWeightsFromDevice(streamOps)
-        transformer.streamOptimizerSlotsFromDevice(optimizer, streamOps)
-        transformer.streamDenseGradsFromDevice(loss, streamOps)
+        metrics = {'mean_loss': mean_loss, 'acc': acc, 'iteration': itr_counter}
 
-        # Sparse weights will stream back to host at the end of
-        # every iterations_per_step. We use a tf.cond to check whether
-        # it is time to stream back
+        # Only stream back final metrics:
         def true_fn():
-            with tf.control_dependencies([outfeed.enqueue(streamOps), acc_op]):
+            with tf.control_dependencies([outfeed.enqueue(metrics), acc_op]):
                 return tf.no_op()
-        condition = tf.cond(last_itr, true_fn, tf.no_op)
-        output = tf.group(increment_counter, condition, train_op)
+
+        with tf.control_dependencies([train_op]):
+            condition = tf.cond(last_itr, true_fn, tf.no_op)
+            output = tf.group(increment_counter, condition)
 
     else:
         # At inference time stream back the loss and accuracy
         with tf.control_dependencies([acc_op]):
             mean_loss = tf.reduce_mean(loss, name='test_loss')
-        output = outfeed.enqueue({'mean_loss': mean_loss, 'acc': acc})
-    print("XLA Output: ", output)
+        output = outfeed.enqueue({'mean_loss': mean_loss, 'acc': acc, 'iteration': itr_counter})
     return output
 
 
@@ -155,18 +175,19 @@ def run_training(opts, transformer, x_train, y_train):
     batches_per_epoch = num_train // opts.batch_size
     batches_per_step = batches_per_epoch // (opts.steps_per_epoch)
     total_steps = (opts.steps_per_epoch) * opts.nepochs
+    logging.info(f"Batches per epoch: {batches_per_epoch} Batches per step: {batches_per_step}")
 
     if not batches_per_epoch % (opts.steps_per_epoch) == 0:
         raise ValueError(f"IPU steps per epoch {opts.steps_per_epoch} must divide batches per epoch {batches_per_epoch} exactly.")
 
-    # Construct the trainign graph
+    # Construct the training graph
     training_graph = tf.Graph()
     with training_graph.as_default():
         with tf.device("cpu"):
             input_shape = [None, *x_train.shape[1:]]
-            place_x = tf.placeholder(dtype=opts.embedding_dtype, shape=input_shape, name="input")
+            place_x = tf.placeholder(dtype=opts.dtype, shape=input_shape, name="input")
             place_y = tf.placeholder(dtype=tf.int32, shape=[None], name="label")
-            lr_placeholder = tf.placeholder(opts.embedding_dtype, shape=[])
+            lr_placeholder = tf.placeholder(opts.dtype, shape=[])
 
             # Create dataset and IPU feeds:
             dataset = tf.data.Dataset.from_tensor_slices((place_x, place_y))
@@ -176,6 +197,7 @@ def run_training(opts, transformer, x_train, y_train):
             # Queues for streaming from host to device and back
             train_infeed = IPUInfeedQueue(dataset, feed_name="train_infeed")
             train_outfeed = IPUOutfeedQueue(feed_name="train_outfeed")
+            png_outfeed = IPUOutfeedQueue(feed_name="prune_and_grow_outfeed")
 
             # Helper function
             def loop_builder(iterations, builder_func, infeed):
@@ -183,9 +205,10 @@ def run_training(opts, transformer, x_train, y_train):
 
             # Compile the forward and backward pass for training
             with scopes.ipu_scope("/device:IPU:0"):
-                train_loop = partial(forward_pass, opts, transformer, lr_placeholder, batches_per_step, True, train_outfeed)
+                train_loop = partial(forward_pass, opts, transformer, lr_placeholder, batches_per_step, True, train_outfeed, png_outfeed)
                 train_loop = partial(loop_builder, batches_per_step, train_loop, train_infeed)
                 train_loop = ipu_compiler.compile(train_loop, inputs=[])
+                transformer.buildSparsityUpdateOps()
 
             # Metrics
             with tf.device("cpu"):
@@ -196,18 +219,19 @@ def run_training(opts, transformer, x_train, y_train):
                 # These ops are declared here so that the graph can be frozen afterwards
                 global_initializer = tf.global_variables_initializer()
                 train_outfeed_dequeue = train_outfeed.dequeue()
+                png_outfeed_dequeue = png_outfeed.dequeue()
 
     # Setup and acquire an IPU device:
-    config = utils.auto_select_ipus(utils.create_ipu_config(), 1)
+    config = utils.auto_select_ipus(utils.create_ipu_config(), opts.num_shards)
     utils.configure_ipu_system(config)
 
     logpath = os.path.join(opts.train_checkpoint_path, "train")
     summary_writer = tf.summary.FileWriter(logpath)
 
     # Run the model:
-    # training_graph.finalize()  # don't allow any new ops to be added as that would unload the exe
+    training_graph.finalize()  # no more new ops added from here on out
     with tf.Session(graph=training_graph) as sess:
-        logging.info(f"Creating training session")
+        logger.info(f"Creating training session")
         sess.run(global_initializer)
         sess.run(train_infeed.initializer, feed_dict={place_x: x_train, place_y: y_train})
 
@@ -220,21 +244,32 @@ def run_training(opts, transformer, x_train, y_train):
                 sess.run(train_loop, feed_dict={lr_placeholder: learning_rate_schedule(e, opts)})
                 dt = time.perf_counter() - dt
                 session_outputs = sess.run(train_outfeed_dequeue)
-
-                # Perform pruning (if using RigL the dense grads from session_outputs are used)
-                step = 1 + i + e * (opts.steps_per_epoch)
-                if transformer.prune_ratio is not None:
-                    transformer.syncPruneAndRegrowOnHost(step, total_steps, session_outputs)
-                    transformer.streamSparsityFromHost()
+                logger.debug(f"Train outputs: {session_outputs}")
 
                 # Calculate avg throughput
                 num_tokens = transformer.source_sequence_length * batches_per_step * opts.batch_size
                 throughput = num_tokens / dt
-                desc = f"Loss {session_outputs['mean_loss'][0]:.5f} Accuracy {session_outputs['acc'][0]:.5f}"
+                desc = f"Loss {session_outputs['mean_loss'][-1]:.5f} " \
+                       f"Accuracy {session_outputs['acc'][-1]:.5f} " \
+                       f"Iteration: {session_outputs['iteration'][-1]}"
                 progress.set_description(desc + f" Throughput {throughput:.1f} token/s")
 
+                # Perform pruning (if using RigL the dense grads from session_outputs are used)
+                step = 1 + i + e * (opts.steps_per_epoch)
+                if transformer.prune_ratio is not None:
+                    t0 = time.perf_counter()
+                    png_results = sess.run(png_outfeed_dequeue)
+                    t1 = time.perf_counter()
+                    for k in png_results:
+                        png_results[k] = png_results[k][-1]
+                    logger.debug(f"Prune and grow outputs: {png_results.keys()}")
+                    logger.info(f"Downloaded the prune and grow data from Device to Host in {t1-t0:0.3f} seconds")
+
+                    transformer.syncPruneAndRegrowOnHost(opts.cosine_prune_schedule, step, total_steps, png_results)
+                    transformer.streamSparsityFromHostToDevice()
+
             # Save at the end of each epoch
-            logging.info(f"Saving model")
+            logger.info(f"Saving model")
             saver.save(sess, os.path.join(opts.train_checkpoint_path, 'model.ckpt'))
 
 
@@ -244,7 +279,7 @@ def run_testing(opts, transformer, x_test, y_test):
     with testing_graph.as_default():
         with tf.device("cpu"):
             input_shape = [None, *x_test.shape[1:]]
-            place_x = tf.placeholder(dtype=opts.embedding_dtype, shape=input_shape, name="input")
+            place_x = tf.placeholder(dtype=opts.dtype, shape=input_shape, name="input")
             place_y = tf.placeholder(dtype=tf.int32, shape=[None], name="label")
 
             # Create dataset and IPU feeds:
@@ -259,7 +294,7 @@ def run_testing(opts, transformer, x_test, y_test):
 
             # Compile the forward pass for testing
             with scopes.ipu_scope("/device:IPU:0"):
-                test_loop = partial(forward_pass, opts, transformer, None, batches_per_epoch, False, test_outfeed)
+                test_loop = partial(forward_pass, opts, transformer, None, batches_per_epoch, False, test_outfeed, None)
                 test_loop = partial(loop_builder, batches_per_epoch, test_loop, test_infeed)
                 test_loop = ipu_compiler.compile(test_loop, inputs=[])
 
@@ -269,6 +304,8 @@ def run_testing(opts, transformer, x_test, y_test):
                 metrics_initializer = tf.variables_initializer(var_list=metrics_vars)
                 saver = tf.train.Saver()
 
+                test_outfeed_dequeue = test_outfeed.dequeue()
+
     # Setup and acquire an IPU device:
     config = utils.auto_select_ipus(utils.create_ipu_config(), 1)
     utils.configure_ipu_system(config)
@@ -277,8 +314,9 @@ def run_testing(opts, transformer, x_test, y_test):
     checkpoint = tf.train.latest_checkpoint(opts.train_checkpoint_path)
     summary_writer = tf.summary.FileWriter(logpath)
 
+    testing_graph.finalize()  # no more new ops added from here on out
     with tf.Session(graph=testing_graph) as sess:
-        logging.info(f"Testing...")
+        logger.info(f"Testing...")
         # The sparsity will also  be streamed from the checkpoint
         # The host and device sparsity are not in sync here
         saver.restore(sess, checkpoint)
@@ -289,18 +327,18 @@ def run_testing(opts, transformer, x_test, y_test):
         dt = time.perf_counter()
         sess.run(test_loop)
         dt = time.perf_counter() - dt
-        session_outputs = sess.run(test_outfeed.dequeue())
+        session_outputs = sess.run(test_outfeed_dequeue)
 
         # Test set performance
         throughput = transformer.source_sequence_length * len(y_test) / dt
         test_loss = session_outputs['mean_loss'].mean()
         test_acc = session_outputs['acc'][-1]
         desc = f"Test loss: {test_loss:.8f} Test accuracy: {test_acc:.8f}"
-        logging.info(desc + f" Throughput {throughput:.1f} token/s")
+        logger.info(desc + f" Throughput {throughput:.1f} token/s")
 
     # Regression tests
-    accuracy_threshold = 0.9
-    assert test_acc > accuracy_threshold, f"Test accuracy ({test_acc:3.2f}) is below threshold of ({accuracy_threshold:3.2f})"
+    accuracy_threshold = 0.85
+    assert test_acc >= accuracy_threshold, f"Test accuracy ({test_acc:3.2f}) is below threshold of ({accuracy_threshold:3.2f})"
     print("All asserts pass.")
 
 
@@ -309,7 +347,7 @@ def run_mnist(opts):
         utils.reset_ipu_seed(opts.random_seed)
 
     # MNIST
-    numpy_dtype = opts.embedding_dtype.as_numpy_dtype
+    numpy_dtype = opts.dtype.as_numpy_dtype
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
     x_train, x_test = x_train / 255.0, x_test / 255.0
     x_train, x_test = x_train.astype(numpy_dtype), x_test.astype(numpy_dtype)

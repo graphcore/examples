@@ -22,7 +22,7 @@
     "execution_mode": "PIPELINE",
     "inference": true,
     "use_default_available_memory_proportion": true,
-    "projection_serialization_steps": 5,
+    "embedding_serialization_vocab_steps": 5,
     "split_linear_layers": true,
     "disable_fully_connected_pass": true,
     "checkpoint_dir": "checkpoints/mlm_nsp_base_inference",

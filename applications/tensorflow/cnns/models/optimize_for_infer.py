@@ -1,5 +1,4 @@
-# This file is modified from tensorflow.python.tools.optimize_for_inference_lib.py
-
+# Copyright (c) 2019 Graphcore Ltd. All Rights Reserved.
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+#
+# This file is modified from tensorflow.python.tools.optimize_for_inference_lib.py
+# Main changes:
+#
+#   Add support for FusedBatchNormV2
+#   Add support for FusedBatchNormV3
+
 r"""Removes parts of a graph that are only needed for training.
 
 There are several common transformations that can be applied to GraphDefs

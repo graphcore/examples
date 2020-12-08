@@ -1,4 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 ResNeXt
 
@@ -165,10 +178,10 @@ def set_defaults(opts):
     opts["name"] += "_bs{}".format(opts["batch_size"])
     if opts.get("replicas") > 1:
         opts["name"] += "x{}r".format(opts["replicas"])
-    if opts["pipeline_depth"] > 1:
-        opts["name"] += "x{}p".format(opts["pipeline_depth"])
-    elif opts.get("gradients_to_accumulate") > 1:
-        opts["name"] += "x{}a".format(opts["gradients_to_accumulate"])
+    if opts["pipeline"]:
+        opts["name"] += "x{}p".format(opts["gradient_accumulation_count"])
+    elif opts.get("gradient_accumulation_count") > 1:
+        opts["name"] += "x{}a".format(opts["gradient_accumulation_count"])
 
     if not (opts["batch_norm"] or opts["group_norm"]):
         opts["name"] += "_noBN"

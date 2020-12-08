@@ -1,4 +1,5 @@
-// Copyright 2020 Graphcore Ltd.
+// Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
 //
 // This example demonstrates how to create a custom operator for PopART, in this
 // case a Leaky ReLU op that returns `x` for any element `x >= 0` and `x *
@@ -11,14 +12,11 @@
 #include <popops/ElementWise.hpp>
 
 namespace CustomOperators {
-const popart::OperatorIdentifier LeakyRelu_1 = {"ai.onnx", "LeakyRelu", 1};
-const popart::OperatorIdentifier LeakyRelu_6 = {"ai.onnx", "LeakyRelu", 6};
+const popart::OperatorIdentifier LeakyReluId = {"custom.ops", "LeakyRelu", 1};
 } // namespace CustomOperators
 namespace CustomGradOperators {
-const popart::OperatorIdentifier LeakyReluGrad_1 = {"ai.onnx", "LeakyReluGrad",
+const popart::OperatorIdentifier LeakyReluGradId = {"custom.ops", "LeakyReluGrad",
                                                     1};
-const popart::OperatorIdentifier LeakyReluGrad_6 = {"ai.onnx", "LeakyReluGrad",
-                                                    6};
 } // namespace CustomGradOperators
 
 class LeakyReluOp;
@@ -96,23 +94,25 @@ private:
 };
 
 namespace {
+using popart::OpDefinition;
+using popart::DataType;
 
-static popart::OpDefinition leakyReluOpDef({});
+static OpDefinition::DataTypes T = {DataType::FLOAT16, DataType::FLOAT};
+
+static OpDefinition
+      leakyReluOpDef({OpDefinition::Inputs({{"input", T}}),
+                      OpDefinition::Outputs({{"output", T}}),
+                      OpDefinition::Attributes({{"alpha", {"*"}}})});
 
 static popart::OpCreator<LeakyReluOp> leakyReluOpCreator(
-    popart::OpDefinitions({{CustomOperators::LeakyRelu_1, leakyReluOpDef},
-                           {CustomOperators::LeakyRelu_6, leakyReluOpDef}}),
-    [](const popart::OperatorIdentifier &_opid,
-       const popart::Op::Settings &settings,
-       const popart::Attributes &attr) -> std::unique_ptr<popart::Op> {
-      // default epsilon is 10**(-2)
-      float alpha =
-          attr.getAttribute<popart::Attributes::Float>("alpha", 1e-2f);
-      auto leakyRelu = new LeakyReluOp(_opid, alpha, settings);
-
-      return std::unique_ptr<popart::Op>(leakyRelu);
-    },
-    true);
+      popart::OpDefinitions({{CustomOperators::LeakyReluId, leakyReluOpDef}}),
+      [](const popart::OpCreatorInfo &info) {
+        // default alpha is 10**(-2)
+        float alpha = info.attributes.getAttribute<popart::Attributes::Float>(
+            "alpha", 1e-2f);
+        return std::make_unique<LeakyReluOp>(info.opid, alpha, info.settings);
+      },
+      true);
 } // namespace
 
 namespace pe = popops::expr;
@@ -122,7 +122,7 @@ public:
   LeakyReluOpx(popart::Op *op, popart::popx::Devicex *devicex)
       : popart::popx::Opx(op, devicex) {
     verifyOp<LeakyReluOp>(
-        op, {CustomOperators::LeakyRelu_1, CustomOperators::LeakyRelu_6});
+        op, {CustomOperators::LeakyReluId});
   }
 
   void grow(poplar::program::Sequence &prog) const final {
@@ -148,8 +148,7 @@ class LeakyReluGradOpx : public popart::popx::Opx {
 public:
   LeakyReluGradOpx(popart::Op *op, popart::popx::Devicex *devicex)
       : popart::popx::Opx(op, devicex) {
-    verifyOp<LeakyReluGradOp>(op, {CustomGradOperators::LeakyReluGrad_1,
-                                   CustomGradOperators::LeakyReluGrad_6});
+    verifyOp<LeakyReluGradOp>(op, {CustomGradOperators::LeakyReluGradId});
   }
 
   void grow(poplar::program::Sequence &prog) const final {
@@ -175,7 +174,7 @@ public:
 };
 
 LeakyReluGradOp::LeakyReluGradOp(const LeakyReluOp &fwdOp)
-    : popart::Op(CustomGradOperators::LeakyReluGrad_6, fwdOp.settings),
+    : popart::Op(CustomGradOperators::LeakyReluGradId, fwdOp.settings),
       alpha(fwdOp.getAlpha()) {}
 
 const std::vector<popart::GradInOutMapper> &
@@ -203,7 +202,6 @@ void LeakyReluGradOp::appendOutlineAttributes(
 }
 
 static popart::popx::OpxCreator<LeakyReluOpx> LeakyReluOpxCreator(
-    {CustomOperators::LeakyRelu_1, CustomOperators::LeakyRelu_6});
+    {CustomOperators::LeakyReluId});
 static popart::popx::OpxCreator<LeakyReluGradOpx>
-    LeakyReluGradOpxCreator({CustomGradOperators::LeakyReluGrad_1,
-                             CustomGradOperators::LeakyReluGrad_6});
+    LeakyReluGradOpxCreator({CustomGradOperators::LeakyReluGradId});

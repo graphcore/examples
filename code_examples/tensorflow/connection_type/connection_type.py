@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2020 Graphcore Ltd.
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import argparse
 import sys
 import numpy as np

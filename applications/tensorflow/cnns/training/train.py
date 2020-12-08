@@ -1,4 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Training CNNs on Graphcore IPUs.
 
@@ -32,6 +45,10 @@ from tensorflow.python.ipu.scopes import ipu_scope
 import Datasets.data as dataset
 from Datasets import imagenet_dataset
 from weight_avg import average_ckpts, save_ckpt
+from Models.batch_norm import add_bn_moving_average_updates
+import popdist
+import popdist.tensorflow
+
 DATASET_CONSTANTS = dataset.DATASET_CONSTANTS
 
 
@@ -70,17 +87,21 @@ def calculate_loss(logits, label, opts):
 
 
 def get_optimizer(opts):
+    moving_avg_update = partial(add_bn_moving_average_updates, momentum=opts.get('BN_decay'))
     if opts['optimiser'] == 'SGD':
-        opt_fun = tf.train.GradientDescentOptimizer
+        opt_fun = moving_avg_update(tf.train.GradientDescentOptimizer)
     elif opts['optimiser'] == 'momentum':
-        opt_fun = partial(tf.train.MomentumOptimizer, momentum=opts['momentum'])
+        opt_fun = partial(moving_avg_update(tf.train.MomentumOptimizer),
+                          momentum=opts['momentum'])
     elif opts['optimiser'] == 'RMSprop':
-        opt_fun = partial(tf.train.RMSPropOptimizer, momentum=opts['momentum'],
+        opt_fun = partial(moving_avg_update(tf.train.RMSPropOptimizer), momentum=opts['momentum'],
                           decay=opts['rmsprop_decay'], epsilon=opts['rmsprop_epsilon'])
     else:
         raise ValueError("Optimizer {} not recognised".format(opts['optimiser']))
 
     wd_exclude = opts["wd_exclude"] if "wd_exclude" in opts.keys() else []
+
+    wd_exclude += ['batch_norm/moving_']  # always exclude moving averages from weight decay
 
     # get variables to include in training
     if opts["variable_filter"]:
@@ -92,10 +113,10 @@ def get_optimizer(opts):
         return not any(s in name for s in wd_exclude)
 
     return lambda lr: IPUOptimizer(opt_fun(lr),
-                                   sharded=opts["shards"] > 1 and opts['pipeline_depth'] == 1,
-                                   replicas=opts["replicas"],
-                                   gradients_to_accumulate=opts["gradients_to_accumulate"] * opts['pipeline_depth'],
-                                   pipelining = opts['pipeline_depth'] > 1,
+                                   sharded=opts["shards"] > 1 and not opts['pipeline'],
+                                   replicas=opts["total_replicas"],
+                                   gradient_accumulation_count=opts["gradient_accumulation_count"],
+                                   pipelining = opts['pipeline'],
                                    grad_scale=opts["grad_scale"],
                                    weight_decay=opts["weight_decay"] * opts['loss_scaling'],
                                    weight_decay_filter_fn=filter_fn,
@@ -160,7 +181,7 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
                                                                {"availableMemoryProportion": amps[2*i + 1]}))
 
     return pipelining_ops.pipeline(computational_stages=computational_stages,
-                                   pipeline_depth=int(opts['pipeline_depth']),
+                                   gradient_accumulation_count=int(opts['gradient_accumulation_count']),
                                    repeat_count=iterations_per_step,
                                    inputs=[learning_rate],
                                    infeed_queue=infeed,
@@ -193,7 +214,7 @@ def training_step_with_infeeds_and_outfeeds(train_iterator, outfeed, model, opts
     significant speed ups on IPU. Not compatible with running on CPU or GPU.
     """
 
-    if int(opts['pipeline_depth']) > 1:
+    if opts['pipeline']:
         training_step = partial(basic_pipelined_training_step,
                                 model=model.staged_model,
                                 opts=opts,
@@ -248,6 +269,26 @@ def configure_distribution(opts, sess_config):
     return strategy, server.target, sess_config
 
 
+def create_popdist_strategy():
+    """
+    Creates a distribution strategy for use with popdist. We use the
+    Horovod-based IPUMultiReplicaStrategy. Horovod is used for the initial
+    broadcast of the weights and when reductions are requested on the host.
+    Imports are placed here so they are only done when required, as Horovod
+    might not always be available.
+    """
+
+    from tensorflow.python.ipu import horovod as hvd
+    from tensorflow.python.ipu.horovod import ipu_multi_replica_strategy
+
+    hvd.init()
+
+    # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
+    # so disable them in the IPUMultiReplicaStrategy.
+    return ipu_multi_replica_strategy.IPUMultiReplicaStrategy(
+        add_ipu_cross_replica_reductions=False)
+
+
 def training_graph(model, opts, iterations_per_step=1):
     train_graph = tf.Graph()
     sess_config = tf.ConfigProto()
@@ -256,14 +297,15 @@ def training_graph(model, opts, iterations_per_step=1):
 
     if opts['distributed_cluster']:
         strategy, sess_target, sess_config = configure_distribution(opts, sess_config)
+    elif opts['use_popdist']:
+        strategy = create_popdist_strategy()
 
     with train_graph.as_default(), ExitStack() as stack:
         if strategy:
             stack.enter_context(strategy.scope())
 
         placeholders = dict()
-        datatype = tf.float16 if opts["precision"].split('.') == '16' else tf.float32
-        placeholders['learning_rate'] = tf.placeholder(datatype, shape=[])
+        placeholders['learning_rate'] = tf.placeholder(tf.float32, shape=[])
         learning_rate = placeholders['learning_rate']
 
         # datasets must be defined outside the ipu device scope
@@ -312,6 +354,9 @@ def training_graph(model, opts, iterations_per_step=1):
                              internalExchangeOptimisationTarget=opts[
                                  "internal_exchange_optimisation_target"
                              ])
+
+    if opts['use_popdist']:
+        ipu_options = popdist.tensorflow.set_ipu_config(ipu_options, opts['shards'], configure_device=False)
 
     ipu.utils.configure_ipu_system(ipu_options)
     train_sess = tf.Session(graph=train_graph, config=sess_config, target=sess_target)
@@ -363,7 +408,7 @@ def train_process(model, LR_Class, opts):
 
     # -------------- BUILD TRAINING GRAPH ----------------
 
-    train = training_graph(model, opts, iterations_per_step*opts["gradients_to_accumulate"])
+    train = training_graph(model, opts, iterations_per_step if opts['pipeline'] else iterations_per_step*opts["gradient_accumulation_count"])
     train.session.run(train.init)
     train.session.run(train.iterator.initializer)
 
@@ -398,7 +443,8 @@ def train_process(model, LR_Class, opts):
     step = 0
     start_all = time.time()
     while i < iterations:
-        step += opts["gradients_to_accumulate"]
+        if not opts['pipeline']:
+            step += opts["gradient_accumulation_count"]
         log_this_step = ((i // log_freq) < ((i + iterations_per_step) // log_freq) or
                          (i == 0) or
                          ((i + (2 * iterations_per_step)) >= iterations))
@@ -414,7 +460,7 @@ def train_process(model, LR_Class, opts):
         # Run Training
         try:
             batch_loss, batch_acc, batch_time, current_lr = training_step(train, i + 1, LR.feed_dict_lr(i))
-            if opts['pipeline_depth'] > 1:
+            if opts['pipeline']:
                 current_lr *= opts["lr_scale"]
         except tf.errors.OpError as e:
             raise tf.errors.ResourceExhaustedError(e.node_def, e.op, e.message)
@@ -532,8 +578,10 @@ def add_training_arguments(parser):
     tr_group = parser.add_argument_group('Training')
     tr_group.add_argument('--batch-size', type=int,
                           help="Set batch-size for training graph")
-    tr_group.add_argument('--gradients-to-accumulate', type=int, default=1,
-                          help="Number of gradients to accumulate before doing a weight update")
+    tr_group.add_argument('--gradient-accumulation-count', type=int, default=1,
+                          help="""Number of gradients to accumulate before doing a weight update.
+                                When using pipelining this is the number of times each pipeline stage
+                                will be executed.""")
     tr_group.add_argument('--base-learning-rate', type=float,
                           help="Base learning rate exponent (2**N). blr = lr /  bs")
     tr_group.add_argument('--epochs', type=float,
@@ -550,7 +598,7 @@ def add_training_arguments(parser):
     tr_group.add_argument('--ckpts-per-epoch', type=int, default=1,
                           help="Checkpoints per epoch")
     tr_group.add_argument('--no-validation', action="store_false", dest='validation',
-                          help="Dont do any validation runs.")
+                          help="Do not do any validation runs.")
     tr_group.set_defaults(validation=True)
     tr_group.add_argument('--shards', type=int, default=1,
                           help="Number of IPU shards for training graph")
@@ -559,13 +607,14 @@ def add_training_arguments(parser):
     tr_group.add_argument('--max-cross-replica-buffer-size', type=int, default=10*1024*1024,
                           help="""The maximum number of bytes that can be waiting before a cross
                                 replica sum op is scheduled. [Default=10*1024*1024]""")
-
-    tr_group.add_argument('--pipeline-depth', type=int, default=1,
-                          help="Depth of pipeline to use. Must also set --shards > 1.")
+    tr_group.add_argument('--pipeline', action="store_true",
+                          help="""Enables pipelining. Must also set --shards > 1
+                                and --gradient-accumulation-count > --shards.""")
     tr_group.add_argument('--pipeline-splits', nargs='+', type=str, default=None,
                           help="Strings for splitting pipelines. E.g. b2/0/relu b3/0/relu")
     tr_group.add_argument('--pipeline-schedule', type=str, default="Interleaved",
-                          choices=pipeline_schedule_options, help="Pipelining scheduler. Choose between 'Interleaved' and 'Grouped'")
+                          choices=pipeline_schedule_options,
+                          help="Pipelining schedule. Choose between 'Interleaved', 'Grouped' and 'Sequential'.")
     tr_group.add_argument('--optimiser', type=str, default="SGD", choices=['SGD', 'RMSprop', 'momentum'],
                           help="Optimiser")
     tr_group.add_argument('--momentum', type=float, default=0.9,
@@ -593,16 +642,16 @@ def add_training_arguments(parser):
 
 
 def set_training_defaults(opts):
-    if int(opts['pipeline_depth']) > 1:
-        opts['gradients_to_accumulate'] = 1
 
-    opts['total_batch_size'] = opts['batch_size']*opts['gradients_to_accumulate']*opts['pipeline_depth']*opts['replicas']*opts['distributed_worker_count']
+    opts['total_batch_size'] = opts['batch_size']*opts['gradient_accumulation_count']*opts['replicas']*opts['distributed_worker_count']
     opts['summary_str'] += "Training\n"
     opts['summary_str'] += " Batch Size: {total_batch_size}\n"
-    if opts['pipeline_depth'] > 1:
-        opts['summary_str'] += "  Pipelined over {shards} stages with depth {pipeline_depth} \n"
-    elif opts['gradients_to_accumulate'] > 1:
-        opts['summary_str'] += "  Accumulated over {gradients_to_accumulate} fwds/bwds passes \n"
+    if opts['pipeline']:
+        opts['summary_str'] += "  Pipelined over {shards} stages\n"
+    elif opts['shards'] > 1:
+        opts['summary_str'] += " Training Shards: {shards}\n"
+    if opts['gradient_accumulation_count'] > 1:
+        opts['summary_str'] += "  Gradients accumulated over {gradient_accumulation_count} fwds/bwds passes \n"
     if opts['replicas'] > 1:
         opts['summary_str'] += "  Training on {replicas} replicas \n"
     opts['summary_str'] += (" Base Learning Rate: 2**{base_learning_rate}\n"
@@ -612,9 +661,6 @@ def set_training_defaults(opts):
         opts['summary_str'] += " Iterations: {iterations}\n"
     else:
         opts['summary_str'] += " Epochs: {epochs}\n"
-
-    if opts['shards'] > 1:
-        opts['summary_str'] += " Training Shards: {shards}\n"
 
     # lr_scale is used to scale down the LR to account for loss scaling
     # lr_scale==loss_scaling iff the update is not divided by a linear function
@@ -640,7 +686,7 @@ def add_ipu_arguments(parser):
     group.add_argument('--precision', type=str, default="16.16", choices=["16.16", "16.32", "32.32"],
                        help="Precision of Ops(weights/activations/gradients) and Master data types: 16.16, 16.32, 32.32")
     group.add_argument('--enable-half-partials', action="store_true", default=False,
-                       help="Use half (fp16) partials for both convolutions and matmuls")
+                       help="Use half (float16) partials for both convolutions and matmuls.")
     group.add_argument('--no-stochastic-rounding', action="store_true",
                        help="Disable Stochastic Rounding")
     group.add_argument('--batches-per-step', type=int, default=1000,
@@ -673,10 +719,10 @@ def add_ipu_arguments(parser):
 
 
 def set_distribution_defaults(opts):
-    if opts['distributed']:
-        if opts['batches_per_step'] > 1:
-            raise ValueError("--batches-per-step must be 1 with distribution")
+    if opts['distributed'] and opts['use_popdist']:
+        raise ValueError("Cannot use popdist with --distributed")
 
+    if opts['distributed']:
         # Read the cluster config from the `TF_CONFIG` environment variable
         cluster = tf.distribute.cluster_resolver.TFConfigClusterResolver()
 
@@ -692,6 +738,14 @@ def set_distribution_defaults(opts):
         opts['summary_str'] += ' Worker count: {distributed_worker_count}\n'
         opts['summary_str'] += ' Worker index: {distributed_worker_index}\n'
         opts['summary_str'] += ' Cluster: {distributed_cluster}\n'
+    elif opts['use_popdist']:
+        opts['distributed_worker_count'] = int(popdist.getNumTotalReplicas() / popdist.getNumLocalReplicas())
+        opts['distributed_worker_index'] = int(popdist.getReplicaIndexOffset() / popdist.getNumLocalReplicas())
+        opts['distributed_cluster'] = None
+
+        opts['summary_str'] += 'Popdist\n'
+        opts['summary_str'] += ' Process count: {distributed_worker_count}\n'
+        opts['summary_str'] += ' Process index: {distributed_worker_index}\n'
     else:
         opts['distributed_worker_count'] = 1
         opts['distributed_worker_index'] = 0
@@ -782,16 +836,23 @@ if __name__ == '__main__':
     if opts['help']:
         parser.print_help()
     else:
-        if opts['gradients_to_accumulate'] > 1 and opts['pipeline_depth'] > 1:
-            raise ValueError("gradients-to-accumulate can't be specified when using --pipeline-depth > 1")
-        if opts['pipeline_depth'] > 1 and opts['shards'] == 1:
-            raise ValueError("--pipeline-depth can only be used if --shards > 1")
+        if opts['pipeline'] and opts['shards'] == 1:
+            raise ValueError("--pipeline can only be used if --shards > 1")
         amps = opts['available_memory_proportion']
         if amps and len(amps) > 1:
-            if not opts['pipeline_depth'] > 1:
+            if not opts['pipeline']:
                 raise ValueError('--available-memory-proportion should only have one value unless using pipelining')
             if len(amps) != int(opts['shards']) * 2:
                 raise ValueError('--available-memory-proportion should have either one value or 2*shards values specified')
+
+        if popdist.isPopdistEnvSet():
+            opts['use_popdist'] = True
+            opts['replicas'] = popdist.getNumLocalReplicas()
+            opts['total_replicas'] = popdist.getNumTotalReplicas()
+            opts['select_ipu'] = str(popdist.getDeviceId(opts['shards']))
+        else:
+            opts['use_popdist'] = False
+            opts['total_replicas'] = opts['replicas']
 
         opts["command"] = ' '.join(sys.argv)
         set_defaults(model, lr_schedule, opts)

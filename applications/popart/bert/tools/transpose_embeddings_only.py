@@ -1,3 +1,17 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """When running multi-checkpoint SQuAD, the embedding is created transposed, compared to in pretraining
 to ensure optimal layout. When running a single instance, the transpose is automatically handled by
 the intialisation code, but for multi-checkpoint SQuAD, we directly load the weights from the ONNX
@@ -18,8 +32,8 @@ from pathlib import Path
 bert_root_path = str(Path(__file__).parent.parent)
 sys.path.append(bert_root_path)
 
-import bert
-import utils
+import bert  # noqa: E402
+import utils  # noqa: E402
 
 
 def parse_args():
@@ -43,7 +57,7 @@ def transpose_checkpoint_embedding(checkpoint):
                       execution_mode=args.execution_mode)
 
     indices, positions, segments, masks, _ = bert.bert_add_inputs(args, model)
-    bert.bert_logits_graph(model, indices, positions, segments, masks)
+    bert.bert_logits_graph(model, indices, positions, segments, masks, args.execution_mode)
 
     proto = model.builder.getModelProto()
     onnx_proto = onnx.load_from_string(proto)

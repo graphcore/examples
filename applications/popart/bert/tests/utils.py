@@ -1,8 +1,22 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 import os
 import json
 import tempfile
+import pytest
 import numpy as np
 
 from typing import Iterable, Tuple, Any, Union, Mapping, Callable, Optional
@@ -16,6 +30,10 @@ from onnx import numpy_helper
 
 import torch
 import torch.nn as nn
+
+
+def requires_remote_buffers(*args):
+    return pytest.param(*args, marks=pytest.mark.requires_remote_buffers)
 
 
 class TestFailureError(Exception):
@@ -75,7 +93,10 @@ def run_py(proto: onnx.ModelProto,
            batches_per_step: int = 1,
            user_options: Optional[Mapping[str, Any]] = None,
            skip_execution: bool = False,
-           execution_mode: str = 'DEFAULT'):
+           execution_mode: str = 'DEFAULT',
+           replication_factor: int = 1,
+           replicated_weight_sharding: bool = False,
+           num_reps: int = 1):
     outputs = make_tuple(outputs)
 
     # Setting up the Session
@@ -87,6 +108,12 @@ def run_py(proto: onnx.ModelProto,
         user_options = {}
     options = popart.SessionOptions()
     options.reportOptions = {"showVarStorage": "true"}
+    if replicated_weight_sharding:
+        options.weightTensorLocationSettings.location.replicatedTensorSharding.On
+        options.optimizerStateTensorLocationSettings.location.replicatedTensorSharding.On
+    if replication_factor > 1:
+        options.enableReplicatedGraphs = True
+        options.replicatedGraphCount = replication_factor
     if execution_mode == 'PHASED':
         options.enableOutlining = True
         options.outlineThreshold = -np.inf
@@ -116,11 +143,18 @@ def run_py(proto: onnx.ModelProto,
     if return_stats:
         options.engineOptions = {
             "debug.allowOutOfMemory": "true",
-            "debug.instrument": "true"
+            "debug.instrument": "true",
+            "opt.internalExchangeOptimisationTarget": "balanced",
         }
 
     request_ipus = pow(2, math.ceil(math.log2(ipus)))
-    device = popart.DeviceManager().acquireAvailableDevice(request_ipus)
+    request_ipus *= replication_factor
+    dm = popart.DeviceManager()
+    dm.setOnDemandAttachTimeout(int(1e4))
+    device = dm.acquireAvailableDevice(
+        request_ipus,
+        connectionType=popart.DeviceConnectionType.OnDemand,
+        selectionCriterion=popart.DeviceSelectionCriterion.Random)
     if device is None:
         raise Exception("Failed to acquire IPU.")
 
@@ -154,6 +188,7 @@ def run_py(proto: onnx.ModelProto,
             gcprofile.save_popart_report(session,
                                          log_dir=log_dir,
                                          exception=e)
+        device.detach()
         raise e
     print("Compilation complete")
 
@@ -162,14 +197,20 @@ def run_py(proto: onnx.ModelProto,
 
     anchors = session.initAnchorArrays()
 
+    # Add a gradient accumulation factor dimension if needed
+    af = user_options.get("accumulationFactor")
+    if af is not None and af > 1:
+        data = {k: np.repeat(v[np.newaxis], af, 0)
+                for k, v in data.items()}
+
     # Add a batches_per_step dimension if needed
     if batches_per_step > 1:
         data = {k: np.repeat(v[np.newaxis], batches_per_step, 0)
                 for k, v in data.items()}
 
-    stepio = popart.PyStepIO(data, anchors)
-
-    session.run(stepio)
+    for _ in range(num_reps):
+        stepio = popart.PyStepIO(data, anchors)
+        session.run(stepio)
 
     with tempfile.TemporaryDirectory() as tmp:
         file_path = os.path.join(tmp, "model.onnx")
@@ -254,14 +295,33 @@ def copy_weights_to_torch(
         for name, w in torch_model.named_parameters():
             if name in torch_to_onnx.keys():
                 onnx_name = torch_to_onnx[name]
-                if onnx_name in onnx_weights.keys():
+                if isinstance(onnx_name, list):
+                    # To handle serialized layers where weights are split into multiple tensors for serialization. thse need to be concatenated and copied as a single tensor
+                    weights = []
+                    for phased_split_name in onnx_name:
+                        if phased_split_name in onnx_weights.keys():
+                            phased_split = onnx_weights[phased_split_name]
+                            weights.append(phased_split)
+                        else:
+                            ''' error split not found in initializers '''
+                            print("Error : "+phased_split_name+" not found")
                     if name in transform.keys():
                         onnx_tensor = torch.Tensor(transform[name](
-                            onnx_weights[onnx_name]))
+                            weights))
+                        # PyTorch CPU does not support float16...
+                        w.data.copy_(onnx_tensor.float())
                     else:
-                        onnx_tensor = torch.Tensor(onnx_weights[onnx_name])
-                    # PyTorch CPU does not support float16...
-                    w.data.copy_(onnx_tensor.float())
+                        # transformer required to concatenate list of weights split for embedding serialization
+                        print("Error : transformer required for concatenating weights from embedding serialization")
+                else:
+                    if onnx_name in onnx_weights.keys():
+                        if name in transform.keys():
+                            onnx_tensor = torch.Tensor(transform[name](
+                                onnx_weights[onnx_name]))
+                        else:
+                            onnx_tensor = torch.Tensor(onnx_weights[onnx_name])
+                        # PyTorch CPU does not support float16...
+                        w.data.copy_(onnx_tensor.float())
 
 
 def check_tensors(torch_outputs: Iterable[np.ndarray],
@@ -293,7 +353,8 @@ def check_onnx_model(
         model_1: onnx.ModelProto,
         model_2: onnx.ModelProto,
         onnx_to_onnx: Mapping[str, str] = {},
-        transform: Mapping[str, Callable[[np.ndarray], np.ndarray]] = {}):
+        transform: Mapping[str, Callable[[np.ndarray], np.ndarray]] = {},
+        allow_missing: bool = True):
     model_1_weights = {}
     for weight in model_1.graph.initializer:
         model_1_weights[weight.name] = onnx_to_numpy(weight)
@@ -305,12 +366,17 @@ def check_onnx_model(
                 np_w_1 = model_1_weights[name]
                 if name in transform.keys():
                     np_w_1 = transform[name](np_w_1)
+                elif w_2.name in transform.keys():
+                    np_w_1 = transform[w_2.name](np_w_1)
                 np_w_2 = onnx_to_numpy(w_2)
                 try:
-                    check_tensors(np_w_1, np_w_2)
+                    check_tensor(np_w_1, np_w_2)
                 except TestFailureError as e:
-                    print("For weight: ", name)
+                    print(f"For weight: (1) {name}, (2) {w_2.name}")
                     raise e
+            else:
+                if not allow_missing:
+                    raise TestFailureError(f"Missing weight mapping for model_2 weight {name}")
 
 
 def check_model(torch_model: nn.Module,
@@ -329,10 +395,26 @@ def check_model(torch_model: nn.Module,
         for name, w in reversed(list(torch_model.named_parameters())):
             if name in torch_to_onnx.keys():
                 onnx_name = torch_to_onnx[name]
-                if name in transform.keys():
-                    onnx_w = transform[name](onnx_weights[onnx_name])
+                if isinstance(onnx_name, list):
+                    # To handle serialized layers where weights are split into multiple tensors for serialization. thse need to be concatenated and copied as a single tensor
+                    weights = []
+                    for phased_split_name in onnx_name:
+                        if phased_split_name in onnx_weights.keys():
+                            phased_split = onnx_weights[phased_split_name]
+                            weights.append(phased_split)
+                        else:
+                            ''' error split not found in initializers '''
+                            print("Error : "+phased_split_name+" not found")
+                    if name in transform.keys():
+                        onnx_w = transform[name](weights)
+                    else:
+                        # Transformer required to concatenate list of weights split for embedding serialization
+                        print("Error : transformer required for concatenating weights from embedding serialization")
                 else:
-                    onnx_w = onnx_weights[onnx_name].reshape(w.shape)
+                    if name in transform.keys():
+                        onnx_w = transform[name](onnx_weights[onnx_name])
+                    else:
+                        onnx_w = onnx_weights[onnx_name].reshape(w.shape)
                 torch_w = w.data.detach().numpy()
                 try:
                     check_tensor(onnx_w, torch_w, margin)

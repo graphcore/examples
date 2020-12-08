@@ -1,4 +1,17 @@
-# Copyright 2019 Graphcore Ltd.
+# Copyright (c) 2019 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import tensorflow as tf
 import os
 from . import imagenet_preprocessing
@@ -70,9 +83,11 @@ def data(opts, is_training=True):
             filenames = DATASET_CONSTANTS[opts['dataset']]['FILENAMES']['TEST']
         filenames = list(map(lambda path: os.path.join(opts['data_dir'], path), filenames))
 
+        is_distributed_training = is_training and opts['distributed_worker_count'] > 1
+
         cycle_length = 1 if opts['seed_specified'] else 4
         if opts["dataset"] == 'imagenet':
-            if not opts['standard_imagenet'] and not opts['distributed']:
+            if not opts['standard_imagenet'] and not is_distributed_training:
                 dataset = ImageNetData(opts, filenames=filenames).get_dataset(batch_size=batch_size,
                                                                               is_training=training_preprocessing,
                                                                               datatype=datatype)
@@ -83,7 +98,7 @@ def data(opts, is_training=True):
                                         dtype=datatype, seed=opts['seed'],
                                         full_normalisation=None if opts['no_hostside_norm'] else opts['normalise_input'],)
                 dataset_fn = tf.data.TFRecordDataset
-                if is_training and opts['distributed']:
+                if is_distributed_training:
                     # Shuffle after sharding
                     dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
                     dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
@@ -96,7 +111,7 @@ def data(opts, is_training=True):
             preprocess_fn = partial(cifar_preprocess, is_training=training_preprocessing, dtype=datatype,
                                     dataset=opts['dataset'], seed=opts['seed'])
             dataset = tf.data.FixedLengthRecordDataset(filenames, DATASET_CONSTANTS[opts['dataset']]['RECORD_BYTES'])
-            if is_training and opts['distributed']:
+            if is_distributed_training:
                 dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
         else:
             raise ValueError("Unknown Dataset {}".format(opts["dataset"]))
@@ -162,7 +177,6 @@ def synthetic_dataset(opts):
 
 
 def cifar_preprocess(raw_record, is_training, dtype, dataset, seed):
-    """FROM https://github.com/tensorflow/models/blob/master/official/resnet/cifar10_main.py"""
     """Parse CIFAR-10 image and label from a raw record."""
     # Convert bytes to a vector of uint8 that is record_bytes long.
     record_vector = tf.decode_raw(raw_record, tf.uint8)
@@ -275,7 +289,7 @@ def set_defaults(opts):
                            'imagenet': 'imagenet-data'}[opts['dataset']]
             data_dir = None
 
-            for root, _, files in os.walk(opts['data_dir']):
+            for root, _, files in os.walk(opts['data_dir'], followlinks=True):
                 if os.path.basename(root) == default_dir and first_training_file in files:
                     data_dir = root
                     break
