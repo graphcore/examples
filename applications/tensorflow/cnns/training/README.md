@@ -91,6 +91,40 @@ it will not be possible to add replication for a model that
 is a tight fit on a single IPU because replication introduces additional control
 code and buffers for copying updated gradients between replicas.
 
+The following configuration will achieve >75.90% validation accuracy after 65 epochs of training on 16 Mk2 IPUs:
+
+    python train.py --model resnet --model-size 50 --dataset imagenet --data-dir .../imagenet-data/ \
+    --replicas 16 --batch-size 8 --gradient-accumulation-count 8 --epochs 65 \
+    --xla-recompute --optimiser momentum --momentum 0.90 --ckpts-per-epoch 1 \
+    --internal-exchange-optimisation-target balanced --normalise-input --stable-norm \
+    --enable-half-partials --lr-schedule cosine --label-smoothing 0.1
+
+
+The equivalent configuration for 16 Mk1 IPUs is:
+
+    python train.py --model resnet --model-size 50 --dataset imagenet --data-dir .../imagenet-data \
+    --shards 4 --replicas 4 --batch-size 4 --gradient-accumulation-count 64 --epochs 65 \
+    --pipeline --pipeline-splits b1/2/relu b2/3/relu b3/5/relu --pipeline-schedule Grouped \
+    --xla-recompute --optimiser momentum --momentum 0.90 --ckpts-per-epoch 1 \
+    --max-cross-replica-buffer-size 100000000 --available-memory-proportion 0.6 0.6 0.6 0.6 0.6 0.6 0.16 0.2 \
+    --internal-exchange-optimisation-target balanced --normalise-input --stable-norm \
+    --enable-half-partials --lr-schedule cosine --label-smoothing 0.1
+
+
+### ImageNet - ResNeXt
+
+ResNeXt is a variant of ResNet that adds multiple paths to the ResBlocks.
+
+The following configuration will train a ResNeXt-101 model to 78.8% validation accuracy in 120 epochs on 16 Mk2 IPUs (the number of epochs has not been tuned):
+   
+    python train.py --model resnext --model-size 101 --dataset imagenet --data-dir .../imagenet-data \
+    --shards 2 --replicas 8 --batch-size 6 --gradient-accumulation-count 16 --epoch 120 \
+    --pipeline  --pipeline-splits b3/3/relu --pipeline-schedule Grouped \
+    --xla-recompute --optimiser momentum --momentum 0.9 --ckpts-per-epoch 1 \
+    --internal-exchange-optimisation-target balanced --disable-variable-offloading \
+    --normalise-input --stable-norm --base-learning-rate -11 --no-validation \
+    --enable-half-partials --lr-schedule cosine --label-smoothing 0.1
+
 
 ### ImageNet - EfficientNet
 

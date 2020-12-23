@@ -366,7 +366,7 @@ def assert_final_accuracy(output, minimum, maximum):
     assert accuracy <= maximum
 
 
-def run_python_script_helper(cwd, script, want_std_err=False, **kwargs):
+def run_python_script_helper(cwd, script, want_std_err=False, env=None, **kwargs):
     """A function that given a path and python script name, runs the script
       with kwargs as the command line arguments
 
@@ -374,6 +374,7 @@ def run_python_script_helper(cwd, script, want_std_err=False, **kwargs):
         cwd: string representing the directory of the python script
         script: string representing the full name of the python script
         want_std_err: optional - set True to include stderr trace in the output
+        env : Optionally pass in the Environment variables to use
         kwargs: dictionary of string key and values that form the command
             line arguments when the script is run.
 
@@ -392,7 +393,7 @@ def run_python_script_helper(cwd, script, want_std_err=False, **kwargs):
             str(item) for sublist in kwargs.items() for item in sublist if item != ""
         ]
         cmd.extend(args)
-    out = subprocess.check_output(cmd, stderr=err, cwd=cwd, universal_newlines=True)
+    out = subprocess.check_output(cmd, stderr=err, cwd=cwd, env=env, universal_newlines=True)
     print(out)
     return out
 

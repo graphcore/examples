@@ -25,7 +25,7 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 
 | Example | Link |
 | ------- | ---- |
-| BERT | [code](applications/popart/bert) |
+| BERT (PopART) | [code](applications/popart/bert) |
 | BERT (TensorFlow) | [code](applications/tensorflow/bert) |
 | DeepVoice3 (PopART) | [code](applications/popart/deep_voice) |
 | CNN Training including ResNet, ResNeXt & EfficientNet (TensorFlow) | [code](applications/tensorflow/cnns/training) |
@@ -55,6 +55,7 @@ The `tutorials/` folder contains tutorials to help you get started using the Pop
 
 * `tutorials/poplar` - A set of tutorials to introduce the Poplar graph programming framework and the PopLibs libraries.
 * `tutorials/pytorch` - A tutorial to introduce the PyTorch framework support for the IPU.
+* `tutorials/popvision` - A set of tutorials to introduce the PopVision libraries.
 
 The README files for the tutorials are best viewed on GitHub.
 
