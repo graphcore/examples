@@ -21,9 +21,13 @@ The following models are supported using this inference harness.
 
 1) Install and activate the PopTorch environment as per cnns folder README.md, if you haven't done already.
 
-2) Download the images, run the script in the data diretory.
-
-       ../data/get_images.sh
+2) Download the images using `get_images.sh`. The download script should be run from within the data directory:
+    
+```bash
+cd ../data/
+./get_images.sh
+cd ../inference/
+```
 
   This will create and populate the `images/` directory in the `data` folder with sample test images.
 

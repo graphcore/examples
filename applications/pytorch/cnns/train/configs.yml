@@ -50,7 +50,7 @@ efficientnet-b0: &efficientnet-b0
   lr_decay: 0.98
   lr_scheduler_freq: 0.416
   momentum: 0.9
-  weight_decay: 1e-5
+  weight_decay: 1.e-5
   loss_scaling: 128
   norm_type: group
   norm_num_groups: 4

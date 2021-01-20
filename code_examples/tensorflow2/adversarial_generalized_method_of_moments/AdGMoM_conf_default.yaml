@@ -1,0 +1,52 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
+
+# switch between IPU and CPU execution
+use_ipu: true
+
+# IPU replica
+replication_factor: 2
+
+# IPU convolution optimization
+# Default is 0.6.
+# Must be passed as a string.
+# Try reducing this value if compilation results in memory error.
+availableMemoryProportion: "0.5"
+
+## debug flags
+# profiling setup in case the IPU is used
+gen_report : false
+# test code without data transfer
+synthetic: false
+# observe XLA files
+xla_dump: false
+# dry run without IPU (sometimes helpful when execution report causes OOM error)
+dry_run: false
+
+# Data generation process parameters
+n_samples: 1000  # dataset size
+n_instruments: 1  # x-dimension
+n_treatments: 1  # w-dimension
+n_outcomes: 1  # y-dimension
+# intervention strength
+iv_strength: 0.5
+
+# algorithm parameters
+batch_size: 200  # for gradients of modeler and critic
+batch_size_hedge: 1000  # for critic weight update
+n_steps: 6000  # training iterations
+iterations_per_loop: 1000  # number of batches per training loop
+
+# modeler parameters
+hidden_layers: [1000, 1000, 1000]
+learning_rate_modeler: 0.01
+l1_regularization: 0.1
+l2_regularization: 0.1
+# critics parameters
+n_critics: 50  # number of Gaussian functions
+learning_rate_hedge: 0.16   # weight hedge update learning rate
+learning_rate_critic_gradient: 0.01
+cluster_type: "kmeans"  # choose: kmeans, random_points, forest
+
+# function choices
+rho: "regression"
+target_function: "step"
