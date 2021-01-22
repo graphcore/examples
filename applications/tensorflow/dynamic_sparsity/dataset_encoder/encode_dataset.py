@@ -52,7 +52,13 @@ def load_articles(file_iterator):
 
 def encode_and_save(args):
     input_path = dataset_path / f"wiki.{p}.raw"
-    output_path = dataset_path / f"seqlen_{args.sequence_length}.{p}.cache.np_{np.__version__}"
+    output_path = (
+        dataset_path.with_name(
+            dataset_path.name.replace("raw", "gpt2")) /
+        f"seqlen_{args.sequence_length}" /
+        f"seqlen_{args.sequence_length}.{p}.cache.np_{np.__version__}")
+
+    os.makedirs(output_path.parent, exist_ok=True)
 
     logger.info("Loading articles...")
     with open(input_path) as fh:
@@ -109,7 +115,11 @@ if __name__ == "__main__":
         vocab_size = np.max([encode_and_save(args), vocab_size])
 
     if not args.disable_create_vocab:
-        vocab_path = dataset_path / f"seqlen_{args.sequence_length}.vocab"
+        vocab_path = (
+            dataset_path.with_name(
+                dataset_path.name.replace("raw", "gpt2")) /
+            f"seqlen_{args.sequence_length}" /
+            f"seqlen_{args.sequence_length}.vocab")
         logger.info(f"Writing the vocab to {vocab_path}")
         text_vocab = [encoder.decode([word_token]) for word_token in range(vocab_size)]
         np.save(vocab_path, text_vocab)

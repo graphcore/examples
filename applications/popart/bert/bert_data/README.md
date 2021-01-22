@@ -4,9 +4,9 @@ This directory contains the information required to create pre-training and trai
 
 `sample_text.txt` is a simple text file for initial pre-training with a small dataset.
 
-The wikipedia dataset used for pre-training contains approximately 2.5 billion wordpiece tokens. This is only an approximate size since the wikipedia dump file is updated all the time.
+The Wikipedia dataset used for pre-training contains approximately 2.5 billion wordpiece tokens. This is only an approximate size since the Wikipedia dump file is updated all the time.
 
-SQuAD is a large reading comprehension dataset used for training (fine tuning) which contains 100,000+ question-answer pairs on 500+ articles. 
+SQuAD is a large reading comprehension dataset used for training (fine tuning) which contains 100,000+ question-answer pairs on 500+ articles.
 
 **NOTE**: these are large datasets - at least 300GB of disk space will be required and the data should be stored on NVMe SSDs for maximum performance. The examples below use a folder structure that matches the config files. If you use a different folder structure, make sure that it is correctly represented in the config file you use.
 
@@ -38,7 +38,7 @@ All the instructions given below should be executed from the `bert_data/` folder
 
 #### **1)** **Download the latest wikipedia dump**
 
-The `wiki_downloader.sh` script can be used to download the latest wikipedia dump. Wikipedia dumps are licensed under a [CC-BY-SA license 3.0](https://dumps.wikimedia.org/legal.html). 
+The `wiki_downloader.sh` script can be used to download the latest wikipedia dump. Wikipedia dumps are licensed under a [CC-BY-SA license 3.0](https://dumps.wikimedia.org/legal.html).
 
 `./wiki_downloader.sh path-to-target-folder-for-wikipedia-download-file`
 
@@ -47,7 +47,7 @@ It is then extracted into a `wikidump.xml` file that can be found inside the sam
 
 #### **2)** **Extract training data from dump**
 
-WikiExtractor, https://github.com/attardi/wikiextractor, can then be used to extract training data from the wikipedia dump. 
+WikiExtractor, https://github.com/attardi/wikiextractor, can then be used to extract training data from the wikipedia dump.
 A command line example to perform the extraction is the following:
 
 ```shell
@@ -73,7 +73,8 @@ Body of article 2
 
 and so on.
 
-If different filtering is required then use the WikiExtractor directly. A comprehensive list of options is shown here: https://github.com/attardi/wikiextractor.
+If different filtering is required then you can use WikiExtractor with other options.
+A comprehensive list of options is shown here: https://github.com/attardi/wikiextractor.
 
 **3)** **Preprocess the files**
 
@@ -85,7 +86,7 @@ where `target_folder/AA` contains the files from step 3 and `preprocessed_target
 
 **4) Tokenise the data**
 
-The data can now be tokenised to create the pre-training dataset for BERT. For this step a vocabulary file is required. A vocabulary can be downloaded from the pre-trained model checkpoints at https://github.com/google-research/bert. We recommend to use the pre-trained BERT-Base Uncased model checkpoints. 
+The data can now be tokenised to create the pre-training dataset for BERT. For this step a vocabulary file is required. A vocabulary can be downloaded from the pre-trained model checkpoints at https://github.com/google-research/bert. We recommend to use the pre-trained BERT-Base Uncased model checkpoints.
 
 The script `create_pretraining_data.py` will accept a glob of input and output files to tokenise however attempting to process them all at once may result in the process being killed by the OS for consuming too much memory. It is therefore preferable to convert the files one by one:
 
@@ -93,9 +94,16 @@ The script `create_pretraining_data.py` will accept a glob of input and output f
 
 **NOTE:** When using an uncased vocab, use `--do-lower-case`.
 
-**NOTE:** Make sure to use the same values for `mask-tokens` and `duplication-factor` when generating the data and pretraining. 
+**NOTE:** Make sure to use the same values for `mask-tokens` and `duplication-factor` when generating the data and pretraining.
 
-The wikipedia dataset is now ready to be used in the Graphcore BERT model.
+Instead of running the above command line for each input file manually, you can use the script
+`tokenise_wikipedia.sh` in the `../scripts` to automate the process for a common configuration.
+It will tokenise the data for sequence lengths 128 and 384 with mask tokens 20 and 56, respectively.
+It assumes that the `preprocessed_target_folder` is `data/wikipedia/preprocessed/`
+and that the Bert-Base, uncased checkpoint has been downloaded from Google and is available at
+`data/ckpts/uncased_L-12_H-768_A-12`.
+
+The Wikipedia dataset is now ready to be used in the Graphcore BERT model.
 
 ## Book-Corpus pre-training data
 
@@ -125,18 +133,18 @@ python3 make_sentlines.py files > all.txt
 **4) Tokenise the data**
 As with any other data (e.g. Wikipedia) the final step is to tokenise for both sequence lengths used in training:
 ```bash
-cd path_to_gc_examples/applications/popart/bert/bert_data
+cd path_to_graphcore_examples/applications/popart/bert/bert_data
 python3 create_pretraining_data.py --input-file ~/bookcorpus/all.txt --output-file ~/bookcorpus/tokenised_128 --vocab-file path_to_the_vocab/vocab.txt --do-lower-case --sequence-length 128 --mask-tokens 20 --duplication-factor 6
 python3 create_pretraining_data.py --input-file ~/bookcorpus/all.txt --output-file ~/bookcorpus/tokenised_384 --vocab-file path_to_the_vocab/vocab.txt --do-lower-case --sequence-length 384 --mask-tokens 60 --duplication-factor 6
 ```
 
-The files ~/bookcorpus/tokenised_128 and ~/bookcorpus/tokenised_384 can now be used along-side the wikipedia data to pre-train the Graphcore BERT model.
+The files ~/bookcorpus/tokenised_128 and ~/bookcorpus/tokenised_384 can now be used in addition to the Wikipedia data to pre-train the Graphcore BERT model.
 
 ## SQuAD training data
 
 **1) Training files**
 
-Google describe how to access SQuAD 1.1 training files in its [BERT GitHub repository](https://github.com/google-research/bert).
+Google describes how to access SQuAD 1.1 training files in its [BERT GitHub repository](https://github.com/google-research/bert).
 
 This command can be used to download the SQuAD training files:
 
@@ -150,6 +158,11 @@ Weights can be pre-trained using the IPU. If you wish to use pre-trained weights
 
 `curl --create-dirs -L https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip -o data/ckpts/uncased_L-12_H-768_A-12.zip`
 
+Note that:
+- L means "num_layers" in the config
+- H means "hidden_size" in the config
+- A means "attention_heads" in the config
+
 Unzip the weights with:
 
 `unzip data/ckpts/uncased_L-12_H-768_A-12.zip -d data/ckpts`
@@ -158,7 +171,7 @@ Unzip the weights with:
 
 **1) SQuAD Inference files**
 
-Google describe how to access SQuAD 1.1 files in its [BERT GitHub repository](https://github.com/google-research/bert).
+Google describes how to access SQuAD 1.1 files in its [BERT GitHub repository](https://github.com/google-research/bert).
 
 These commands can be used to download the SQuAD dev set and evaluation script:
 

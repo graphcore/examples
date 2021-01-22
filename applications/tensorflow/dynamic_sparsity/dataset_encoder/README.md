@@ -29,6 +29,8 @@ as a relatively small example model._
 The script will download the raw dataset automatically if it doesn't already exist in the `--dataset-dir`
 path (defaults to `./datasets`).
 
+The datasets will then be saved in the corresponding subdirectories: `<dataset-dir>/<dataset-name>-gpt2/<sequence-length>`
+
 Then, for training, validation and test in turn, it will load all articles from the file and cut them
 down to individual sequences.
 
@@ -55,10 +57,10 @@ Parameters:
 
 ## Unit tests
 
-To run the unit tests, one can simply call `pytest` on the test directly
+To run the unit tests, one can simply call `pytest` from this directory on the test directory:
 
     pytest test
 
-To run tests against the GPT-2 encoder, please provide the GPT-2 repo path:
+To run tests against the GPT-2 encoder, please also provide the GPT-2 repo path:
 
     pytest test --gpt2-repo-path <gpt2_repo>

@@ -1,10 +1,10 @@
 # Graphcore benchmarks: BERT training
 
-This readme dscribes how to run BERT models for NLP pre-training and training on IPUs.
+This readme describes how to run BERT models for NLP pre-training and training on IPUs.
 
 ## Overview
 
-BERT (Bidirectional Encoder Representations for Transformers) is a deep learning model implemented in ONNX that is used for NLP. It requires pre-training with unsupervised learning on a large dataset such as Wikipedia. It is then trained on more specific tasks for fine tuning - Graphcore uses SQuAD (Stanford Question Answering Dataset), a Q&A dataset, for training BERT on IPUs. 
+BERT (Bidirectional Encoder Representations for Transformers) is a deep learning model implemented in ONNX that is used for NLP. It requires pre-training with unsupervised learning on a large dataset such as Wikipedia. It is then trained on more specific tasks for fine tuning - Graphcore uses SQuAD (Stanford Question Answering Dataset), a Q&A dataset, for training BERT on IPUs.
 
 There are two BERT models:
 
@@ -13,7 +13,7 @@ There are two BERT models:
 
 ## BERT models
 
-BERT Large requires 14 IPUs for pre-training (Wikipedia) and 13 IPUs for training on the SQuAD dataset. There are 2 layers of the model per IPU and the other IPUs are used for embedding and projection. 
+BERT Large requires 14 IPUs for pre-training (Wikipedia) and 13 IPUs for training on the SQuAD dataset. There are 2 layers of the model per IPU and the other IPUs are used for embedding and projection.
 
 Similarly BERT Base requires 8 IPUs for pre-training (Wikipedia) and 7 IPUs for training on the SQuAD dataset (2 layers of the model per IPU, other IPUs used for embedding and projection). Better performance can be achieved by using 14 IPUs for pre-training (Wikipedia) and 13 IPUs for training on the SQuAD dataset (1 layer of the model per IPU, other IPUs used for embedding and projection), which is the option used in the JSON configuration files provided.
 
@@ -31,23 +31,23 @@ PopART/Poplar may use knowledge of the physical IPU connectivity to decide how t
 
 ## Datasets
 
-SQuAD is a large reading comprehension dataset which contains 100,000+ question-answer pairs on 500+ articles. 
+SQuAD is a large reading comprehension dataset which contains 100,000+ question-answer pairs on 500+ articles.
 
-The wikipedia dataset contains approximately 2.5 billion wordpiece tokens. This is only an approximate size since the wikipedia dump file is updated all the time.
+The Wikipedia dataset contains approximately 2.5 billion wordpiece tokens. This is only an approximate size since the Wikipedia dump file is updated all the time.
 
-Instructions on how to download the Wikipedia and SQuAD datasets can be found in the `bert_data/README.md file`. At least 1TB of disk space will be required for full pre-training (two phases, phase 1 with sequence_length=128 and phase 2 with sequence_length=384) and the data should be stored on NVMe SSDs for maximum performance. 
+Instructions on how to download the Wikipedia and SQuAD datasets can be found in the `bert_data/README.md file`. At least 1TB of disk space will be required for full pre-training (two phases, phase 1 with sequence_length=128 and phase 2 with sequence_length=384) and the data should be stored on NVMe SSDs for maximum performance.
 
-If full pre-training is required (with the two phases with different sequence lengths) then data will need to be generated separately for the two phases: 
+If full pre-training is required (with the two phases with different sequence lengths) then data will need to be generated separately for the two phases:
 
 - once with --sequence-length 128 --mask-tokens 20 --duplication-factor 6
 - once with --sequence-length 384 --mask-tokens 56 --duplication-factor 6
 
-See the `bert_data/README.md file`  for more details on how to generate this data. 
+See the `bert_data/README.md file`  for more details on how to generate this data.
 
 ## Running the models
 
 
-The following files are provided for running the BERT benchmarks. 
+The following files are provided for running the BERT benchmarks.
 
 | File            | Description                                                  |
 | --------------- | ------------------------------------------------------------ |
@@ -56,27 +56,21 @@ The following files are provided for running the BERT benchmarks.
 | `utils.py`      | Utility functions                                            |
 | `bert_data/`    | Directory containing the data pipeline and training data generation <br /><br />- `dataset.py` - Dataloader and preprocessing. Loads binary files into Numpy arrays to be passed `popart.PyStepIO`, with shapes based on training options,  `--batches-per-step` & `--pipeline` <br /><br /> -`create_pretraining_data.py` - Script to generate binary files to be loaded from text data |
 | `configs/`      | Directory containing JSON configuration files to be used by the `--config` argument. |
-| `custom_ops/`   | Directory containing custom PopART operators. These are optimised parts of the graph that target Poplar/Poplibs operations directly.<br />  - `attention.cpp` - This operation is the fwd and grad implementation for multi-headed self-attention.<br/>  - `detach.cpp` - This operation is an identity with no grad implementation. This allows for the embedding dictionary to only be updated by its use in the projection.<br/>  -`embeddingGather.cpp` - This operation is a modification on the PopART Gather to ensure correct layout of the weights. |
+| `custom_ops/`   | Directory containing custom PopART operators. These are optimised parts of the graph that target Poplar/PopLibs operations directly.<br />  - `attention.cpp` - This operation is the fwd and grad implementation for multi-headed self-attention.<br/>  - `detach.cpp` - This operation is an identity with no grad implementation. This allows for the embedding dictionary to only be updated by its use in the projection.<br/>  -`embeddingGather.cpp` - This operation is a modification of the PopART Gather to ensure correct layout of the weights. |
 
 
 ## Quick start guide
 
 ### Prepare the environment
 
-##### 1) Download the Poplar SDK
+##### 1) Install the Poplar SDK
 
   Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh`
-  scripts for poplar and popART.
+  scripts for Poplar and PopART.
 
-##### 2) Install Boost and compile `custom_ops`
+##### 2) Compile custom ops
 
-Install Boost:
-
-```bash
-apt-get update; apt-get install libboost-all-dev
-```
-
-Compile custom_ops:
+From inside this directory:
 
 ```bash
 make
@@ -96,18 +90,6 @@ pip install <path to gc_tensorflow.whl>
 ```
 
 Note: TensorFlow is required by `bert_tf_loader.py`. You can use the standard TensorFlow version for this BERT example, however using the Graphcore TensorFlow version allows this virtual environment to be used for other TensorFlow programs targeting the IPU.
-
-##### 4) Reproduce base training
-
-If you just want to reproduce base training and don't care how it all works then you can run the following command:
-
-```bash
-./scripts/base_training.sh
-```
-
-This script first downloads, preprocesses and tokenises the Wikipedia dataset. It then runs pretraining on Wikipedia, followed by fine-tuning on SQuAD v1.1.
-
-**NOTE:** You may want to change some of the paths in the script if the disk on which this README resides isn't very large.  The final tokenised Wikipedia dataset for both sequence length 128 and 384 totals around 800GB.
 
 
 ### Generate pre-training data (small sample)
@@ -229,11 +211,13 @@ For BERT Base phase 2, use the following command:
 
 `python3 bert.py --config configs/pretrain_base_384.json`
 
+You will also need to specify the option `--onnx-checkpoint <path-to-checkpoint>` to load the weights from a previous training phase. You will find the checkpoint path for a training phase logged just after the compilation has completed in a date-time stamped directory. The checkpoints will be of the form `{checkpoint-dir}/{timestamp}/model_{epoch}.onnx`.
+
 ### Run the training loop with training data (SQuAD 1.1)
 
 How to get the SQuAD 1.1 training dataset is described in `bert_data/README`.
 
-You can then extract the weights and launch SQuAD fine tuning using one of the preset configurations. 
+You can then extract the weights and launch SQuAD fine tuning using one of the preset configurations.
 
 To run SQuAD with a BERT Base model and sequence length of 384:
 
@@ -244,6 +228,8 @@ and for BERT Large:
 `python3 bert.py --config configs/squad_large_384.json`
 
 View the JSON files in configs for detailed parameters.
+
+By default, SQuAD finetuning will use the pre-trained weights downloaded alongside the vocab, but you can also specify an onnx checkpoint using the option `--onnx-checkpoint <path-to-checkpoint>`.
 
 ## Training options
 

@@ -47,10 +47,18 @@ NOTE: Although dynamic sparsity has been supported since Poplar SDK
 pip install -r requirements.txt
 ```
 
-3) Install required apt packages:
+3) Check that you have the required apt packages installed in order to build the custom ops:
+
 ```bash
-sudo apt install $(cat required_apt_packages.txt)
+dpkg-query -W -f='${Status} ${Version}\n' $(<required_apt_packages.txt)
 ```
+
+If you have admin privileges, you can install any that are missing with the following command, otherwise contact your system administrator to do this for you:
+
+```bash
+sudo apt install $(< required_apt_packages.txt)
+```  
+
 
 4) Build the custom ops and then run the Python code. The command below runs a simple test of the ipu_sparse_ops module. To use this module it must be on your `PYTHONPATH`. (Below the environment variable is set only for this single command but you can append ipu_sparse_ops permanently to your Python path if you intend to use the module regularly).
 
@@ -60,4 +68,4 @@ make -j
 PYTHONPATH=./ python ipu_sparse_ops/tools/sparse_matmul.py
 ```
 
-To run any of the sparse models/training see the READMEs in their respective folders e.g. mnist_rigl/README.md, language_modelling/README.md.
+To run any of the sparse models/training see the READMEs in their respective folders for example mnist_rigl/README.md, language_modelling/README.md.

@@ -29,9 +29,12 @@ The pooling type is an extra parameter that tells Rig-L how to take a summary me
 grow new connections. The block pooling of gradient informatipn can be done on the IPU so also reduces the amount of dense gradient
 data that needs to be returned to the host.
 
-4) Visualise how the connectivity of the network evolved during training:
+4) Visualise how the connectivity of the network evolved during training. The following command generates a sequence of png images showing this:
 ```bash
 python mnist_rigl/visualise_connectivity.py --records-path rigl_records --animate
+```
+The images can then be combined into an animated gif format such as the one at the top of this readme file, for example using imagemagick:
+```bash
 sudo apt install imagemagick
 convert -delay 20 rigl_records/connectivity_*.png mnist_connections.gif
 ```
@@ -40,9 +43,9 @@ convert -delay 20 rigl_records/connectivity_*.png mnist_connections.gif
 Each MNIST image is of shape 28x28 which can be re-interpreted as a sequence of 28 tokens with an embedding dimension of 28 i.e. each row of pixels is a single token. The interaction between tokens in the transformer attention layer is then effectively between different rows of the image.  
 The example uses Rig-L to prune-and-regrow the sparsity pattern during training.
 ```bash 
-python sparse_transformer_rigl_mnist.py
+PYTHONPATH=./ python mnist_rigl/sparse_transformer_rigl_mnist.py
 ```
 To run the same experiment with block-level sparsity use:
 ```
-python sparse_transformer_rigl_mnist.py --block-size=8 --sparsity=0.5 --pooling-type SUM
+PYTHONPATH=./ python mnist_rigl/sparse_transformer_rigl_mnist.py --block-size=8 --sparsity=0.5 --pooling-type SUM
 ```

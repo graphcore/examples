@@ -23,8 +23,9 @@ PYTHONPATH=./ python ipu_sparse_ops/tools/sparse_matmul.py
 
 The example uses wikitext-103 but any dataset that can be prepared with GPT2's custom BPE tokeniser could conceivably be used instead. In order to prepare
 wikitext-103 data follow the instructions in `applications/tensorflow/dynamic_sparsity/dataset_encoder/README.md`. The example command below uses
-`--sequence-length=256` so make sure you set that option when you run `dataset_encoder/encode_dataset.py`. You will also need the `--dataset-dir`
-you choose for the encoder output in the steps below.
+`--sequence-length=256` so make sure you set that option when you run `dataset_encoder/encode_dataset.py`. 
+
+You will need to set the `--data-dir` option in the steps below to the path specified during the generation of the encoded data. (Will be of the form: `<dataset-dir>/<dataset-name>-gpt2/`.)
 
 ### Train the Model:
 

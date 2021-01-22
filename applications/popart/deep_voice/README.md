@@ -1,6 +1,6 @@
 # Graphcore
 
-## Deep Voice 3 
+## Deep Voice 3
 
 This PopART application implements the Deep Voice 3 model for Text-To-Speech
 synthesis as described in this paper:
@@ -10,7 +10,7 @@ Learning.](https://arxiv.org/abs/1710.07654)
 
 We also use the guided attention loss as described in this paper:
 
-[Efficiently Trainable Text-to-Speech System Based on Deep 
+[Efficiently Trainable Text-to-Speech System Based on Deep
 Convolutional Networks with Guided Attention.](https://arxiv.org/abs/1710.08969)
 
 ### How to train the deep-voice-3 model
@@ -18,7 +18,7 @@ Convolutional Networks with Guided Attention.](https://arxiv.org/abs/1710.08969)
 1.  Prepare the environment.
 
     Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source
-    the `enable.sh` scripts for poplar and popart.
+    the `enable.sh` scripts for Poplar and PopART.
 
 2.  Setup a virtual environment
 
@@ -32,7 +32,14 @@ source venv/bin/activate
 ```
 pip install -r requirements.txt
 ```
-	
+
+You may need to install the `sndfile` library:
+
+On Ubuntu:
+```
+sudo apt-get install libsndfile1
+```
+
 4.  Dataset: Currently, we use the VCTK dataset which is a multi-speaker dataset. For more details see:
 https://datashare.is.ed.ac.uk/handle/10283/3443
 
@@ -48,31 +55,31 @@ Also, to download the Carnegie Mellon Pronouncing Dictionary, just run:
 ```
 python3 -c "import nltk; nltk.download('cmudict')"
 ```
- 
-5.  Build custom ops to facilitate gradient-clipping 
+
+5.  Build custom ops to facilitate gradient-clipping
 
 ```
 make all
 ```
-If you want to do training or run tests without gradient-clipping, do not build the custom ops or remove it by doing `make clean`. 
+If you want to do training or run tests without gradient-clipping, do not build the custom ops or remove it by doing `make clean`.
 
 6.  Run the training program. Use the `--data_dir` option to specify the path to
     the data and use the `--model_dir` option to specify a path to save the trained model.
 	For a default batch-size of 2:
-	
+
 ```
 python3 deep_voice_train.py --data_dir /path/to/dataset/ --model_dir /path/to/trained/model
 ```
 
 The dataset path provided as input must be the parent folder of the VCTK-Corpus-0.92 folder to which the data was extracted.
-To use multiple IPUs in a data-parallel fashion for higher effective batch-sizes, 
+To use multiple IPUs in a data-parallel fashion for higher effective batch-sizes,
 one can use the `--num_ipus` and `--replication-factor` options. For e.g. to use
 two IPUs for a batch-size of 4, one can do:
 
 ```
 python3 deep_voice_train.py --data_dir /path/to/dataset/ --model_dir /path/to/trained/model --num_ipus 2 --replication_factor 2 --batch_size 4
 ```
-Here, the batch-size must be a multiple of the replication factor. One can also specifiy the IPU to use with the `--select_ipu` option. 
+Here, the batch-size must be a multiple of the replication factor. One can also specifiy the IPU to use with the `--select_ipu` option.
 For e.g. to use the MultiIPU 18 for data-parallel training, use:
 
 ```
@@ -81,14 +88,14 @@ python3 deep_voice_train.py --data_dir /path/to/dataset/ --model_dir /path/to/tr
 
 ### Synthesize audio using the forward pass of the training graph
 
-One can synthesize audio from text by calling the forward pass of the training graph multiple times and simulating the auto-regressive process during inference. 
-For truly auto-regressive (and efficient) synthesis, a separate graph has to be constructed and scripts for this will be added to this code-base soon. Meanwhile, one can 
+One can synthesize audio from text by calling the forward pass of the training graph multiple times and simulating the auto-regressive process during inference.
+For truly auto-regressive (and efficient) synthesis, a separate graph has to be constructed and scripts for this will be added to this code-base soon. Meanwhile, one can
 synthesize audio by using the `deep_voice_synthesis_ar_sim.py` script and use the `--sentence` argument to specify the text to synthesize.
 
 ```
 python3 deep_voice_synthesis_ar_sim.py --trained_model_file /path/to/trained/model.onnx --sentence "It is a beautiful day" --results_path /path/to/audio
-``` 
-Synthesized audio samples for the specified sentence in different speaker voices will be saved in the `.wav` format in the directory specified by `--results_path`. 
+```
+Synthesized audio samples for the specified sentence in different speaker voices will be saved in the `.wav` format in the directory specified by `--results_path`.
 In addition, the output linear-scale spectrograms, mel-scale spectrograms and attention maps for each attention block will be saved to the same location in files with the `.npz` format.
 
 
@@ -124,7 +131,7 @@ Use `--help` to show the available options. Here are a few important options:
 
 `--num_ipus` the number of IPUs for the session.
 
-`--replication_factor` specifies the number of graph replicas to execute in parallel. The number of samples processed on each IPU will be (batch_size / replication_factor). 
+`--replication_factor` specifies the number of graph replicas to execute in parallel. The number of samples processed on each IPU will be (batch_size / replication_factor).
 Note that the number of IPUs must be equal to or a multiple of the replication factor.
 
 `--select_ipu` specifies the ID of the IPU or MultiIPU to use for the session.

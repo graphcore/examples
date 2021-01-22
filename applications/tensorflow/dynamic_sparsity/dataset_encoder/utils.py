@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument("--num-processes", type=int, default=48,
                         help="The maximum number of processes to use while decoding sequences.")
     parser.add_argument("--dataset-name", type=str, default="wikitext-103",
-                        choices=("wikitext-2", "wikitext-103"),
+                        choices=("wikitext-2", "wikitext-103", "wikitext-fake"),
                         help="The dataset to encode. Currently only wikitext-2 and 103 are "
                              "supported.")
     parser.add_argument("--gpt2-repo-path", required=True,

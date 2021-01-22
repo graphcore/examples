@@ -77,7 +77,7 @@ where `target_folder/AA` contains the files from step 3 and `preprocessed_target
 
 **4) Tokenise the data**
 
-The data can now be tokenised to create the pre-training dataset for BERT. For this step a vocabulary file is required. A vocabulary can be downloaded from the pre-trained model checkpoints at https://github.com/google-research/bert. We recommend to use the pre-trained BERT-Base Uncased model checkpoints. 
+The data can now be tokenised to create the pre-training dataset for BERT. For this step a vocabulary file is required. A vocabulary can be downloaded from the pre-trained model checkpoints at https://github.com/google-research/bert. We recommend to use the pre-trained BERT-Base Uncased model checkpoints.
 
 The script `create_pretraining_data.py` will accept a glob of input and output files to tokenise. However, attempting to process them all at once may result in the process being killed by the operating system for consuming too much memory. It is therefore preferable to convert the files one by one.
 
@@ -102,7 +102,7 @@ python create_pretraining_data.py \
         --output-file /path/to/output/seq_384 \
         --vocab-file ./vocab.txt \
         --sequence-length 384 \
-        --mask-tokens 56 \
+        --mask-tokens 58 \
         --duplication-factor 5 \
         --do-lower-case
 ```
@@ -110,7 +110,7 @@ python create_pretraining_data.py \
 
 **NOTE:** When using an uncased vocab, use `--do-lower-case`.
 
-**NOTE:** Make sure to use the same values for `mask-tokens` and `duplication-factor` when generating the data and use the pre-training script. 
+**NOTE:** Make sure to use the same values for `mask-tokens` and `duplication-factor` when generating the data and using the pre-training script.
 
 The Wikipedia dataset is now ready to be used in the Graphcore BERT model.
 

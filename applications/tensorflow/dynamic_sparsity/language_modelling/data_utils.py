@@ -13,7 +13,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 def load_wiki_data(path, seq_len, vocab_size, training=True):
     logger.info("Loading dataset")
     directory = "seqlen_" + str(seq_len) + "/"
-    filename = "seqlen_" + str(seq_len) + "." + ("train" if training else "test") + ".cache.np_1.19.1.npy"
+    filename = "seqlen_" + str(seq_len) + "." + ("train" if training else "test") + f".cache.np_{np.__version__}.npy"
     dataset_path = os.path.join(path, directory + filename)
     data = np.load(dataset_path)
     # process the data so that it fits the required vocab size. All extra tokens will be set to the last

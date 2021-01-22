@@ -22,10 +22,10 @@ This README describes how to run CNN models for image recognition training on th
 1) Install and activate the PopTorch environment as per cnns folder README.md, if you haven't done already.
 
 2) Download the datasets:
-    * raw imagenet dataset (available at [http://www.image-net.org/](http://www.image-net.org/))
+    * Raw ImageNet dataset (available at [http://www.image-net.org/](http://www.image-net.org/))
     * CIFAR10 dataset downloads automatically
 
-3) Run the training.
+3) Run the training:
 
 ```bash
        python3 train.py --data imagenet --imagenet-data-path <path-to/imagenet>
@@ -65,7 +65,7 @@ python3 train.py --config efficientnet-b0-16ipu-mk2 --imagenet-data-path <path-t
 
 ## Options
 
-The program has a few command-line options:
+The program has a few command line options:
 
 `-h`                            Show usage information
 
@@ -77,7 +77,7 @@ The program has a few command-line options:
 
 `--data`                        Choose the dataset between CIFAR10 and imagenet and synthetic. In synthetic data mode (only for benchmarking throughput) there is no host-device I/O and random data is generated on the device.
 
-`--imagenet-data-path`          The path of the downloaded imagenet dataset (only required, if imagenet is selected as data)
+`--imagenet-data-path`          The path of the downloaded ImageNet dataset (only required if imagenet is selected as data)
 
 `--pipeline-splits`             List of layers to create stages of the pipeline. Each stage runs on different IPUs. Example: layer0 layer1/conv layer2/block3/bn
 
