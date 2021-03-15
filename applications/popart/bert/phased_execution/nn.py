@@ -17,6 +17,7 @@ import textwrap
 from abc import abstractmethod
 from copy import copy
 from typing import Any, Iterable, List, Optional
+from collections import defaultdict
 
 import numpy as np
 from scipy.stats import truncnorm
@@ -76,7 +77,7 @@ class Block:
         self._dtype = dtype
         self.num_params = 0
         self.sub_blocks = []
-        self.tensors = tensors if tensors is not None else [[]]
+        self._tensors = tensors if tensors is not None else defaultdict(set)
         if builder is None:
             raise ValueError('Builder must be passed in as kwarg.')
         if scope_provider is None:
@@ -103,6 +104,13 @@ class Block:
                     self.sub_blocks.append(el)
 
         super(Block, self).__setattr__(name, value)
+
+    @property
+    def tensors(self):
+        for blk in self.sub_blocks:
+            for key in blk.tensors.keys():
+                self._tensors[key] = self._tensors[key].union(blk.tensors[key])
+        return self._tensors
 
     @property
     def builder(self):
@@ -244,7 +252,7 @@ class Block:
                     param.value, param.name)
                 self.num_params += np.prod(param.value.shape)
                 param.vgid = self.scope.vgid
-                self.tensors[0].append(popart_tensor)
+                self.tensors[0].add(popart_tensor)
 
             else:
                 if (param.vgid != self.scope.vgid):

@@ -44,7 +44,7 @@ class ExecutionMode(str, Enum):
 
 
 class BertConfig(NamedTuple):
-    batch_size: int = 1
+    micro_batch_size: int = 1
     sequence_length: int = 128
     max_positional_length: int = 512
 
@@ -72,6 +72,8 @@ class BertConfig(NamedTuple):
 
     attention_heads: int = 12
 
+    attention_bias: bool = False
+
     inference: bool = False
 
     num_layers: int = 2
@@ -86,6 +88,8 @@ class BertConfig(NamedTuple):
     # Or a list specifying the placement on each IPU.
     layers_per_ipu: List[int] = [2]
 
+    # Number of layers per phased execution phase (only used in phased mode)
+    layers_per_phase: int = 3
     # Specify the available memory proportion to be used by the Encoder MatMuls.
     # The same as `layers_per_ipu` this can be a single element list or a
     # list providing a specific value for each IPU.
@@ -116,8 +120,6 @@ class BertConfig(NamedTuple):
     split_linear_layers: bool = False
 
     split_qkv: bool = False
-
-    replicated_weight_sharding: bool = False
 
     no_mask: bool = False
 
@@ -155,11 +157,10 @@ class BertConfig(NamedTuple):
 
     num_attention_splits: int = 1
     num_ffwd_splits: int = 1
-    batch_serialize: int = 1
 
     execution_mode: ExecutionMode = ExecutionMode.DEFAULT
     num_io_tiles: int = 0
-    phased_execution_type: str = "DUAL"
+    phased_execution_type: str = "SINGLE"
 
     squad_single_output: bool = True
 
@@ -221,7 +222,7 @@ class Model(object):
         self.execution_mode = execution_mode
 
         # Keep track of tensors in order to give them different parameters
-        self.tensors = defaultdict(list)
+        self.tensors = defaultdict(set)
 
     def normal_init_tensor(self, dtype, shape, mean, std_dev, debug_name=""):
         data = self.normal_init_data(dtype, shape, mean, std_dev, debug_name)
@@ -276,9 +277,9 @@ class Model(object):
     def _add_to_tensor_map(self, tensor):
         if self.builder.hasPipelineStage():
             pipeline_stage = self.builder.getPipelineStage()
-            self.tensors[pipeline_stage].append(tensor)
+            self.tensors[pipeline_stage].add(tensor)
         else:
-            self.tensors[0].append(tensor)
+            self.tensors[0].add(tensor)
 
 
 class Bert(Model):
@@ -798,15 +799,17 @@ class Bert(Model):
             final_mask = self.builder.reshape_const(
                 self.builder.aiOnnx,
                 [final_mask],
-                [self.config.batch_size, 1, 1, self.config.sequence_length])
+                [self.config.micro_batch_size, 1, 1, self.config.sequence_length])
             # TODO: This shouldn't be needed. No Variables on this path.
             final_mask = self.detach(final_mask)
             self.masks[mask_idx] = final_mask
         return final_mask
 
+
     def qkv_weights(self):
         if self.config.split_qkv:
             weights = []
+            biases = []
             full_t = self.initializers.get(
                 self.builder.getNameScope("QKV"), None)
             for idx, name in enumerate("QKV"):
@@ -818,6 +821,22 @@ class Bert(Model):
                     [self.config.hidden_size, self.config.hidden_size],
                     0, 0.02,
                     name))
+                if self.config.attention_bias:
+                    full_b = self.initializers.get(self.builder.getNameScope("QKV_Bias"), None)
+                    if full_b is not None:
+                        idx = "QKV".index(name)
+                        long_name = self.builder.getNameScope(name) + '_Bias'
+                        self.initializers[long_name] = np.split(full_b, 3, axis=0)[idx]
+                    biases.append(self.constant_init_tensor(
+                        self.config.dtype,
+                        [self.config.hidden_size],
+                        0,
+                        name+'_Bias'))
+
+            if self.config.attention_bias:
+                qkv_biases = self.builder.aiOnnx.concat(biases, axis=0)
+            else:
+                qkv_biases = None
             qkv = self.builder.aiOnnx.concat(weights, axis=1)
         else:
             qkv = self.normal_init_tensor(
@@ -825,14 +844,25 @@ class Bert(Model):
                 [self.config.hidden_size, 3 * self.config.hidden_size],
                 0, 0.02,
                 "QKV")
-        return qkv
+            if self.config.attention_bias:
+                qkv_biases = self.constant_init_tensor(
+                    self.config.dtype,
+                    (3 * self.config.hidden_size,),
+                    0,
+                    "QKV_Bias")
+            else:
+                qkv_biases = None
+        return qkv, qkv_biases
+
 
     def attention(self, input_x, masks=None):
-        qkv_weights = self.qkv_weights()
+        qkv_weights, qkv_biases = self.qkv_weights()
         qkv = self.builder.aiOnnx.matmul([input_x, qkv_weights])
         self.set_available_memory_proportion(qkv)
         if self.config.split_linear_layers:
             self.builder.setSerializeMatMul({qkv}, 'output_channels', 3, True)
+        if qkv_biases is not None:
+            qkv = self.builder.aiOnnx.add([qkv, qkv_biases])
 
         x = self.attention_onnx(qkv, masks)
 
@@ -844,13 +874,22 @@ class Bert(Model):
         x = self.builder.aiOnnx.matmul([x, projection_weights])
         self.set_available_memory_proportion(x)
 
+        if self.config.attention_bias:
+            projection_bias = self.constant_init_tensor(
+                self.config.dtype,
+                (self.config.hidden_size,),
+                0,
+                "Out_Bias")
+            x = self.builder.aiOnnx.add([x, projection_bias])
+
         x = self.dropout(x)
         x = self.builder.aiOnnx.add([input_x, x])
         x = self.norm(x)
         return x
 
+
     def attention_onnx(self, qkv, masks):
-        comb_shape = [self.config.batch_size, self.config.sequence_length,
+        comb_shape = [self.config.micro_batch_size, self.config.sequence_length,
                       self.config.attention_heads, self.config.qkv_length]
 
         if isinstance(qkv, list):
@@ -889,26 +928,26 @@ class Bert(Model):
             if not self.config.no_attn_dropout:
                 x = self.dropout(x)
 
-            # x[batch_size, attention_heads, sequence_length, sequence_length] * v[batch_size, attention_heads, sequence_length, qkv_length]
+            # x[micro_batch_size, attention_heads, sequence_length, sequence_length] * v[micro_batch_size, attention_heads, sequence_length, qkv_length]
             z = self.builder.aiOnnx.matmul([x, v])
             self.set_available_memory_proportion(z)
 
-            # [batch_size, attention_heads, sequence_length, qkv_length] -> [batch_size, sequence_length, attention_heads, qkv_length]
+            # [micro_batch_size, attention_heads, sequence_length, qkv_length] -> [micro_batch_size, sequence_length, attention_heads, qkv_length]
             z = self.builder.aiOnnx.transpose([z], perm=[0, 2, 1, 3])
-            # [batch_size, sequence_length, attention_heads, qkv_length] -> [batch_size*sequence_length, attention_heads*qkv_length]
+            # [micro_batch_size, sequence_length, attention_heads, qkv_length] -> [micro_batch_size*sequence_length, attention_heads*qkv_length]
             z = self.builder.reshape_const(self.builder.aiOnnx, [z], [
-                                           self.config.sequence_length * self.config.batch_size, self.config.hidden_size])
+                                           self.config.sequence_length * self.config.micro_batch_size, self.config.hidden_size])
         return z
 
     def projection(self, input_x):
         x = self.builder.reshape_const(self.builder.aiOnnx, [input_x], [
-                                       self.config.batch_size, self.config.sequence_length, self.config.hidden_size])
+                                       self.config.micro_batch_size, self.config.sequence_length, self.config.hidden_size])
 
         x = self.builder.aiOnnxOpset9.slice([x], axes=[1], starts=[
             0], ends=[self.config.mask_tokens])
 
         x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
-                                       self.config.batch_size * self.config.mask_tokens, self.config.hidden_size])
+                                       self.config.micro_batch_size * self.config.mask_tokens, self.config.hidden_size])
 
         weight = self.embedding_dict
 
@@ -928,7 +967,7 @@ class Bert(Model):
             x = self.builder.aiOnnx.add([x, bias])
 
         x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
-                                       self.config.batch_size, self.config.mask_tokens, self.config.vocab_length])
+                                       self.config.micro_batch_size, self.config.mask_tokens, self.config.vocab_length])
         return x
 
     def squad_projection(self, input_x):
@@ -942,7 +981,7 @@ class Bert(Model):
         if self.config.inference and self.config.squad_single_output:
             return [x]
 
-        # x.shape: [batch_size * sequence_length, 2]
+        # x.shape: [micro_batch_size * sequence_length, 2]
         start_logits = self.builder.aiOnnxOpset9.slice(
             [x], axes=[1], starts=[0], ends=[1])
         end_logits = self.builder.aiOnnxOpset9.slice(
@@ -950,10 +989,10 @@ class Bert(Model):
 
         start_logits = self.builder.reshape_const(
             self.builder.aiOnnx,
-            [start_logits], [self.config.batch_size, self.config.sequence_length], debugPrefix="answer_start")
+            [start_logits], [self.config.micro_batch_size, self.config.sequence_length], debugPrefix="answer_start")
         end_logits = self.builder.reshape_const(
             self.builder.aiOnnx,
-            [end_logits], [self.config.batch_size, self.config.sequence_length], debugPrefix="answer_end")
+            [end_logits], [self.config.micro_batch_size, self.config.sequence_length], debugPrefix="answer_end")
 
         return start_logits, end_logits
 
@@ -968,7 +1007,7 @@ class Bert(Model):
 
         # This reshape is doing the job of a squeeze, but allows for in-place operation.
         pooler_input = self.builder.reshape_const(self.builder.aiOnnx, [pooler_input], [
-            self.config.batch_size, self.config.hidden_size])
+            self.config.micro_batch_size, self.config.hidden_size])
 
         weight = self.normal_init_tensor(
             self.config.dtype,
@@ -986,7 +1025,7 @@ class Bert(Model):
 
     def nsp_head(self, input_x):
         x = self.builder.reshape_const(self.builder.aiOnnx, [input_x], [
-                                       self.config.batch_size, self.config.sequence_length, self.config.hidden_size])
+                                       self.config.micro_batch_size, self.config.sequence_length, self.config.hidden_size])
 
         x = self.pooler(x)
 
@@ -1031,8 +1070,7 @@ def get_model(config, mode, block=None, initializers=None):
             return BertModel(config,
                              builder=builder,
                              initializers=initializers,
-                             scope_provider=scope_provider,
-                             tensors=[[]])
+                             scope_provider=scope_provider)
 
         if block.lower() == 'embedding':
             from phased_execution.bert_layers_serialised import BertEmbedding
@@ -1064,11 +1102,13 @@ def get_model(config, mode, block=None, initializers=None):
                 'dropout_prob': config.dropout_prob,
                 'attn_dropout': not config.no_attn_dropout,
                 'attn_dropout_prob': config.attn_dropout_prob,
-                'batch_size': config.batch_size,
+                'micro_batch_size': config.micro_batch_size,
                 'sequence_length': config.sequence_length,
                 'dtype': config.dtype,
                 'task': config.task,
-                'num_mask_tokens': config.mask_tokens
+                'num_mask_tokens': config.mask_tokens,
+                'split_qkv': config.split_qkv,
+                'attention_bias': config.attention_bias
             }
             return Attention('Attention', **attention_params, builder=builder, scope_provider=scope_provider)
 

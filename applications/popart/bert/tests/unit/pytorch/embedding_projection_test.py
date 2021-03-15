@@ -85,7 +85,7 @@ def test_embedding_projection_fwd(custom_ops):
     })
     config = BertConfig(vocab_length=9728,
                         embedding_serialization_vocab_steps=4,
-                        batch_size=1,
+                        micro_batch_size=1,
                         hidden_size=768,
                         sequence_length=128,
                         activation_type='relu',
@@ -96,12 +96,12 @@ def test_embedding_projection_fwd(custom_ops):
     popart_model = Bert(config, builder=builder)
 
     sequence_info = popart.TensorInfo(
-        "UINT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.micro_batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     data = {
         indices:
         np.random.randint(0, config.vocab_length,
-                          (config.batch_size * config.sequence_length)).astype(
+                          (config.micro_batch_size * config.sequence_length)).astype(
                               np.uint32)
     }
 
@@ -121,7 +121,7 @@ def test_embedding_projection_fwd(custom_ops):
     proto = onnx.load_model_from_string(proto)
 
     inputs = [data[indices].reshape(
-        config.batch_size, config.sequence_length).astype(np.int32)]
+        config.micro_batch_size, config.sequence_length).astype(np.int32)]
 
     #  ------------------- PyTorch -------------------------
     torch_model = EmbeddingProjectionModel(
@@ -154,7 +154,7 @@ def test_embedding_projection_bwd(custom_ops):
     })
     config = BertConfig(vocab_length=9728,
                         embedding_serialization_vocab_steps=4,
-                        batch_size=1,
+                        micro_batch_size=1,
                         hidden_size=288,
                         sequence_length=128,
                         activation_type='relu',
@@ -168,12 +168,12 @@ def test_embedding_projection_bwd(custom_ops):
     popart_model = Bert(config, builder=builder)
 
     sequence_info = popart.TensorInfo(
-        "UINT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.micro_batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     data = {
         indices:
         np.random.randint(0, config.vocab_length,
-                          (config.batch_size * config.sequence_length)).astype(
+                          (config.micro_batch_size * config.sequence_length)).astype(
                               np.uint32)
     }
 
@@ -200,7 +200,7 @@ def test_embedding_projection_bwd(custom_ops):
     proto = onnx.load_model_from_string(proto)
 
     inputs = [data[indices].reshape(
-        config.batch_size, config.sequence_length).astype(np.int32)]
+        config.micro_batch_size, config.sequence_length).astype(np.int32)]
 
     #  ------------------- PyTorch -------------------------
 

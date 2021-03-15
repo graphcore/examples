@@ -34,7 +34,7 @@ do
   echo "Benchmarking BERT Base bs ${d} Inference.\nLogging to file: ${FILE}"
 
   python3 bert.py --config configs/squad_base_128_inference.json \
-    --report-hw-cycle-count --realtime-scheduler --batch-size ${d} \
+    --report-hw-cycle-count --realtime-scheduler --micro-batch-size ${d} \
     $DATA_DIR_ARG $VOCAB_DIR_ARG $EVAL_SCRIPT_ARG > $FILE 2>&1
 
   echo $T_INFO_STRING
@@ -51,7 +51,7 @@ do
   FILE=tmp_squad_large_bs${d}_log.txt
   echo "Benchmarking BERT Large bs ${d} Inference.\nLogging to file: ${FILE}"
   python3 bert.py --config configs/squad_large_384_inference.json \
-    --report-hw-cycle-count --realtime-scheduler --batch-size ${d} \
+    --report-hw-cycle-count --realtime-scheduler --micro-batch-size ${d} \
     $DATA_DIR_ARG $VOCAB_DIR_ARG $EVAL_SCRIPT_ARG > $FILE 2>&1
 
   echo $T_INFO_STRING

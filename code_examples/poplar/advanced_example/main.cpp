@@ -55,7 +55,7 @@ buildGraphAndPrograms(poplar::Graph &g, const utils::Options &options) {
   if (options.useIpuModel) {
     // For generating IPUmodel profiles a cycle estimate must
     // be set for each custom vertex:
-    g.setCycleEstimate(v, 20);
+    g.setPerfEstimate(v, 20);
   }
 
   // Create streams that allow reading and writing of the variables:

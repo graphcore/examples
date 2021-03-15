@@ -11,7 +11,7 @@ example uses a ResNet model implemented in TensorFlow, optimised for Graphcore's
 
 1. Prepare the TensorFlow environment. Install the Poplar SDK following the instructions
    in the Getting Started guide for your IPU system. Make sure to run the
-   `enable.sh` script and activate a Python virtualenv with gc_tensorflow installed.
+   `enable.sh` script and activate a Python virtualenv with tensorflow-1 wheel from the Poplar SDK installed.
 2. Run the training program. For example:
    `python3 resnet.py`
    Use `--help` to show all available options.

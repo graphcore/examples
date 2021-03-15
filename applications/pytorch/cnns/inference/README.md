@@ -17,6 +17,10 @@ The following models are supported using this inference harness.
 * `test_inference.py` Test cases for inference.
 * `configs.yml` Contains the common inference configurations.
 
+### Benchmarking
+
+To reproduce the published Mk2 throughput benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md) 
+
 ### How to use this demo
 
 1) Install and activate the PopTorch environment as per cnns folder README.md, if you haven't done already.
@@ -24,7 +28,7 @@ The following models are supported using this inference harness.
 2) Download the images using `get_images.sh`. The download script should be run from within the data directory:
     
 ```bash
-cd ../data/
+cd ../datasets/
 ./get_images.sh
 cd ../inference/
 ```
@@ -49,7 +53,7 @@ The program has a few command-line options:
 
 `--model`                       Select the model (from a list of supported models) for inference.
 
-`--data`                        Choose the data mode between `real` and `synthetic`. In synthetic data mode (only for benchmarking throughput) there is no host-device I/O and random data is generated on the device.
+`--data`                        Choose the data mode between `real`, `synthetic` and `generated`. In synthetic data mode (only for benchmarking throughput) there is no host-device I/O and random data is created on the device.
 
 `--pipeline-splits`             List of layers to create stages of the pipeline. Each stage runs on different IPUs. Example: `layer0 layer1/conv layer2/block3/bn` The stages are space separated.
 
@@ -61,11 +65,19 @@ The program has a few command-line options:
 
 `--iterations`                  Sets the number of program iterations to execute.
 
-`--half-partial`                Flag for accumulating matrix multiplication partials in half precision
+`--half-partial`                Flag for accumulating matrix multiplication partials in half precision.
 
-`--norm-type`                   Select the used normlayer from the following list: `batch`, `group`, `none`
+`--norm-type`                   Select the used normlayer from the following list: `batch`, `group`, `none`.
 
 `--norm-num-groups`             If group normalization is used, the number of groups can be set here.
+
+`--full-precision-norm`         Calculate the norm layers in full precision.
+
+`--efficientnet-expand-ratio`   Expand ratio of the blocks in EfficientNet.
+
+`--efficientnet-group-dim`      Group dimensionality of depthwise convolution in EfficientNet.
+
+`--profile`                     Generate PopVision Graph Analyser report
 
 ### Model configurations
 

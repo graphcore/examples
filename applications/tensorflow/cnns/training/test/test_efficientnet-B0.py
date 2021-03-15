@@ -25,7 +25,7 @@ class TestEfficientNetB0Pipelining2IPUs(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        out = run_train(**{'--synthetic-data': '',
+        out = run_train(**{'--generated-data': '',
                            '--dataset': 'ImageNet',
                            '--model': 'efficientnet',
                            '--shards': 2,
@@ -52,7 +52,7 @@ class TestEfficientNetB0Pipelining2IPUs(unittest.TestCase):
 @pytest.mark.category2
 @pytest.mark.ipus(2)
 class TestModifiedEfficientNetB0Pipelining2IPUs(unittest.TestCase):
-    """Pipelined modified EfficientNet-B0 with synthetic data
+    """Pipelined modified EfficientNet-B0 with generated random data
         and only 10 iterations.
     """
 
@@ -61,7 +61,7 @@ class TestModifiedEfficientNetB0Pipelining2IPUs(unittest.TestCase):
         out = run_train(**{'--iterations': 10,
                            '--batches-per-step': 10,
                            '--dataset': 'imagenet',
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--model': 'EfficientNet',
                            '--model-size': 'B0',
                            '--shards': 2,
@@ -83,7 +83,7 @@ class TestModifiedEfficientNetB0Pipelining2IPUs(unittest.TestCase):
 @pytest.mark.category2
 @pytest.mark.ipus(4)
 class TestEfficientNetB0Pipelining2IPUs2Replicas(unittest.TestCase):
-    """Pipelined and replicated modified EfficientNet with synthetic
+    """Pipelined and replicated modified EfficientNet with generated random
        data and only 10 iterations.
     """
 
@@ -92,7 +92,7 @@ class TestEfficientNetB0Pipelining2IPUs2Replicas(unittest.TestCase):
         out = run_train(**{'--iterations': 10,
                            '--batches-per-step': 10,
                            '--dataset': 'imagenet',
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--model': 'EfficientNet',
                            '--model-size': 'B0',
                            '--shards': 2,
@@ -125,7 +125,7 @@ class TestEfficientNetCifar(unittest.TestCase):
         out = run_train(**{'--iterations': 100,
                            '--batches-per-step': 10,
                            '--dataset': 'cifar-10',
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--model': 'EfficientNet',
                            '--model-size': 'cifar',
                            '--batch-size': 10,

@@ -80,7 +80,7 @@ def test_outline_dropout_pattern_one(custom_ops):
     # There should only be a main graph and 1 subgraph containing dropout
     assert len(ir.keys()) == 2
 
-    ops = [o["type"] for o in ir["_subgraph(0)"]]
+    ops = [o["type"] for o in ir["call_subgraph(0)"]]
     assert "Dropout" in ops
 
     ops = [o["type"] for o in ir["maingraph"]]
@@ -154,8 +154,7 @@ def test_outline_dropout_pattern_many(custom_ops):
 
     # There should only be a main graph and 3 subgraph containing dropout
     assert len(ir.keys()) == 4
-
-    ops = [o["type"] for i in range(3) for o in ir[f"_subgraph({i})"]]
+    ops = [o["type"] for i in range(3) for o in ir[f"call_subgraph({i})"]]
     assert "Dropout" in ops
 
     ops = [o["type"] for o in ir["maingraph"]]

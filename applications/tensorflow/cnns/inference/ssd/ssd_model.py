@@ -150,8 +150,8 @@ def prepare_image(path_to_image: str):
     subtract_mean_image = base_image - np.array([123, 117, 104])
     # Swap channels
     channel_swap = subtract_mean_image[..., [2, 1, 0]]
-    # Add the batch dimension and convert to single precision
-    processed_image = np.expand_dims(channel_swap, axis=0).astype('float16')
+    # Convert to single precision
+    processed_image = channel_swap.astype('float16')
     return processed_image, original_dimensions, loaded_image
 
 
@@ -209,13 +209,14 @@ with tf.device('cpu'):
         Create placeholder for detection
     """
     # Proposed detections
-    input_detection = tf.placeholder(np.float16, [1, 8732, 33], name="input_detection")
+    input_detection = tf.placeholder(np.float16, [BATCH_SIZE, 8732, 33], name="input_detection")
 
 # Prepare dataset for IPU infeed queue
 dataset = tf.data.Dataset \
     .range(1) \
     .map(lambda k: {"features": np_image}) \
     .repeat() \
+    .batch(BATCH_SIZE, drop_remainder=True) \
     .prefetch(BATCHES_PER_STEP)
 
 # Setup infeed queue

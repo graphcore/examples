@@ -60,17 +60,25 @@ def session(train=False, skip_execution=False, include_patterns=True, splits=1, 
 
     if optim == "Lamb":
         optimizer = popart.Adam({
-            "defaultLearningRate": (0.1, True),
-            "lossScaling": (20, False),
+            "defaultLearningRate": (0.1, False),
+            "defaultWeightDecay": (0.01, True),
+            "lossScaling": (20, True),
         }, mode=popart.AdamMode.LambNoBias)  # NoBias to increase the error of incorrect gradients
         user_options["optimizerStateTensorLocationSettings"] = popart.TensorLocationSettings(
-            popart.TensorStorage.OffChip, 0)
+            popart.TensorLocation(
+                popart.TensorStorage.OffChip,
+                popart.ReplicatedTensorSharding.On),
+            0, 0)
+        user_options["enableReplicatedGraphs"] = True
+        user_options["replicatedGraphCount"] = 2
+        ipus = 2
     else:
         optimizer = popart.SGD({
             "defaultLearningRate": (0.1, True),
             "defaultMomentum": (0.9, True),
             "defaultDampening": (0, True),  # 0 dampening to increase the error of incorrect gradients
-            "lossScaling": (20, False)})
+            "lossScaling": (20, True)})
+        ipus = 1
 
     if train:
         return run_py(

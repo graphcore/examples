@@ -27,6 +27,7 @@ class TestPhasedExecutionPopART(unittest.TestCase):
 
     @pytest.mark.ipus(2)
     @pytest.mark.category1
+    @pytest.mark.requires_remote_buffers
     def test_phased_execution(self):
         """Test that the code runs with default arguments"""
         run_phased_execution()

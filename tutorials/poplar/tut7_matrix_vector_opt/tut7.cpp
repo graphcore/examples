@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <fstream>
+#include <string>
 #include <limits>
 #include <memory>
 #include <poplar/Engine.hpp>
@@ -204,7 +205,7 @@ Program buildMultiplyProgram(Graph &graph, Tensor matrix, Tensor in,
       // up the loop.
       // The dot product can be performed by vectorized mac instructions that
       // can perform 2 macs per cycle.
-      graph.setCycleEstimate(v, 5 + ((endCol - beginCol) + 1) / 2);
+      graph.setPerfEstimate(v, 5 + ((endCol - beginCol) + 1) / 2);
     }
   }
   // Create a compute set to calculate the reduction.
@@ -222,7 +223,7 @@ Program buildMultiplyProgram(Graph &graph, Tensor matrix, Tensor in,
     graph.setTileMapping(v, tile);
     graph.setTileMapping(out[row], tile);
     // Addition can be vectorized at 2 float additions per cycle.
-    graph.setCycleEstimate(v, 5 + (partials[row].numElements() + 1) / 2);
+    graph.setPerfEstimate(v, 5 + (partials[row].numElements() + 1) / 2);
   }
 
   // The program to perform the multiplication consists of executing the
@@ -232,12 +233,21 @@ Program buildMultiplyProgram(Graph &graph, Tensor matrix, Tensor in,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cerr << "usage: " << argv[0] << " numRows numCols\n";
+  if ((argc < 3 || argc > 4) || (argc == 4 && strcmp(argv[3], "mk1") != 0)) {
+    std::cerr << "usage: " << argv[0] << " numRows numCols mk1(optional)\n";
     return 1;
   }
   unsigned numRows = std::atoi(argv[1]);
   unsigned numCols = std::atoi(argv[2]);
+  std::string model;
+
+  if (argc == 4 && strcmp(argv[3], "mk1") == 0) {
+    model = "ipu1";
+  }
+  else {
+    model = "ipu2";
+  }
+
   std::cout << "Multiplying matrix of size " << numRows << "x" << numCols
             << " by vector of size " << numCols << "\n";
 
@@ -246,7 +256,11 @@ int main(int argc, char **argv) {
   // this example the configuration of the exchange in this simulated model
   // is set to be more simplistic to reduce some latencies/delays in
   // the exchange fabric.
-  IPUModel ipuModel;
+
+  char modelChar[model.length() + 1];
+  strcpy(modelChar, model.c_str());
+
+  IPUModel ipuModel(modelChar);
   ipuModel.minIPUSyncDelay = 0;
   ipuModel.relativeSyncDelay = IPUModel::RelativeSyncDelayType::NO_DELAY;
   auto device = ipuModel.createDevice();

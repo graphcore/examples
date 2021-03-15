@@ -43,13 +43,13 @@ from bert import (  # noqa: E402
     bert_add_logit_outputs,
     get_bert_dataset,
     Iteration,
-    calc_required_ipus,
-    acquire_device,
+    bert_required_ipus,
     bert_inference_session,
     bert_infer_loop
 )
 from bert_model import Bert  # noqa: E402
 import utils  # noqa: E402
+from utils.device import acquire_device  # noqa: E402
 
 logger = logging.getLogger(__file__)
 
@@ -143,7 +143,7 @@ def pooled_validation_run(bert_args,
             writer=None,
             recording_steps=bert_args.aggregate_metrics_over_steps)
 
-        request_ipus, _ = calc_required_ipus(bert_args, model)
+        request_ipus, _ = bert_required_ipus(bert_args, model)
 
         if request_ipus * num_processes > available_ipus:
             raise ValueError(

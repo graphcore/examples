@@ -2,6 +2,7 @@
 import argparse
 import sys
 import yaml
+import multiprocessing
 sys.path.append('..')
 import models
 
@@ -26,6 +27,9 @@ def parse_with_config(parser, config_file):
         # Load the configurations from the YAML file and update command line arguments
         loaded_config = YAMLNamespace(configurations[args.config])
         args = parser.parse_args(namespace=loaded_config)
+    if args.dataloader_worker is None:
+        # determine dataloader-worker
+        args.dataloader_worker = min(32, multiprocessing.cpu_count())
     return args
 
 
@@ -39,4 +43,12 @@ def get_common_parser():
     parser.add_argument('--half-partial', action='store_true', help='Accumulate matrix multiplication partials in half precision')
     parser.add_argument('--norm-type', choices=['batch', 'group', 'none'], default='batch',  help="Set normalization layers in the model")
     parser.add_argument('--norm-num-groups', type=int, default=32, help="In case of group normalization, the number of groups")
+    parser.add_argument('--full-precision-norm', action='store_true', help='Calculate the norm layers in full precision.')
+    parser.add_argument('--normalization-location', choices=['host', 'ipu', 'none'], default='host', help='Location of the data normalization')
+    parser.add_argument('--dataloader-worker', type=int, help="Number of worker for each dataloader")
+    parser.add_argument('--profile', action='store_true', help='Create PopVision Graph Analyzer report')
+    parser.add_argument('--model-cache-path', type=str, help='Load the precompiled model from the given path. If the given path is empty / not existing the compiled model is saved to the given folder')
+    # EfficientNet parameters
+    parser.add_argument('--efficientnet-expand-ratio', type=int, default=6, help='Expand ratio of the blocks in EfficientNet')
+    parser.add_argument('--efficientnet-group-dim', type=int, default=1, help='Group dimensionality of depthwise convolution in EfficientNet')
     return parser

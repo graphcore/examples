@@ -65,36 +65,35 @@ class ShuffledSampler(Sampler):
 
 class DistributedDataSampler(Sampler):
     '''
-    Shard the dataset according to mpi_rank and mpi_size. Setting shuffle=True
-    randomizes the indices. The data can be padded to be evenly divisible by
-    the MPI size.
+    Shard the dataset according to popdist_rank and popdist_size. Setting shuffle=True
+    randomizes the indices. The data can be padded to be evenly divisible by the popdist size.
     '''
     def __init__(self,
                  data_source,
                  seed=0,
-                 shuffle=True,
-                 mpi_size=1,
-                 mpi_rank=0,
+                 shuffle=False,
+                 popdist_size=1,
+                 popdist_rank=0,
                  padding=False,
-                 padding_sub=0,
-                 div_factor=1):
+                 subsample_padding=0,
+                 samples_per_step=1):
 
         self.shuffle = shuffle
-        self.mpi_size = mpi_size
-        self.mpi_rank = mpi_rank
+        self.popdist_size = popdist_size
+        self.popdist_rank = popdist_rank
         self.data_source = data_source
-        self.padding_sub = padding_sub
+        self.subsample_padding = subsample_padding
         if padding:
-            self.num_samples = int(math.ceil(len(data_source) * 1.0 / mpi_size))
+            self.num_samples = int(math.ceil(len(data_source) * 1.0 / popdist_size))
         else:
-            self.num_samples = len(data_source) // mpi_size
-        if padding_sub > 0:
+            self.num_samples = len(data_source) // popdist_size
+        if subsample_padding > 0:
             # Update padding size for no-drop-remainder given the new number of samples
-            self.padding_sub = int(np.ceil(self.num_samples / div_factor)) * div_factor - self.num_samples
-        self.total_samples = self.num_samples * self.mpi_size
+            self.subsample_padding = int(np.ceil(self.num_samples / samples_per_step)) * samples_per_step - self.num_samples
+        self.total_samples = self.num_samples * self.popdist_size
         self.padding = padding
         self._rng = np.random.default_rng(seed)
-        self.returned_num_samples = self.num_samples + self.padding_sub
+        self.returned_num_samples = self.num_samples + self.subsample_padding
 
     def __iter__(self):
         indices = list(range(len(self.data_source)))
@@ -107,10 +106,10 @@ class DistributedDataSampler(Sampler):
             assert(len(indices) == self.total_samples)
 
         # Subsample data
-        indices = indices[self.mpi_rank:self.total_samples:self.mpi_size]
+        indices = indices[self.popdist_rank:self.total_samples:self.popdist_size]
         assert(len(indices) == self.num_samples)
 
-        if self.padding_sub > 0:
+        if self.subsample_padding > 0:
             # Pad at the end AFTER the shuffling and the subsample, for no-drop-remainder
             indices += indices[:self.padding_sub]
         assert(len(indices) == self.returned_num_samples)
@@ -120,5 +119,28 @@ class DistributedDataSampler(Sampler):
     def __len__(self):
         return self.returned_num_samples
 
-    def get_subpadding_size(self):
-        return self.padding_sub
+
+class SampleGenerator:
+    def __init__(self, data_source, sampler=None):
+        if sampler is None:
+            sampler = SequentialSampler(data_source)
+        self.data_source = data_source
+        self.sampler = sampler
+
+    def __iter__(self):
+        self.index = 0
+        self.data_iter = iter(self.data_source)
+        self.index_iter = iter(self.sampler)
+        return self
+
+    def __next__(self):
+        next_index = next(self.index_iter)
+        data = next(self.data_iter)
+        while self.index != next_index:
+            data = next(self.data_iter)
+            self.index += 1
+        self.index += 1
+        return data
+
+    def __len__(self):
+        return len(self.sampler)

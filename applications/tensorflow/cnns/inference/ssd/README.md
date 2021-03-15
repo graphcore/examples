@@ -54,7 +54,7 @@ decoding required for detection and classification of the objects within the ima
 1) Prepare the TensorFlow environment
 
    Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to run the enable.sh script and
-   activate a Python3 virtualenv with gc-tensorflow 1.15 installed.
+   activate a Python3 virtualenv with the tensorflow-1 wheel from the Poplar SDK installed.
 
 2) Install the required libraries:
 

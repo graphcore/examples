@@ -13,7 +13,11 @@ We also use the guided attention loss as described in this paper:
 [Efficiently Trainable Text-to-Speech System Based on Deep
 Convolutional Networks with Guided Attention.](https://arxiv.org/abs/1710.08969)
 
-### How to train the deep-voice-3 model
+### Benchmarking
+
+To reproduce the published Mk2 throughput benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md) 
+
+### How to train the Deep Voice-3 model
 
 1.  Prepare the environment.
 
@@ -111,7 +115,7 @@ or
 python3 deep_voice_train.py --data_dir TEST --model_dir TEST --generated_data --num_epochs 5 --num_ipus 2 --replication_factor 2 --batch_size 4
 ```
 
-### Run unit-tests for the deep-voice model
+### Run unit-tests for the Deep Voice model
 
 To run unit-tests, simply do:
 

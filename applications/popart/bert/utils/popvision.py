@@ -43,6 +43,7 @@ def get_profile_logging_handler(append=False):
 
 def set_profiling_vars(path: str = None, instrument: bool = True):
     '''Set environment variables to profile a program. autoReport.directory will be set to path'''
+    logger.info(f"Saving profile to {path}")
     popvision_options = {
         "autoReport.all": "true",
         "autoReport.directory": path,
@@ -51,8 +52,7 @@ def set_profiling_vars(path: str = None, instrument: bool = True):
         "debug.allowOutOfMemory": "true",
         "debug.outputAllSymbols": "true",
         "debug.instrument": str(instrument).lower(),
-        # The reports are typically very large. This compresses them where possible.
-        "profiler.format": "experimental"
+        "profiler.format": "v3"
     }
     existing = json.loads(os.environ.get("POPLAR_ENGINE_OPTIONS", "{}"))
     popvision_options.update(**existing)
@@ -78,11 +78,14 @@ def set_logging_vars():
 
     for lib, level in loggers.items():
         level_str = lib.upper() + "_LOG_LEVEL"
-        os.environ[level_str] = os.environ.get(level_str, level)
-
-        dest_str = lib.upper() + "_LOG_DEST"
-        dest_path = os.path.join(directory, lib + "_log.txt")
-        os.environ[dest_str] = os.environ.get(dest_str, dest_path)
+        set_level = os.environ.get(level_str, None)
+        # If the user specifies the log level do not redirect.
+        if set_level is None:
+            os.environ[level_str] = level
+            logger.info(f"Redirecting {lib} logs to {directory}")
+            dest_str = lib.upper() + "_LOG_DEST"
+            dest_path = os.path.join(directory, lib + "_log.txt")
+            os.environ[dest_str] = os.environ.get(dest_str, dest_path)
 
 
 def save_app_info(args):

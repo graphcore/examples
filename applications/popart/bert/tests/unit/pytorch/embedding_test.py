@@ -20,7 +20,7 @@ import onnx
 
 from bert_model import BertConfig, Bert, ExecutionMode, get_model
 from tests.torch_bert import BertConfig as TorchBertConfig, BertEmbeddings
-from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tensors, check_model, TestFailureError, requires_remote_buffers
+from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tensors, check_model, TestFailureError, requires_remote_buffers, sanity
 
 
 '''
@@ -110,12 +110,12 @@ def expand_torch_to_onnx_map(torch_to_onnx, args, mode):
 
 
 @pytest.mark.parametrize("mode", [ExecutionMode.DEFAULT, requires_remote_buffers(ExecutionMode.PHASED)])
-@pytest.mark.parametrize("batch_size, batch_serialization_factor, embedding_serialization_vocab_steps", [(1, 1, 1), (2, 2, 1), (2, 2, 2), (2, 1, 1), (2, 1, 2)])
-def test_embedding_fwd(custom_ops, mode, batch_size, batch_serialization_factor, embedding_serialization_vocab_steps):
+@pytest.mark.parametrize("micro_batch_size, batch_serialization_factor, embedding_serialization_vocab_steps", [(1, 1, 1), (2, 2, 1), (2, 2, 2), (2, 1, 1), (2, 1, 2)])
+def test_embedding_fwd(custom_ops, mode, micro_batch_size, batch_serialization_factor, embedding_serialization_vocab_steps):
     #  ------------------- PopART --------------------
     config = BertConfig(task="SQUAD",
                         vocab_length=9728,
-                        batch_size=batch_size,
+                        micro_batch_size=micro_batch_size,
                         hidden_size=768,
                         sequence_length=128,
                         activation_type='relu',
@@ -126,22 +126,22 @@ def test_embedding_fwd(custom_ops, mode, batch_size, batch_serialization_factor,
     popart_model = get_model(config, mode, 'embedding')
 
     sequence_info = popart.TensorInfo(
-        "UINT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.micro_batch_size * config.sequence_length])
     indices = popart_model.builder.addInputTensor(sequence_info)
     positions = popart_model.builder.addInputTensor(sequence_info)
     segments = popart_model.builder.addInputTensor(sequence_info)
     data = {
         indices:
         np.random.randint(0, config.vocab_length,
-                          (config.batch_size * config.sequence_length)).astype(
+                          (config.micro_batch_size * config.sequence_length)).astype(
                               np.uint32),
         positions:
         np.random.randint(0, config.max_positional_length,
-                          (config.batch_size * config.sequence_length)).astype(
+                          (config.micro_batch_size * config.sequence_length)).astype(
                               np.uint32),
         segments:
         np.random.randint(0, 2,
-                          (config.batch_size * config.sequence_length)).astype(
+                          (config.micro_batch_size * config.sequence_length)).astype(
                               np.uint32)
     }
 
@@ -167,7 +167,7 @@ def test_embedding_fwd(custom_ops, mode, batch_size, batch_serialization_factor,
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
-    inputs = [data[t].reshape(config.batch_size, config.sequence_length).astype(np.int32) for t in [indices, positions, segments]]
+    inputs = [data[t].reshape(config.micro_batch_size, config.sequence_length).astype(np.int32) for t in [indices, positions, segments]]
 
     #  ------------------- PyTorch -------------------------
     torch_model = BertEmbeddings(
@@ -185,39 +185,35 @@ def test_embedding_fwd(custom_ops, mode, batch_size, batch_serialization_factor,
     check_tensors(torch_outputs, outputs, margin=5e-7)
 
 
-@pytest.mark.parametrize("momentum", [0.0, 0.984375])
-@pytest.mark.parametrize("mode, batch_size, batch_serialization_factor, embedding_serialization_vocab_steps",
-                         [requires_remote_buffers(ExecutionMode.PHASED, 1, 1, 1),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, 2, 1),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, 2, 2),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 1),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 2),
-                          (ExecutionMode.DEFAULT, 1, 1, 1),
-                          (ExecutionMode.DEFAULT, 2, 1, 1),
-                          (ExecutionMode.DEFAULT, 2, 1, 2)
+@pytest.mark.parametrize("mode, micro_batch_size, batch_serialization_factor, embedding_serialization_vocab_steps, momentum",
+                         [sanity(requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 1, 0.984375)),
+                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 2, 0.984375)),
+                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 2, 2, 2, 0.984375)),
+                          sanity(ExecutionMode.DEFAULT, 2, 1, 1, 0.984375),
+                          sanity(ExecutionMode.DEFAULT, 2, 1, 2, 0.984375),
+
+                          requires_remote_buffers(ExecutionMode.PHASED, 1, 1, 1, 0.0),
+                          requires_remote_buffers(ExecutionMode.PHASED, 2, 2, 1, 0.0),
+                          requires_remote_buffers(ExecutionMode.PHASED, 2, 2, 2, 0.0),
+                          requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 1, 0.0),
+                          requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 2, 0.0),
+                          (ExecutionMode.DEFAULT, 1, 1, 1, 0.0),
+                          (ExecutionMode.DEFAULT, 2, 1, 1, 0.0),
+                          (ExecutionMode.DEFAULT, 2, 1, 2, 0.0),
+                          requires_remote_buffers(ExecutionMode.PHASED, 1, 1, 1, 0.984375),
+                          requires_remote_buffers(ExecutionMode.PHASED, 2, 2, 1, 0.984375),
+                          requires_remote_buffers(ExecutionMode.PHASED, 2, 2, 2, 0.984375),
+                          requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 1, 0.984375),
+                          requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 2, 0.984375),
+                          (ExecutionMode.DEFAULT, 1, 1, 1, 0.984375),
+                          (ExecutionMode.DEFAULT, 2, 1, 1, 0.984375),
+                          (ExecutionMode.DEFAULT, 2, 1, 2, 0.984375),
                           ])
-def test_embedding_bwd(custom_ops, mode, momentum, batch_size, batch_serialization_factor, embedding_serialization_vocab_steps):
-    embedding_bwd(custom_ops, mode, momentum, batch_size, batch_serialization_factor, embedding_serialization_vocab_steps)
-
-
-@pytest.mark.sanity
-@pytest.mark.parametrize("momentum", [0.984375])
-@pytest.mark.parametrize("mode, batch_size, batch_serialization_factor, embedding_serialization_vocab_steps",
-                         [requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 1),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, 1, 2),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, 2, 2),
-                          (ExecutionMode.DEFAULT, 2, 1, 1),
-                          (ExecutionMode.DEFAULT, 2, 1, 2)
-                          ])
-def test_embedding_bwd_sanity(custom_ops, mode, momentum, batch_size, batch_serialization_factor, embedding_serialization_vocab_steps):
-    embedding_bwd(custom_ops, mode, momentum, batch_size, batch_serialization_factor, embedding_serialization_vocab_steps, 9728, 768)
-
-
-def embedding_bwd(custom_ops, mode, momentum, batch_size, batch_serialization_factor, embedding_serialization_vocab_steps, vocab_length=9728, hidden_size=768):
+def test_embedding_bwd(custom_ops, mode, momentum, micro_batch_size, batch_serialization_factor, embedding_serialization_vocab_steps, vocab_length=9728, hidden_size=768):
     #  ------------------- PopART --------------------
     config = BertConfig(task="SQUAD",
                         vocab_length=vocab_length,
-                        batch_size=batch_size,
+                        micro_batch_size=micro_batch_size,
                         hidden_size=hidden_size,
                         sequence_length=128,
                         activation_type='relu',
@@ -230,22 +226,22 @@ def embedding_bwd(custom_ops, mode, momentum, batch_size, batch_serialization_fa
     # Prevent virtualGraph attributes being added to the ops
 
     sequence_info = popart.TensorInfo(
-        "UINT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.micro_batch_size * config.sequence_length])
     indices = popart_model.builder.addInputTensor(sequence_info)
     positions = popart_model.builder.addInputTensor(sequence_info)
     segments = popart_model.builder.addInputTensor(sequence_info)
     data = {
         indices:
         np.random.randint(0, config.vocab_length,
-                          (config.batch_size * config.sequence_length)).astype(
+                          (config.micro_batch_size * config.sequence_length)).astype(
                               np.uint32),
         positions:
         np.random.randint(0, config.max_positional_length,
-                          (config.batch_size * config.sequence_length)).astype(
+                          (config.micro_batch_size * config.sequence_length)).astype(
                               np.uint32),
         segments:
         np.random.randint(0, 2,
-                          (config.batch_size * config.sequence_length)).astype(
+                          (config.micro_batch_size * config.sequence_length)).astype(
                               np.uint32)
     }
 
@@ -298,7 +294,7 @@ def embedding_bwd(custom_ops, mode, momentum, batch_size, batch_serialization_fa
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
 
-    inputs = [data[t].reshape(config.batch_size, config.sequence_length).astype(np.int32) for t in [indices, positions, segments]]
+    inputs = [data[t].reshape(config.micro_batch_size, config.sequence_length).astype(np.int32) for t in [indices, positions, segments]]
 
     #  ------------------- PyTorch -------------------------
 

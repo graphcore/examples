@@ -307,7 +307,7 @@ def create_fc_layers(opts, batch_shape, random_gen):
         limit = np.sqrt(6/((batch_shape[1] + h1)*density1))
         glorot_uniform_gen = partial(random_gen.uniform, -limit, limit)
         indices_random_gen = np.random.default_rng(seed=opts.seed)
-        options = {"metaInfoBucketOversizeProportion": 0.2, "partialsType": partialsType,
+        options = {"metaInfoBucketOversizeProportion": 0.5, "partialsType": partialsType,
                    "sharedBuckets": not opts.disable_shared_buckets}
         fc_layers['fc1'] = make_sparse(h1, batch_shape, density1,
                                        block_size=opts.block_size,
@@ -325,7 +325,7 @@ def create_fc_layers(opts, batch_shape, random_gen):
         limit = np.sqrt(6/((h1 + h2)*density2))
         glorot_uniform_gen = partial(random_gen.uniform, -limit, limit)
         indices_random_gen = np.random.default_rng(seed=opts.seed)
-        options = {"metaInfoBucketOversizeProportion": 0.1,
+        options = {"metaInfoBucketOversizeProportion": 0.3,
                    "sharedBuckets": not opts.disable_shared_buckets}
         fc_layers['fc2'] = make_sparse(h2, [batch_size, h1], density2,
                                        block_size=1,  # Layer is too small to use larger blocks
@@ -359,7 +359,10 @@ def prune_and_grow(name, fc, prune_and_grow_outputs, random_gen,
                    step, total_steps, opts, metainfo):
 
     def cosine_prune_schedule(t, T, max_pruned):
-        return int(np.ceil(.5 * max_pruned * (1 + np.cos(t * (np.pi/T)))))
+        s = sparse_training.cosine_prune_function(t, T, opts.cosine_prune_schedule)
+        logger.info(f"t/T: {t}/{T} max:{max_pruned} sched: {s}")
+        return int(np.ceil(max_pruned * s))
+
 
     # Sync the layer's internal host-side state with prune_and_grow_outputs results
     # (both weights and slots need to be kept in sync):
@@ -399,6 +402,8 @@ def prune_and_grow(name, fc, prune_and_grow_outputs, random_gen,
     if opts.records_path and name == 'fc1':
         # Save the first hidden layer's weight mask for later analysis:
         save_weights(opts, name, fc, step)
+
+    return opts.prune_ratio * sparse_training.cosine_prune_function(step, total_steps, opts.cosine_prune_schedule)
 
 
 def save_weights(opts, name, fc, step):
@@ -630,6 +635,9 @@ def run_mnist(opts):
     utils.move_variable_initialization_to_cpu()
     config = utils.create_ipu_config()
     config = utils.auto_select_ipus(config, 1)
+    config = utils.set_floating_point_behaviour_options(config, inv=False,
+                                                        div0=False, oflo=False,
+                                                        esr=True, nanoo=False)
     utils.configure_ipu_system(config)
 
     # These allow us to retrieve the results of IPU feeds:
@@ -724,16 +732,19 @@ def run_mnist(opts):
                             if not opts.disable_pruning:
                                 logger.info(f"Starting prune and grow for layer {name}")
                                 t0 = time.perf_counter()
-                                prune_and_grow(name, fc, png_data, random_gen, steps, total_steps,
-                                               opts, metainfo=metainfo)
+                                prune_sched = prune_and_grow(name, fc, png_data, random_gen, steps, total_steps,
+                                                             opts, metainfo=metainfo)
                                 t1 = time.perf_counter()
                                 logger.info(f"Prune and grow for layer {name} complete in {t1-t0:0.3f} seconds")
+                                logger.info(f"Pruned proportion: {prune_sched}")
+                                if opts.use_wandb:
+                                    wandb.log({'Prune Schedule': prune_sched}, commit=False)
 
                     if opts.log:
                         log_file.write(f"{batches_processed} {train_outputs['acc']}\n")
                     if opts.use_wandb:
                         wandb.log({'Loss': train_outputs['mean_loss'], 'Accuracy': train_outputs['acc'],
-                                   'Throughput': throughput})
+                                   'Throughput': throughput}, commit=True)
                     progress.set_description(f"Loss {train_outputs['mean_loss']:.5f} Accuracy {train_outputs['acc']:.5f}")
 
                     # Only need to feed an updated sparsity representation if we are running rig-L:
@@ -762,6 +773,7 @@ def run_mnist(opts):
             if opts.use_wandb:
                 wandb.run.summary["Test Loss"] = test_loss
                 wandb.run.summary["Test Accuracy"] = test_acc
+                wandb.log(commit=True)
 
 
 if __name__ == '__main__':
@@ -856,6 +868,13 @@ if __name__ == '__main__':
                         " are grouped together, and the backward passes are grouped together. "
                         "With 'Interleaved' the forward and backward passes are interleaved. "
                         "'Sequential' mimics a non-pipelined execution.")
+    parser.add_argument("--cosine-prune-schedule", type=json.loads,
+                        default={
+                            'zero_steps': 0,
+                            'phase_delay': 0,
+                            'period': 0.5
+                            },
+                        help="Fine grained control of the pruning schedule.")
     parser.add_argument("--use-wandb", action="store_true", help="Exports results to Weights and Biases for experiments tracking")
     parser.add_argument("--wandb-project-name", type=str, default=None, help="The name of the wandb project")
     parser.add_argument("--wandb-tags", type=str, nargs='+', default=None,

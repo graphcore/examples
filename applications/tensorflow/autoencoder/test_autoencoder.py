@@ -10,11 +10,7 @@ working_path = os.path.dirname(__file__)
 
 class TestReadmeCommands(SubProcessChecker):
 
-    def test_download_data_and_run_readme_example(self):
-        self.run_command("sh get_data.sh",
+    def test_run_readme_example(self):
+        self.run_command("python3 autoencoder_main.py",
                          working_path,
-                         ["Unpacking netflix_data.tar.gz"])
-        self.run_command("python3 autoencoder_main.py --epochs 1 --training-data-file netflix_data/3m_train.txt"
-                         " --validation-data-file netflix_data/3m_valid.txt --size 128",
-                         working_path,
-                         ["Loading training data", "Loading evaluation data", "Running validation..."])
+                         ["Generating random training data", "Generating random evaluation data", "Running validation..."])

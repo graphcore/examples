@@ -18,7 +18,7 @@ the partial sums together for each output element to get the final
 output value.
 
 This tutorial uses a simple algorithm to estimate the best way of splitting the
-data across the tiles in order to get the best performance. The Poplibs
+data across the tiles in order to get the best performance. The PopLibs
 matrix-multiply functions use a similar, but more sophisticated, method that
 also considers the best instructions to use and different ways of reshaping the
 tensor data.
@@ -112,20 +112,20 @@ that, try running the program on for various sizes of data. For example:
 
     $ ./matrix-vector 10000 1000
     Multiplying matrix of size 10000x1000 by vector of size 1000
-    Creating environment (compiling vertex programs)
     Constructing compute graph and control program
     Best split chosen:
-    colsAxisSplit=5, total cost=4751 (compute cost=4410, exchange cost=200,
-                                      reduce exchange cost=45,
-                                      reduce compute cost=96)
-    Worst cost seen: 64373
+    colsAxisSplit=7, total cost=3996 (compute cost=3696,
+                                      exchange cost=143,
+                                      reduce exchange cost=49,
+                                      reduce compute cost=108)
+    Worst cost seen: 53807
     Running graph program to multiply matrix by vector
     Multiplication result OK
 
 This output is followed by the profile data.
 
-From the output above, you can see that the program splits each row into five
-segments with an estimated cycle cost of 4,751 cycles.
+From the output above, you can see that the program splits each row into seven
+segments with an estimated cycle cost of 3,996 cycles.
 
 The profile output includes a lot of information. The section most relevant to
 us is under the heading "Execution", you should see something like:
@@ -134,42 +134,41 @@ us is under the heading "Execution", you should see something like:
 
     Execution:
 
-    Total cycles:                                  8,190,756 (approx 5,119.2 microseconds)
-    Total compute cycles (including idle threads): 5,513,152 Estimated (must enable debug.instrumentCompute)
-    Total compute cycles (excluding idle threads): 5,334,536
-    Total IPU exchange cycles:                     963,855
-    Total global exchange cycles:                  Must enable debug.instrumentExternalExchange
-    Total host exchange cycles:                    9,952,701,003
-    Total shared structure copy cycles:            0
-    Total sync cycles:                             781,286
-
-    Cycles by vertex type:
-        DotProductVertex            (50000 instances):    5,250,000
-        ReduceVertex                (10000 instances):       80,000
-        poplar_rt::ShortMemcpy         (63 instances):        4,536
+    Total cycles:                                         6,681,740 (approx 5,023.9 microseconds)
+    Tile average compute cycles (including idle threads): 3,801.8 (0.1% of total)
+    Tile average compute cycles (excluding idle threads): 3,717.6 (0.1% of total)
+    Tile average IPU exchange cycles:                     8,697.4 (0.1% of total)
+    Tile average global exchange cycles:                  0.0 (0.0% of total)
+    Tile average host exchange cycles:                    6,663,550.8 (99.7% of total)
+    Tile average sync cycles:                             1,134.8 (0.0% of total)
 
 The figure we are most interested in is:
 
 .. code-block:: console
 
-    Total compute cycles (excluding idle threads): 5,334,536
+    Tile average compute cycles (excluding idle threads): 3,717.6 (0.1% of total)
 
-This is the total number of compute cycles *across all tiles*. If we divide this by
-1,216 (the number of tiles in an IPU) we get 4,387 which is pretty close to the program’s
-estimate of 4,410.
+This is the average number of compute cycles *across all tiles* and is pretty close
+to the program estimate of 3996.
 
 The "Total cycles" line is the overall time taken to run the program; you can also
 think of this as the number of cycles taken by a single tile. It is the total cycles
 for compute plus exchange plus sync plus host IO.
 
-The "Total host exchange cycles" line tells us the total number of cycles used
-for transferring data to and from the host by all tiles. If you divide this by 1,216
-and subtract that from the "Total cycles" number, then you get the compute + sync + exchange
-cycles for one tile.
+The "Tile average host exchange cycles" line tells us the average number of cycles used
+for transferring data to and from the host by all tiles. If you subtract this from the
+"Total cycles" number, then you get the compute + sync + exchange cycles for one tile.
 
 You can get far more detailed insights into the behaviour of the program by using the
 PopVision Graph Analyser tool. The program writes out ``graph.json`` and ``execution.json``
-files that can be read by the graph analyser.
+files that can be read by the graph analyser. For more information about PopVision,
+see https://docs.graphcore.ai/projects/graphcore-popvision-user-guide/en/latest/popvision.html
+
+Note: To run this tutorial on a MK1 IPU Model, the command will change to:
+
+.. code-block:: bash
+
+    $ ./matrix-vector 10000 1000 mk1
 
 Copyright (c) 2018 Graphcore Ltd. All rights reserved.
 

@@ -37,7 +37,7 @@ This model uses the standard CIFAR10 Keras dataset with contains 60,000 32x32 co
 
 1. Prepare the TensorFlow environment.
    Install the Poplar SDK following the Getting Started guide for your IPU system.
-   Make sure to run the enable.sh script and activate a Python3 virtualenv with gc_tensorflow installed.
+   Make sure to run the enable.sh script and activate a Python3 virtualenv with the tensorflow-1 wheel from the Poplar SDK installed.
 2. Train and test the model:
 
        python ipu_estimator_cnn.py

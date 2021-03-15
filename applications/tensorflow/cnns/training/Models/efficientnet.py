@@ -476,8 +476,11 @@ def set_defaults(opts):
     if opts['dataset'] == 'imagenet':
         if opts.get('image_size') is None:
             opts['image_size'] = EFFICIENTNET_DEFAULT_SIZE[opts['model_size']]
-        if opts.get('weight_decay') is None:
-            opts['weight_decay'] = 1e-5
+        if opts.get("weight_decay") is None:
+            wd_default = 0 if opts.get("optimiser") == "LARS" else 1e-5
+            opts["weight_decay"] = wd_default
+        if opts.get("lars_weight_decay") is None:
+            opts["lars_weight_decay"] = 1e-5
         if not opts.get('base_learning_rate'):
             if opts['optimiser'] == 'SGD':
                 opts['base_learning_rate'] = -7.0
@@ -485,6 +488,7 @@ def set_defaults(opts):
                 opts['base_learning_rate'] = -10.0
             elif opts['optimiser'] == 'RMSprop':
                 opts['base_learning_rate'] = -14.0
+                opts['rmsprop_base_decay_exp'] = -14.0
         if not opts.get('epochs') and not opts.get('iterations'):
             opts['epochs'] = 350.0
         if opts.get('lr_schedule') == 'stepped':
@@ -514,8 +518,11 @@ def set_defaults(opts):
             opts['model_size'] = 'cifar'
         if opts.get('image_size') is None:
             opts['image_size'] = EFFICIENTNET_DEFAULT_SIZE[opts['model_size']]
-        if opts.get('weight_decay') is None:
-            opts['weight_decay'] = 1e-6
+        if opts.get("weight_decay") is None:
+            wd_default = 0 if opts.get("optimiser") == "LARS" else 1e-6
+            opts["weight_decay"] = wd_default
+        if opts.get("lars_weight_decay") is None:
+            opts["lars_weight_decay"] = 1e-6
         if not opts.get('base_learning_rate'):
             opts['base_learning_rate'] = -6
         if not opts.get('epochs') and not opts.get('iterations'):

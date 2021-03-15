@@ -315,41 +315,41 @@ def train(opts):
                              opts.batch_size,
                              opts.batches_per_step)
 
-        aggregated_loss = 0
-        aggregated_accuracy = 0
-
         training.session.modelToHost(onnx_file_name)
-        validation.session.resetHostWeights(onnx_file_name)
-        validation.session.weightsFromHost()
 
-        # Evaluation
-        for step, (data, labels) in enumerate(test_set):
-            stepio = popart.PyStepIO(
-                {data_in: data, labels_in: labels}, validation.anchors)
+        if not opts.validation_final_epoch or i == opts.epochs - 1:
+            aggregated_loss = 0
+            aggregated_accuracy = 0
+            validation.session.resetHostWeights(onnx_file_name)
+            validation.session.weightsFromHost()
+            # Evaluation
+            for step, (data, labels) in enumerate(test_set):
+                stepio = popart.PyStepIO(
+                    {data_in: data, labels_in: labels}, validation.anchors)
 
-            start = time()
-            validation.session.run(stepio, 'Epoch ' + str(i) + ' evaluation step ' + str(step))
-            if opts.test_mode == "inference":
-                log_run_info(validation,
-                             start,
-                             opts.batch_size,
-                             opts.batches_per_step)
+                start = time()
+                validation.session.run(stepio, 'Epoch ' + str(i) + ' evaluation step ' + str(step))
+                if opts.test_mode == "inference":
+                    log_run_info(validation,
+                                 start,
+                                 opts.batch_size,
+                                 opts.batches_per_step)
 
-            # Loss
-            aggregated_loss += np.mean(validation.anchors[loss])
-            # Accuracy
-            results = np.argmax(validation.anchors[output].reshape(
-                [test_set.inputs_per_step, 10]), 1)
-            num_correct = np.sum(results == labels.reshape(
-                [test_set.inputs_per_step]))
-            aggregated_accuracy += num_correct / test_set.inputs_per_step
+                # Loss
+                aggregated_loss += np.mean(validation.anchors[loss])
+                # Accuracy
+                results = np.argmax(validation.anchors[output].reshape(
+                    [test_set.inputs_per_step, 10]), 1)
+                num_correct = np.sum(results == labels.reshape(
+                    [test_set.inputs_per_step]))
+                aggregated_accuracy += num_correct / test_set.inputs_per_step
 
-        # Log statistics
-        aggregated_loss /= len(test_set)
-        aggregated_accuracy /= len(test_set)
-        print('Epoch #{}'.format(i + 1))
-        print('   Loss={0:.4f}'.format(aggregated_loss))
-        print('   Accuracy={0:.2f}%'.format(aggregated_accuracy * 100))
+            # Log statistics
+            aggregated_loss /= len(test_set)
+            aggregated_accuracy /= len(test_set)
+            print('Epoch #{}'.format(i + 1))
+            print('   Loss={0:.4f}'.format(aggregated_loss))
+            print('   Accuracy={0:.2f}%'.format(aggregated_accuracy * 100))
 
     # Remove weight transfer file
     os.remove(onnx_file_name)
@@ -394,6 +394,11 @@ if __name__ == '__main__':
         default="off",
         help="Specify to use synthetic data with either 'random"
              "_normal' or 'zeros' (no host to IPU IO done in this mode)",
+    )
+    parser.add_argument(
+        "--validation-final-epoch",
+        action='store_true',
+        help="Only run validation after the final epoch.",
     )
     opts = parser.parse_args()
 

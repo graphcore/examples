@@ -28,7 +28,8 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
             "--batch-size": 4,
             "--batches-per-step": 1000,
             "--epochs": 10,
-            "--num-ipus": 1
+            "--num-ipus": 1,
+            "--validation-final-epoch": "",
         }
 
     @pytest.mark.ipus(1)
@@ -40,9 +41,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
             run_popart_mnist_training,
             **py_args
         )
-        expected_accuracy = [
-            88.88, 89.63, 89.83, 90.01, 90.12, 90.22, 90.40, 90.59, 90.65, 90.70
-        ]
+        expected_accuracy = [90.70]
         parse_results_for_accuracy(
             out, expected_accuracy, self.accuracy_tolerances
         )
@@ -57,9 +56,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
             run_popart_mnist_training,
             **py_args
         )
-        expected_accuracy = [
-            88.88, 89.63, 89.83, 90.01, 90.12, 90.22, 90.40, 90.59, 90.65, 90.70
-        ]
+        expected_accuracy = [90.70]
         parse_results_for_accuracy(
             out, expected_accuracy, self.accuracy_tolerances
         )
@@ -76,9 +73,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
             run_popart_mnist_training,
             **py_args
         )
-        expected_accuracy = [
-            88.88, 89.63, 89.83, 90.01, 90.12, 90.22, 90.40, 90.59, 90.65, 90.70
-        ]
+        expected_accuracy = [90.70]
         parse_results_for_accuracy(
             out, expected_accuracy, self.accuracy_tolerances
         )
@@ -95,9 +90,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
             run_popart_mnist_training,
             **py_args
         )
-        expected_accuracy = [
-            88.11, 88.69, 88.91, 88.94, 88.92, 88.98, 89.05, 89.14, 89.18, 89.25
-        ]
+        expected_accuracy = [89.25]
         parse_results_for_accuracy(
             out, expected_accuracy, self.accuracy_tolerances
         )
@@ -115,9 +108,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
             run_popart_mnist_training,
             **py_args
         )
-        expected_accuracy = [
-            88.11, 88.69, 88.91, 88.94, 88.92, 88.98, 89.05, 89.14, 89.18, 89.25
-        ]
+        expected_accuracy = [89.25]
         parse_results_for_accuracy(
             out, expected_accuracy, self.accuracy_tolerances
         )
@@ -141,7 +132,7 @@ class TestPopARTMNISTImageClassification(unittest.TestCase):
         """Simulation test with basic arguments"""
         py_args = self.generic_arguments.copy()
         py_args["--simulation"] = ""
-        py_args["--epochs"] = 2
+        py_args["--epochs"] = 1
         run_test_helper(
             run_popart_mnist_training,
             **py_args

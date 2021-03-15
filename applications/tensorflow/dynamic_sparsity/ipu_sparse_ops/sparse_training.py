@@ -20,12 +20,13 @@ def plot_and_log_matrix(name, matrix):
         import seaborn as sns
         import matplotlib.pyplot as plt
         from matplotlib.colors import LogNorm
+        import sys
         plt.clf()
         fig = plt.figure(figsize=(4, 4))
         plt.axis('equal')
         sns.set(font_scale=0.8)
-        sns.heatmap(matrix, cmap='magma', ax=plt.gca(), norm=LogNorm())
-        wandb.log({name: wandb.Image(plt)})
+        sns.heatmap(matrix, cmap='magma', ax=plt.gca(), norm=LogNorm(vmin=sys.float_info.min, clip=True))
+        wandb.log({name: wandb.Image(plt)}, commit=False)
         plt.close(fig)
     except Exception as e:
         # Don't lose a run because plotting went wrong!

@@ -56,7 +56,7 @@ def load_bert_config_tf(config_path, override_vocab=None, chkpt_task="PRETRAININ
         num_layers=config_data["num_hidden_layers"],
         # TODO: Read the rest of these in from a GC config?
         embedding_serialization_vocab_steps=4,
-        batch_size=1,
+        micro_batch_size=1,
         popart_dtype="FLOAT",
         no_dropout=True,
         inference=True,
@@ -75,17 +75,17 @@ def run_models(config, proto, indices, positions, segments, output, popart_model
     popart_inputs = {
         indices: np.random.randint(
             0, config.vocab_length,
-            (config.batch_size * config.sequence_length)
+            (config.micro_batch_size * config.sequence_length)
         ).astype(np.uint32),
         positions: np.random.randint(
             0,
             config.sequence_length,
-            (config.batch_size * config.sequence_length),
+            (config.micro_batch_size * config.sequence_length),
         ).astype(np.uint32),
         segments: np.random.randint(
             0,
             2,
-            (config.batch_size * config.sequence_length),
+            (config.micro_batch_size * config.sequence_length),
         ).astype(np.uint32),
     }
 
@@ -98,13 +98,13 @@ def run_models(config, proto, indices, positions, segments, output, popart_model
 
     torch_inputs = {
         "input_ids": popart_inputs[indices].reshape(
-            config.batch_size, config.sequence_length
+            config.micro_batch_size, config.sequence_length
         ),
         "position_ids": popart_inputs[positions].reshape(
-            config.batch_size, config.sequence_length
+            config.micro_batch_size, config.sequence_length
         ),
         "token_type_ids": popart_inputs[segments].reshape(
-            config.batch_size, config.sequence_length
+            config.micro_batch_size, config.sequence_length
         ),
     }
 
@@ -147,7 +147,7 @@ def test_load_from_frozen(config_path, chkpt_path, chkpt_task, frozen_path, cust
 
     # Load Popart model
     sequence_info = popart.TensorInfo(
-        "UINT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.micro_batch_size * config.sequence_length])
 
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
@@ -197,7 +197,7 @@ def test_load_from_chkpt(config_path, chkpt_path, chkpt_task, custom_ops):
 
     # Load Popart model
     sequence_info = popart.TensorInfo(
-        "UINT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.micro_batch_size * config.sequence_length])
 
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)

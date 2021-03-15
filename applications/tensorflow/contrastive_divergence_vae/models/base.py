@@ -22,7 +22,7 @@ except ImportError:
     pass
 
 try:
-    from tensorflow.python.ipu.cross_replica_optimizer import CrossReplicaOptimizer
+    from tensorflow.python.ipu.optimizers import CrossReplicaOptimizer
 except ImportError:
     pass
 

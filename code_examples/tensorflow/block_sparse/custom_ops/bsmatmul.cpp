@@ -19,7 +19,7 @@ extern "C" {
 
 /// Check the Targeting the IPU from TensorFlow document for
 /// the API level required for the version of the Poplar SDK that you are using.
-int32_t custom_op_api_level = 2;
+int32_t custom_op_api_level = 4;
 
 static auto logger = createLogger();
 
@@ -413,29 +413,29 @@ poplar::program::Program BuildDDS(
 /// Meta data function sets properties of the forward op.
 void BuildDSD_metadata(
   std::vector<std::int64_t>& allocating_indices,
-  std::uint32_t& num_inplace,
+  std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
+  bool& is_hashable,
   std::uint32_t num_inputs) {
 
   logger->trace("BuildDSD_metadata()");
   // We only create RHS matrix now
   allocating_indices = {1};
-  num_inplace = 0;
   is_elementwise = false;
   is_stateless = true;
 }
 
 void BuildDDS_metadata(
   std::vector<std::int64_t>& allocating_indices,
-  std::uint32_t& num_inplace,
+  std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
+  bool& is_hashable,
   std::uint32_t num_inputs) {
 
   logger->trace("BuildDDS_metadata()");
   allocating_indices.clear();
-  num_inplace = 0;
   is_elementwise = false;
   is_stateless = true;
 }
@@ -565,27 +565,27 @@ poplar::Tensor BuildDSD_allocator(
 
 /// Meta data function sets properties of the gradient op.
 void BuildDSD_grad_metadata(std::vector<std::int64_t>& allocating_indices,
-                    std::uint32_t& num_inplace,
-                    bool& is_elementwise,
-                    bool& is_stateless,
-                    std::uint32_t num_inputs) {
+                            std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
+                            bool& is_elementwise,
+                            bool& is_stateless,
+                            bool& is_hashable,
+                            std::uint32_t num_inputs) {
 
   logger->trace("BuildDSD_grad_metadata()");
   allocating_indices.clear();
-  num_inplace = 0;
   is_elementwise = false;
   is_stateless = true;
 }
 
 void BuildDDS_grad_metadata(std::vector<std::int64_t>& allocating_indices,
-                    std::uint32_t& num_inplace,
+                    std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
                     bool& is_elementwise,
                     bool& is_stateless,
+                    bool& is_hashable,
                     std::uint32_t num_inputs) {
 
   logger->trace("BuildDDS_grad_metadata()");
   allocating_indices.clear();
-  num_inplace = 0;
   is_elementwise = false;
   is_stateless = true;
 }

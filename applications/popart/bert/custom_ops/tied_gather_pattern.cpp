@@ -28,6 +28,7 @@
 #include <popart/op/matmul.hpp>
 #include <popart/op/transpose.hpp>
 #include <popart/op/sgd1varupdate.hpp>
+#include <popart/op/collectives/replicatedallgather.hpp>
 
 #include <map>
 
@@ -81,14 +82,6 @@ using SerialiseSettings = popart::MatMulBaseOp::SerialiseSettings;
 namespace {
 bool produced_by_transpose(popart::Tensor *t) {
     return t->hasProducer() && t->getProducer()->isConvertibleTo<popart::TransposeBaseOp>();
-}
-
-bool is_remote_optimizer(popart::Ir &ir) {
-    return ir.getSessionOptions().optimizerStateTensorLocationSettings.location.isRemote();
-}
-
-bool is_adam_optimizer(popart::Ir &ir) {
-    return dynamic_cast<const popart::Adam *>(&ir.getOptimizer()) != nullptr;
 }
 }
 
@@ -332,11 +325,6 @@ public:
         auto gather_ops = find_all_consumers<TiedGatherOp>(root_weight);
 
         auto &ir = op->getIr(); 
-        if (!is_adam_optimizer(ir) && is_remote_optimizer(ir)) {
-            throw popart::error("CustomOps Error: TiedGatherPattern does not support Remote Optimizer State with Non-Adam based optimizers. "
-                                "Please disable it using 'patterns.enablePattern(\"TiedGatherPattern\", False)'");
-        }
-        bool is_remote_adam = is_adam_optimizer(ir) && is_remote_optimizer(ir);
 
         // Get all the Accumulate ops in the normal context
         std::vector<popart::AccumulateOp *> accumulate_ops;
@@ -349,35 +337,8 @@ public:
 
         for (size_t i = 0; i < update_ops.size(); i++) {
             auto var_update = update_ops[i];
-            popart::Tensor *accum;
 
-            if (is_remote_adam) {
-                // Need to do a little zizag when using Adam and Remote optimizer state. The optimizer will only operate on the 
-                // loaded tensor (<tensor_id>_l*). Graph will look like this:
-                //  Normal Fragment
-                //    Accl_g(accum, grad)
-                //  Accumulate Outer Fragment
-                //    Accl_1(accl1_l0, accum)
-                //    AdamUpdater(updater, accl1_l0)
-                //    AdamVarUpdate(updater)
-                //
-                // So we traverse consumers of 'accl1_l0' to find Accl_1Op then traverse producers to find Accl_g
-                auto updater = var_update->input->tensor(popart::VarUpdateWithUpdaterOp::getUpdaterInIndex());
-                auto updater_op = search_producers_for<popart::AdamUpdaterOp, popart::ExecutionContext::AccumulateOuterFragment>(updater);
-                if (!updater_op) {
-                    popart::logging::info("CustomOps Warning: Could not find outer AdamUpdaterOp for remote optimizer state via tensor {}.", updater->id);
-                    continue;
-                }
-                auto accl_1 = updater_op->input->tensor(popart::AdamUpdaterOp::getAccl1InIndex());
-                auto accl_1_op = search_producers_for<popart::AccumulateOp, popart::ExecutionContext::AccumulateOuterFragment>(accl_1);
-                if (!accl_1_op) {
-                    throw popart::error("CustomOps Error: Could not find outer AcclOp for remote optimizer state via tensor {}.", accl_1->id);
-                }
-                accum = accl_1_op->input->tensor(popart::VarUpdateWithUpdaterOp::getUpdaterInIndex());
-            } else {
-                accum = var_update->input->tensor(popart::VarUpdateWithUpdaterOp::getUpdaterInIndex());
-            }
-
+            auto accum = var_update->inTensor(popart::VarUpdateWithUpdaterOp::getUpdaterInIndex());
             // Accumulate Ops in the normal fragment are Gradient Accumulation.
             auto accl_op = search_producers_for<popart::AccumulateOp, popart::ExecutionContext::Normal>(accum, 10);
 

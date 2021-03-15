@@ -146,8 +146,7 @@ def autoregressive_self_attention(q, kt, v, blocksize2D=[16, 16]):
 
     # Softmax on block-sparse matrix
     # we specify the autoregressive "zero-upper-triangle" mask i.e. 1
-    # FIXME change inner_group_size to B*A
-    s = block_sparse_softmax(s, [B, A, S, S], sparsity_mask, blocksize2D, subblock_mask_type=[1] * B * A, inner_group_size=1)
+    s = block_sparse_softmax(s, [B, A, S, S], sparsity_mask, blocksize2D, subblock_mask_type=[1] * B * A, inner_group_size= B * A)
 
     # Pick-up the dense values (the API presumes the sparse matrix is always
     # on the right side in the matmul: z=(v.T @ s.T).T

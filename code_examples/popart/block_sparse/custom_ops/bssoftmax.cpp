@@ -104,9 +104,10 @@ static OpDefinition BsSoftmaxOpDef({});
 
 static OpCreator<BsSoftmaxOp> BsSoftmaxOpCreator(
     OpDefinitions({{CustomOperators::BsSoftmax, BsSoftmaxOpDef}}),
-    [](const OperatorIdentifier &_opid,
-       const Op::Settings &settings,
-       const Attributes &attr) -> std::unique_ptr<Op> {
+    [](const OpCreatorInfo &info) -> std::unique_ptr<Op> {
+       const OperatorIdentifier &opid = info.opid;
+       const Op::Settings &settings = info.settings;
+       const Attributes &attr = info.attributes;
 
       std::vector<int64_t> matrixDims = attr.getAttribute<Attributes::Ints>("matrixDims");
 
@@ -177,7 +178,7 @@ static OpCreator<BsSoftmaxOp> BsSoftmaxOpCreator(
 
       std::string debugStr = attr.getAttribute<Attributes::String>("debug_str", 
                                                                 "bs-softmax");
-      return std::unique_ptr<Op>(new BsSoftmaxOp(_opid, matrixDims,
+      return std::unique_ptr<Op>(new BsSoftmaxOp(opid, matrixDims,
                           blockSize, sparsity, groupSizes, 
                           subBlockMaskTypePerGroup, innerGroupSize, settings, debugStr));
     },

@@ -11,14 +11,20 @@
 /// Check the Targeting the IPU from TensorFlow document for
 /// the API level required for the version of the Poplar SDK that you are using.
 extern "C" {
-  int32_t custom_op_api_level = 2;
+  int32_t custom_op_api_level = 4;
 }
 
-// If an operation takes one or more tensors of the same shape,
-// and performs an expression on only corresponding elements in
-// the input tensors, and produces a tensor of the same shape,
-// then it is elementwise.
-extern "C" bool IsElementWise() { return true; }
+/// This is an elementwise operation, so we tell the framework using the
+/// Build_metadata function.
+extern "C" void Build_metadata(
+  std::vector<std::int64_t>& allocating_indices,
+  std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
+  bool& is_elementwise,
+  bool& is_stateless,
+  bool& is_hashable,
+  std::uint32_t num_inputs) {
+  is_elementwise = true;
+}
 
 // The Build function constructs the Poplar graph that computes the custom op.
 extern "C" poplar::program::Program Build(
@@ -103,7 +109,7 @@ extern "C" poplar::program::Program Build(
       graph.setTileMapping(v, tile);
 
       // Provide a bogus cycle count estimate for the profiler.
-      graph.setCycleEstimate(v, 1);
+      graph.setPerfEstimate(v, 1);
     }
   }
 

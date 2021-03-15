@@ -31,7 +31,7 @@ from utils.argparse import ReadYaml
 
 from tensorflow.python import ipu
 from tensorflow.python.ipu.scopes import ipu_scope
-from tensorflow.python.ipu.ipu_optimizer import CrossReplicaOptimizer
+from tensorflow.python.ipu.optimizers import CrossReplicaOptimizer
 from tensorflow.python.ops import array_ops
 import time
 

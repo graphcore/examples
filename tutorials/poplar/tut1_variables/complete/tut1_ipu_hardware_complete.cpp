@@ -97,7 +97,7 @@ int main() {
 
   // Copy host data via the write handle to v3 on the device
   std::vector<float> h3(4 * 4, 0);
-  engine.writeTensor("v3-write", h3.data());
+  engine.writeTensor("v3-write", h3.data(), h3.data() + h3.size());
 
   // Create a buffer to hold data to be fed via the data stream
   std::vector<int> inData(10 * 3);
@@ -113,7 +113,7 @@ int main() {
   std::cout << "Program complete\n";
 
   // Copy v3 back to the host via the read handle
-  engine.readTensor("v3-read", h3.data());
+  engine.readTensor("v3-read", h3.data(), h3.data() + h3.size());
 
   // Output the copied back values of v3
   std::cout << "\nh3 data:\n";

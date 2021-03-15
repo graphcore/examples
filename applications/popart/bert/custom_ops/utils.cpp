@@ -19,7 +19,10 @@
 #include <popart/op/matmul.hpp>
 #include <popart/op/dropout.hpp>
 #include <popart/op/mul.hpp>
+#include <popart/op/collectives/replicatedreducescatter.hpp>
+#include <popart/op/collectives/replicatedallgather.hpp>
 #include <popart/op/adamupdater.hpp>
+#include <popart/op/adamvarupdate.hpp>
 #include <popart/op/accumulate.hpp>
 #include <popart/popx/op/matmulx.hpp>
 #include <popart/logging.hpp>
@@ -45,6 +48,8 @@ static T *search_producers_for(popart::Tensor *t, int max_depth=-1) {
     if (op->input->n() > 1) {
         if (op->isConvertibleTo<popart::AdamUpdaterOp>()) {
             producer_index = popart::AdamUpdaterOp::getAccl1InIndex();
+        } else if (op->isConvertibleTo<popart::AdamVarUpdateOp>()) {
+            producer_index = popart::AdamVarUpdateOp::getUpdaterInIndex();
         } else if (op->isConvertibleTo<popart::AccumulateOp>()) {
             // Accumulates for M/V in Adam-based optimizers
             producer_index = popart::AccumulateOp::getUpdaterInIndex();
@@ -53,6 +58,12 @@ static T *search_producers_for(popart::Tensor *t, int max_depth=-1) {
         } else if (op->isConvertibleTo<popart::MulOp>()) {
             // Grad Unscaling for Adam-based optimizers
             producer_index = popart::MulOp::getArg0InIndex();
+        } else if (op->isConvertibleTo<popart::ReplicatedReduceScatterOp>()) {
+            // Replicated Tensor Sharding
+            producer_index = popart::ReplicatedReduceScatterOp::getInIndex();
+        } else if (op->isConvertibleTo<popart::ReplicatedAllGatherOp>()) {
+            // Replicated Tensor Sharding
+            producer_index = popart::ReplicatedAllGatherOp::getInIndex();
         } else {
             return nullptr;
         }
@@ -67,7 +78,7 @@ static T *search_producers_for(popart::Tensor *t, int max_depth=-1) {
         }
     }
 
-    return search_producers_for<T>(op->input->tensors()[producer_index], max_depth);
+    return search_producers_for<T, Ctx>(op->input->tensor(producer_index), max_depth);
 }
 
 // Finds the underlying variable by searching through producers.

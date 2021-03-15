@@ -51,8 +51,8 @@ def parse_params():
     parser.add_argument("--gradient-accumulation-count", type=int, default=8,
                         help="The number of times each pipeline stage will be executed")
     args = parser.parse_args()
-    if (args.pipelining or args.gradient_accumulation_count) and args.use_ipu:
-        print("Note: `--pipelining` and `--gradient-acumulation-count` are IPU"
+    if (args.pipelining or args.gradient_accumulation_count) and not args.use_ipu:
+        print("Note: `--pipelining` and `--gradient-accumulation-count` are IPU"
               " specific flags. See `--use-ipu`")
     if (args.gradient_accumulation_count and not args.pipelining):
         print("Note: `--gradient-accumulation-count` controls the number of"

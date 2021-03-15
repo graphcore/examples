@@ -165,7 +165,10 @@ if __name__ == "__main__":
         ipu_pooled = results['pooled_dense_grad'][0]
 
         # do pooling on the host for the dense grad
-        cpu_pooled = sparse_training.block_pool(unpooled, opts.block_size, opts.pooling_type)
+        if opts.block_size == 1:
+            cpu_pooled = unpooled
+        else:
+            cpu_pooled = sparse_training.block_pool(unpooled, opts.block_size, opts.pooling_type)
 
     if opts.dtype == 'fp16':
         atol = 1e-2

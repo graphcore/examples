@@ -11,19 +11,19 @@ extern "C" {
 
 /// We are using a stateless op which requires
 /// API level 1 or higher.
-int32_t custom_op_api_level = 2;
+int32_t custom_op_api_level = 4;
 
 /// Meta data function sets properties of the forward op.
 void Build_metadata(std::vector<std::int64_t>& allocating_indices,
-                    std::uint32_t& num_inplace,
+                    std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
                     bool& is_elementwise,
                     bool& is_stateless,
+                    bool& is_hashable,
                     std::uint32_t num_inputs) {
   // lhs, metainfo, and nzvalues need special allocators but the current
   // API doesn't allow extra compile time arguments to be passed so we can't
   // use them. The workaround is a separate allocator op.
   allocating_indices = {0, 1, 2};
-  num_inplace = 0;
   is_elementwise = false;
   is_stateless = true;
 }
@@ -148,16 +148,19 @@ poplar::Tensor Build_allocator(
   if (operand > 2) {
     throw std::logic_error("Unexpected operand index in sparse_matmul allocator: " + operand);
   }
+
+  // Unreachable
+  return poplar::Tensor();
 }
 
 /// Meta data function sets properties of the gradient op.
 void Build_grad_metadata(std::vector<std::int64_t>& allocating_indices,
-                    std::uint32_t& num_inplace,
+                    std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
                     bool& is_elementwise,
                     bool& is_stateless,
+                    bool& is_hashable,
                     std::uint32_t num_inputs) {
   allocating_indices.clear();
-  num_inplace = 0;
   is_elementwise = false;
   is_stateless = true;
 }
@@ -222,7 +225,7 @@ poplar::program::Program Build_grad(
   auto [ tmp, inSplits, outSplits ] = fullyConnectedDenseGradWSerialSplits(
     graph, inputsTransposed.elementType(), params, sparse_options, getSparseCache());
 
-  // Compute the dense grad matmul, in a serialized fashio if needed
+  // Compute the dense grad matmul, in a serialized fashion if needed
   auto gradOfLossWrtWeights = serializedMatmul(graph, conditionalProg,
                                                inputsTransposed, inflowingGrad,
                                                inSplits, outSplits,
@@ -233,7 +236,7 @@ poplar::program::Program Build_grad(
     pool(graph, poolingType, blockSize, gradOfLossWrtWeights,
          conditionalProg, debug_prefix + "/dense_matmul_gradW_pooling");
 
-  // Make sure the dense grad don't remain live when not needed
+  // Make sure the dense grad doesn't remain live when not needed
   auto killDenseGrad = poplar::program::Sequence();
   killDenseGrad.add(poplar::program::WriteUndef(pooledGradsWrtWeights));
 

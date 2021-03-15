@@ -20,6 +20,7 @@ from logging import getLogger
 from functools import reduce
 
 from .dataset import DataSet
+from .data_sampler import DistributedDataSampler, SampleGenerator
 
 logger = getLogger(__name__)
 
@@ -65,6 +66,7 @@ class BinaryDataLoader(object):
                  batch_size=1,
                  dtype=np.int32,
                  shuffle=True,
+                 seed=1984,
                  duplication_factor=1,
                  start_data_at_epoch=0):
         self.files = input_files
@@ -77,6 +79,7 @@ class BinaryDataLoader(object):
         self.file_duplication_index = [start_data_at_epoch % duplication_factor] * len(self.files)
         self.duplication_factor = duplication_factor
         self.shuffle = shuffle
+        self._rng = np.random.default_rng(seed)
         self.len = None
 
     def samples_in_file(self, filename):
@@ -97,7 +100,7 @@ class BinaryDataLoader(object):
         self.file_index = 0
         self.data_index = 0
         if self.shuffle:
-            random.shuffle(self.files)
+            self._rng.shuffle(self.files)
         self.load_data()
         return self
 
@@ -132,7 +135,7 @@ class BinaryDataLoader(object):
             raise StopIteration
         self.data = self.load_file()
         if self.shuffle:
-            np.random.shuffle(self.data)
+            self._rng.shuffle(self.data)
 
     def load_file(self):
         filename = self.files[self.file_index]
@@ -188,7 +191,10 @@ class CachedDataLoader(BinaryDataLoader):
 
     def load_data(self):
         if self.cache_index >= len(self.data_cache):
-            self.load_cache()
+            if self.shuffle or self.duplication_factor > 1:
+                self.load_cache()
+            else:
+                self.cache_index = 0
         self.data = self.data_cache[self.cache_index]
         self.cache_index += 1
 
@@ -202,7 +208,7 @@ class CachedDataLoader(BinaryDataLoader):
                 data.append(self.load_file())
             data = np.concatenate(data, axis=0)
             if self.shuffle:
-                np.random.shuffle(data)
+                self._rng.shuffle(data)
             self.data_cache.append(data)
             self.file_index = 0
 
@@ -214,11 +220,12 @@ class GeneratedDataLoader(BinaryDataLoader):
     """
     def __init__(self,
                  *args,
+                 length=1,
                  generated_ranges=None,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.generated_ranges = generated_ranges
-        self.len = 1
+        self.len = length
 
         if self.generated_ranges is None:
             raise RuntimeError("keyword argument 'generated_ranges' must not be None")
@@ -273,46 +280,57 @@ class BertDataTransform(object):
         return items
 
 
-def get_bert_dataset(tensor_shapes,
-                     input_files,
-                     sequence_length,
-                     mask_tokens,
-                     vocab_length,
-                     batch_size,
-                     batches_per_step,
-                     replication_factor=1,
-                     accumulation_factor=1,
-                     duplication_factor=1,
-                     shuffle=True,
-                     generated_data=False,
-                     epochs_to_cache=0,
-                     start_data_at_epoch=0):
-    if len(input_files) == 0 and not generated_data:
+def get_bert_dataset(args,
+                     tensor_shapes):
+    generated_data = args.generated_data or args.synthetic_data
+    samples_per_step = args.micro_batch_size * args.batches_per_step * args.replication_factor * args.gradient_accumulation_factor
+
+    if not generated_data and len(args.input_files) == 0:
         raise ValueError("No input files were provided for the BERT dataset.")
+
     data_loader_args = dict(
-        input_files=input_files,
-        sample_sizes=data_file_format(sequence_length, mask_tokens),
-        batch_size=batch_size * batches_per_step * replication_factor * accumulation_factor,
-        duplication_factor=duplication_factor,
-        start_data_at_epoch=start_data_at_epoch,
-        shuffle=shuffle
-    )
+        input_files=args.input_files,
+        sample_sizes=data_file_format(args.sequence_length, args.mask_tokens),
+        batch_size=samples_per_step,
+        duplication_factor=args.duplication_factor,
+        start_data_at_epoch=args.continue_training_from_epoch,
+        shuffle=args.shuffle,
+        seed=args.seed)
+    tfrecord_input = args.input_files[0].lower().endswith('tfrecord') if len(args.input_files) > 0 else False
     if generated_data:
+        length = 1
+        if args.use_popdist:
+            length = args.popdist_size
         dl = GeneratedDataLoader(**data_loader_args,
-                                 generated_ranges=data_ranges(sequence_length, mask_tokens, vocab_length))
-    elif epochs_to_cache > 0:
+                                 length=length,
+                                 generated_ranges=data_ranges(args.sequence_length, args.mask_tokens, args.vocab_length))
+    elif tfrecord_input:
+        from .tfrecord_dataset import PretrainingTfRecordDataLoader
+        dl = PretrainingTfRecordDataLoader(args.input_files,
+                                           args.sequence_length,
+                                           args.mask_tokens,
+                                           samples_per_step)
+    elif args.epochs_to_cache > 0:
         dl = CachedDataLoader(**data_loader_args,
-                              epochs_to_cache=epochs_to_cache)
+                              epochs_to_cache=args.epochs_to_cache)
     else:
         dl = BinaryDataLoader(**data_loader_args)
+
+    if args.use_popdist:
+        sampler = DistributedDataSampler(
+            dl,
+            popdist_size=args.popdist_size,
+            popdist_rank=args.popdist_rank)
+        dl = SampleGenerator(dl, sampler)
+
     if len(dl) == 0:
         raise ValueError("Insufficient data for training parameters.")
 
-    bert_ds = BertDataTransform(dl, vocab_length, mask_tokens)
+    bert_ds = BertDataTransform(dl, args.vocab_length, args.mask_tokens)
     ds = DataSet(bert_ds,
                  tensor_shapes,
-                 batches_per_step=batches_per_step,
-                 replication_factor=replication_factor,
-                 accumulation_factor=accumulation_factor)
+                 batches_per_step=args.batches_per_step,
+                 replication_factor=args.replication_factor,
+                 accumulation_factor=args.gradient_accumulation_factor)
 
     return ds

@@ -50,8 +50,6 @@
     "loss_scaling": 16.0,
     "velocity_scaling": 16.0,
     "momentum": 0.984375,
-    "pipeline_lr_scaling": false,
-    "pipeline_momentum_scaling": false,
     "stochastic_rounding": true,
     "gradient_accumulation_factor": 128,
     "batches_per_step": 64,

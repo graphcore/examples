@@ -31,7 +31,7 @@ class LearningRate:
         self._cur_lr = self.init_lr
         self.lr_schedule_by_step = lr_schedule_by_step
 
-    def feed_dict_lr(self, step):
+    def get_at_step(self, step):
         diffs = {
             step - int(k): int(k)
             for k in self.lr_schedule_by_step.keys()

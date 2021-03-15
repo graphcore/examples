@@ -48,10 +48,10 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-TensorFlow is not included in the requirements. If running on IPU hardware install the Graphcore tensorflow wheel as follows:
+TensorFlow is not included in the requirements. If running on IPU hardware install the Graphcore tensorflow wheel from the Poplar SDK as follows:
 
 ```
-pip install path/to/gc_tensorflow-<version>-cp36-cp36m-linux_x86_64.whl
+pip install path/to/tensorflow-<version>-cp36-cp36m-linux_x86_64.whl
 ```
 
 Otherwise install standard TensorFlow 1.14.0.

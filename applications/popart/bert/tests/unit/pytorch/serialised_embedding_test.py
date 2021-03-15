@@ -74,7 +74,7 @@ def test_split_embedding(mode, weight_transposed, phase, custom_ops):
     np.random.seed(1984)
 
     config = BertConfig(vocab_length=4864,
-                        batch_size=1,
+                        micro_batch_size=1,
                         hidden_size=4096,
                         sequence_length=128,
                         popart_dtype="FLOAT",
@@ -86,7 +86,7 @@ def test_split_embedding(mode, weight_transposed, phase, custom_ops):
                                                                weight_transposed,
                                                                is_bwd=(phase == 'bwd'))
 
-    inputs = [t.reshape(config.batch_size, config.sequence_length).astype(np.int32) for t in data]
+    inputs = [t.reshape(config.micro_batch_size, config.sequence_length).astype(np.int32) for t in data]
 
     torch_output, torch_model = pytorch_result_and_model(config,
                                                          mode,
@@ -120,7 +120,7 @@ def popart_result_and_model(config, mode, weight_transposed, is_bwd=False):
     if mode == ExecutionMode.PHASED:
         builder = popart.Builder()
 
-        indices_len = config.batch_size * config.sequence_length
+        indices_len = config.micro_batch_size * config.sequence_length
         sequence_info = popart.TensorInfo("UINT32", [indices_len])
         indices = builder.addInputTensor(sequence_info)
         data = {indices: np.random.randint(0, config.vocab_length, (indices_len)).astype(np.uint32)}
@@ -144,7 +144,7 @@ def popart_result_and_model(config, mode, weight_transposed, is_bwd=False):
         popart_model = get_model(config, mode, block="embedding", initializers={})
         builder = popart_model.builder
 
-        indices_len = config.batch_size * config.sequence_length
+        indices_len = config.micro_batch_size * config.sequence_length
         sequence_info = popart.TensorInfo("UINT32", [indices_len])
         indices = builder.addInputTensor(sequence_info)
         data = {indices: np.random.randint(0, config.vocab_length, (indices_len)).astype(np.uint32)}

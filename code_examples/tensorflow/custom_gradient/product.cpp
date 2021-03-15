@@ -8,22 +8,25 @@
 /// Check the Targeting the IPU from TensorFlow document for
 /// the API level required for the version of the Poplar SDK that you are using.
 extern "C" {
-  int32_t custom_op_api_level = 2;
+  int32_t custom_op_api_level = 4;
 }
 
-/// Meta data function sets properties of the forward op.
+/// Set the properties of the forward op.
 extern "C"
-void Build_metadata(std::vector<std::int64_t>& allocating_indices,
-                    std::uint32_t& num_inplace,
-                    bool& is_elementwise,
-                    bool& is_stateless,
-                    std::uint32_t num_inputs) {
-  allocating_indices.clear();
-  num_inplace = 0;
-  is_elementwise = false;
-  is_stateless = false;
+void Build_metadata(
+  std::vector<std::int64_t>& allocating_indices,
+  std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
+  bool& is_elementwise,
+  bool& is_stateless,
+  bool& is_hashable,
+  std::uint32_t num_inputs) {
+
+  // The forward op is just a function of its inputs (no internal state)
+  // so it can be marked as stateless.
+  is_stateless = true;
 }
 
+/// Define the forward op
 extern "C" poplar::program::Program Build(
   poplar::Graph& graph, const std::vector<poplar::Tensor>& inputs,
   std::vector<poplar::Tensor>& outputs, const std::string& debug_prefix) {
@@ -50,22 +53,24 @@ extern "C" poplar::program::Program Build(
   return prog;
 }
 
-/// The gradient op requires its own meta data. In this case we mark the op
-/// as stateless so that only one instance of the op is compiled even when
+/// The gradient op requires its own metadata. Since it does not have any
+/// internal state we can mark the op as stateless.
+/// For stateless ops only one instance of the op is compiled even when
 /// we ask for the gradient multiple times (e.g. we use tf.gradients() in
 /// the python code).
 extern "C"
-void Build_grad_metadata(std::vector<std::int64_t>& allocating_indices,
-                    std::uint32_t& num_inplace,
-                    bool& is_elementwise,
-                    bool& is_stateless,
-                    std::uint32_t num_inputs) {
-  allocating_indices.clear();
-  num_inplace = 0;
-  is_elementwise = false;
+void Build_grad_metadata(
+  std::vector<std::int64_t>& allocating_indices,
+  std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
+  bool& is_elementwise,
+  bool& is_stateless,
+  bool& is_hashable,
+  std::uint32_t num_inputs) {
+
   is_stateless = true;
 }
 
+/// Define the gradient op.
 extern "C"
 poplar::program::Program Build_grad(
     poplar::Graph& graph, int input_grad_index,

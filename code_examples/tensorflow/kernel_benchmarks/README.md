@@ -2,6 +2,10 @@
 
 This readme describes how to run the benchmarks for models with a single type of layer and synthetic data in training and inference.
 
+## Benchmarking
+
+To reproduce the published Mk2 throughput benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md) 
+
 ## Overview
 
 Each program creates a model with only one type of layer for benchmarking.
@@ -43,7 +47,7 @@ The structure of the repo is as follows:
 
   Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
   Make sure to source the `enable.sh` script for poplar, and activate a Python
-  virtualenv with gc_tensorflow installed.
+  virtualenv with the tensorflow-1 wheel from the Poplar SDK installed.
 
 ### Run the programs
 

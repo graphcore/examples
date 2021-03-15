@@ -36,6 +36,9 @@ def add_arguments(parser):
                        help="Log statistics every N mini-batches (if number of iteration specified)")
     group.add_argument('--no-logs', action='store_true',
                        help="Don't create any logs")
+    group.add_argument('--log-all-instances', type=bool,
+                       help="""Allow all instances to log results.
+                             By default only instance 0 creates logs.""")
     return parser
 
 
@@ -67,7 +70,12 @@ def set_defaults(opts):
     name += "_{}".format(rnd_str)
     opts['summary_str'] += " Name: {name}\n"
 
-    if not opts['no_logs']:
+    # only instance 0 creates a log dir and logs to disk
+    # a log dir is also created when using validation.py (aka opts['training']==False)
+    # using train.py with --restore-path logs training results into that folder
+    if ((not opts['no_logs']) and
+            (not opts['restore_path'] or not opts.get('training')) and
+            (opts['distributed_worker_index'] == 0 or opts['log_all_instances'])):
         opts["logs_path"] = os.path.join(opts["log_dir"], '{}'.format(name))
         opts["checkpoint_path"] = os.path.join(opts["log_dir"], '{}/ckpt'.format(name))
 
@@ -77,6 +85,10 @@ def set_defaults(opts):
         opts['summary_str'] += " Saving to {logs_path}\n"
         with open(os.path.join(opts["logs_path"], 'arguments.json'), 'w') as fp:
             json.dump(opts, fp, sort_keys=True, indent=4, separators=(',', ': '))
+    elif (opts['restore_path'] and
+            (opts['distributed_worker_index'] == 0 or opts['log_all_instances'])):
+        opts['logs_path'] = opts['restore_path']
+        opts['checkpoint_path'] = os.path.join(opts['logs_path'], 'ckpt')
     else:
         opts["logs_path"] = None
         opts["log_dir"] = None
@@ -89,13 +101,15 @@ def set_defaults(opts):
 
 def print_to_file_and_screen(string, opts):
     print(string)
-    if opts["logs_path"]:
+    if (opts["logs_path"] and
+            (opts['distributed_worker_index'] == 0 or opts['log_all_instances'])):
         with open(os.path.join(opts["logs_path"], 'log.txt'), "a+") as f:
             f.write(str(string) + '\n')
 
 
 def write_to_csv(d, write_header, training, opts):
-    if opts["logs_path"]:
+    if (opts["logs_path"] and
+            (opts['distributed_worker_index'] == 0 or opts['log_all_instances'])):
         filename = 'training.csv' if training else 'validation.csv'
         with open(os.path.join(opts['logs_path'], filename), 'a+') as f:
             w = csv.DictWriter(f, d.keys())

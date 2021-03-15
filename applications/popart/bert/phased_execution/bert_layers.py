@@ -36,16 +36,18 @@ class Attention(Block):
                  dropout_prob,
                  attn_dropout,
                  attn_dropout_prob,
-                 batch_size,
+                 micro_batch_size,
                  sequence_length,
                  dtype,
                  task,
                  num_mask_tokens,
                  split_qkv = False,
+                 attention_bias = False,
                  residual=True,
                  prefetch_masks=True,
                  use_default_mem_proportion=True,
                  mask=None,
+                 increment_scope=True,
                  **kwargs):
         if split_qkv:
             params = [
@@ -60,6 +62,20 @@ class Attention(Block):
                           value=None),
                 Parameter(name='Out', shape=[hidden_size, input_size], value=None)
             ]
+            if attention_bias:
+                bias_params = [
+                    Parameter(name='Q_Bias',
+                              shape=[hidden_size],
+                              value=None),
+                    Parameter(name='K_Bias',
+                              shape=[hidden_size],
+                              value=None),
+                    Parameter(name='V_Bias',
+                              shape=[hidden_size],
+                              value=None),
+                    Parameter(name='Out_Bias', shape=[hidden_size], value=None)
+                ]
+                params = params + bias_params
         else:
             params = [
                 Parameter(name='QKV',
@@ -67,10 +83,18 @@ class Attention(Block):
                           value=None),
                 Parameter(name='Out', shape=[hidden_size, input_size], value=None)
             ]
+            if attention_bias:
+                bias_params = [
+                    Parameter(name='QKV_Bias',
+                              shape=[3 * hidden_size],
+                              value=None),
+                    Parameter(name='Out_Bias', shape=[hidden_size], value=None)
+                ]
+                params = params + bias_params
         scope_provider = kwargs['scope_provider']
         super(Attention, self).__init__(params=params,
                                         scope=scope_provider.get_scope(
-                                            name, 'next'),
+                                            name, 'next' if increment_scope else 'prev'),
                                         dtype=dtype,
                                         **kwargs)
         self.num_heads = num_heads
@@ -79,7 +103,8 @@ class Attention(Block):
         self.available_memory_proportion = available_memory_proportion
         self.use_default_mem_proportion = use_default_mem_proportion
         self.split_qkv = split_qkv
-        self.batch_size = batch_size
+        self.attention_bias = attention_bias
+        self.micro_batch_size = micro_batch_size
         self.seq_len = sequence_length
         if hidden_size % num_heads != 0:
             raise ValueError('Hidden size must be a multiple of num_heads')
@@ -160,7 +185,7 @@ class Attention(Block):
             ])
             final_mask = self.builder.reshape_const(
                 self.builder.aiOnnx, [final_mask],
-                [self.batch_size, 1, 1, self.seq_len])
+                [self.micro_batch_size, 1, 1, self.seq_len])
 
             # TODO: This shouldn't be needed. No Variables on this path.
             final_mask = self.builder.customOp(
@@ -184,16 +209,16 @@ class Attention(Block):
 
         def extract_heads(tensor, transpose=False):
             comb_shape = [
-                self.batch_size, self.seq_len, self.num_heads, self.qkv_length
+                self.micro_batch_size, self.seq_len, self.num_heads, self.qkv_length
             ]
             tensor = self.builder.reshape_const(self.builder.aiOnnx, [tensor],
                                                 comb_shape)
             perm = [0, 2, 1, 3] if not transpose else [0, 2, 3, 1]
             return self.builder.aiOnnx.transpose([tensor], perm=perm)
 
-        # q = [batch_size * seq_len, hidden_size]
-        # kt = [hidden_size, batch_size * seq_len]
-        # v = [batch_size * seq_len, hidden_size]
+        # q = [micro_batch_size * seq_len, hidden_size]
+        # kt = [hidden_size, micro_batch_size * seq_len]
+        # v = [micro_batch_size * seq_len, hidden_size]
         q, kt, v = [extract_heads(t, i == 1) for i, t in enumerate(split_qkv)]
 
         # Attention calculation
@@ -214,21 +239,21 @@ class Attention(Block):
             scores = self.builder.aiOnnx.softmax([scores], axis=-1)
             scores = self.attn_dropout(scores)
 
-            # x[batch_size, attention_heads, sequence_length, sequence_length] * v[batch_size, attention_heads, sequence_length, qkv_length]
+            # x[micro_batch_size, attention_heads, sequence_length, sequence_length] * v[micro_batch_size, attention_heads, sequence_length, qkv_length]
             z = self.builder.aiOnnx.matmul([scores, v])
             if not self.use_default_mem_proportion:
                 self.builder.setAvailableMemoryProportion(
                     z, self.available_memory_proportion)
 
-            # [batch_size, attention_heads, sequence_length, qkv_length] -> [batch_size, sequence_length, attention_heads, qkv_length]
+            # [micro_batch_size, attention_heads, sequence_length, qkv_length] -> [micro_batch_size, sequence_length, attention_heads, qkv_length]
             z = self.builder.aiOnnx.transpose([z], perm=[0, 2, 1, 3])
-            # [batch_size, sequence_length, attention_heads, qkv_length] -> [batch_size*sequence_length, attention_heads * qkv_length]
+            # [micro_batch_size, sequence_length, attention_heads, qkv_length] -> [micro_batch_size*sequence_length, attention_heads * qkv_length]
             z = self.builder.reshape_const(
                 self.builder.aiOnnx, [z],
-                [self.seq_len * self.batch_size, self.hidden_size])
+                [self.seq_len * self.micro_batch_size, self.hidden_size])
         return z
 
-    def __qkv_mul_subgraph(self, input_x, wt):
+    def __qkv_mul_subgraph(self, input_x, wt, b=None):
 
         x = self.builder.aiOnnx.matmul([input_x, wt])
         if self.serialize_matmul:
@@ -236,6 +261,8 @@ class Attention(Block):
         if not self.use_default_mem_proportion:
             self.builder.setAvailableMemoryProportion(
                 x, self.available_memory_proportion)
+        if self.attention_bias:
+            x = self.builder.aiOnnx.add([x, b])
         mul = x
         perm = [1, 0]
         t = self.builder.aiOnnx.transpose([mul], perm=perm)
@@ -244,18 +271,30 @@ class Attention(Block):
     def forward(self, input_x: str, masks: str):
         # Transform input -> query, keys and value
         if self.split_qkv:
-            q, k, v, projection_weight = [
-                param.popart_tensor for param in self.params
-            ]
-            qt = self.__qkv_mul_subgraph(input_x, q)
-            kt = self.__qkv_mul_subgraph(input_x, k)
-            vt = self.__qkv_mul_subgraph(input_x, v)
+            if self.attention_bias:
+                q, k, v, projection_weight, q_bias, k_bias, v_bias, projection_bias = [
+                    param.popart_tensor for param in self.params
+                ]
+                qt = self.__qkv_mul_subgraph(input_x, q, q_bias)
+                kt = self.__qkv_mul_subgraph(input_x, k, k_bias)
+                vt = self.__qkv_mul_subgraph(input_x, v, v_bias)
+            else:
+                q, k, v, projection_weight = [
+                                            param.popart_tensor for param in self.params
+                                            ]
+                qt = self.__qkv_mul_subgraph(input_x, q)
+                kt = self.__qkv_mul_subgraph(input_x, k)
+                vt = self.__qkv_mul_subgraph(input_x, v)
             qkv = [qt, kt, vt]
         else:
-            qkv_weight, projection_weight = [
-                param.popart_tensor for param in self.params
-            ]
-
+            if self.attention_bias:
+                qkv_weight, projection_weight, qkv_bias, projection_bias = [
+                    param.popart_tensor for param in self.params
+                ]
+            else:
+                qkv_weight, projection_weight = [
+                    param.popart_tensor for param in self.params
+                ]
             qkv = self.builder.aiOnnx.matmul([input_x, qkv_weight],
                                              'DenseTransform')
             if self.serialize_matmul:
@@ -263,6 +302,9 @@ class Attention(Block):
             if not self.use_default_mem_proportion:
                 self.builder.setAvailableMemoryProportion(
                     qkv, self.available_memory_proportion)
+            if self.attention_bias:
+                qkv = self.builder.aiOnnx.add([qkv, qkv_bias],
+                                              'DenseTransformBias')
 
         # Self-attention
         x = self.dotproduct_attention(qkv, masks)
@@ -272,6 +314,8 @@ class Attention(Block):
         if not self.use_default_mem_proportion:
             self.builder.setAvailableMemoryProportion(
                 x, self.available_memory_proportion)
+        if self.attention_bias:
+            x = self.builder.aiOnnx.add([x, projection_bias], 'ProjectionBias')
 
         if not self.residual:
             return x
@@ -301,10 +345,7 @@ class FeedForward(Block):
                  **kwargs):
         scope_provider = kwargs['scope_provider']
         self.apply_dropout = dropout
-        if increment_scope:
-            scope = scope_provider.get_scope(name, 'next')
-        else:
-            scope = scope_provider.get_scope(name, 'prev')
+        scope = scope_provider.get_scope(name, 'next' if increment_scope else 'prev')
         super(FeedForward, self).__init__(params=[], scope=scope, **kwargs)
         self.residual = residual
 
@@ -360,7 +401,7 @@ class MaskLM(Block):
                  vocab_size,
                  hidden_size,
                  sequence_length,
-                 batch_size,
+                 micro_batch_size,
                  num_mask_tokens,
                  projection_weight,
                  activation,
@@ -375,7 +416,7 @@ class MaskLM(Block):
                                      **kwargs)
         self.sequence_len = sequence_length
         self.hidden_size = hidden_size
-        self.batch_size = batch_size
+        self.micro_batch_size = micro_batch_size
         self.vocab_length = vocab_size
         self.num_mask_tokens = num_mask_tokens
         self.slice_input = slice_input
@@ -406,7 +447,7 @@ class MaskLM(Block):
         if self.slice_input:
             x = self.builder.reshape_const(
                 self.builder.aiOnnx, [x_in],
-                [self.batch_size, self.sequence_len, self.hidden_size])
+                [self.micro_batch_size, self.sequence_len, self.hidden_size])
 
             x = self.builder.aiOnnxOpset9.slice([x],
                                                 axes=[1],
@@ -414,7 +455,7 @@ class MaskLM(Block):
                                                 ends=[self.num_mask_tokens])
 
             x = self.builder.reshape_const(self.builder.aiOnnx, [x],
-                                           [self.batch_size * self.num_mask_tokens, self.hidden_size])
+                                           [self.micro_batch_size * self.num_mask_tokens, self.hidden_size])
             if not self.no_cls_layer:
                 x = self.pred_head_transform(x)
                 x = self.norm(x)
@@ -425,19 +466,19 @@ class MaskLM(Block):
         x = self.decoder(x)
         x = self.builder.reshape_const(
             self.builder.aiOnnx, [x],
-            [self.batch_size, self.num_mask_tokens, self.vocab_length])
+            [self.micro_batch_size, self.num_mask_tokens, self.vocab_length])
         return x
 
 
 class NextSentencePred(Block):
-    def __init__(self, name, batch_size, sequence_length, hidden_size, cls_token_pos,
+    def __init__(self, name, micro_batch_size, sequence_length, hidden_size, cls_token_pos,
                  **kwargs):
         scope_provider = kwargs['scope_provider']
         additional_scopes = [kwargs['builder'].outlineAttributes({'outline_scope': 'NSP'})]
         scope = scope_provider.get_scope(name, execution_phase='next', additional_scopes=additional_scopes)
         params = []
         super().__init__(scope, params, **kwargs)
-        self.batch_size = batch_size
+        self.micro_batch_size = micro_batch_size
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
         self.cls_token_pos = cls_token_pos
@@ -459,7 +500,7 @@ class NextSentencePred(Block):
 
     def forward(self, x_in):
         x = self.builder.reshape_const(self.builder.aiOnnx, [x_in],
-                                       [self.batch_size, self.sequence_length, self.hidden_size])
+                                       [self.micro_batch_size, self.sequence_length, self.hidden_size])
 
         x = self.builder.aiOnnxOpset9.slice([x],
                                             axes=[1],
@@ -468,19 +509,19 @@ class NextSentencePred(Block):
         # This reshape is doing the job of a squeeze, but allows for in-place
         # operation.
         x = self.builder.reshape_const(self.builder.aiOnnx, [x],
-                                       [self.batch_size, self.hidden_size])
+                                       [self.micro_batch_size, self.hidden_size])
         x = self.pooler(x)
         return self.classifier(x)
 
 
 class SquadProjection(Block):
-    def __init__(self, name, batch_size, sequence_length, hidden_size,
+    def __init__(self, name, micro_batch_size, sequence_length, hidden_size,
                  **kwargs):
         scope_provider = kwargs['scope_provider']
         scope = scope_provider.get_scope(name, execution_phase='next')
         params = []
         super().__init__(scope, params, **kwargs)
-        self.batch_size = batch_size
+        self.micro_batch_size = micro_batch_size
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
         classifier_scope = scope_provider.get_scope(name='', execution_phase=self.scope.execution_phase)
@@ -501,11 +542,11 @@ class SquadProjection(Block):
 
         start_logits = self.builder.reshape_const(
             self.builder.aiOnnx, [start_logits],
-            [self.batch_size, self.sequence_length],
+            [self.micro_batch_size, self.sequence_length],
             debugPrefix="answer_start")
         end_logits = self.builder.reshape_const(
             self.builder.aiOnnx, [end_logits],
-            [self.batch_size, self.sequence_length],
+            [self.micro_batch_size, self.sequence_length],
             debugPrefix="answer_end")
 
         return start_logits, end_logits

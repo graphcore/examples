@@ -1,5 +1,5 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-
+#
 # Copyright 1999-present Alibaba Group Holding Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -392,17 +392,17 @@ def get_learning_rate_from_file(filename, epoch):
     return learning_rate
 
 
-def setup_logger(log_level, logger):
+def setup_logger(log_level, logger, name='din_log.txt'):
     # Define a root config with a format which is simpler for console use
     logging.basicConfig(
         level=log_level,
-        filename='din_log.txt',
+        filename=name,
         filemode='w',
         format='%(asctime)s %(name)s %(levelname)s %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S')
     # Define a specific Handler for this file that removes the root name.
     console = logging.StreamHandler()
-    th = handlers.TimedRotatingFileHandler(filename='din_log.txt', when='D', backupCount=3, encoding='utf-8')
+    th = handlers.TimedRotatingFileHandler(filename=name, when='D', backupCount=3, encoding='utf-8')
     console.setLevel(log_level)
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s',
                                   '%Y-%m-%d %H:%M:%S')

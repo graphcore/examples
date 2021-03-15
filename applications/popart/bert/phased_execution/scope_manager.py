@@ -80,8 +80,9 @@ class ScopeProvider():
             self.scope_increment = 1
             start_phase = -1
         else:
-            self.scope_increment = 2
-            start_phase = -2
+            self.scope_increment = 4
+            start_phase = -4
+
         self.prev_phase = start_phase
         self.phased_execution_type = phased_execution_type
 

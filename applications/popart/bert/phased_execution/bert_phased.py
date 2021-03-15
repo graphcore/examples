@@ -53,7 +53,7 @@ class BertEncoder(nn.Block):
             'dropout_prob': config.dropout_prob,
             'attn_dropout': not config.no_attn_dropout,
             'attn_dropout_prob': config.attn_dropout_prob,
-            'batch_size': config.batch_size,
+            'micro_batch_size': config.micro_batch_size,
             'sequence_length': config.sequence_length,
             'task': config.task,
             'num_mask_tokens': config.mask_tokens,
@@ -81,11 +81,15 @@ class BertEncoder(nn.Block):
                                             **kwargs)))
         else:
             for i in range(config.num_layers):
+                layers_per_phase = config.layers_per_phase
+                increment_scope = False if (i % layers_per_phase) else True
                 blks.append(
                     (Attention(f'Layer{i}/Attention',
                                input_size=config.hidden_size,
                                split_qkv=config.split_qkv,
+                               attention_bias=config.attention_bias,
                                **attention_params,
+                               increment_scope=increment_scope,
                                **kwargs),
                      FeedForward(f'Layer{i}/FF',
                                  config.hidden_size,
@@ -102,7 +106,7 @@ class BertEncoder(nn.Block):
         self.total_execution_phases = self.total_phases()
 
     def forward(self, indices, positions, segments, masks=None):
-        # Size of act = [batch_size * seq_len, hidden_size]
+        # Size of act = [micro_batch_size * seq_len, hidden_size]
         act = self.embedding(indices, positions, segments)
         for i, (attention_blk, ffwd_blk) in enumerate(self.blks):
             mask_phase = 0 if self.config.phased_execution_type == 'SINGLE' else i % 2
@@ -139,7 +143,7 @@ class BertModel(nn.Block):
                     config.vocab_length,
                     config.hidden_size,
                     config.sequence_length,
-                    config.batch_size,
+                    config.micro_batch_size,
                     config.mask_tokens,
                     projection_weights,
                     config.activation_type,
@@ -155,7 +159,7 @@ class BertModel(nn.Block):
                                   config.vocab_length,
                                   config.hidden_size,
                                   config.sequence_length,
-                                  config.batch_size,
+                                  config.micro_batch_size,
                                   config.mask_tokens,
                                   projection_weights,
                                   config.activation_type,
@@ -168,7 +172,7 @@ class BertModel(nn.Block):
 
         if config.task in ("NSP", "PRETRAINING"):
             self.nsp = NextSentencePred('NSP',
-                                        config.batch_size,
+                                        config.micro_batch_size,
                                         config.sequence_length,
                                         config.hidden_size,
                                         config.mask_tokens,
@@ -178,7 +182,7 @@ class BertModel(nn.Block):
 
         elif config.task == "SQUAD":
             self.squad_projection = SquadProjection('Squad',
-                                                    config.batch_size,
+                                                    config.micro_batch_size,
                                                     config.sequence_length,
                                                     config.hidden_size,
                                                     dtype=config.dtype,

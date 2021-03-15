@@ -154,23 +154,23 @@ def get_transform(config, init=None):
     return init
 
 
-def fwd_graph(popart_model, torch_model, mode, mapping=None, transform=None, replication_factor=1, replicated_weight_sharding = False):
+def fwd_graph(popart_model, torch_model, mode, mapping=None, transform=None, replication_factor=1, replicated_tensor_sharding = False):
     #  ------------------- PopART --------------------
     config = popart_model.config
     builder = popart_model.builder
 
     sequence_info = popart.TensorInfo(
-        "UINT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.micro_batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
     segments = builder.addInputTensor(sequence_info)
     data = {
         indices: np.random.randint(
-            0, config.vocab_length, (replication_factor, config.batch_size * config.sequence_length)).astype(np.uint32),
+            0, config.vocab_length, (replication_factor, config.micro_batch_size * config.sequence_length)).astype(np.uint32),
         positions: np.random.randint(
-            0, config.sequence_length, (replication_factor, config.batch_size * config.sequence_length)).astype(np.uint32),
+            0, config.sequence_length, (replication_factor, config.micro_batch_size * config.sequence_length)).astype(np.uint32),
         segments: np.random.randint(
-            0, 2, (replication_factor, config.batch_size * config.sequence_length)).astype(np.uint32)
+            0, 2, (replication_factor, config.micro_batch_size * config.sequence_length)).astype(np.uint32)
     }
 
 
@@ -194,7 +194,7 @@ def fwd_graph(popart_model, torch_model, mode, mapping=None, transform=None, rep
                         user_options=user_options,
                         execution_mode=mode,
                         replication_factor=replication_factor,
-                        replicated_weight_sharding=replicated_weight_sharding,
+                        replicated_tensor_sharding=replicated_tensor_sharding,
                         ipus=ipus)
 
 
@@ -202,11 +202,11 @@ def fwd_graph(popart_model, torch_model, mode, mapping=None, transform=None, rep
     proto = onnx.load_model_from_string(proto)
 
     inputs = {
-        "input_ids": data[indices].reshape(replication_factor * config.batch_size,
+        "input_ids": data[indices].reshape(replication_factor * config.micro_batch_size,
                                            config.sequence_length).astype(np.int32),
-        "position_ids": data[positions].reshape(replication_factor * config.batch_size,
+        "position_ids": data[positions].reshape(replication_factor * config.micro_batch_size,
                                                 config.sequence_length).astype(np.int32),
-        "token_type_ids": data[segments].reshape(replication_factor * config.batch_size,
+        "token_type_ids": data[segments].reshape(replication_factor * config.micro_batch_size,
                                                  config.sequence_length).astype(np.int32)
     }
 
@@ -233,7 +233,7 @@ def bwd_graph(popart_model,
               mapping=None,
               transform=None,
               replication_factor=1,
-              replicated_weight_sharding=False,
+              replicated_tensor_sharding=False,
               opt_type="SGD"):
     np.random.seed(1984)
     random.seed(1984)
@@ -244,17 +244,17 @@ def bwd_graph(popart_model,
     builder = popart_model.builder
 
     sequence_info = popart.TensorInfo(
-        "UINT32", [config.batch_size * config.sequence_length])
+        "UINT32", [config.micro_batch_size * config.sequence_length])
     indices = builder.addInputTensor(sequence_info)
     positions = builder.addInputTensor(sequence_info)
     segments = builder.addInputTensor(sequence_info)
     data = {
         indices: np.random.randint(
-            0, config.vocab_length, (replication_factor, config.batch_size * config.sequence_length)).astype(np.uint32),
+            0, config.vocab_length, (replication_factor, config.micro_batch_size * config.sequence_length)).astype(np.uint32),
         positions: np.random.randint(
-            0, config.sequence_length, (replication_factor, config.batch_size * config.sequence_length)).astype(np.uint32),
+            0, config.sequence_length, (replication_factor, config.micro_batch_size * config.sequence_length)).astype(np.uint32),
         segments: np.random.randint(
-            0, 2, (replication_factor, config.batch_size * config.sequence_length)).astype(np.uint32)
+            0, 2, (replication_factor, config.micro_batch_size * config.sequence_length)).astype(np.uint32)
     }
     num_reps = 5
     user_options = {}
@@ -316,7 +316,7 @@ def bwd_graph(popart_model,
                                  execution_mode=mode,
                                  patterns=patterns,
                                  replication_factor=replication_factor,
-                                 replicated_weight_sharding=replicated_weight_sharding,
+                                 replicated_tensor_sharding=replicated_tensor_sharding,
                                  ipus=ipus,
                                  num_reps=num_reps)
 
@@ -324,9 +324,9 @@ def bwd_graph(popart_model,
     proto = onnx.load_model_from_string(proto)
 
     inputs = {
-        "input_ids": data[indices].reshape(replication_factor * config.batch_size, config.sequence_length).astype(np.int32),
-        "position_ids": data[positions].reshape(replication_factor * config.batch_size, config.sequence_length).astype(np.int32),
-        "token_type_ids": data[segments].reshape(replication_factor * config.batch_size, config.sequence_length).astype(np.int32)
+        "input_ids": data[indices].reshape(replication_factor * config.micro_batch_size, config.sequence_length).astype(np.int32),
+        "position_ids": data[positions].reshape(replication_factor * config.micro_batch_size, config.sequence_length).astype(np.int32),
+        "token_type_ids": data[segments].reshape(replication_factor * config.micro_batch_size, config.sequence_length).astype(np.int32)
     }
 
     torch_to_onnx = get_mapping(config, init=mapping)

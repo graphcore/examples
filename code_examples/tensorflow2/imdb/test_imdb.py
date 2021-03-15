@@ -21,7 +21,7 @@ class TensorFlow2Imdb(SubProcessChecker):
     @pytest.mark.category2
     @pytest.mark.ipus(2)
     @unittest.skipIf(tf.__version__[0] != '2', "Needs TensorFlow 2")
-    def test_sequential_pipeline(self):
+    def test_pipeline_sequential(self):
         self.run_command("python imdb_sequential.py",
                          working_path,
                          "Epoch 2/")

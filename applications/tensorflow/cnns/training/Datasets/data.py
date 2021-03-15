@@ -14,6 +14,7 @@
 
 import tensorflow as tf
 import os
+from . import augmentations
 from . import imagenet_preprocessing
 from functools import partial
 from math import ceil
@@ -63,19 +64,30 @@ DATASET_CONSTANTS = {
 def data(opts, is_training=True):
     from .imagenet_dataset import ImageNetData
     batch_size = opts["batch_size"]
-    dtypes = opts["precision"].split('.')
-    datatype = tf.float16 if dtypes[0] == '16' else tf.float32
+    if opts["eight_bit_io"]:
+        datatype = tf.uint8
+        print("Using 8-bit IO between the IPU and host")
+    else:
+        dtypes = opts["precision"].split('.')
+        datatype = tf.float16 if dtypes[0] == '16' else tf.float32
+        print(f"Using {dtypes[0]}-bit IO between the IPU and host")
 
     if opts['train_with_valid_preprocessing'] and is_training:
         training_preprocessing = False
     else:
         training_preprocessing = is_training
 
-    if opts['synthetic_data']:
-        dataset = synthetic_dataset(opts)
+    if opts['generated_data'] or opts['synthetic_data']:
+        dataset = generated_dataset(opts)
         dataset = dataset.cache()
         dataset = dataset.repeat()
         dataset = dataset.batch(batch_size=batch_size, drop_remainder=True)
+        if opts['synthetic_data']:
+            print("adding --use_synthetic_data --synthetic_data_initializer=random")
+            if "TF_POPLAR_FLAGS" in os.environ:
+                os.environ["TF_POPLAR_FLAGS"] += " --use_synthetic_data --synthetic_data_initializer=random"
+            else:
+                os.environ["TF_POPLAR_FLAGS"] = "--use_synthetic_data --synthetic_data_initializer=random"
     else:
         if is_training:
             filenames = DATASET_CONSTANTS[opts['dataset']]['FILENAMES']['TRAIN']
@@ -83,22 +95,30 @@ def data(opts, is_training=True):
             filenames = DATASET_CONSTANTS[opts['dataset']]['FILENAMES']['TEST']
         filenames = list(map(lambda path: os.path.join(opts['data_dir'], path), filenames))
 
-        is_distributed_training = is_training and opts['distributed_worker_count'] > 1
+        is_distributed = opts['distributed_worker_count'] > 1
 
         cycle_length = 1 if opts['seed_specified'] else 4
         if opts["dataset"] == 'imagenet':
-            if not opts['standard_imagenet'] and not is_distributed_training:
+            if not opts['standard_imagenet'] and not is_distributed:
                 dataset = ImageNetData(opts, filenames=filenames).get_dataset(batch_size=batch_size,
                                                                               is_training=training_preprocessing,
                                                                               datatype=datatype)
+                if is_training and opts['mixup_alpha'] > 0:
+                    # mixup coefficients can only be generated on host, so they are done here
+                    dataset = dataset.map(partial(augmentations.assign_mixup_coefficients,
+                                                  batch_size=batch_size, alpha=opts['mixup_alpha']))
+                    dataset = dataset.map(augmentations.mixup_image) if opts['hostside_image_mixing'] else dataset
+                if is_training and opts['cutmix_lambda'] < 1. and opts['hostside_image_mixing']:
+                    dataset = dataset.map(partial(augmentations.cutmix, cutmix_lambda=opts['cutmix_lambda']))
+
                 return dataset
             else:
                 preprocess_fn = partial(imagenet_preprocess, is_training=training_preprocessing,
                                         image_size=opts["image_size"],
                                         dtype=datatype, seed=opts['seed'],
-                                        full_normalisation=None if opts['no_hostside_norm'] else opts['normalise_input'],)
+                                        full_normalisation=opts['normalise_input'] if opts['hostside_norm'] else None)
                 dataset_fn = tf.data.TFRecordDataset
-                if is_distributed_training:
+                if is_distributed:
                     # Shuffle after sharding
                     dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
                     dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
@@ -111,7 +131,7 @@ def data(opts, is_training=True):
             preprocess_fn = partial(cifar_preprocess, is_training=training_preprocessing, dtype=datatype,
                                     dataset=opts['dataset'], seed=opts['seed'])
             dataset = tf.data.FixedLengthRecordDataset(filenames, DATASET_CONSTANTS[opts['dataset']]['RECORD_BYTES'])
-            if is_distributed_training:
+            if is_distributed:
                 dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
         else:
             raise ValueError("Unknown Dataset {}".format(opts["dataset"]))
@@ -142,15 +162,26 @@ def data(opts, is_training=True):
                 num_parallel_calls=parallel_calls,
                 drop_remainder=True
             )
-        ).unbatch().batch(batch_size, drop_remainder=True)
-    dataset = dataset.prefetch(16)
+        )
 
+        if is_training and opts['mixup_alpha'] > 0:
+            # always assign the mixup coefficients on the host
+            dataset = dataset.map(partial(augmentations.assign_mixup_coefficients, batch_size=parallel_calls,
+                                          alpha=opts['mixup_alpha']))
+            if opts['hostside_image_mixing']:
+                dataset = dataset.map(augmentations.mixup_image, num_parallel_calls=parallel_calls)
+
+        if is_training and opts['cutmix_lambda'] < 1. and opts['hostside_image_mixing']:
+            dataset = dataset.map(partial(augmentations.cutmix, cutmix_lambda=opts['cutmix_lambda']))
+
+        dataset = dataset.unbatch().batch(batch_size, drop_remainder=True)
+    dataset = dataset.prefetch(16)
     return dataset
 
 
-def synthetic_dataset(opts):
+def generated_dataset(opts):
     """Returns dataset filled with random data."""
-    # Synthetic input should be within [0, 255].
+    # Generated random input should be within [0, 255].
 
     height = opts['image_size']
     width = opts['image_size']
@@ -164,16 +195,21 @@ def synthetic_dataset(opts):
         dtype=datatype,
         mean=127,
         stddev=60,
-        name='synthetic_inputs')
+        name='generated_inputs')
+    if opts["eight_bit_io"]:
+        images = tf.cast(images, tf.uint8)
 
     labels = tf.random_uniform(
         [],
         minval=0,
         maxval=num_classes - 1,
         dtype=tf.int32,
-        name='synthetic_labels')
+        name='generated_labels')
 
-    return tf.data.Dataset.from_tensors((images, labels))
+    return tf.data.Dataset.from_tensors({
+        "image": images,
+        "label": labels
+    })
 
 
 def cifar_preprocess(raw_record, is_training, dtype, dataset, seed):
@@ -240,8 +276,13 @@ def add_arguments(parser):
                        help="path to data. ImageNet must be TFRecords. CIFAR-10/100 must be in binary format.")
     group.add_argument('--pipeline-num-parallel', type=int,
                        help="Number of images to process in parallel")
-    group.add_argument('--synthetic-data', action="store_true",
-                       help="Use synthetic data")
+    group.add_argument("--generated-data", action="store_true",
+                       help="Generate a random dataset on the host machine. Creates enough data for one step per epoch. "
+                            "Increase --epochs for multiple performance measurements.")
+    group.add_argument("--synthetic-data", action="store_true",
+                       help="Generate a synthetic dataset on the IPU device. Creates enough data for one step per epoch. "
+                            "Note that using this option will remove all Host I/O from the model. "
+                            "Increase --epochs for multiple perfomance measurements.")
     group.add_argument('--no-dataset-cache', action="store_true",
                        help="Don't cache dataset to host RAM")
     group.add_argument('--normalise-input', action="store_true",
@@ -251,17 +292,37 @@ def add_arguments(parser):
                        help="Size of image (ImageNet only)")
     group.add_argument('--train-with-valid-preprocessing', action="store_true",
                        help="Use validation image preprocessing when training")
-    group.add_argument('--no-hostside-norm', action='store_true',
-                       help="Moves ImageNet image normalisation to the IPU")
+    group.add_argument('--hostside-norm', action='store_true',
+                       help="performs ImageNet image normalisation on the host, not the IPU")
     group.add_argument('--standard-imagenet', action='store_true',
                        help='Use the standard ImageNet preprocessing pipeline.')
+    group.add_argument('--mixup-alpha', type=float, default=0., help="alpha coefficient for mixup")
+    group.add_argument('--cutmix-lambda', type=float, default=1.,
+                       help="lambda coefficient for cutmix -- makes a training image with approximately cutmix_lambda "
+                            "proportion of the preprocessed image, and (1 - cutmix_lambda) of another preprocessed "
+                            "image. Default=1., which means no cutmix is applied")
+    group.add_argument('--hostside-image-mixing', action='store_true',
+                       help="do mixup/cutmix on the CPU host, not the accelerator")
+    group.add_argument('--eight-bit-io', action='store_true',
+                       help='Image transfer from host to IPU in 8-bit format, requires normalisation on the IPU')
+
     return parser
 
 
 def set_defaults(opts):
-    if opts['synthetic_data']:
+    if opts['hostside_norm'] and opts['eight_bit_io']:
+        print("8-bit IO requires IPU-side normalisation, setting to IPU-side normalisation")
+        opts['hostside_norm'] = False
+    if opts['generated_data'] or opts['synthetic_data']:
+        if opts['cutmix_lambda'] < 1. or opts['mixup_alpha'] > 0.:
+            print("Cutmix and Mixup do not do anything when using generated or synthetic data. Turning off.")
+
+        # remove pre-processing overheads
+        opts['cutmix_lambda'] = 1.
+        opts['mixup_alpha'] = 0.
+
         if opts['dataset'] is None:
-            raise ValueError("Please specify the synthetic dataset using --dataset.")
+            raise ValueError("Please specify the generated or synthetic dataset using --dataset.")
     else:
         if opts['data_dir'] is None:
             try:
@@ -311,5 +372,7 @@ def set_defaults(opts):
     else:
         opts['summary_str'] += " Pipeline Num Parallel: {}\n".format(opts["pipeline_num_parallel"])
 
+    if opts['generated_data']:
+        opts['summary_str'] += " Generated random Data\n"
     if opts['synthetic_data']:
         opts['summary_str'] += " Synthetic Data\n"

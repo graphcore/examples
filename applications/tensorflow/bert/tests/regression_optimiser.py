@@ -13,15 +13,18 @@
 # limitations under the License.
 
 
-# sys.path.append("..")  # Adds higher directory to python modules path.
-import _paths
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from functools import partial as bind
+from optparse import OptionParser
+
+import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.python import ipu
-import optimization as _opt
-import numpy as np
-from functools import partial as bind
-import sys
-from optparse import OptionParser
+
+import ipu_optimizer as _opt
 import hardcoded
 
 tf.disable_eager_execution()
@@ -57,9 +60,9 @@ def model(use_custom_op, inputs, targets):
         opt = tf.train.MomentumOptimizer(learning_rate=0.05, momentum=0.9,
                                          use_nesterov=False)
     elif use_custom_op == 'lamb':
-        opt = _opt.LAMBOptimizer(0.05, high_precision=False)
+        opt = _opt.LAMBOptimizer(0.05, loss_scaling=1.0, high_precision=False)
     elif use_custom_op == 'adamw':
-        opt = _opt.AdamWeightDecayOptimizer(0.05)
+        opt = _opt.AdamWeightDecayOptimizer(0.05, loss_scaling=1.0)
     train_op = opt.minimize(training_loss)
 
     return training_loss, weights, gradOfLossWrtInput, train_op
@@ -110,5 +113,5 @@ if not np.allclose(dLdI, expected_grads[opts.optimiser], equal_nan=True,
 # Check the final weights are unchanged
 if not np.allclose(current_weights, expetced_weights[opts.optimiser],
                    equal_nan=True, rtol=1e-3, atol=1e-3):
-    raise RuntimeError("The final weights do not match.")
+    raise RuntimeError("The final weights do not match. Currenct Weights {}, Expected weights {}".format(current_weights, expetced_weights[opts.optimiser]))
 print("Losses, grads and weights match.")

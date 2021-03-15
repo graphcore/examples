@@ -34,5 +34,5 @@ libstatic_block_sparse.so: $(STATIC_BLOCK_SPARSE_SRC) $(STATIC_BLOCK_SPARSE_INC)
 
 .PHONY : clean
 clean:
-	rm *.so
-	rm $(OBJECTS)
+	$(RM) *.so
+	$(RM) $(OBJECTS)

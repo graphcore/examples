@@ -1,14 +1,14 @@
 # Graphcore
 
-## CIFAR-10 Keras training example
+## CIFAR-10 Estimators
 
-This example shows four simple approaches to port a TensorFlow Keras model to the IPU.
+This example shows how to use IPU-specific Estimators as an alternative to the
+IPU-specific Keras Model classes (see tutorials/tensorflow2/keras).
 
 The starting point of this code example is the [Keras CIFAR-10 example](https://github.com/keras-team/keras/blob/1a3ee8441933fc007be6b2beb47af67998d50737/examples/cifar10_cnn.py).
 
 ### File structure
 
-* `cifar10_ipu_strategy.py` The Python script to run IPUStrategy.
 * `cifar10_ipu_estimator.py` The main Python script to run IPUEstimator.
 * `cifar10_estimator_replica.py` The main Python script to run IPUEstimator with multiple replicas.
 * `cifar10_pipeline_estimator.py` The main Python script to run IPUPipelineEstimator.
@@ -20,23 +20,13 @@ The starting point of this code example is the [Keras CIFAR-10 example](https://
 
 1) Prepare the TensorFlow environment.
 
-Install the Poplar SDK. Make sure to run the enable.sh scripts and activate a Python 3 virtualenv with the TensorFlow 2 gc_tensorflow-2* wheel installed.
+Install the Poplar SDK. Make sure to run the enable.sh scripts and activate a Python 3 virtualenv with the tensorflow-2 wheel from the Poplar SDK installed.
 
 2) Train and test the model: start the selected file as described below.
 
-#### Use IPUStrategy scope
+#### Using IPUEstimator
 
-The entire model creation, compile, fit and evaluation is placed inside IPUStrategy scope, which makes it possible to run on IPU with as little code modification as possible.
-
-Run the following command:
-
-```bash
-python3 cifar10_ipu_strategy.py
-```
-
-#### Use IPUEstimator
-
-Using IPUEstimator provides IPUInfeedQueue and IPUOutfeedQueue and has the interface of TensorFlow's tf.Estimator
+Using IPUEstimator provides IPUInfeedQueue and IPUOutfeedQueue and has the interface of TensorFlow's `tf.Estimator`.
 A few minor modifications are required compared to the previous version to make the model work:
 
 * The data source must be generated-based `tf.data.DataSet`. This Dataset must be wrapped into a function before passing it to the train/eval function.
@@ -54,7 +44,7 @@ Using multiple IPUs can increase further the throughput. In this modification, m
 
 The following modifications are required:
 
-* The optimizer must be wrapped in `CrossReplicaOptimizer`
+* The optimizer must be wrapped in `CrossReplicaOptimizer`. Note that this only supports optimizers that are subclasses of `tensorflow.python.training.optimizer.Optimizer`.
 
 Run with the following command:
 
@@ -62,7 +52,7 @@ Run with the following command:
 python3 cifar10_replica.py
 ```
 
-#### Use IPUPipelineEstimator
+#### Using IPUPipelineEstimator
 
 Another way of improving throughput is Pipelining.
 
@@ -90,6 +80,7 @@ Run the tests:
 ```bash
 python3 -m pytest
 ```
+
 #### License
 This example is licensed under the MIT license - see the LICENSE file at the top level of this repository.
 

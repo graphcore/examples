@@ -1,0 +1,5 @@
+torch==1.7.1
+torchvision==0.8.2
+tqdm==4.46.1
+pytest==5.4.3
+octconv==0.1.0

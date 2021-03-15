@@ -113,8 +113,11 @@ def set_defaults(opts):
 
     # set ImageNet specific defaults
     if opts["dataset"] == "imagenet":
-        if not opts.get("weight_decay"):
-            opts["weight_decay"] = 1e-4
+        if opts.get("weight_decay") is None:
+            wd_default = 0 if opts.get("optimiser") == "LARS" else 1e-4
+            opts["weight_decay"] = wd_default
+        if opts.get("lars_weight_decay") is None:
+            opts["lars_weight_decay"] = 1e-4
         if not opts.get("base_learning_rate"):
             if opts["optimiser"] == "SGD":
                 opts["base_learning_rate"] = -8
@@ -148,8 +151,11 @@ def set_defaults(opts):
 
     # set CIFAR specific defaults
     elif "cifar" in opts["dataset"]:
-        if not opts.get("weight_decay"):
-            opts["weight_decay"] = 1e-6
+        if opts.get("weight_decay") is None:
+            wd_default = 0 if opts.get("optimiser") == "LARS" else 1e-6
+            opts["weight_decay"] = wd_default
+        if opts.get("lars_weight_decay") is None:
+            opts["lars_weight_decay"] = 1e-6
         if not opts.get("base_learning_rate"):
             opts["base_learning_rate"] = -6
         if not opts.get("epochs") and not opts.get("iterations"):

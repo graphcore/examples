@@ -24,7 +24,8 @@ class TestPytorchMNISTTraining(unittest.TestCase):
         cls.generic_arguments = {
             "--batch-size": 32,
             "--batches-per-step": 100,
-            "--epochs": 10
+            "--epochs": 10,
+            "--validation-final-epoch": "",
         }
 
     def test_log_graph_trace_arg(self):
@@ -54,7 +55,5 @@ class TestPytorchMNISTTraining(unittest.TestCase):
             run_pytorch_mnist,
             **py_args
         )
-        expected_accuracy = [
-            87.65, 88.06, 88.4, 88.43, 88.68, 88.71, 88.69, 88.89, 88.85, 88.61
-        ]
+        expected_accuracy = [88.61]
         parse_results_for_accuracy(out, expected_accuracy, 2.5)

@@ -1,5 +1,5 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-
+#
 # Copyright 1999-present Alibaba Group Holding Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,9 +59,7 @@ class DataIterator:
                  shuffle_each_epoch=False,
                  sort_by_length=True,
                  max_batch_size=20,
-                 minlen=None,
-                 lowlen=None,
-                 highlen=None):
+                 minlen=None):
         if shuffle_each_epoch:
             self.source_orig = source
             self.source = shuffle.main(self.source_orig, temporary=True)
@@ -117,9 +115,6 @@ class DataIterator:
         self.k = batch_size * max_batch_size
 
         self.end_of_data = False
-
-        self.lowlen = lowlen
-        self.highlen = highlen
 
 
     def get_n(self):
@@ -202,12 +197,25 @@ class DataIterator:
                 if self.skip_empty and (not mid_list):
                     continue
 
-                if self.lowlen is not None and len(mid_list) < self.lowlen:
-                    continue
-                if self.highlen is not None and len(mid_list) > self.highlen:
-                    continue
-
-                source.append([uid, mid, cat, mid_list, cat_list, ])
+                noclk_mid_list = []
+                noclk_cat_list = []
+                for pos_mid in mid_list:
+                    noclk_tmp_mid = []
+                    noclk_tmp_cat = []
+                    noclk_index = 0
+                    while True:
+                        noclk_mid_indx = random.randint(0, len(self.mid_list_for_random)-1)
+                        noclk_mid = self.mid_list_for_random[noclk_mid_indx]
+                        if noclk_mid == pos_mid:
+                            continue
+                        noclk_tmp_mid.append(noclk_mid)
+                        noclk_tmp_cat.append(self.meta_id_map[noclk_mid])
+                        noclk_index += 1
+                        if noclk_index >= 5:
+                            break
+                    noclk_mid_list.append(noclk_tmp_mid)
+                    noclk_cat_list.append(noclk_tmp_cat)
+                source.append([uid, mid, cat, mid_list, cat_list, noclk_mid_list, noclk_cat_list])
                 target.append([float(ss[0]), 1-float(ss[0])])
 
                 if len(source) >= self.batch_size or len(target) >= self.batch_size:

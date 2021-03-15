@@ -37,7 +37,7 @@ class ImageNetData:
     def _get_subset(self, split_id, batch_size, is_training, datatype):
         """
         Splits the ImageNet dataset into subsets.
-        inputs: split_id (int): a power of 2 to divide the ImageNet dataset
+        inputs: split_id (Tensor(int)): the index into `self.split_fnames`.
         returns: the dataset indicated by a given `split_id`
         """
         # subdividing the filenames
@@ -45,11 +45,13 @@ class ImageNetData:
             predicates = [tf.equal(split_id, x) for x in range(self.n_splits)]
             # i=i is required to get lambdas with different return values
             lambdas = [(lambda i=i: self.split_fnames[i]) for i in range(self.n_splits)]
-            split_fnames = tf.case(list(zip(predicates, lambdas[:-1])), lambdas[-1], name='dataset_splitter')
+            subset = tf.case(list(zip(predicates, lambdas[:-1])), lambdas[-1], name='dataset_splitter')
         else:
-            split_fnames = self.fnames
+            subset = self.fnames
 
-        dataset = tf.data.Dataset.list_files(split_fnames, shuffle=is_training)
+        # Create records from the subset.
+        dataset = tf.data.Dataset.from_tensor_slices(subset)
+
         # Interleave all the files belonging to this subset
         dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=self.n_files // self.n_splits,
                                      block_length=1, num_parallel_calls=self.n_files // self.n_splits)
@@ -64,7 +66,7 @@ class ImageNetData:
         preprocess_fn = partial(imagenet_preprocess, is_training=training_preprocessing,
                                 image_size=opts["image_size"],
                                 dtype=datatype, seed=opts['seed'],
-                                full_normalisation=None if opts['no_hostside_norm'] else opts['normalise_input'], )
+                                full_normalisation=opts['normalise_input'] if opts['hostside_norm'] else None)
 
         if not is_training:
             n_validation_useable = self.n_validation_images_useable(batch_size)
@@ -163,5 +165,8 @@ def next_pow_2(x):
 def accelerator_side_preprocessing(image, opts):
     # To speed up the data input, these steps can be done off-host
     from Datasets.imagenet_preprocessing import normalise_image
+    if opts["eight_bit_io"]:
+        dtypes = opts["precision"].split('.')
+        image = tf.cast(image, dtype=tf.float16 if dtypes[0] == '16' else tf.float32)
     image = normalise_image(image, full_normalisation=opts["normalise_input"])
     return image

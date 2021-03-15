@@ -56,7 +56,6 @@ public:
                            const unsigned axis,
                            const Op::Settings &opSettings)
         : popart::VarUpdateWithUpdaterOp(CustomOperators::SparseAccumulate,
-                                         varToUpdate,
                                          opSettings),
           initDpsf1(dpsf1),
           axis(axis) {}
@@ -101,25 +100,26 @@ public:
         axis = _op.axis;
     }
 
-    popart::popx::InputCreatorType getInputCreatorType(int index0) const {
+    popart::popx::InputCreatorType getInputCreatorType(int index0) const final {
         return index0 == SparseAccumulateOp::getVarToUpdateInIndex() ? 
             popart::popx::InputCreatorType::CanCreate : popart::popx::Opx::getInputCreatorType(index0);
     }
 
-    std::vector<popart::TensorId> mustExistBeforeCreate(int index0) const {
+    std::set<popart::TensorId> mustExistBeforeCreate(int index0) const final {
         if (index0 == SparseAccumulateOp::getVarToUpdateInIndex() && hasInput(SparseAccumulateOp::getOriginalVarInIndex()))
             return {inId(SparseAccumulateOp::getOriginalVarInIndex())};
         return {}; 
     }
 
-    poplar::Tensor createInput(int index, const std::string &name) const {
+    poplar::Tensor createInput(popart::InIndex index,
+                               const poplar::DebugNameAndId &dnai) const final {
         if (index != SparseAccumulateOp::getVarToUpdateInIndex()) {
             throw popart::error("CustomOps Error: SparseAccumulateOpx::createInput Cannot create input {}", index);
         }
 
         if (hasInput(SparseAccumulateOp::getOriginalVarInIndex())) {
             auto w = getInTensor(SparseAccumulateOp::getOriginalVarInIndex());
-            return graph().clone(w, name);
+            return graph().clone(w, dnai);
         }  else {
             auto info = inInfo(SparseAccumulateOp::getVarToUpdateInIndex());
             const auto shape = info.shape_szt();
@@ -130,12 +130,11 @@ public:
                                              shape,
                                              static_cast<unsigned>(axis),
                                              popops::GatherParams{},
-                                             name);
+                                             dnai);
         }
     }
 
-    void grow(poplar::program::Sequence &prog) const
-    {
+    void grow(poplar::program::Sequence &prog) const final {
         // If using tied weights, we want the dampening scale factor from the optimiser
         auto op = getOp<SparseAccumulateOp>();
 

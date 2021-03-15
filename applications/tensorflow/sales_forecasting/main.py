@@ -14,9 +14,9 @@ import time
 from tensorflow.python.ipu import loops
 from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import ipu_compiler
-from tensorflow.python.ipu import cross_replica_optimizer
 from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu import summary_ops
+from tensorflow.python.ipu.optimizers import CrossReplicaOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope, ipu_shard
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
@@ -63,7 +63,7 @@ def graph_builder(
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
         # Wrap in a CrossReplica if we're replicating across multiple IPUs
         if opts.replication_factor > 1:
-            optimizer = cross_replica_optimizer.CrossReplicaOptimizer(optimizer)
+            optimizer = CrossReplicaOptimizer(optimizer)
         # Batch norm variable update dependency
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
@@ -155,9 +155,13 @@ def generic_graph(opts, data, trainFlag):
     # Subprocesses must set up IPU systems in their own scopes, then use their devices as IPU:0
     if (not training and opts.multiprocessing) or training:
         config = ipu_utils.create_ipu_config(profiling=training,
-                                             use_poplar_text_report=True,
-                                             max_cross_replica_sum_buffer_size=10000000,
-                                             max_inter_ipu_copies_buffer_size=10000000)
+                                             use_poplar_text_report=True)
+
+        config = ipu_utils.set_optimization_options(
+            config,
+            max_cross_replica_sum_buffer_size=10000000,
+            max_inter_ipu_copies_buffer_size=10000000)
+
         if opts.select_ipus == 'AUTO':
             config = ipu_utils.auto_select_ipus(config, [opts.replication_factor])
         else:

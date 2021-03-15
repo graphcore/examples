@@ -21,7 +21,7 @@ of TensorFlow that targets Graphcore's Poplar libraries.
 
    Install the Poplar SDK following the instructions in the Getting Started guide
    for your IPU system. Make sure to run the enable.sh script and activate a
-   Python virtualenv with gc_tensorflow installed.
+   Python virtualenv with the tensorflow-1 wheel from the Poplar SDK installed.
 
 2) Download the images and weights.
 

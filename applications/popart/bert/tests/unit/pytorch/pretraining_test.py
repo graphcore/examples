@@ -20,7 +20,7 @@ import numpy as np
 from bert_model import BertConfig, ExecutionMode, get_model
 from tests.torch_bert import BertConfig as TorchBertConfig, BertForMaskedLM
 
-from tests.utils import requires_remote_buffers
+from tests.utils import requires_remote_buffers, sanity
 
 from tests.unit.pytorch.full_graph_utils import fwd_graph, bwd_graph
 
@@ -49,19 +49,22 @@ onnx_torch_tform = {
 }
 
 
-@pytest.mark.parametrize("mode, replication_factor, replicated_weight_sharding",
+@pytest.mark.parametrize("mode, replication_factor, replicated_tensor_sharding",
                          [(ExecutionMode.DEFAULT, 1, False),
                           requires_remote_buffers(ExecutionMode.PHASED, 1, False),
                           requires_remote_buffers(ExecutionMode.PHASED, 4, True),
                           requires_remote_buffers(ExecutionMode.PHASED, 4, False)])
-def test_pretraining_fwd(custom_ops, mode, replication_factor, replicated_weight_sharding):
+def test_pretraining_fwd(custom_ops, mode, replication_factor, replicated_tensor_sharding):
     #  ------------------- PopART --------------------
     config = BertConfig(task="PRETRAINING",
-                        vocab_length=9728,
-                        num_layers=2,
-                        batch_size=1,
-                        hidden_size=768,
-                        sequence_length=128,
+                        encoder_start_ipu=1,
+                        vocab_length=1024,
+                        micro_batch_size=1,
+                        hidden_size=64,
+                        attention_heads=2,
+                        sequence_length=20,
+                        max_positional_length=20,
+                        mask_tokens=2,
                         popart_dtype="FLOAT",
                         activation_type="relu",
                         no_dropout=True,
@@ -88,32 +91,21 @@ def test_pretraining_fwd(custom_ops, mode, replication_factor, replicated_weight
 
     fwd_graph(popart_model, torch_model, mode, mapping=ONNX_TORCH_MAPPING[mode], transform=onnx_torch_tform,
               replication_factor=replication_factor,
-              replicated_weight_sharding=replicated_weight_sharding)
+              replicated_tensor_sharding=replicated_tensor_sharding)
 
 
-@pytest.mark.parametrize("mode, replication_factor, replicated_weight_sharding, opt_type",
-                         [(ExecutionMode.DEFAULT, 1, False, "SGD"),
+@pytest.mark.parametrize("mode, replication_factor, replicated_tensor_sharding, opt_type",
+                         [sanity(ExecutionMode.DEFAULT, 1, False, "SGD"),
+                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 4, True, "SGD")),
+                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 4, True, "LAMB")),
+
+                          (ExecutionMode.DEFAULT, 1, False, "SGD"),
                           requires_remote_buffers(ExecutionMode.PHASED, 1, False, "SGD"),
                           requires_remote_buffers(ExecutionMode.PHASED, 4, True, "SGD"),
                           requires_remote_buffers(ExecutionMode.PHASED, 4, False, "SGD"),
                           requires_remote_buffers(ExecutionMode.PHASED, 4, False, "LAMB"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, True, "LAMB"),
-                          ])
-def test_pretraining_bwd(custom_ops, mode, replication_factor, replicated_weight_sharding, opt_type):
-    pretraining_bwd(custom_ops, mode, replication_factor, replicated_weight_sharding, opt_type)
-
-
-@pytest.mark.sanity
-@pytest.mark.parametrize("mode, replication_factor, replicated_weight_sharding, opt_type",
-                         [(ExecutionMode.DEFAULT, 1, False, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, True, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, True, "LAMB"),
-                          ])
-def test_pretraining_bwd_sanity(custom_ops, mode, replication_factor, replicated_weight_sharding, opt_type):
-    pretraining_bwd(custom_ops, mode, replication_factor, replicated_weight_sharding, opt_type, 2432, 288)
-
-
-def pretraining_bwd(custom_ops, mode, replication_factor, replicated_weight_sharding, opt_type, vocab_length=9728, hidden_size=768):
+                          requires_remote_buffers(ExecutionMode.PHASED, 4, True, "LAMB")])
+def test_pretraining_bwd(custom_ops, mode, replication_factor, replicated_tensor_sharding, opt_type):
     #  ------------------- PopART --------------------
     if mode == ExecutionMode.PHASED:
         # Phased Execution requires atleast two transformer layers to ensure mlm and embedding are in the same virtual graph.
@@ -121,11 +113,14 @@ def pretraining_bwd(custom_ops, mode, replication_factor, replicated_weight_shar
     else:
         num_layers = 1
     config = BertConfig(task="PRETRAINING",
-                        vocab_length=vocab_length,
-                        num_layers=num_layers,
-                        batch_size=1,
-                        hidden_size=hidden_size,
-                        sequence_length=128,
+                        encoder_start_ipu=1,
+                        vocab_length=1024,
+                        micro_batch_size=1,
+                        hidden_size=64,
+                        attention_heads=2,
+                        sequence_length=20,
+                        max_positional_length=20,
+                        mask_tokens=2,
                         popart_dtype="FLOAT",
                         activation_type="relu",
                         no_dropout=True,
@@ -170,5 +165,5 @@ def pretraining_bwd(custom_ops, mode, replication_factor, replicated_weight_shar
               torch_loss_fn=lambda logits: l1_lambda * torch.norm(logits[0], 1),
               mapping={}, transform=onnx_torch_tform,
               replication_factor=replication_factor,
-              replicated_weight_sharding=replicated_weight_sharding,
+              replicated_tensor_sharding=replicated_tensor_sharding,
               opt_type=opt_type)

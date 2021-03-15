@@ -35,7 +35,7 @@ Create a virtualenv and install the required packages:
 bash
 virtualenv venv -p python3.6
 source venv/bin/activate
-pip install <path to the gc_tensorflow-1 whl file in the Poplar SDK>
+pip install <path to the tensorflow-1 wheel file from the Poplar SDK>
 pip install -r requirements.txt
 ```
 

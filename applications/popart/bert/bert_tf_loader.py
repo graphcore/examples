@@ -51,13 +51,16 @@ def get_tf_mapping(config, task="PRETRAINING"):
         "bert/embeddings/LayerNorm/gamma": "Embedding/Gamma",
         "bert/embeddings/LayerNorm/beta": "Embedding/Beta"
     }
-
     for i in range(config.num_layers):
         layer = {
             f"bert/encoder/layer_{i}/attention/self/query/kernel": f"Layer{i}/Attention/QKV",
+            f"bert/encoder/layer_{i}/attention/self/query/bias": f"Layer{i}/Attention/QKV_Bias",
             f"bert/encoder/layer_{i}/attention/self/key/kernel": f"Layer{i}/Attention/QKV",
+            f"bert/encoder/layer_{i}/attention/self/key/bias": f"Layer{i}/Attention/QKV_Bias",
             f"bert/encoder/layer_{i}/attention/self/value/kernel": f"Layer{i}/Attention/QKV",
+            f"bert/encoder/layer_{i}/attention/self/value/bias": f"Layer{i}/Attention/QKV_Bias",
             f"bert/encoder/layer_{i}/attention/output/dense/kernel": f"Layer{i}/Attention/Out",
+            f"bert/encoder/layer_{i}/attention/output/dense/bias": f"Layer{i}/Attention/Out_Bias",
             f"bert/encoder/layer_{i}/attention/output/LayerNorm/gamma": f"Layer{i}/Attention/Gamma",
             f"bert/encoder/layer_{i}/attention/output/LayerNorm/beta": f"Layer{i}/Attention/Beta",
             f"bert/encoder/layer_{i}/intermediate/dense/kernel": f"Layer{i}/FF/1/W",
@@ -121,18 +124,26 @@ def generate_initializers(config, map_names, load_data, mapping, transform={}):
 
         # If it's part of QKV, we need to handle separately as those 3
         # tensors need concatenating into one
-        if mapping[name][-3:] == "QKV":
+        is_qkv = mapping[name][-3:] == "QKV"
+        is_qkv_bias = mapping[name][-8:-5] == "QKV"
+        if is_qkv or is_qkv_bias:
             qkv_part = name.split("/")[-2]
 
             if mapping[name] not in initializers.keys():
-                qkv_shape = (array.shape[0], array.shape[1] * 3)
+                if is_qkv:
+                    qkv_shape = (array.shape[0], array.shape[1] * 3)
+                elif is_qkv_bias:
+                    qkv_shape = (array.shape[0] * 3)
                 initializers[mapping[name]] = np.empty(
                     qkv_shape, dtype=array.dtype
                 )
 
             start_idx = qkv_tensor_range[qkv_part][0]
             end_idx = qkv_tensor_range[qkv_part][1]
-            initializers[mapping[name]][:, start_idx:end_idx] = array
+            if is_qkv:
+                initializers[mapping[name]][:, start_idx:end_idx] = array
+            elif is_qkv_bias:
+                initializers[mapping[name]][start_idx:end_idx] = array
             logger.debug(f"Initialising QKV component {name}[{start_idx}:{end_idx}] from checkpoint")
             continue
 

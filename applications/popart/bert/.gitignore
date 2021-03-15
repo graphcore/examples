@@ -7,3 +7,8 @@ __*
 test_results
 custom_ops/plugin_version
 wandb
+log*.txt
+checkpoints
+profiles
+*.ipynb
+workspace.code-workspace

@@ -46,7 +46,7 @@ int main() {
     graph.connect(vtx["in"], v1.slice(i, 4));
     graph.connect(vtx["out"], v2[i]);
     graph.setTileMapping(vtx, i);
-    graph.setCycleEstimate(vtx, 20);
+    graph.setPerfEstimate(vtx, 20);
   }
 
   // Add step to execute the compute set

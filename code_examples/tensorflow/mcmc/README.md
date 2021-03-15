@@ -2,6 +2,10 @@
 
 This readme describes how to run MCMC sampling examples with TFP, TensorFlow Probability. This directory contains all the code required to do this on Graphcore's IPU.
 
+## Benchmarking
+
+To reproduce the published Mk2 throughput benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md) 
+
 ## Overview
 
 TensorFlow Probability (TFP) is a Python library for probabilistic models built on TensorFlow. It contains a wide selection of probability distributions and bijectors with tools to build deep probabilistic models, including probabilistic layers and the Edward2 language. Optimizers such as Nelder-Mead, BFGS, and SGLD are included and it can be used with both variational inference and Markov Chain Monte Carlo (MCMC). TFP is open source and available on GitHub: https://github.com/tensorflow/probability, a guide to it can be found here: https://www.tensorflow.org/probability/overview.
@@ -38,7 +42,7 @@ The structure of this directory is as follows:
 **1) Install the Poplar SDK**
 
 Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
-Make sure to source the `enable.sh` script for Poplar and activate a Python virtualenv with gc_tensorflow installed.
+Make sure to source the `enable.sh` script for Poplar and activate a Python virtualenv with the tensorflow-1 wheel from the Poplar SDK installed.
 
 **2) Install required modules**
 

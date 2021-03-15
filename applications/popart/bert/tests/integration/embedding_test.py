@@ -22,10 +22,9 @@ from bert import (set_library_seeds,
                   bert_pretrained_initialisers,
                   bert_add_inputs,
                   bert_add_logit_outputs,
-                  acquire_device,
                   get_bert_dataset,
                   Iteration,
-                  calc_required_ipus,
+                  bert_required_ipus,
                   bert_inference_session,
                   create_callback_stepio,
                   bert_process_infer_data)
@@ -33,6 +32,7 @@ from bert_model import Bert
 from tests.utils import TestFailureError
 import logging
 import utils
+from utils.device import acquire_device
 
 '''
 Tests the Embedding and Positional Dict lookup on the host against the same on the IPU.
@@ -65,20 +65,18 @@ def run_embedding_layer(args):
     if args.inference:
         outputs = bert_add_logit_outputs(model, logits)
         writer = None
-        embedding_dict, positional_dict = model.get_model_embeddings()
 
-        dataset = get_bert_dataset(model, args, [indices, positions, segments, masks, labels], embedding_dict, positional_dict)
+        dataset = get_bert_dataset(model, args, [indices, positions, segments, masks, labels])
 
         data_flow = popart.DataFlow(dataset.batches_per_step, outputs)
 
         iteration = Iteration(
             args,
-            batches_per_step=dataset.batches_per_step,
             steps_per_epoch=len(dataset),
             writer=writer,
             recording_steps=args.aggregate_metrics_over_steps)
 
-        request_ipus, required_ipus = calc_required_ipus(args, model)
+        request_ipus = bert_required_ipus(args, model)
 
         device = acquire_device(args, request_ipus)
 

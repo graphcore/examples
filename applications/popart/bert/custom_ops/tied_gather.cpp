@@ -50,6 +50,10 @@ public:
       : popart::GatherOp(CustomOperators::TiedGather, axis_, settings_) {}
   bool check_indices = true;
 
+  std::unique_ptr<popart::Op> clone() const override {
+    return std::make_unique<TiedGatherOp>(*this);
+  }
+
   std::vector<std::unique_ptr<Op>> getGradOps() {
     std::vector<std::unique_ptr<Op>> result;
     result.push_back(std::make_unique<TiedGatherGradOp>(*this, getAxis()));
@@ -66,18 +70,18 @@ public:
     inputCreatorPriority = std::numeric_limits<double>::max();
   }
 
-  bool createsEquiv(int, const popart::popx::Opx *, int) const { return false; }
+  bool createsEquiv(int, const popart::popx::Opx *, int) const final { return false; }
 
-  std::vector<popart::TensorId> mustExistBeforeCreate(int) const { return {}; }
+  std::set<popart::TensorId> mustExistBeforeCreate(int) const final { return {}; }
 
-  popart::popx::InputCreatorType getInputCreatorType(int index0) const {
+  popart::popx::InputCreatorType getInputCreatorType(int index0) const final {
     return index0 == TiedGatherOp::dataInIndex() ? popart::popx::InputCreatorType::CanCreate
                                                  : popart::popx::Opx::getInputCreatorType(index0);
   }
 
-  poplar::Tensor createInput(int index,
-                             const std::string &name) const {
-    popart::logging::debug("TiedGather asked to create index {}: name {}", index, name);
+  poplar::Tensor createInput(popart::InIndex index,
+                             const poplar::DebugNameAndId &dnai) const final {
+    popart::logging::debug("TiedGather asked to create index {}: name {}", index, dnai);
     if (index != TiedGatherOp::dataInIndex()) {
       throw popart::error("CustomOps Error: GatherOpx::createInput Cannot create input {}", index);
     }
@@ -96,7 +100,7 @@ public:
                                         popart::popx::popType(weightInfo),
                                         lhsShape,
                                         rhsShape,
-                                        name + "/weights/split/0",
+                                        dnai,
                                         {},
                                         &dv_p->matmulCache);
   }

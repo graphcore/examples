@@ -212,7 +212,8 @@ def main(args):
         strides = np.array(dense_grad.strides)  # strides are in bytes
         strides = tuple(strides * block_size) + tuple(strides)
         blocked_dense_grad = np.lib.stride_tricks.as_strided(dense_grad, (nx, ny, block_size, block_size), strides)
-        blocked_dense_grad = np.squeeze(np.copy(blocked_dense_grad))  # this will squeeze out the special case block size 1
+        if block_size == 1:
+            blocked_dense_grad = np.squeeze(np.copy(blocked_dense_grad), axis=(-2, -1))
         np.testing.assert_allclose(sparse_grad, blocked_dense_grad[i, j], atol=atol, rtol=rtol,
                                    err_msg=f"Sparse grads for layer {name} do not match")
 

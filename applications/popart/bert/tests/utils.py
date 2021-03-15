@@ -17,6 +17,7 @@ import os
 import json
 import tempfile
 import pytest
+from _pytest.mark.structures import ParameterSet
 import numpy as np
 
 from typing import Iterable, Tuple, Any, Union, Mapping, Callable, Optional
@@ -32,8 +33,30 @@ import torch
 import torch.nn as nn
 
 
+def make_tuple(something: Any) -> Tuple:
+    if isinstance(something, tuple) or isinstance(something, list):
+        def concat(accl: Iterable, s: Any) -> Iterable:
+            return chain(accl, make_tuple(s))
+
+        return tuple(reduce(concat, something, ()))
+    return (something, )
+
+
+def _append_marks(*args, marks=None):
+    if marks is None:
+        marks = []
+    if len(args) == 1 and isinstance(args[0], ParameterSet):
+        marks = list(args[0].marks) + list(marks)
+        args = args[0].values
+    return pytest.param(*args, marks=marks)
+
+
 def requires_remote_buffers(*args):
-    return pytest.param(*args, marks=pytest.mark.requires_remote_buffers)
+    return _append_marks(*args, marks=[pytest.mark.requires_remote_buffers])
+
+
+def sanity(*args):
+    return _append_marks(*args, marks=[pytest.mark.sanity])
 
 
 class TestFailureError(Exception):
@@ -72,15 +95,6 @@ def check_tensor(A, B, margin=1.5e-8):
     checkResult(result, margin)
 
 
-def make_tuple(something: Any) -> Tuple:
-    if isinstance(something, tuple) or isinstance(something, list):
-        def concat(accl: Iterable, s: Any) -> Iterable:
-            return chain(accl, make_tuple(s))
-
-        return tuple(reduce(concat, something, ()))
-    return (something, )
-
-
 def run_py(proto: onnx.ModelProto,
            data: Mapping[str, np.ndarray],
            outputs: Optional[Union[str, Iterable[str]]],
@@ -95,7 +109,7 @@ def run_py(proto: onnx.ModelProto,
            skip_execution: bool = False,
            execution_mode: str = 'DEFAULT',
            replication_factor: int = 1,
-           replicated_weight_sharding: bool = False,
+           replicated_tensor_sharding: bool = False,
            num_reps: int = 1):
     outputs = make_tuple(outputs)
 
@@ -108,7 +122,7 @@ def run_py(proto: onnx.ModelProto,
         user_options = {}
     options = popart.SessionOptions()
     options.reportOptions = {"showVarStorage": "true"}
-    if replicated_weight_sharding:
+    if replicated_tensor_sharding:
         options.weightTensorLocationSettings.location.replicatedTensorSharding.On
         options.optimizerStateTensorLocationSettings.location.replicatedTensorSharding.On
     if replication_factor > 1:
@@ -122,10 +136,28 @@ def run_py(proto: onnx.ModelProto,
         options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
         options.explicitRecomputation = True
         options.aliasZeroCopy = True
-        options.batchSerializationSettings.factor = user_options[
-            "batchSerializationFactor"]
+        options.batchSerializationSettings.factor = user_options["batchSerializationFactor"]
         options.executionPhaseSettings.phases = user_options["executionPhases"]
-        ipus = 2
+        ipus = 1
+        options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
+        options.outlineSequenceBreakCost = 100000.0
+        options.batchSerializationSettings.concatOnVirtualGraphChange = False
+        options.batchSerializationSettings.concatOnExecutionPhaseChange = False
+        options.batchSerializationSettings.concatOnPipelineStageChange = False
+        options.batchSerializationSettings.batchSchedule = popart.BatchSerializationBatchSchedule.OverlapOnCompute
+        options.autoRecomputation = popart.RecomputationType.Standard
+
+        varLocation = popart.TensorLocation()
+        varLocation.storage = popart.TensorStorage.OffChip
+        varLocation.loadTileSet = popart.TileSet.IO
+        varLocation.storageTileSet = popart.TileSet.IO
+        options.weightTensorLocationSettings.location = varLocation
+        options.optimizerStateTensorLocationSettings.location = varLocation
+        options.accumulatorTensorLocationSettings.location = varLocation
+        options.activationTensorLocationSettings.location = varLocation
+        options.executionPhaseSettings.activationIOSchedule = popart.ExecutionPhaseIOSchedule.OnDemand
+        options.executionPhaseSettings.weightIOSchedule = popart.ExecutionPhaseIOSchedule.Preload
+        options.executionPhaseSettings.schedule = popart.ExecutionPhaseSchedule.Batch
     else:
         options.enableGroupedMatmuls = False
         options.enableStochasticRounding = False
@@ -147,7 +179,8 @@ def run_py(proto: onnx.ModelProto,
             "opt.internalExchangeOptimisationTarget": "balanced",
         }
 
-    request_ipus = pow(2, math.ceil(math.log2(ipus)))
+    replicas = user_options.get("replicatedGraphCount", 1)
+    request_ipus = pow(2, math.ceil(math.log2(ipus * replicas)))
     request_ipus *= replication_factor
     dm = popart.DeviceManager()
     dm.setOnDemandAttachTimeout(int(1e4))
@@ -196,6 +229,11 @@ def run_py(proto: onnx.ModelProto,
     session.setRandomSeed(1984)
 
     anchors = session.initAnchorArrays()
+
+    rf = user_options.get("replicatedGraphCount")
+    if rf is not None and rf > 1:
+        data = {k: np.repeat(v[np.newaxis], rf, 0)
+                for k, v in data.items()}
 
     # Add a gradient accumulation factor dimension if needed
     af = user_options.get("accumulationFactor")

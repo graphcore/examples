@@ -31,38 +31,44 @@ class AutoencoderData:
             do_build_maps = False
 
         self.ratings_dict = {}
-        with open(self.data_file_name) as data_file:
-            for user_item_rating in data_file:
-                parts = user_item_rating.split(DELIMITER)
-                if len(parts) != 3:
-                    raise ValueError(
-                        'Line "{}" is invalid in {}'.format(
-                            user_item_rating, self.data_file_name))
+        observed_rating_events = []
+        if self.data_file_name:
+            observed_rating_events = np.loadtxt(self.data_file_name, delimiter=DELIMITER)
+        else:
+            # If no data file is provided, generate random data
+            num_events = 13000000 if training_data is None else 1000000
+            observed_rating_events = self.generate_random_ratings(num_events=num_events)
 
-                user_id_external = int(parts[USER_PART])
-                item_id_external = int(parts[ITEM_PART])
-                rating = float(parts[RATING_PART])
+        for i in range(observed_rating_events.shape[0]):
+            user_id_external, item_id_external, rating = tuple(observed_rating_events[i])
+            # Build dense maps to keep only users or items that have
+            # training data
+            if do_build_maps:
+                if user_id_external not in self.user_xlat_map:
+                    self.user_xlat_map[user_id_external] = user_index
+                    user_index += 1
+                if item_id_external not in self.item_xlat_map:
+                    self.item_xlat_map[item_id_external] = item_index
+                    item_index += 1
 
-                # Build dense maps to keep only users or items that have
-                # training data
-                if do_build_maps:
-                    if user_id_external not in self.user_xlat_map:
-                        self.user_xlat_map[user_id_external] = user_index
-                        user_index += 1
-                    if item_id_external not in self.item_xlat_map:
-                        self.item_xlat_map[item_id_external] = item_index
-                        item_index += 1
-
-                # Mapped user and item ids
-                user_id_internal = self.user_xlat_map[user_id_external]
-                item_id_internal = self.item_xlat_map[item_id_external]
-                if user_id_internal not in self.ratings_dict:
-                    self.ratings_dict[user_id_internal] = []
-                self.ratings_dict[user_id_internal].append(
-                    (item_id_internal, rating))
+            # Mapped user and item ids
+            user_id_internal = self.user_xlat_map[user_id_external]
+            item_id_internal = self.item_xlat_map[item_id_external]
+            if user_id_internal not in self.ratings_dict:
+                self.ratings_dict[user_id_internal] = []
+            self.ratings_dict[user_id_internal].append(
+                (item_id_internal, rating))
 
         self.user_id_list = list(self.ratings_dict.keys())
         self._input_size = len(self.item_xlat_map)
+
+    # Generate random ratings (used when real data is not available)
+
+    def generate_random_ratings(self, num_events, num_users = 480000, num_items = 18000):
+        user_id_external = np.random.randint(num_users, size=[num_events])
+        item_id_external = np.random.randint(num_items, size=[num_events])
+        rating = np.random.randint(5, size=[num_events]) + 1
+        return np.stack([user_id_external, item_id_external, rating], axis=1)
 
     # Generate one data sample during training
 
@@ -120,7 +126,10 @@ class AutoencoderData:
                     index += 1
                 return samples
 
-            filename = os.path.splitext(opts.training_data_file)[0]+'.bin'
+            if opts.training_data_file:
+                filename = os.path.splitext(opts.training_data_file)[0]+'.bin'
+            else:
+                filename = 'generated_random_training_data.bin'
             if not os.path.exists(filename):
                 print('Writing to {}'.format(filename))
                 generate_entire_dataset_in_numpy().astype('int8').tofile(filename)

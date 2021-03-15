@@ -1,6 +1,9 @@
 # BERT Training on IPUs using TensorFlow
 This directory provides a script and recipe to run BERT models for NLP pre-training and training on Graphcore IPUs.
 
+## Benchmarking
+
+To reproduce the published Mk2 throughput benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md) 
 
 ## Datasets
 The Wikipedia dataset contains approximately 2.5 billion wordpiece tokens. This is only an approximate size since the Wikipedia dump file is updated all the time.
@@ -18,7 +21,7 @@ See the `Datasets/README.md` file for more details on how to generate this data.
 |---------------------------|---------------------------------------------------------------------|
 | `run_pretraining.py`      | Main training loop of pre-training task                             |
 | `ipu_utils.py`            | IPU specific utilities                                              |
-| `optimization.py`         | IPU optimizer                                                       |
+| `ipu_optimizer.py`        | IPU optimizer                                                       |
 | `log.py`                  | Module containing functions for logging results                     |
 | `Datasets/`               | Code for using different datasets.<br/>-`data_loader.py`: Dataloader and preprocessing.<br/>-`create_pretraining_data.py`: Script to generate tfrecord files to be loaded from text data. |
 | `Models/modeling_ipu.py`  | A Pipeline Model description for the pre-training task on the IPU.  |
@@ -39,7 +42,7 @@ Create a virtual environment and install the appropriate Graphcore TensorFlow 1.
 virtualenv --python python3.6 .bert_venv
 source .bert_venv/bin/activate
 pip install -r requirements.txt
-pip install <path to gc_tensorflow1-15 .whl> 
+pip install <path to the tensorflow-1 wheel from the Poplar SDK>
 ```
 
 ### Generate pre-training data (small sample)
@@ -78,8 +81,14 @@ python3 Datasets/create_pretraining_data.py \
   --mask-tokens 20 \
   --duplication-factor 5
 ```
-**NOTE**: `--input-file/--output-file` can take multiple arguments if you want to split your dataset between files.
+
+#### Input and output files
+`--input-file/--output-file` can take multiple arguments if you want to split your dataset between files.
 When creating data for your own dataset, make sure the text has been preprocessed as specified at https://github.com/google-research/bert. This means with one sentence per line and documents delimited by empty lines.
+
+
+#### Remasked datasets
+The option `--remask` can be used to move the masked elements at the beginning of the sequence. This will improve the inference and training performance.
 
 ### Pre-training with BERT on IPU
 Now that the data are ready we can start training our BERT tiny on the IPU!
@@ -88,56 +97,9 @@ Run this config:
 python3 run_pretraining.py --config configs/pretrain_tiny_128_lamb.json --train-file ./Datasets/sample.tfrecord
 ```
 
-BERT tiny is a quick model you can use for simple experiments, the config file is the following:
-```
-{
-  "task": "pretraining",
-  "attention_probs_dropout_prob": 0.0,
-  "hidden_act": "gelu",
-  "hidden_dropout_prob": 0.1,
-  "hidden_size": 128,
-  "initializer_range": 0.02,
-  "max_position_embeddings": 512,
-  "num_attention_heads": 2,
-  "num_hidden_layers": 2,
-  "hidden_layers_per_stage": 2,
-  "type_vocab_size": 2,
-  "vocab_size": 30528,
-  "seq_length": 128,
+The `configs/pretrain_tiny_128_lamb.json` file is a small model that can be used for simple experiments.
 
-  "batch_size": 8,
-  "batches_per_step": 1,
-  "steps": 100,
-  "max_predictions_per_seq": 20,
-  "lr_schedule": "polynomial_decay",
-  "base_learning_rate": 1e-3,
-  "warmup": 10,
-  "optimiser": "lamb",
-
-  "parallell_io_threads": 16,
-  "pipeline_depth": 16,
-  "pipeline_schedule": "Grouped",
-  "replicas": 1,
-  "precision": "16",
-  "seed": 1234,
-  "steps_per_ckpts": 100,
-  "steps_per_logs": 1,
-  "weight_decay": 0.0003,
-  "disable_graph_outlining": false,
-  "restoring":false,
-  "no_logs": false,
-  "do_validation":false,
-  "do_train":true,
-  "available_memory_proportion":0.6,
-  "embeddings_placement": "same_as_hidden_layers",
-
-  "checkpoint_path": "./checkpoint/phase1",
-  "checkpoint_model":"./checkpoint/phase1/model",
-  "log_dir": "./logs/"
-}
-```
-
-As you can see this config has a first part that specifies the model, BERT tiny, the second part is more about the optimisation where we specify the learning rate, the learning rate scheduler the batch size and the optimiser (in this case we are using LAMB but other options can be used like momentum, ADAM, and SGD).
+This config file has a first part that specifies the model, BERT tiny, the second part is more about the optimisation where we specify the learning rate, the learning rate scheduler the batch size and the optimiser (in this case we are using LAMB but other options can be used like momentum, ADAM, and SGD).
 
 ### View the pre-training results in Weights & Biases
 Weights and Biases is a tool that helps you tracking different metrics of your machine learning job, for example the loss the accuracy but also the memory utilisation and the compilation time. For more information please see https://www.wandb.com/.
@@ -152,7 +114,7 @@ Just before that the run starts you will see a link to your run appearing in you
 #### Pre-training of BERT LARGE on Wikipedia
 
 The steps to follow to run the BERT LARGE model are exactly the same as before.
-As first you need to create the Wikipedia pret-raining data using the script in the Dataset folder, see the readme there for the details.
+As first you need to create the Wikipedia pre-training data using the script in the Dataset folder, see the README there for the details.
 After this you can run BERT LARGE on 16 IPUs at batch size 65k using LAMB with:
 
 ```shell
@@ -168,6 +130,8 @@ python3 run_pretraining.py --config configs/pretrain_large_384_phase2.json --sta
 
 Remember to insert in the config files the path to the 384 dataset and be sure that the number of masked tokens in the json matches the ones you used in the creation of the dataset.
 Also, it is important to start the training from the very end of phase1, in order to do so you can use the `--start-from-ckpt` and point to the final checkpoint of phase1, the model will be initialised correctly from that point.
+
+Note that the configuration flag `--static-mask` must be set if the datasets was [generated with the remasking option](#remasked-dataset). A dataset that does not require the `--static-mask` flag may end up using more memory than a dataset that does, like the ones presented in the config files folder. Reducing the `--available-memory-proportion` parameter may be required in this case.
 
 ## Information about the application
 
@@ -207,7 +171,7 @@ POPLAR_LOG_LEVEL=INFO POPLIBS_LOG_LEVEL=INFO TF_CPP_VMODULE='poplar_compiler=1' 
 ```
 
 In the previous command we set the log level for POPLAR, POPLIBS to INFO and we also set TensorFlow log to be 'poplar_compiler=1'.
-In this example we are taking advantage of two specific flags of `run_pretraining.py` that can improve the workflow: `--generated-data` and `--compile-only`. 
+In this example we are taking advantage of two specific flags of `run_pretraining.py` that can improve the workflow: `--generated-data` and `--compile-only`.
 The first uses random data generated on the host instead of real data.
 The second is more interesting and enables the compilation of the application, getting the memory profile, without attaching to any IPUs.
 This makes possible for example to run a lot of experiments with different hyperparameters in order to understand which one is going to use the hardware better.
@@ -228,6 +192,55 @@ The previous suggestions are due to the fact that every step is the same so it i
 Let's make an example with a large application, like the phase1 training with LAMB:
 
 ```shell
-POPLAR_ENGINE_OPTIONS='{"autoReport.outputExecutionProfile":"true", "debug.allowOutOfMemory": "true", "debug.outputAllSymbols": "true", "autoReport.all": "true", "profiler.format":"v3", "autoReport.directory":"./execution_report"}' python run_pretraining.py --config configs/pretrain_large_128_phase1.json --steps 1 --batches-per-step 1 --pipeline-depth 10
+POPLAR_ENGINE_OPTIONS='{"autoReport.outputExecutionProfile":"true", "debug.allowOutOfMemory": "true", "debug.outputAllSymbols": "true", "autoReport.all": "true", "profiler.format":"v3", "autoReport.directory":"./execution_report"}' python run_pretraining.py --config configs/pretrain_large_128_phase1.json --steps 1 --batches-per-step 1 --gradient-accumulation-count 10
 ```
 In this way the execution profile will be dropped together with the memory profile and we can inspect how many cycles the hardware is spending on each operation and this can give us insight on possible optimisations and improvements.
+
+# Multi-Host training using PopDist
+
+PopDist is the tool shipped with the SDK that allows to run multiple SDK instances at the same time on the same or different hosts.
+In the config folder we added two config files, the ones ending with '_POD64' and '_POD128', that have been specifically designed to be trained using PopDist.
+The POD64 configuration file can be run using a single host but in this case we suggest to perform a hyperparameter search in particular for the loss scaling parameter.
+
+The first command we are intersted in allows us to run on a POD64 using not just a single host but 4, each of them running 4 SDK instances, one for each replica.
+Before to launch this we need to set up the V-IPU cluster and eventually a V-IPU partition, procedure can be found in the [V-IPU user-guide](https://docs.graphcore.ai/projects/vipu-user/en/latest/). We need then to set up the dataset and the SDKs, it is important that these components are found into each host in the same global path. The same is valid for the virtual environment and also for the `run_pretraining.py` script.
+After all the previous setup steps have been taken you can run the training using the following command:
+
+```shell
+poprun -vv --host host_address_1, host_address_2, host_address_3, host_address_4 --num-instances 16 --num-replicas 16 --ipus-per-replica 4 --numa-aware=yes --vipu-server-host=host_address_1 --vipu-partition=p_1-16 --mpi-global-args="--tag-output" --mpi-local-args="TF_POPLAR_FLAGS=--executable_cache_path=/path/to/cache/folder" python /path/to/run_pretraining.py --config configs/pretrain_large_128_phase1_POD64.json  --train-file '/path/to/tokenised/wikipedia/*.tfrecord'
+```
+
+This command will execute the entire training procedure on the Wikipedia dataset on the POD64, any extra logging may be added to the `--mpi-local-args` flag.
+Some details that may be interesting are: 
+- `--host` this contains the IP addresses of the hosts taking part to the training.
+- `--vipu-partition` in this case we used a pre-existent partition. This is not mandatory since PopDist can create a partition for you on the fly, the only strict requirement is the presence of a V-IPU cluster.
+- `--vipu-server-host` location of the V-IPU server.
+For more information about the V-IPU, please refer to the docs.
+The poprun command needs also to receive some information about the model itself:
+- `--ipus-per-replicas` the number of IPUs required for each replica, 4 in the case of BERT LARGE.
+- `--num-replicas` total number of replicas in total (in the POD64 example the total replicas are 16, 4 for each host)
+- `--num-instances` number of instances created, in our case 16 so 4 for each host.
+
+PopDist is fundamental if we want to run on a POD128, an example of this is the POD128 config file in the confing folder.
+As before, make sure that you configured the V-IPU cluster correctly, that the same folder structure for the python script, the SDK, the virtual environment and the dataset is present in all the hosts involved in the process.
+
+We can then run the job using this simple command:
+
+```shell
+poprun -vv --host host_address_1,host_address_2 --num-ilds 2 --num-instances 2 --num-replicas 32 --ipus-per-replica 4 --numa-aware=yes --vipu-server-host=host_address_1 --reset-partition=no  --vipu-partition=pod128 --vipu-server-timeout=600 --mpi-global-args="--tag-output" python run_pretraining.py --config configs/pretrain_large_128_lamb_POD128.json --train-file '/path/to/tokenised/wikipedia/*.tfrecord'
+```
+
+As for the main application, there is the possibility to run PopDist in a `compile-only` mode.
+If we want to perform this operation on a single server we need to first set the following environmental variable:
+
+```shell
+export POPLAR_TARGET_OPTIONS='{"ipuLinkDomainSize":"64"}'
+```
+
+We can then execute this command to trigger the execution:
+
+```shell
+ poprun --offline-mode=on  -vv --num-ilds 2 --num-instances 2 --num-replicas 32 --ipus-per-replica 4 --numa-aware=yes --mpi-global-args="--tag-output" python run_pretraining.py --config configs/pretrain_large_128_lamb_128ipus.json --generated-data --compile-only
+```
+
+With this command we are able to compile the previous POD128 job but on a much smaller machine. The only modifications that have to be applied are: --compile-only for the application and --offline-mode=on for poprun ensure that this will not attach to any IPU and the job will compile as if it was on a larger machine.

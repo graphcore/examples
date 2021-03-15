@@ -17,15 +17,19 @@ import sys
 import json
 import argparse
 import datetime
+import logging
 from typing import List, Optional
+
 import numpy as np
 import onnx
-from logging import getLogger
+
+import popdist
+
 from bert_model import BertConfig
-
 from .weight_loading import load_initializers_from_onnx
+from .distributed import setup_comm
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def save_model_statistics(model_path, writer, i=0):
@@ -130,7 +134,7 @@ def parse_bert_args(args_string=None):
     # TODO: Organise Argument Groups.
     group = parser.add_argument_group("Model Config")
     parser_from_NamedTuple(group, BertConfig, args={
-        "batch_size": "Set the micro batch-size",
+        "micro_batch_size": "Set the micro batch-size",
         "host_embedding": dict(
             choices=["NONE", "WORD", "ALL", "MERGE"],
             help="Enable embedding lookup on CPU. Values: "
@@ -173,7 +177,6 @@ def parse_bert_args(args_string=None):
             help="Set the task. Pretraining (Masked-LM & Next Sentence Prediction), SQuAD, MRPC"
         ),
         "split_linear_layers": "Memory Optimisation to serialise MatMul Operations.",
-        "replicated_weight_sharding": "Shard weight tensors over the replicas, only supported in phased_execution mode.",
         "no_mask": "Don't apply padding masks to the attention scores",
         "use_default_available_memory_proportion": "Use the poplibs default value for availableMemoryProportion option on the encoder matmuls.",
         "update_embedding_dict": "Include the sparse update to the word Embedding_Dict.",
@@ -184,6 +187,7 @@ def parse_bert_args(args_string=None):
         "num_ffwd_splits": "Factor by which feedforward layer is serialized, only supported in phased_execution mode.",
         "split_transformer": "Place attention and feedforward layers in separate phased_execution scope.",
         "batch_serialize": "Factor by which a micro-batch is serialized, only supported in phased_execution mode.",
+        "layers_per_phase": "Number of encoder layers per phased execution phase. ",
         "num_io_tiles": "The number of tiles on each IPU dedicated to doing collective communication ops with the replicated weights. Only supported in phased_execution mode."
     })
 
@@ -199,16 +203,26 @@ def parse_bert_args(args_string=None):
     group.add_argument("--squad-lr-scale", type=float, default=1.0,
                        help="Scale the learning rate of the SQuAD layers.")
 
-    group = parser.add_argument_group("Training Config")
-    group.add_argument("--gradient-accumulation-factor", type=int, default=1,
-                       help="Set how many gradients to accumulate before updating the weights. \
-                            Note: This affects the calculation of effective batch size")
+    group = parser.add_argument_group("Batch Config")
+    group.add_argument("--global-batch-size", type=int,
+                       help="Set the global batch size of the model. "
+                            "If specified Gradient Accumulation will be set such that 'batch-size * replication-factor * gradient-accumulation-factor == global-batch-size'")
+    group.add_argument("--gradient-accumulation-factor", type=int,
+                       help="Set how many gradients to accumulate before updating the weights.")
     group.add_argument("--replication-factor", type=int, default=1,
-                       help="Replicates the graph by this factor across IPUs to achieve data parallel execution. (Note: This changes the effective batch size)")
+                       help="Replicates the graph by this factor across IPUs to achieve data parallel execution.")
+    group.add_argument("--batch-serialize", type=int, default=1,
+                       help="Factor by which a micro-batch is serialized, only supported in phased_execution mode.")
+
+    group = parser.add_argument_group("Optimizer Config")
     group.add_argument("--optimizer", type=str, choices=['SGD', 'ADAM', 'ADAM_NO_BIAS', 'LAMB', 'LAMB_NO_BIAS'], default="SGD",
                        help="Set the optimizer type")
     group.add_argument("--learning-rate", type=float, default=0.0008,
-                       help="Set the learning rate")
+                       help="Set a constant learning rate")
+    group.add_argument("--loss-scaling", type=float, default=4.0,
+                       help="Set the loss scaling. This helps prevent underflow during backpropagation.")
+    group.add_argument("--weight-decay", type=float, default=0,
+                       help="Set the weight decay, not used for bias and norms parameters")
     # SGD+M
     group.add_argument("--momentum", type=float, default=0.984375,
                        help="Set the optimizer momentum value")
@@ -216,44 +230,45 @@ def parse_bert_args(args_string=None):
                        help="Set the optimizer dampening value. (Note: this will be set to momentum value by default)")
     group.add_argument("--velocity-scaling", type=float, default=1.0,
                        help="Set the velocity scaling. This helps prevent overflow when accumulating gradients.")
-    # Adam
+    # Adam/Lamb
     group.add_argument("--beta1", type=float, default=0.9,
                        help="Set the Adam/Lamb beta1 value")
     group.add_argument("--beta2", type=float, default=0.999,
                        help="Set the Adam/Lamb beta2 value")
     group.add_argument("--max-weight-norm", type=float, default=None,
                        help="Set the max value for R1 (weight norm) in the Lamb optimizer. Default is no clipping")
-    group.add_argument("--loss-scaling", type=float, default=4.0,
-                       help="Set the loss scaling. This helps prevent underflow during backpropagation.")
-    group.add_argument("--weight-decay", type=float, default=0, help="Set the weight decay, not used for bias and norms parameters")
-    group.add_argument("--epochs", type=int, default=35,
-                       help="Number of epochs to train for")
     group.add_argument("--epochs-inference", type=int, default=1,
                        help="Number of epochs to run inference for")
     group.add_argument("--stochastic-rounding", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Turn on Stochastic Rounding")
     group.add_argument("--gradient-reduction-type", type=str, choices=["Sum", "Mean"], default="Sum",
                        help="Set how gradients are reduced over the global batch size.")
+    group.add_argument("--learning-rate-function", choices=['Scheduled', 'Linear'], default='Scheduled',
+                       help="Specify the Learning Rate Scheduler. "
+                            "Scheduled will follow the arguments specified by 'lr-schedule-by-*'. "
+                            "Linear will follow the arguments specified by {'learning-rate','lr-warmup-steps','lr-steps-per-decay-update'}")
+
+    group = group.add_mutually_exclusive_group()
+    group.add_argument("--epochs", type=int,
+                       help="Number of epochs to train for")
+    group.add_argument("--training-steps", type=int,
+                       help="Number of steps to train for")
 
     group = parser.add_argument_group("Continuous Pipelining Config")
-    group.add_argument("--pipeline-lr-scaling", type=str_to_bool, nargs="?", const=True, default=False,
-                       help="Enable learning rate scaling per pipeline stage")
-    group.add_argument("--pipeline-lr-scaling-offset", type=float, default=0.25,
-                       help="Set the value for learning rate scaling on the first pipeline stage. Learning rates will be scaled "
-                            "linearly from this offset (default: 0.25) to 1 as pipeline stage increases to account for increased errors "
-                            "at lower-level stages when pipelining. (Note: for pipelines with few stages, this should be increased)")
-    group.add_argument("--pipeline-momentum-scaling", type=str_to_bool, nargs="?", const=True, default=False,
-                       help="Enable momentum and dampening scaling per pipeline stage")
-    group.add_argument("--pipeline-momentum-scaling-offset", type=float, default=0.1,
-                       help="Set the value momentum scaling on the last pipeline stage. Momentums will be scaled "
-                            "linearly from this offset (default: 0.1) to 1 as pipeline stage decrease to account for increased errors "
-                            "at lower-level stages when pipelining. (Note: for pipelines with few stages, this should be increased)")
-    group.add_argument("--pipeline-dampening-scaling-offset", type=float,
-                       help="Set the value for dampening scaling on the last pipeline stage. Dampenings will be scaled "
-                            "linearly from this offset (default: same as momentum) to 1 as pipeline stage decrease to account for increased errors "
-                            "at lower-level stages when pipelining. (Note: this will be set to the momentum offset by default)")
+    group.add_argument("--continuous-pipeline-optimizer-scaling", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Turn on hyperparameter scaling by pipeline stage. See 'bert_optimizer/continuous_pipeline.py' for more details")
 
-    _group = parser.add_argument_group("Hyperparameter Schedule Config")
+    group = parser.add_argument_group("Linear Optimizer Config")
+    group.add_argument("--lr-warmup-start", type=int, default=1e-7,
+                       help="Specify the initial learning rate when using warmup.")
+    group.add_argument("--lr-warmup-steps", type=int, default=0,
+                       help="Specify the number of steps to Warmup over. Will update the optimizer every step and start from lr = 0.")
+    group.add_argument("--lr-steps-per-warmup-update", type=int, default=1,
+                       help="Specify the number of steps between each optimizer update during warmup.")
+    group.add_argument("--lr-steps-per-decay-update", type=int, default=1,
+                       help="Specify the number of steps between each optimizer update after warmup.")
+
+    _group = parser.add_argument_group("Scheduled Optimizer Config")
     group = _group.add_mutually_exclusive_group()
     group.add_argument("--lr-schedule-by-epoch", action=ScheduleArgumentParser, nargs="*", default=None,
                        help="A schedule for learning rate warmup and decay, provided as space-separated "
@@ -372,6 +387,9 @@ def parse_bert_args(args_string=None):
                        help="Groups the host-device synchronisations more efficiently, higher throughput can be reached at the expense of sum liveness")
     group.add_argument("--optimizer-state-offchip", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Keep the optimizer state off chip. Only streaming it on when needed for the weight update.")
+    group.add_argument("--replicated-tensor-sharding", type=str_to_bool, nargs="?", const=False, default=False,
+                       help="Shard tensors over the replicas. In PIPELINE execution only the optimizer state will be sharded. "
+                            "In PHASED execution the weights and optimizer state will be sharded.")
     group.add_argument("--enable-half-partials", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Enable half partials for matmuls and convolutions globally.")
     group.add_argument('--internal-exchange-optimisation-target', type=str, default=None,
@@ -379,6 +397,20 @@ def parse_bert_args(args_string=None):
                        help="The optimisation approach for internal exchanges.")
     group.add_argument("--activations-on-chip", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Leave activations stashed on chip, i.e don't move the activations to streaming memory.")
+    group.add_argument('--tensor-storage-onchip', type=str_to_bool, default=False,
+                       help="In phased execution mode, store weights, optimizer state and gradient accumulation tensors in  always live on-chip memory rather than remote memory.")
+    group.add_argument("--activation-io-schedule", type=str, choices=['Preload', 'OnDemand'], default="Preload",
+                       help="Set the activation IO schedule, only used in phased mode.")
+    group.add_argument("--optimizer-io-schedule", type=str, choices=['Preload', 'OnDemand'], default="Preload",
+                       help="Set the optimizer state IO schedule, only used in phased mode.")
+    group.add_argument("--weight-io-schedule", type=str, choices=['Preload', 'OnDemand'], default="Preload",
+                       help="Set the weight IO schedule, only used in phased mode.")
+    group.add_argument("--optimizer-schedule", type=str, choices=['Batch', 'Interleaving, BatchClusteredIO'], default="Interleaving",
+                       help="""Schedule for phased optimizer steps:
+                            in Batch mode process all weights together(maximises overlap between compute and exchange),
+                            in Interleaved mode process one weight at a time(reduce liveness),
+                            in BatchClusteredIO mode process all weights together and maximise stream
+                            copy merges by keeping RemoteLoad/RemoteStore operations clustered.""")
 
     group = parser.add_argument_group("Logging Config")
     group.add_argument("--report-hw-cycle-count", action="store_true",
@@ -402,7 +434,6 @@ def parse_bert_args(args_string=None):
     group.add_argument("--log-level", type=str, default='INFO',
                        choices=['NOTSET', 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'],
                        help="Set the logging level")
-
     group = parser.add_argument_group("Device Config")
     group.add_argument("--device-id", type=int, default=None,
                        help="Select a specific IPU device.")
@@ -447,17 +478,22 @@ def parse_bert_args(args_string=None):
 
     set_execution_mode(args)
 
-    set_mpi_args(args)
+    set_popdist_args(args)
+
+    set_batch_arguments(args)
 
     # Invalidate incompatible options
     if args.no_drop_remainder and args.task != "SQUAD":
         raise RuntimeError(f"--no-drop-remainder is only compatible with SQUAD and not with {args.task}, aborting")
-    if args.batch_serialize > args.batch_size:
-        raise RuntimeError("--batch-serialize cannot be > --batch_size, aborting")
+    if args.host_embedding != "NONE" and args.task != "SQUAD":
+        raise RuntimeError(f"--host-embedding is only compatible with SQUAD and not with {args.task}, aborting")
+    if args.batch_serialize > args.micro_batch_size:
+        raise RuntimeError("--batch-serialize cannot be > --micro-batch-size, aborting")
     if args.split_linear_layers and args.batch_serialize > 1:
         raise RuntimeError("--split-linear-layers is incompatible with --batch-serialize > 1, aborting")
     if args.synthetic_data and args.generated_data:
-        raise RuntimeError("choose either --synthetic-data or --generated-data, not both. Aborting")
+        raise RuntimeError("choose either --synthetic-data or --generated-data, not both, aborting")
+    check_training_duration(args)
 
     # set low-latency-inference if minimum-latency-inference set
     if args.minimum_latency_inference:
@@ -469,6 +505,38 @@ def parse_bert_args(args_string=None):
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     save_args(args)
     return args
+
+
+def check_training_duration(args):
+    if not args.inference and not args.no_training and \
+       args.epochs is None and args.training_steps is None:
+        raise RuntimeError("Either epochs or training-steps is required, aborting")
+
+
+def global_batch_size(args):
+    return args.micro_batch_size * args.replication_factor * args.gradient_accumulation_factor
+
+
+def set_batch_arguments(args):
+    if args.global_batch_size is None:
+        if args.gradient_accumulation_factor is None:
+            args.gradient_accumulation_factor = 1
+        args.global_batch_size = global_batch_size(args)
+    else:
+        if args.gradient_accumulation_factor is not None and args.global_batch_size != global_batch_size(args):
+            raise RuntimeError("User settings for global batch size and factors are inconsistent.\n\n"
+                               f"  Specified global batch size: {args.global_batch_size}\n\n"
+                               f"  Inferred global batch size: {global_batch_size(args)}\n"
+                               f"    micro batch size: {args.micro_batch_size}\n"
+                               f"    gradient accumulation factor: {args.gradient_accumulation_factor}\n"
+                               f"    replication factor: {args.replication_factor}")
+
+        denom = args.micro_batch_size * args.replication_factor
+        if args.global_batch_size % denom != 0:
+            raise RuntimeError("Unable to set gradient accumulation to match the global batch size")
+
+        args.gradient_accumulation_factor = args.global_batch_size // denom
+        logger.info(f"Set Gradient Accumulation Factor to {args.gradient_accumulation_factor}")
 
 
 def set_execution_mode(args):
@@ -514,12 +582,12 @@ def get_validation_args(args):
     validation_kwargs = dict(
         inference=True,
         tf_checkpoint=None,
-        gradient_accumulation_factor=1
+        gradient_accumulation_factor=1,
+        engine_cache=None,
+        use_popdist=False
     )
     if not args.no_training:
         validation_kwargs["onnx_checkpoint"] = os.path.join(args.checkpoint_dir, "model.onnx")
-    if args.engine_cache:
-        validation_kwargs["engine_cache"] = args.engine_cache + "val"
     if args.validation_config is not None:
         validation_kwargs.update(**args.validation_config)
 
@@ -528,30 +596,32 @@ def get_validation_args(args):
     return argparse.Namespace(**args)
 
 
-def set_mpi_args(args):
-    if not args.mpi_distributed:
+def set_popdist_args(args):
+    if not popdist.isPopdistEnvSet():
+        args.use_popdist = False
+        args.popdist_size = 1
+        args.popdist_rank = 0
         return
 
-    logger.warning("Distributed training with MPI is currently in preview."
-                   "Full support for distributed training will be coming in a future release.")
+    if args.inference:
+        raise RuntimeError("Distributed execution is only supported for training")
+
+    try:
+        import horovod.popart as hvd
+        hvd.init()
+    except ImportError:
+        raise ImportError("Could not find the PopART horovod extension. "
+                          "Please install the horovod .whl provided in the Poplar SDK.")
+
+    args.use_popdist = True
+    popdist_local_factor = popdist.getNumLocalReplicas()
+    if args.replication_factor > 1 and args.replication_factor != popdist_local_factor:
+        logger.warning(f"Overwriting the local replication factor {args.replication_factor} to {popdist_local_factor}")
+    args.replication_factor = popdist_local_factor
+
+    args.popdist_size = popdist.getNumTotalReplicas() // popdist.getNumLocalReplicas()
+    args.popdist_rank = popdist.getReplicaIndexOffset() // popdist.getNumLocalReplicas()
+    args.checkpoint_dir = args.checkpoint_dir + "_rank_" + str(args.popdist_rank)
+
     from mpi4py import MPI
-    comm = MPI.COMM_WORLD
-    mpi_size = comm.Get_size()
-    mpi_rank = comm.Get_rank()
-    if args.mpi_rank != mpi_rank and args.mpi_rank != 0:
-        logger.warning(f"Overwriting the MPI rank provided {args.mpi_rank} to {mpi_rank}")
-    args.mpi_rank = mpi_rank
-
-    if args.mpi_size != mpi_size and args.mpi_size > 1:
-        logger.warning(f"Overwriting the MPI size provided {args.mpi_size} to {mpi_size}")
-    args.mpi_size = mpi_size
-
-    is_distributed = mpi_size > 1
-    if is_distributed:
-        if args.inference:
-            raise RuntimeError("Distributed execution only supported for training")
-        if args.task != "SQUAD":
-            raise RuntimeError("Distributed training only supported with SQUAD")
-
-    if is_distributed:
-        args.checkpoint_dir = args.checkpoint_dir + "_rank_" + str(args.mpi_rank)
+    setup_comm(MPI.COMM_WORLD)

@@ -1,0 +1,9 @@
+numba==0.48.0
+numpy==1.18.5
+scipy==1.4.1
+torchaudio==0.7.2
+librosa==0.7.2
+tqdm==4.46.1
+six==1.15.0
+pytest==5.4.1
+pytest-pythonpath==0.7.3 

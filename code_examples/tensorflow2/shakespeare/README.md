@@ -17,7 +17,7 @@ https://colab.research.google.com/github/tensorflow/tpu/blob/master/tools/colab/
 
 1) Prepare the TensorFlow environment.
 
-   Install the Poplar SDK. Make sure to run the enable.sh scripts and activate a Python virtualenv with the TensorFlow 2 gc_tensorflow wheel installed.
+   Install the Poplar SDK. Make sure to run the enable.sh scripts and activate a Python virtualenv with the tensorflow-2 wheel from the Poplar SDK installed.
 
 2) Acquire the training material.
 

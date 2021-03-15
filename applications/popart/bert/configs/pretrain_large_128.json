@@ -83,8 +83,6 @@
 	"loss_scaling": 20.0,
 	"velocity_scaling": 20.0,
 	"momentum": 0.984375,
-	"pipeline_lr_scaling": false,
-	"pipeline_momentum_scaling": false,
 	"stochastic_rounding": true,
 	"batches_per_step":  128,
 	"epochs": 8,

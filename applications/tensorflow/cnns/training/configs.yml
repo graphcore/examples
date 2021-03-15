@@ -1,0 +1,163 @@
+mk2_resnet50_base: &mk2_resnet50_base
+  model: resnet
+  model_size: 50
+  dataset: imagenet
+  data_dir: /localdata/datasets/
+  stable_norm: True
+  internal_exchange_optimisation_target: balanced
+  enable_half_partials: True
+  normalise_input: True
+  enable_half_partials: True
+  xla_recompute: True
+  ckpts_per_epoch: 1
+  logs_per_epoch: 1
+  eight_bit_io: True
+
+mk2_resnet50_gn_16ipus: &mk2_resnet50_gn_16ipus
+  <<: *mk2_resnet50_base
+  batch_size: 8
+  gradient_accumulation_count: 8
+  replicas: 16
+  optimiser: momentum
+  momentum: 0.9
+  epochs: 65
+  lr_schedule: cosine
+  label_smoothing: 0.1
+
+mk2_resnet50_bn_16ipus: &mk2_resnet50_bn_16ipus
+  <<: *mk2_resnet50_base
+  batch_size: 16
+  gradient_accumulation_count: 256
+  replicas: 4
+  optimiser: momentum
+  momentum: 0.9
+  pipeline_num_parallel: 32
+  pipeline_schedule: Grouped
+  shards: 4
+  pipeline_splits: [b1/2/relu, b2/3/relu, b3/3/relu]
+  pipeline: True
+  batch_norm: True
+  available_memory_proportion: ["0.15"]
+  disable_variable_offloading: True
+  precision: "16.32"
+  lr_schedule: cosine
+  base_learning_rate: -13
+  label_smoothing: 0.1
+
+mk2_resnet50_gn_64ipus:
+  <<: *mk2_resnet50_gn_16ipus
+  replicas: 64
+  gradient_accumulation_count: 2
+
+mk2_resnet50_bn_64ipus:
+  <<: *mk2_resnet50_bn_16ipus
+  replicas: 16
+  gradient_accumulation_count: 64
+
+mk2_resnet50_bn_128ipus:
+  <<: *mk2_resnet50_bn_16ipus
+  replicas: 32
+  gradient_accumulation_count: 32
+
+mk2_resnext101_16ipus:
+  model: resnext
+  model_size: 101
+  dataset: imagenet
+  data_dir: /localdata/datasets
+  shards: 2
+  replicas: 8
+  batch_size: 6
+  gradient_accumulation_count: 16
+  epochs: 120
+  xla_recompute: True
+  pipeline_splits: [b3/3/relu]
+  pipeline_schedule: Grouped
+  pipeline: True
+  optimiser: momentum
+  momentum: 0.9
+  ckpts_per_epoch: 1
+  internal_exchange_optimisation_target: balanced
+  disable_variable_offloading: True
+  normalise_input: True
+  stable_norm: True
+  base_learning_rate: -11
+  no_validation: True
+  enable_half_partials: True
+  lr_schedule: cosine
+  label_smoothing: 0.1
+  eight_bit_io: True
+
+mk2_efficientnet_b4_16ipus_base: &mk2_efficientnet_b4_16ipus_base
+  model: efficientnet
+  model_size: 4
+  dataset: imagenet
+  data_dir: /localdata/datasets
+  precision: "16.32"
+  groups: 4
+  optimiser: RMSprop
+  lr_schedule: exponential
+  xla_recompute: True
+  enable_conv_dithering: True
+  available_memory_proportion: ["0.15"]
+  internal_exchange_optimisation_target: balanced
+  pipeline_schedule: Grouped
+  weight_avg_exp: [0.97]
+  enable_half_partials: True
+  cutmix_lambda: 0.85
+  mixup_alpha: 0.2
+  disable_variable_offloading: True
+  shards: 4
+  pipeline: True
+  replicas: 4
+  
+mk2_efficientnet_b4_g1_16ipus: &mk2_efficientnet_b4_g1_16ipus
+  <<: *mk2_efficientnet_b4_16ipus_base
+  group_dim: 1
+  expand_ratio: 6
+  batch_size: 3
+  gradient_accumulation: 64
+  pipeline_splits: [block2b, block4b, block6c]
+
+mk2_efficientnet_b4_g16_16ipus: &mk2_efficientnet_b4_g16_16ipus
+  <<: *mk2_efficientnet_b4_16ipus_base
+  group_dim: 16
+  expand_ratio: 4
+  batch_size: 5
+  gradient_accumulation: 40
+  pipeline_splits: [block2c, block4c, block6a]
+
+mk2_efficientnet_b4_g1_64ipus:
+  <<: *mk2_efficientnet_b4_g1_16ipus
+  gradient_accumulation_count: 16
+  replicas: 16
+
+mk2_efficientnet_b4_g16_64ipus:
+  <<: *mk2_efficientnet_b4_g16_16ipus
+  gradient_accumulation_count: 8
+  replicas: 16
+
+mk1_resnet50_16ipus:
+  model: resnet
+  model_size: 50
+  dataset: imagenet
+  data_dir: /localdata/datasets
+  batch_size: 4
+  replicas: 4
+  gradient_accumulation_count: 64
+  epochs: 65
+  shards: 4
+  pipeline_splits: [b1/2/relu, b2/3/relu, b3/5/relu]
+  pipeline: True
+  pipeline_schedule: Grouped
+  xla_recompute: True
+  optimiser: momentum
+  momentum: 0.9
+  available_memory_proportion: ['0.6', '0.6', '0.6', '0.6', '0.6', '0.6', '0.16', '0.2']
+  max_cross_replica_buffer_size: 100000000
+  internal_exchange_optimisation_target: balanced
+  normalise_input: True
+  stable_norm: True
+  enable_half_partials: True
+  lr_schedule: cosine
+  label_smoothing: 0.1
+  ckpts-per-epoch: 1

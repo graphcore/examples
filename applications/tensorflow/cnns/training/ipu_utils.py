@@ -31,7 +31,8 @@ def get_config(prng=False,
                profile=None,
                availableMemoryProportion=None,
                stable_norm=False,
-               internalExchangeOptimisationTarget=None):
+               internalExchangeOptimisationTarget=None,
+               limitVertexState=None):
     """Builds ipu_options"""
 
     profile_exec_modes = {"NO_PROFILE": ExecutionProfileType.NO_PROFILE,
@@ -47,16 +48,6 @@ def get_config(prng=False,
     config = utils.set_optimization_options(config,
                                             max_cross_replica_sum_buffer_size=max_cross_replica_buffer_size)
 
-    if "GCL_REAL_COLLECTIVES" in os.environ:
-        # The GCL_NUM_IO_TILES environment variable sets how many tiles in the IPU are reserved for Graphcore Communication Library (GCL) collectives.
-        iotiles = int(os.environ['GCL_NUM_IO_TILES'])
-        if iotiles % 2 or iotiles < 32 or iotiles > 192:
-            raise ValueError(
-                'GCL IO Tiles must be a multiple of 2 in between 32 and 192.'.format(iotiles))
-
-        config = utils.set_gcl_options(config, num_io_tiles=iotiles, gcl_options={
-                                       "useGclCollectives": "true", })
-
     if ipu_id == -1:
         config = utils.auto_select_ipus(config, number_of_replicas*shards)
     else:
@@ -70,6 +61,11 @@ def get_config(prng=False,
     if internalExchangeOptimisationTarget is not None:
         utils.set_compilation_options(config, {
             "opt.internalExchangeOptimisationTarget": internalExchangeOptimisationTarget
+        })
+
+    if limitVertexState is not None:
+        config = utils.set_compilation_options(config, {
+            "opt.limitVertexStateToLower256K": "true" if limitVertexState else "false"
         })
 
     if availableMemoryProportion is not None:

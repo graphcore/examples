@@ -15,7 +15,7 @@
 from . import custom, natural_exponential, polynomial_decay
 import logging
 
-logger = logging.getLogger("Learning_rate")
+from log import logger
 
 
 def _warmup_steps(warmup_val, total_steps):

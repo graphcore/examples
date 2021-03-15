@@ -20,6 +20,12 @@ from collections import namedtuple
 from time import time
 import tempfile
 
+# The following is a workaround for pytorch issue #1938
+from six.moves import urllib
+opener = urllib.request.build_opener()
+opener.addheaders = [("User-agent", "Mozilla/5.0")]
+urllib.request.install_opener(opener)
+
 # Constants for the MNIST dataset
 IMAGE_WIDTH = 28
 IMAGE_HEIGHT = 28
@@ -318,51 +324,53 @@ def train(opts, model_file, ckpt_file) -> None:
                     training.session.getCycleCount(),
                 )
                 print("Total time: {}".format(duration))
-        # Evaluation
-        aggregated_loss = 0
-        num_correct = 0
 
         training.session.modelToHost(ckpt_file.name)
-        validation.session.resetHostWeights(ckpt_file.name)
-        validation.session.weightsFromHost()
 
-        for data, label in test_loader:
-            if len(label) != inputs_per_step:
-                continue
+        if not opts.validation_final_epoch or i == opts.epochs - 1:
+            # Evaluation
+            aggregated_loss = 0
+            num_correct = 0
+            validation.session.resetHostWeights(ckpt_file.name)
+            validation.session.weightsFromHost()
 
-            data, label = preprocess_data(data, label)
-            stepio = popart.PyStepIO(
-                {data_in: data, label_in: label}, validation.anchors
-            )
-            if opts.test_mode == "inference":
-                start = time()
-            validation.session.run(stepio)
-            if opts.test_mode == "inference":
-                duration = time() - start
-                report_string = "{:<8.3} sec/itr.".format(duration)
-                report_string += "   " + iteration_report(opts, duration)
-                print(report_string)
-                print(
-                    "Hardware cycle count per 'run':",
-                    validation.session.getCycleCount(),
+            for data, label in test_loader:
+                if len(label) != inputs_per_step:
+                    continue
+
+                data, label = preprocess_data(data, label)
+                stepio = popart.PyStepIO(
+                    {data_in: data, label_in: label}, validation.anchors
                 )
-                print("Total time: {}".format(duration))
-            aggregated_loss += np.mean(validation.anchors[loss])
-            results = np.argmax(
-                validation.anchors[output].reshape(
-                    [inputs_per_step, NUM_CLASSES]
-                ),
-                1,
-            )
-            score = results == label.reshape([inputs_per_step])
-            num_correct += np.sum(score)
-        aggregated_loss /= len(test_loader)
-        accuracy = num_correct / len(test_loader.dataset)
+                if opts.test_mode == "inference":
+                    start = time()
+                validation.session.run(stepio)
+                if opts.test_mode == "inference":
+                    duration = time() - start
+                    report_string = "{:<8.3} sec/itr.".format(duration)
+                    report_string += "   " + iteration_report(opts, duration)
+                    print(report_string)
+                    print(
+                        "Hardware cycle count per 'run':",
+                        validation.session.getCycleCount(),
+                    )
+                    print("Total time: {}".format(duration))
+                aggregated_loss += np.mean(validation.anchors[loss])
+                results = np.argmax(
+                    validation.anchors[output].reshape(
+                        [inputs_per_step, NUM_CLASSES]
+                    ),
+                    1,
+                )
+                score = results == label.reshape([inputs_per_step])
+                num_correct += np.sum(score)
+            aggregated_loss /= len(test_loader)
+            accuracy = num_correct / len(test_loader.dataset)
 
-        # Log statistics
-        print("Epoch #{}".format(i))
-        print("   Loss={0:.4f}".format(aggregated_loss))
-        print("   Accuracy={0:.2f}%".format(accuracy * 100))
+            # Log statistics
+            print("Epoch #{}".format(i))
+            print("   Loss={0:.4f}".format(aggregated_loss))
+            print("   Accuracy={0:.2f}%".format(accuracy * 100))
 
 
 def iteration_report(opts, time):
@@ -405,7 +413,6 @@ if __name__ == "__main__":
         help="Output extra performance information, specify wit"
         "h either 'training' or 'inference'",
     )
-
     parser.add_argument(
         "--syn-data-type",
         type=str,
@@ -413,7 +420,11 @@ if __name__ == "__main__":
         help="Specify to use synthetic data with either 'random"
         "_normal' or 'zeros'",
     )
-
+    parser.add_argument(
+        "--validation-final-epoch",
+        action='store_true',
+        help="Only run validation after the final epoch.",
+    )
     opts = parser.parse_args()
 
     # Validate synthetic data argument given

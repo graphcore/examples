@@ -7,7 +7,7 @@ LSTM to predict the sentiment of an IMDB review.
 
 There are variants covering the use of `ipu.keras.Model` and `ipu.keras.Sequential`
 for single IPU execution. Additionally, there are 2 IPU variants for
-`ipu.keras.PipelineModel` and `ipu.keras.SequentialPipelineModel`.
+`ipu.keras.PipelineModel` and `ipu.keras.PipelineSequential`.
 
 These examples were derived from this Keras example:
 https://github.com/keras-team/keras/blob/1a3ee8441933fc007be6b2beb47af67998d50737/examples/imdb_lstm.py
@@ -15,7 +15,7 @@ https://github.com/keras-team/keras/blob/1a3ee8441933fc007be6b2beb47af67998d5073
 ### File structure
 
 * `imdb.py` Python script to train the 2 IPU pipelined model.
-* `imdb_sequential.py` Python script to train the 2 IPU sequential pipelined model.
+* `imdb_sequential.py` Python script to train the 2 IPU pipelined sequential model.
 * `imdb_single_ipy.py` Python script to train the single IPU model.
 * `imdb_single_ipu_sequential.py` Python script to train the single IPU sequential model.
 * `README.md` This file.
@@ -26,7 +26,7 @@ https://github.com/keras-team/keras/blob/1a3ee8441933fc007be6b2beb47af67998d5073
 
 1) Prepare the TensorFlow environment.
 
-   Install the Poplar SDK. Make sure to run the enable.sh script and activate a Python 3 virtualenv with the TensorFlow 2 gc_tensorflow wheel installed.
+   Install the Poplar SDK. Make sure to run the enable.sh script and activate a Python 3 virtualenv with the tensorflow-2 wheel from the Poplar SDK installed.
 
 2) Train the graph.
 

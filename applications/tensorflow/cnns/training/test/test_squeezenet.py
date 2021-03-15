@@ -21,9 +21,10 @@ class TestCifar10SqueezeNetTraining(unittest.TestCase):
                            '--model': "squeezenet",
                            '--epochs': 10,
                            '--use-bypass': '',
-                           '--poly-lr-initial-lr': 0.1,
-                           '--poly-lr-end-lr': 0.0001,
-                           '--lr-schedule': "polynomial_decay_lr"})
+                           '--abs-learning-rate': 0.1,
+                           '--abs-end-learning-rate': 0.0001,
+                           '--lr-schedule': "polynomial_decay_lr",
+                           '--warmup-epochs': 0})
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
 
@@ -59,8 +60,9 @@ class TestCifar10SqueezeNetFullTraining(unittest.TestCase):
                            '--use-bypass': '',
                            '--lr-schedule': 'polynomial_decay_lr',
                            '--label-smoothing': '0.05',
-                           '--poly-lr-initial-lr': 0.1,
-                           '--poly-lr-end-lr': 0.0001,
+                           '--abs-learning-rate': 0.1,
+                           '--abs-end-learning-rate': 0.0001,
+                           '--warmup-epochs': 0,
                            '--precision': '16.32'})
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
@@ -81,4 +83,4 @@ class TestCifar10SqueezeNetFullTraining(unittest.TestCase):
         self.assertGreater(self.training['loss_batch'][-1], 0.35)
 
         # test_epochs_completed
-        self.assertEqual(round(self.training['epoch'][-1]), 399)
+        self.assertEqual(round(self.training['epoch'][-1]), 400)

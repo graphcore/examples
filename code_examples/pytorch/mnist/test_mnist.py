@@ -1,6 +1,7 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import inspect
 import os
+import pytest
 import subprocess
 import unittest
 import torch
@@ -24,6 +25,7 @@ class TestPoptorchMNIST(unittest.TestCase):
         acc = accuracy(pred, label)
         self.assertEqual(acc, 75)
 
+    @pytest.mark.ipus(1)
     def test_test_final_training_accuracy(self):
         out = run_poptorch_mnist()
         final_acc = 0.0

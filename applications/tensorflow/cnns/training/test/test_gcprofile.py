@@ -46,7 +46,7 @@ class TestProfiling(unittest.TestCase):
         out = run_profiling(**{
                            '--dataset': 'cifar-10',
                            '--warmup-epochs': 0,
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--iterations': 1,
                            '--batches-per-step': 1,
                            '--gc-profile': ''

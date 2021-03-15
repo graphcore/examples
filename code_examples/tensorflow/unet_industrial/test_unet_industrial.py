@@ -17,6 +17,7 @@ class TestUNet(SubProcessChecker):
     @pytest.mark.category2
     def test_unet_industrial(self):
         self.run_command("python3 unet_industrial.py "
+                         "--training --evaluation --inference "
                          "--num-replicas-train=1 --num-replicas-infer=2 "
                          "--batch-size-train=1 --batch-size-infer=1 "
                          "--input-size=128 --epochs=50",

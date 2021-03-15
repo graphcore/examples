@@ -58,20 +58,18 @@ public:
     inputCreatorPriority = std::numeric_limits<double>::max();
   }
 
-  bool createsEquiv(int, const popart::popx::Opx *, int) const { return false; }
+  bool createsEquiv(int, const popart::popx::Opx *, int) const final { return false; }
 
-  std::vector<popart::TensorId> mustExistBeforeCreate(int) const { return {}; }
+  std::set<popart::TensorId> mustExistBeforeCreate(int) const final { return {}; }
 
-  popart::popx::InputCreatorType getInputCreatorType(int index0) const
-  {
+  popart::popx::InputCreatorType getInputCreatorType(int index0) const final {
     return index0 == EmbeddingGatherOp::dataInIndex() ? popart::popx::InputCreatorType::CanCreate
                                                  : popart::popx::Opx::getInputCreatorType(index0);
   }
 
   poplar::Tensor createInput(int index,
-                             const std::string &name) const
-  {
-    popart::logging::debug("EmbeddingGather asked to create index {}: name {}", index, name);
+                             const poplar::DebugNameAndId &dnai) const final {
+    popart::logging::debug("EmbeddingGather asked to create index {}: name {}", index, dnai);
     if (index != EmbeddingGatherOp::dataInIndex())
     {
       throw popart::error("CustomOps Error: GatherOpx::createInput Cannot create input {}", index);
@@ -91,7 +89,7 @@ public:
                                         popart::popx::popType(weightInfo),
                                         lhsShape,
                                         rhsShape,
-                                        name + "/weights/split/0",
+                                        dnai,
                                         {},
                                         &dv_p->matmulCache);
   }
@@ -99,8 +97,7 @@ public:
   // Identical to popart::opx::GatherOpx::grow however:
   //    1) uses popops::gather instead of popops::multislice
   //    2) range checks the indices and masks those out of range
-  void grow(poplar::program::Sequence &prog) const final
-  {
+  void grow(poplar::program::Sequence &prog) const final {
     const auto indicesShape = inShape(EmbeddingGatherOp::indicesInIndex());
     const auto outputShape =
         popart::vXtoY<int64_t, std::size_t>(outShape(EmbeddingGatherOp::outIndex()));
@@ -180,11 +177,12 @@ static popart::popx::OpxCreator<EmbeddingGatherOpx>
 static popart::OpDefinition EmbeddingGatherOpDef({});
 
 static popart::OpCreator<EmbeddingGatherOp> EmbeddingGatherOpCreator(
-    popart::OpDefinitions({{CustomOperators::EmbeddingGather, EmbeddingGatherOpDef}}),
-    [](const popart::OperatorIdentifier &_opid,
-       const popart::Op::Settings &settings,
-       const popart::Attributes &attr) -> std::unique_ptr<popart::Op> {
-      int64_t axis = attr.getAttribute<popart::Attributes::Int>("axis", 0);
-      return std::unique_ptr<EmbeddingGatherOp>(new EmbeddingGatherOp(axis, settings));
+    popart::OpDefinitions({{CustomOperators::EmbeddingGather,
+                            EmbeddingGatherOpDef}}),
+    [](const popart::OpCreatorInfo &oci) -> std::unique_ptr<popart::Op> {
+      int64_t axis =
+          oci.attributes.getAttribute<popart::Attributes::Int>("axis", 0);
+      return std::unique_ptr<EmbeddingGatherOp>(
+          new EmbeddingGatherOp(axis, oci.settings));
     },
     true);

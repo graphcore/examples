@@ -25,16 +25,19 @@ from bert import Iteration
 class MockArgs(NamedTuple):
     start_epoch: int = 0
     epochs: int = 10
+    training_steps: int = 10
     continue_training_from_epoch: int = 0
     gradient_accumulation_factor: int = 1
     replication_factor: int = 1
     epochs_per_save: int = 1
     steps_per_log: int = 1
-    batch_size: int = 1
+    micro_batch_size: int = 1
+    batches_per_step: int = 1
     inference_lm_perplexity: bool = False
     inference: bool = False
     task: str = "SQUAD"
     squad_lr_scale: int = 1
+    use_popdist: bool = False
 
 
 class MockWriter():
@@ -71,7 +74,7 @@ def test_iteration_stats(task, epochs, seed, exponent_loss, exponent_acc):
         raise ValueError(
             "Dataset not divisible by bps, not supported in this test.")
 
-    args = MockArgs(**{"epochs": epochs, "task": task})
+    args = MockArgs(**{"epochs": epochs, "task": task, "batches_per_step": batches_per_step})
     mock_writer = MockWriter()
 
     def generate_known_exp_curve(task, epochs, dataset_length, gamma):
@@ -93,8 +96,7 @@ def test_iteration_stats(task, epochs, seed, exponent_loss, exponent_acc):
     def mock_stats_fn(loss, accuracy):
         return loss, accuracy
 
-    iteration = Iteration(args, batches_per_step,
-                          dataset_length, mock_writer, recording_steps)
+    iteration = Iteration(args, dataset_length, mock_writer, recording_steps)
     iteration.stats_fn = mock_stats_fn
 
     epoch_steps = []

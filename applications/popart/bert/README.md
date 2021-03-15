@@ -1,33 +1,24 @@
 # Graphcore benchmarks: BERT training
 
-This readme describes how to run BERT models for NLP pre-training and training on IPUs.
+This README describes how to run BERT models for NLP pre-training and training on IPUs.
+
+## Benchmarking
+
+To reproduce the published Mk2 throughput and inference benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md) 
 
 ## Overview
 
 BERT (Bidirectional Encoder Representations for Transformers) is a deep learning model implemented in ONNX that is used for NLP. It requires pre-training with unsupervised learning on a large dataset such as Wikipedia. It is then trained on more specific tasks for fine tuning - Graphcore uses SQuAD (Stanford Question Answering Dataset), a Q&A dataset, for training BERT on IPUs.
+
+## BERT models
 
 There are two BERT models:
 
 - BERT Base – 12 layers (transformer blocks), 110 million parameters
 - BERT Large – 24 layers (transformer blocks), 340 million parameters
 
-## BERT models
-
-BERT Large requires 14 IPUs for pre-training (Wikipedia) and 13 IPUs for training on the SQuAD dataset. There are 2 layers of the model per IPU and the other IPUs are used for embedding and projection.
-
-Similarly BERT Base requires 8 IPUs for pre-training (Wikipedia) and 7 IPUs for training on the SQuAD dataset (2 layers of the model per IPU, other IPUs used for embedding and projection). Better performance can be achieved by using 14 IPUs for pre-training (Wikipedia) and 13 IPUs for training on the SQuAD dataset (1 layer of the model per IPU, other IPUs used for embedding and projection), which is the option used in the JSON configuration files provided.
-
-**NOTE**: IPUs can only be acquired in powers of two (2, 4, 8, 16). Unused IPUs will be unavailable for other tasks.
-
-The BERT Large model has up to 340 million parameters and therefore it is split across a number of IPUs (pipeline parallel). For example a 14 IPU pipeline for pre-training a 24 layer model could be arranged as follows:
-IPU0: Tied Token Embedding/Projection
-IPU1: Position Embedding/Losses
-IPU2: Transformer layer 1 and 2
-IPU3: Transformer layer 3 and 4
-...
-IPU13: Transformer layer 23 and 24
-
-PopART/Poplar may use knowledge of the physical IPU connectivity to decide how the virtual IPUs map to physical devices for maximum efficiency, for example using a ring topology.
+The JSON configuration files provided in the `configs` directory define how the layers
+are distributed across IPUs for these BERT models for training and inference.
 
 ## Datasets
 
@@ -86,10 +77,10 @@ Create a virtualenv and install the required packages:
 virtualenv venv -p python3.6
 source venv/bin/activate
 pip install -r requirements.txt
-pip install <path to gc_tensorflow.whl>
+pip install <path to the tensorflow-1 wheel from the Poplar SDK>
 ```
 
-Note: TensorFlow is required by `bert_tf_loader.py`. You can use the standard TensorFlow version for this BERT example, however using the Graphcore TensorFlow version allows this virtual environment to be used for other TensorFlow programs targeting the IPU.
+Note: TensorFlow is required by `bert_tf_loader.py`. You can use the Graphcore TensorFlow version, or the standard TensorFlow version.
 
 
 ### Generate pre-training data (small sample)

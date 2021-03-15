@@ -249,15 +249,15 @@ def get_squad(tmpdir_factory):
 
 
 @pytest.mark.parametrize('batch_size', [1, 2, 8, 13])
-@pytest.mark.parametrize('shuffle,mpi_size', [(False, 1), (True, 1), (False, 2)])
-def test_no_drop_remainder(batch_size, shuffle, mpi_size, get_squad):
+@pytest.mark.parametrize('shuffle,popdist_size', [(False, 1), (True, 1), (False, 2)])
+def test_no_drop_remainder(batch_size, shuffle, popdist_size, get_squad):
     tmpdir = get_squad
     batches_per_step = 128
 
     class MockArgs():
-        def __init__(self, batches_per_step, batch_size, shuffle, mpi_size, tmpdir):
+        def __init__(self, batches_per_step, batch_size, shuffle, popdist_size, tmpdir):
             self.batches_per_step = batches_per_step
-            self.batch_size = batch_size
+            self.micro_batch_size = batch_size
             self.sequence_length = 128
             self.hidden_size = 768
             self.vocab_length = 30
@@ -266,14 +266,23 @@ def test_no_drop_remainder(batch_size, shuffle, mpi_size, get_squad):
             self.inference = True
             self.synthetic_data = False
             self.generated_data = False
-            self.input_files = str(tmpdir) + "/inputfile"
-            self.output_dir = None
+            self.input_files = [str(tmpdir) + "/inputfile"]
+            self.overwrite_cache = False
+            self.do_lower_case = True
+            self.squad_results_dir = None
+            self.squad_evaluate_script = None
             self.vocab_file = None
-            self.accumulation_factor = 1
+            self.no_drop_remainder = True
+            self.gradient_accumulation_factor = 1
             self.replication_factor = 1
             self.shuffle = shuffle
-            self.mpi_size = mpi_size
-            self.squad_lr_scale = None
+            if popdist_size > 1:
+                self.use_popdist = True
+                self.popdist_size = popdist_size
+                self.popdist_rank = 1
+            else:
+                self.use_popdist = False
+            self.seed = 1984
 
     def create_dataset(args):
         # a simple copy of main bert.py until the dataset creation
@@ -285,22 +294,7 @@ def test_no_drop_remainder(batch_size, shuffle, mpi_size, get_squad):
         shapeOf = model.builder.getTensorShape
         inputs = reduce(chain, inputs[3:], inputs[:3])
         tensor_shapes = [(tensorId, shapeOf(tensorId)) for tensorId in inputs]
-        dataset = get_bert_dataset(tensor_shapes,
-                                   input_file=args.input_files,
-                                   output_dir=args.output_dir,
-                                   sequence_length=args.sequence_length,
-                                   vocab_file=args.vocab_file,
-                                   vocab_length=args.vocab_length,
-                                   batch_size=args.batch_size,
-                                   batches_per_step=args.batches_per_step,
-                                   embedding_dict=embedding_dict,
-                                   positional_dict=positional_dict,
-                                   generated_data = args.generated_data,
-                                   is_training=False,
-                                   no_drop_remainder=True,
-                                   shuffle = args.shuffle,
-                                   mpi_size=args.mpi_size,
-                                   is_distributed=(args.mpi_size > 1))
+        dataset = get_bert_dataset(args, tensor_shapes)
         return dataset
 
     def test(ds, args):
@@ -308,12 +302,12 @@ def test_no_drop_remainder(batch_size, shuffle, mpi_size, get_squad):
         loader = datatransform.dataloader
         sampler = loader.sampler
         dataset_size = len(sampler)
-        div_factor = args.batch_size * args.replication_factor * args.accumulation_factor * args.batches_per_step
+        div_factor = args.micro_batch_size * args.replication_factor * args.gradient_accumulation_factor * args.batches_per_step
         # The aim of the option is to make the dataset size divisible by div_factor
         assert(dataset_size % div_factor == 0)
         assert(ds.n_extra < div_factor)
 
     # test
-    args = MockArgs(batches_per_step, batch_size, shuffle, mpi_size, tmpdir)
+    args = MockArgs(batches_per_step, batch_size, shuffle, popdist_size, tmpdir)
     ds = create_dataset(args)
     test(ds, args)

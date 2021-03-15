@@ -8,8 +8,6 @@ Poplar SDK version 1.4 or later
 
 spdlog library. Tested on version 1:0.16.3-1 for ubuntu
 
-spdlog library. Tested on version 0.16.3
-
 ## Quick start guide
 
 ### Prepare the environment

@@ -20,7 +20,9 @@ This README describes how to run a conv3D based model called CosmoFlow on IPU ha
 
  - Download, install & activate the Poplar SDK following instructions provided in the Getting Started document
 	
- - Create python virtual environment, install gc_tensorflow and active the Python environment. This is also documented in the Getting Started guide. This example uses TensorFlow v1, so please ensure your Python venv has TFv1 installed. 
+ - Create python virtual environment, install the tensorflow-1 wheel from the Poplar SDK and active the Python
+   environment. This is also documented in the Getting Started guide. This example uses TensorFlow v1, so
+   please ensure your Python venv has TFv1 installed. 
 
 
 2. Start running the example with one of the following commands:

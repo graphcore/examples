@@ -1,14 +1,10 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import os
-import sys
 import numpy as np
 from functools import reduce
 from operator import mul
-import pdb
 import popart
-import pdb
 import pytest
-import time
 import ctypes
 
 
@@ -210,12 +206,10 @@ def sparse_mm_infer(sparse_mm_type, lhs_dims, vanilla_rhs_dims, block_size, spar
         output_dims.append(vanilla_rhs_dims[-1])
         output_block_size = [block_size[0], block_size[2]]
 
-        bsr_output, lengths_per_2d_plane, vanilla_output, sparsity_mask = create_sparse_matrix(output_dims, output_block_size, sparsity_level)
+        bsr_output, lengths_per_2d_plane, _, sparsity_mask = create_sparse_matrix(output_dims, output_block_size, sparsity_level)
 
-        lhs_inv = np.linalg.inv(lhs)
-
-        rhs = np.matmul(lhs_inv, vanilla_output)
         rhs_dims = vanilla_rhs_dims
+        rhs = create_dense_matrix(rhs_dims)
 
     # Create a builder and construct a graph
     builder = popart.Builder()
@@ -264,6 +258,7 @@ def sparse_mm_infer(sparse_mm_type, lhs_dims, vanilla_rhs_dims, block_size, spar
     anchors = session.initAnchorArrays()
 
     rhs = np.array(rhs, dtype=g_input_data_type)
+
     stepio = popart.PyStepIO({lhsTensor: lhs, rhsTensor: rhs}, anchors)
     session.run(stepio)
 
@@ -505,83 +500,85 @@ def sparse_softmax(dims, block_size, sparsity_level, inner_group_size):
 # test_data_infer tuple --> (matMulType, lhs_dims, rhs_dims, block_size, sparsity, transpose_rhs, inner_group_size)
 test_data_infer = [
     # 2D
-    ("tag_0", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [8, 8], [8, 8], [8, 8, 8], 0.5, False, 1),
-    ("tag_1", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [16, 16], [16, 16], [8, 8, 8], 0.1, False, 1),
-    ("tag_2", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [32, 32], [32, 32], [16, 8, 8], 0.8, False, 1),
-    ("tag_3", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [64, 64], [64, 256], [64, 8, 64], 0.9, False, 1),
-    ("tag_4", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [128, 128], [128, 128], [32, 8, 16], 0.2, False, 1),
+    ("tag_inf_0", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [8, 8], [8, 8], [8, 8, 8], 0.5, False, 1),
+    ("tag_inf_1", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [16, 16], [16, 16], [8, 8, 8], 0.1, False, 1),
+    ("tag_inf_2", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [32, 32], [32, 32], [16, 8, 8], 0.8, False, 1),
+    ("tag_inf_3", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [64, 64], [64, 256], [64, 8, 64], 0.9, False, 1),
+    ("tag_inf_4", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [128, 128], [128, 128], [32, 8, 16], 0.2, False, 1),
 
     # 3D, False
-    ("tag_5", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [2, 8, 8], [2, 8, 8], [8, 8, 8], 0.1, False, 1),
-    ("tag_6", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [5, 16, 16], [5, 16, 16], [8, 8, 8], 0.3, False, 1),
-    ("tag_7", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [7, 32, 32], [7, 32, 32], [16, 8, 8], 0.5, False, 1),
-    ("tag_8", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [11, 64, 64], [11, 64, 64], [64, 8, 64], 0.6, False, 1),
-    ("tag_9", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [12, 128, 128], [12, 128, 128], [32, 8, 16], 0.8, False, 1),
+    ("tag_inf_5", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [2, 8, 8], [2, 8, 8], [8, 8, 8], 0.1, False, 1),
+    ("tag_inf_6", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [5, 16, 16], [5, 16, 16], [8, 8, 8], 0.3, False, 1),
+    ("tag_inf_7", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [7, 32, 32], [7, 32, 32], [16, 8, 8], 0.5, False, 1),
+    ("tag_inf_8", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [11, 64, 64], [11, 64, 64], [64, 8, 64], 0.6, False, 1),
+    ("tag_inf_9", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [12, 128, 128], [12, 128, 128], [32, 8, 16], 0.8, False, 1),
 
     # 4D, False
-    ("tag_10", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 8, 8], [1, 1, 8, 8], [8, 8, 8], 0.5, False, 1),
-    ("tag_11", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 16, 16], [1, 1, 16, 16], [8, 8, 8], 0.8, False, 1),
-    ("tag_12", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 32, 32], [1, 1, 32, 32], [16, 8, 8], 0.5, False, 1),
-    ("tag_13", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 64, 128], [1, 1, 128, 256], [64, 8, 64], 0.5, False, 1),
-    ("tag_14", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 128, 64], [1, 1, 64, 128], [32, 8, 16], 0.5, False, 1),
-    ("tag_14", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 2, 8, 8], [1, 2, 8, 8], [8, 8, 8], 0.5, False, 1),
-    ("tag_16", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 5, 16, 16], [1, 5, 16, 16], [8, 8, 8], 0.8, False, 1),
-    ("tag_17", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 7, 32, 32], [1, 7, 32, 32], [16, 8, 8], 0.5, False, 1),
-    ("tag_18", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 11, 64, 128], [1, 11, 128, 256], [64, 8, 64], 0.5, False, 1),
-    ("tag_19", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 12, 128, 64], [1, 12, 64, 128], [32, 8, 16], 0.5, False, 1),
-    ("tag_20", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [2, 2, 8, 8], [2, 2, 8, 8], [8, 8, 8], 0.5, False, 1),
-    ("tag_21", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [5, 5, 16, 16], [5, 5, 16, 16], [8, 8, 8], 0.8, False, 1),
-    ("tag_22", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [13, 7, 32, 32], [13, 7, 32, 32], [16, 8, 8], 0.5, False, 1),
-    ("tag_23", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [3, 11, 64, 128], [3, 11, 128, 256], [64, 8, 64], 0.5, False, 1),
-    ("tag_24", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 12, 128, 64], [1, 12, 64, 128], [32, 8, 16], 0.5, False, 1),
+    ("tag_inf_10", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 8, 8], [1, 1, 8, 8], [8, 8, 8], 0.5, False, 1),
+    ("tag_inf_11", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 16, 16], [1, 1, 16, 16], [8, 8, 8], 0.8, False, 1),
+    ("tag_inf_12", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 32, 32], [1, 1, 32, 32], [16, 8, 8], 0.5, False, 1),
+    ("tag_inf_13", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 64, 128], [1, 1, 128, 256], [64, 8, 64], 0.5, False, 1),
+    ("tag_inf_14", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 1, 128, 64], [1, 1, 64, 128], [32, 8, 16], 0.5, False, 1),
+    ("tag_inf_14", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 2, 8, 8], [1, 2, 8, 8], [8, 8, 8], 0.5, False, 1),
+    ("tag_inf_16", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 5, 16, 16], [1, 5, 16, 16], [8, 8, 8], 0.8, False, 1),
+    ("tag_inf_17", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 7, 32, 32], [1, 7, 32, 32], [16, 8, 8], 0.5, False, 1),
+    ("tag_inf_18", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 5, 64, 128], [1, 5, 128, 256], [64, 8, 64], 0.5, False, 1),
+    ("tag_inf_19", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 12, 128, 64], [1, 12, 64, 128], [32, 8, 16], 0.5, False, 1),
+    ("tag_inf_20", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [2, 2, 8, 8], [2, 2, 8, 8], [8, 8, 8], 0.5, False, 1),
+    ("tag_inf_21", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [5, 5, 16, 16], [5, 5, 16, 16], [8, 8, 8], 0.8, False, 1),
+    ("tag_inf_22", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [13, 7, 32, 32], [13, 7, 32, 32], [16, 8, 8], 0.5, False, 1),
+    ("tag_inf_24", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 12, 128, 64], [1, 12, 64, 128], [32, 8, 16], 0.5, False, 1),
 
     # 2D, lhs has to be square to take inverse, False
-    ("tag_25", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [8, 8], [8, 8], [8, 8, 8], 0.5, False, 1),
-    ("tag_26", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [16, 16], [16, 16], [8, 8, 8], 0.1, False, 1),
-    ("tag_27", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [32, 32], [32, 32], [16, 8, 8], 0.8, False, 1),
-    ("tag_28", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [64, 64], [64, 64], [64, 8, 64], 0.9, False, 1),
-    ("tag_29", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [128, 128], [128, 128], [32, 8, 16], 0.7, False, 1),
+    ("tag_inf_25", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [8, 8], [8, 8], [8, 8, 8], 0.5, False, 1),
+    ("tag_inf_26", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [16, 16], [16, 16], [8, 8, 8], 0.1, False, 1),
+    ("tag_inf_27", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [32, 32], [32, 32], [16, 8, 8], 0.8, False, 1),
+    ("tag_inf_28", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [64, 64], [64, 64], [64, 8, 64], 0.9, False, 1),
+    ("tag_inf_29", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [128, 128], [128, 128], [32, 8, 16], 0.7, False, 1),
 
     # 3D, lhs has to be square to take, False
-    ("tag_30", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [2, 8, 8], [2, 8, 8], [8, 8, 8], 0.1, False, 1),
-    ("tag_31", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [5, 16, 16], [5, 16, 16], [8, 8, 8], 0.3, False, 1),
-    ("tag_32", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [7, 32, 32], [7, 32, 32], [16, 8, 8], 0.5, False, 1),
-    ("tag_33", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [11, 64, 64], [11, 64, 64], [64, 8, 64], 0.6, False, 1),
-    ("tag_34", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [12, 128, 128], [12, 128, 128], [32, 8, 16], 0.1, False, 1),
+    ("tag_inf_30", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [2, 8, 8], [2, 8, 8], [8, 8, 8], 0.1, False, 1),
+    ("tag_inf_31", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [5, 16, 16], [5, 16, 16], [8, 8, 8], 0.3, False, 1),
+    ("tag_inf_32", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [7, 32, 32], [7, 32, 32], [16, 8, 8], 0.5, False, 1),
+    ("tag_inf_33", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [11, 64, 64], [11, 64, 64], [64, 8, 64], 0.6, False, 1),
+    ("tag_inf_34", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [12, 128, 128], [12, 128, 128], [32, 8, 16], 0.1, False, 1),
 
     # 4D, lhs has to be square to take, False
-    ("tag_36", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 8, 8], [1, 1, 8, 8], [8, 8, 8], 0.5, False, 1),
-    ("tag_36", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 16, 16], [1, 1, 16, 16], [8, 8, 8], 0.8, False, 1),
-    ("tag_37", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 32, 32], [1, 1, 32, 32], [16, 8, 8], 0.5, False, 1),
-    ("tag_38", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 64, 64], [1, 1, 64, 256], [64, 8, 64], 0.5, False, 1),
-    ("tag_39", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 128, 128], [1, 1, 128, 128], [32, 8, 16], 0.5, False, 1),
-    ("tag_40", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 2, 8, 8], [1, 2, 8, 8], [8, 8, 8], 0.5, False, 1),
-    ("tag_41", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 5, 16, 16], [1, 5, 16, 16], [8, 8, 8], 0.8, False, 1),
-    ("tag_42", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 7, 32, 32], [1, 7, 32, 32], [16, 8, 8], 0.5, False, 1),
-    ("tag_43", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 11, 64, 64], [1, 11, 64, 256], [64, 8, 64], 0.5, False, 1),
-    ("tag_44", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 12, 128, 128], [1, 12, 128, 128], [32, 8, 16], 0.5, False, 1),
-    ("tag_45", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [2, 2, 8, 8], [2, 2, 8, 8], [8, 8, 8], 0.5, False, 1),
-    ("tag_46", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [5, 5, 16, 16], [5, 5, 16, 16], [8, 8, 8], 0.8, False, 1),
-    ("tag_47", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [13, 7, 32, 32], [13, 7, 32, 32], [16, 8, 8], 0.5, False, 1),
-    ("tag_48", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [3, 11, 64, 64], [3, 11, 64, 256], [64, 8, 64], 0.5, False, 1),
-    ("tag_49", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 12, 128, 128], [1, 12, 128, 1024], [32, 8, 16], 0.5, False, 1),
+    ("tag_inf_36", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 8, 8], [1, 1, 8, 8], [8, 8, 8], 0.5, False, 1),
+    ("tag_inf_36", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 16, 16], [1, 1, 16, 16], [8, 8, 8], 0.8, False, 1),
+    ("tag_inf_37", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 32, 32], [1, 1, 32, 32], [16, 8, 8], 0.5, False, 1),
+    ("tag_inf_38", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 64, 64], [1, 1, 64, 256], [64, 8, 64], 0.5, False, 1),
+    ("tag_inf_39", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 1, 128, 128], [1, 1, 128, 128], [32, 8, 16], 0.5, False, 1),
+    ("tag_inf_40", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 2, 8, 8], [1, 2, 8, 8], [8, 8, 8], 0.5, False, 1),
+    ("tag_inf_41", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 5, 16, 16], [1, 5, 16, 16], [8, 8, 8], 0.8, False, 1),
+    ("tag_inf_42", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 7, 32, 32], [1, 7, 32, 32], [16, 8, 8], 0.5, False, 1),
+    ("tag_inf_43", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 11, 64, 64], [1, 11, 64, 256], [64, 8, 64], 0.5, False, 1),
+    ("tag_inf_44", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 12, 128, 128], [1, 12, 128, 128], [32, 8, 16], 0.5, False, 1),
+    ("tag_inf_45", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [2, 2, 8, 8], [2, 2, 8, 8], [8, 8, 8], 0.5, False, 1),
+    ("tag_inf_46", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [5, 5, 16, 16], [5, 5, 16, 16], [8, 8, 8], 0.8, False, 1),
+    ("tag_inf_47", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [13, 7, 32, 32], [13, 7, 32, 32], [16, 8, 8], 0.5, False, 1),
+    ("tag_inf_49", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [1, 12, 128, 128], [1, 12, 128, 1024], [32, 8, 16], 0.5, False, 1),
 
     # For transpose_rhs True case, last 2 dimensions of block_size must be 8
-    ("tag_50", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [8, 8], [8, 8], [8, 8, 8], 0.5, True, 1),
-    ("tag_51", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [16, 16], [16, 16], [8, 8, 8], 0.1, True, 1),
-    ("tag_52", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [32, 32], [32, 32], [16, 8, 8], 0.8, True, 1),
-    ("tag_53", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [64, 64], [256, 64], [64, 8, 8], 0.9, True, 1),
-    ("tag_54", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [128, 128], [128, 128], [32, 8, 8], 0.2, True, 1),
-    ("tag_55", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [2, 8, 8], [2, 8, 8], [8, 8, 8], 0.5, True, 1),
-    ("tag_56", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [3, 16, 16], [3, 16, 16], [8, 8, 8], 0.1, True, 1),
-    ("tag_57", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [7, 128, 128], [7, 128, 128], [32, 8, 8], 0.2, True, 1),
-    ("tag_58", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [3, 5, 8, 8], [3, 5, 8, 8], [8, 8, 8], 0.5, True, 1),
-    ("tag_59", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 6, 16, 16], [1, 6, 16, 16], [8, 8, 8], 0.1, True, 1),
-    ("tag_60", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [4, 4, 32, 32], [4, 4, 32, 32], [16, 8, 8], 0.8, True, 1),
+    ("tag_inf_50", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [8, 8], [8, 8], [8, 8, 8], 0.5, True, 1),
+    ("tag_inf_51", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [16, 16], [16, 16], [8, 8, 8], 0.1, True, 1),
+    ("tag_inf_52", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [32, 32], [32, 32], [16, 8, 8], 0.8, True, 1),
+    ("tag_inf_53", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [64, 64], [256, 64], [64, 8, 8], 0.9, True, 1),
+    ("tag_inf_54", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [128, 128], [128, 128], [32, 8, 8], 0.2, True, 1),
+    ("tag_inf_55", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [2, 8, 8], [2, 8, 8], [8, 8, 8], 0.5, True, 1),
+    ("tag_inf_56", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [3, 16, 16], [3, 16, 16], [8, 8, 8], 0.1, True, 1),
+    ("tag_inf_57", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [7, 128, 128], [7, 128, 128], [32, 8, 8], 0.2, True, 1),
+    ("tag_inf_58", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [3, 5, 8, 8], [3, 5, 8, 8], [8, 8, 8], 0.5, True, 1),
+    ("tag_inf_59", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [1, 6, 16, 16], [1, 6, 16, 16], [8, 8, 8], 0.1, True, 1),
+    ("tag_inf_60", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [4, 4, 32, 32], [4, 4, 32, 32], [16, 8, 8], 0.8, True, 1),
 
     # 3D, inner group size > 1
-    ("tag_61", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [12, 128, 128], [12, 128, 128], [32, 8, 16], 0.8, False, 3),
-    ("tag_62", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [12, 128, 128], [12, 128, 128], [32, 8, 16], 0.1, False, 4),
+    ("tag_inf_61", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [12, 128, 128], [12, 128, 128], [32, 8, 16], 0.8, False, 3),
+    ("tag_inf_62", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [12, 128, 128], [12, 128, 128], [32, 8, 16], 0.1, False, 4),
+
+    # 4D, inner group size > 1
+    ("tag_inf_23", g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'], [4, 8, 64, 128], [4, 8, 128, 256], [64, 8, 64], 0.5, False, 4),
+    ("tag_inf_48", g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT'], [3, 11, 64, 64], [3, 11, 64, 256], [64, 8, 64], 0.5, False, 3),
 ]
 
 
@@ -600,14 +597,9 @@ def test_bsmatmul_infer(tag, matmul_type, lhs_dims, rhs_dims, block_size, sparsi
                                             transpose_rhs,
                                             memory_cycle_ratio,
                                             inner_group_size)
-
-    if matmul_type == g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT']:
-        np.testing.assert_array_equal(ipuOutput, goldOutput)
-    elif matmul_type == g_sparseMatMulTypeLookup['DENSE_LHS_DENSE_RHS_SPARSE_OUT']:
-        np.testing.assert_allclose(ipuOutput, goldOutput, rtol=1e-2, atol=1e-2)
-    else:
-        assert false
-
+    rtol = 1e-3
+    atol = 1e-3
+    np.testing.assert_allclose(ipuOutput, goldOutput, rtol=rtol, atol=atol)
 
 #
 # TRAINING TEST

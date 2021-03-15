@@ -1,9 +1,5 @@
-Graphcore
+Image Classification Training Example using PyTorch
 ---
-
-## Image classification train on IPU using PyTorch
-
-This README describes how to run CNN models for image recognition training on the IPU.
 
 ### File structure
 
@@ -12,18 +8,24 @@ This README describes how to run CNN models for image recognition training on th
 * `validate.py` Validate the given checkpoint(s).
 * `README.md` This file.
 * `lr_schedule.py` Collection of learning rate schedulers.
-* `train_utils.py` Collection of functions which are not closely related to the training.
+* `train_utils.py` Collection of functions which parse the training configuration.
 * `test_train.py` Test cases for training.
 * `weight_avg.py` Create a weight averaged model from checkpints.
 * `configs.yml` Contains the common train configurations.
+
+### Benchmarking
+
+To reproduce the published Mk2 throughput benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md) 
 
 ### How to use this demo
 
 1) Install and activate the PopTorch environment as per cnns folder README.md, if you haven't done already.
 
 2) Download the datasets:
-    * Raw ImageNet dataset (available at [http://www.image-net.org/](http://www.image-net.org/))
+    * ImageNet dataset (available at [http://www.image-net.org/](http://www.image-net.org/))
     * CIFAR10 dataset downloads automatically
+
+The ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 1000 classes, can be downloaded from [http://www.image-net.org/download](the ImageNet website). It is approximately 150GB for the training and validation sets. Please note you need to register and request permission to download this dataset on the Imagenet website. You cannot download the dataset until ImageNet confirms your registration and sends you a confirmation email. If you do not get the confirmation email within a couple of days, contact [support@imagenet.org](ImageNet support) to see why your registration has not been confirmed. Once your registration is confirmed, go to the download site. The dataset is available for non-commercial use only. Full terms and conditions and more information are available on the [http://www.image-net.org/download-faq](ImageNet download FAQ)
 
 3) Run the training:
 
@@ -71,11 +73,13 @@ The program has a few command line options:
 
 `--config`                      Apply the selected configuration
 
+`--seed`                        Provide a seed for random number generation
+
 `--batch-size`                  Sets the batch size for training
 
 `--model`                       Select the model (from a list of supported models) for training
 
-`--data`                        Choose the dataset between CIFAR10 and imagenet and synthetic. In synthetic data mode (only for benchmarking throughput) there is no host-device I/O and random data is generated on the device.
+`--data`                        Choose the dataset between `cifar10`, `imagenet`, `generated` and `synthetic`. In synthetic data mode (only for benchmarking throughput) there is no host-device I/O and random data is generated on the device. In generated mode random data is created on host side.
 
 `--imagenet-data-path`          The path of the downloaded ImageNet dataset (only required if imagenet is selected as data)
 
@@ -101,11 +105,17 @@ The program has a few command line options:
 
 `--norm-num-groups`             If group normalization is used, the number of groups can be set here
 
+`--full-precision-norm`         Calculate the norm layers in full precision.
+
 `--no-validation`               Skip validation
 
 `--disable-metrics`             Do not calculate metrics during training, useful to measure peak throughput
 
-`--enable-pipeline-recompute`   Enable the recomputation of network activations during backward pass instead of caching them during forward pass
+`--enable-recompute`            Enable the recomputation of network activations during backward pass instead of caching them during forward pass. This option turns on the recomputation for single-stage models. If the model is multi-stage (pipelined) the recomputation is always enabled.
+
+`--recompute-checkpoints`       List of recomputation checkpoint rules: [conv:store convolution activations|norm: store normlayer activations]
+
+`--offload-optimizer`           Store the optimizer status off-chip
 
 `--lr-schedule`                 Select learning rate schedule from [`step`, `cosine`, `exponential`] options
 
@@ -121,7 +131,9 @@ The program has a few command line options:
 
 `--momentum`                    Momentum factor
 
-`--loss-scaling`                Loss scaling factor
+`--loss-scaling`                Loss scaling factor. This value is reached by the end of the training.
+
+`--initial-loss-scaling`        Initial loss scaling factor. The loss scaling interpolates between this and loss-scaling value. The loss scaling value multiplies by 2 during the training until the given loss scaling value is not reached. If not determined the `--loss-scaling` is used during the training. Example: 100 epoch, initial loss scaling 16, loss scaling 128: Epoch 1-25 ls=16;Epoch 26-50 ls=32;Epoch 51-75 ls=64;Epoch 76-100 ls=128
 
 `--enable-stochastic-rounding`  Enable Stochastic Rounding
 
@@ -135,13 +147,21 @@ The program has a few command line options:
 
 `--lr-scheduler-freq`           Number of learning rate update in each epoch. In case of 0 used, it is updated after every batch
 
-`--reduction`                   Applied reduction for loss and gradients: `sum` or `mean`
-
 `--weight-avg-strategy`         Weight average strategy
 
 `--weight-avg-exp-decay`        The exponential decay constant for weight averaging. Applied if exponential weight average strategy is chosen
 
+`--weight-avg-N`                Weight average applied on last N checkpoint, -1 means all checkpoints
+
 `--rmsprop-decay`               RMSprop smoothing constant
+
+`--efficientnet-expand-ratio`   Expand ratio of the blocks in EfficientNet
+
+`--efficientnet-group-dim`      Group dimensionality of depthwise convolution in EfficientNet
+
+`--profile`                     Generate PopVision Graph Analyser report
+
+`--loss-velocity-scaling-ratio` Only for SGD optimizer: Loss Velocity / Velocity scaling ratio. In case of large number of replicas >1.0 can increase numerical stability
 
 ### How to use the checkpoints
 
@@ -165,3 +185,9 @@ Weight average is available with the following command:
 
 If the provided path is a file: The validation accuracy is calculated for the given file.
 If the path is a folder, then the validation accuracy is calculated for every single checkpoint in the folder.
+
+### How to use poprun to make train distributed
+
+```
+poprun --num-instances=<number of instances> --numa-aware=yes --num-replicas=<Total number of repicas> ...
+```

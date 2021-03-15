@@ -89,10 +89,6 @@ def SparseOptimizer(cls: Type[tf.train.Optimizer]) -> Type[tf.train.Optimizer]:
                 raise ValueError('If dense_gradient_condition is set a prune_and_grow_outfeed queue must be provided.')
 
         def apply_gradients(self, grads_and_vars, global_step=None, name=None):
-
-            if global_step is None:
-                global_step = tf.train.get_or_create_global_step()
-
             # Unconditionally apply updates:
             apply_updates = super(Wrapped, self).apply_gradients(grads_and_vars, global_step, name)
 

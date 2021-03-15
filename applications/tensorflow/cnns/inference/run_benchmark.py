@@ -263,7 +263,8 @@ def construct_graph(network_class: Type[InferenceNetwork],
     num_replicas = num_ipus if mode == 'replicated' else 1
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, device_ordinal=0, feed_name="infeed",
                                                    replication_factor=num_replicas)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(device_ordinal=0, feed_name="outfeed", outfeed_all=True,
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(device_ordinal=0, feed_name="outfeed",
+                                                      outfeed_mode=ipu_outfeed_queue.IPUOutfeedMode.ALL,
                                                       replication_factor=num_replicas)
 
     def comp_fn():
@@ -318,7 +319,7 @@ def main(model_arch: str, images: List, batch_size: int,
         num_iterations: Number of iterations, if running in a loop.
         num_ipus: Number of IPU to run inference on.
         mode: Mode of inference - {"single_ipu", "replicated", "sharded"}
-        data: Run on real data transferred from host or on random synthetic data generated on device.
+        data: Run on real data (transfer images host -> device) or using on-device synthetic data
         available_memory_proportion: Proportion of tile memory available as
          temporary memory for matmul and convolution execution
         gen_report: Generate a report after 1 iteration.

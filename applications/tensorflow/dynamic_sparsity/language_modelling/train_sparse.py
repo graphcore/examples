@@ -26,6 +26,7 @@ from tf_utils import build_optimizer
 import program_options
 import grad_clip_opt
 import scaling_opt
+import global_step_update_opt
 import data_utils
 os.sys.path.append("../")  # dynamic_sparsity
 from ipu_sparse_ops import optimizers, sparse, sparse_training, fp_slot_opt  # noqa: E402
@@ -113,6 +114,7 @@ def forward_pass(opts, transformer, iterations_per_step, is_training, outfeed, d
         with tf.variable_scope("training", reuse=tf.AUTO_REUSE, use_resource=True):
             optimizer_class, optimizer_kwargs = build_optimizer(opts.optimizer, opts.optimizer_arg)
             optimizer_class = optimizers.SparseOptimizer(optimizer_class)
+            optimizer_class = global_step_update_opt.GlobalStepUpdateOptimizer(optimizer_class)
             if opts.loss_scale != 1:
                 optimizer_class = scaling_opt.LossScalingOptimizer(optimizer_class)
                 optimizer_kwargs['loss_scale'] = opts.loss_scale
@@ -355,8 +357,8 @@ def run_training(opts, transformer):
                                                                               target=session_outputs['target'][-1],
                                                                               vocab=vocab)
                         logger.info(f"\nTarget: {text_target}\n\nPrediction: {text_pred}\n")
-                    except Exception as e:
-                        logger.warn(f"Decoding failed: {e}")
+                    except Exception as ex:
+                        logger.warn(f"Decoding failed: {ex}")
 
                 summary_value = [tf.Summary.Value(tag="perplexity", simple_value=perplexity),
                                  tf.Summary.Value(tag="training_loss", simple_value=training_loss),

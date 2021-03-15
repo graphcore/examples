@@ -25,12 +25,12 @@ class LearningRate:
         self.total_steps = total_steps
         self.warmup_steps = warmup_steps
 
-    def feed_dict_lr(self, step):
-        if step < self.warmup_steps:
-            lr = (step / (self.warmup_steps)) * self.max_learning_rate
+    def get_at_step(self, step):
+        if step <= self.warmup_steps:
+            lr = (step / self.warmup_steps) * self.max_learning_rate
         else:
             lr = self.max_learning_rate * (
-                (self.total_steps - step) / (self.total_steps - self.warmup_steps)
+                (self.total_steps - step - 1) / (self.total_steps - self.warmup_steps)
             )
         # In order to avoid the learning rate to be exactly 0 we put a minimal learning rate of 1e-7
         lr = max(1e-7, lr)

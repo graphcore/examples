@@ -67,13 +67,13 @@ class Record(object):
         # Arguments
         mode: String, 'iteration', 'avg' or 'total' that determines whether the last iteration, the average iteration
               or the total time is collected
-        timestamp: Mixed, end of the timespan; if None, datetime.now() is used
+        timestamp: Mixed, end of the timespan; if None, pendulum.now() is used
         return_type: String, specifying the return format 'seconds', 'words', or 'period' (pendulum.Period object)
 
         Returns: See return_type
         """
         if timestamp is None:
-            timestamp = datetime.datetime.now()
+            timestamp = pendulum.now()
 
         if mode == 'iteration':
             if len(self.history) > 0:
@@ -120,7 +120,7 @@ class Record(object):
             return data
 
         # meta-data
-        data['_timestamp'] = datetime.datetime.now()
+        data['_timestamp'] = pendulum.now()
 
         total_time = self.timing('total', timestamp=data['_timestamp'], return_type='period')
         data['_total_seconds_taken'] = total_time.in_seconds()

@@ -114,7 +114,7 @@ def norm(x: tf.Tensor, norm_type='BATCH', groups=32, training=False) -> tf.Tenso
     elif norm_type == 'GROUP':
         x = normalization_ops.group_norm(x, groups=groups, center=True, scale=True,
                                          training=training, trainable=training,
-                                         channels_axis=-1, reduction_axes=[-3, -2])
+                                         channels_axis=-1)
     return x
 
 

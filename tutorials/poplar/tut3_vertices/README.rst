@@ -148,7 +148,7 @@ estimate to be 20 cycles.
 
 .. code-block:: c++
 
-  graph.setCycleEstimate(vtx, 20);
+  graph.setPerfEstimate(vtx, 20);
 
 After creating the compute set, the final task is to add a step to the control
 program to execute the compute set:

@@ -231,7 +231,7 @@ class BertEmbedding(Block):
         self.total_execution_phases = self.total_phases()
 
     def forward(self, indices, positions, segments):
-        # Size of act = [batch_size * seq_len, hidden_size]
+        # Size of act = [micro_batch_size * seq_len, hidden_size]
         x = self.add([
             self.token_embedding(indices),
             self.position_embedding(positions),
@@ -247,7 +247,7 @@ class BertEmbedding(Block):
 class AttentionSplitIO(Block):
     def __init__(self, name: str, num_splits, hidden_size, num_heads,
                  serialize_matmul, available_memory_proportion, epsilon, dropout,
-                 dropout_prob, attn_dropout, attn_dropout_prob, batch_size, sequence_length, dtype, task,
+                 dropout_prob, attn_dropout, attn_dropout_prob, micro_batch_size, sequence_length, dtype, task,
                  num_mask_tokens, use_default_mem_proportion, **kwargs):
         scope_provider = kwargs['scope_provider']
         if hidden_size % num_splits:
@@ -269,7 +269,7 @@ class AttentionSplitIO(Block):
                           dropout_prob,
                           attn_dropout,
                           attn_dropout_prob,
-                          batch_size,
+                          micro_batch_size,
                           sequence_length,
                           dtype,
                           task,
@@ -316,7 +316,7 @@ class AttentionSplitIO(Block):
 class AttentionSplitHidden(Block):
     def __init__(self, name: str, num_splits, hidden_size, num_heads,
                  serialize_matmul, available_memory_proportion, epsilon, dropout,
-                 dropout_prob, attn_dropout, attn_dropout_prob, batch_size, sequence_length, dtype, task,
+                 dropout_prob, attn_dropout, attn_dropout_prob, micro_batch_size, sequence_length, dtype, task,
                  num_mask_tokens, use_default_mem_proportion, **kwargs):
         scope_provider = kwargs['scope_provider']
         # AttentionSplitHidden splits the num_heads, keeping size_per_head same.
@@ -346,7 +346,7 @@ class AttentionSplitHidden(Block):
                           dropout_prob,
                           attn_dropout,
                           attn_dropout_prob,
-                          batch_size,
+                          micro_batch_size,
                           sequence_length,
                           dtype,
                           task,
@@ -529,7 +529,7 @@ class FeedForwardSplitIO(Block):
 
 class MaskLMSerialised(Block):
     def __init__(self, num_splits, vocab_size, hidden_size, sequence_length,
-                 batch_size, num_mask_tokens, projection_weights, activation, no_cls_layer,
+                 micro_batch_size, num_mask_tokens, projection_weights, activation, no_cls_layer,
                  epsilon, projection_bias, **kwargs):
         scope_provider = kwargs['scope_provider']
         additional_scopes = [kwargs['builder'].outlineAttributes({'outline_scope': 'MLMSerialised'})]
@@ -538,7 +538,7 @@ class MaskLMSerialised(Block):
                          scope=scope,
                          **kwargs)
         self.slice_scope = scope_provider.get_scope('Slice', 'next')
-        self.batch_size = batch_size
+        self.micro_batch_size = micro_batch_size
         self.vocab_length = vocab_size
         self.hidden_size = hidden_size
         self.sequence_len = sequence_length
@@ -561,7 +561,7 @@ class MaskLMSerialised(Block):
                        vocab_size // num_splits,
                        hidden_size,
                        sequence_length,
-                       batch_size,
+                       micro_batch_size,
                        num_mask_tokens,
                        projection_weights[i],
                        activation=None,
@@ -577,14 +577,14 @@ class MaskLMSerialised(Block):
         with self.scope_provider(self.builder, self.slice_scope):
             x = self.builder.reshape_const(
                 self.builder.aiOnnx, [x_in],
-                [self.batch_size, self.sequence_len, self.hidden_size])
+                [self.micro_batch_size, self.sequence_len, self.hidden_size])
 
             x = self.builder.aiOnnxOpset9.slice([x],
                                                 axes=[1],
                                                 starts=[0],
                                                 ends=[self.num_mask_tokens])
             x = self.builder.reshape_const(self.builder.aiOnnx, [x],
-                                           [self.batch_size * self.num_mask_tokens, self.hidden_size])
+                                           [self.micro_batch_size * self.num_mask_tokens, self.hidden_size])
             if not self.no_cls_layer:
                 x = self.pred_head_transform(x)
                 x = self.norm(x)

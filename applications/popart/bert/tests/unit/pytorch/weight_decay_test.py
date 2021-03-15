@@ -40,21 +40,20 @@ class MockIteration:
 
 
 class MockArgs:
-    def __init__(self, learning_rate, weight_decay):
-
+    def __init__(self, optimizer, learning_rate, weight_decay):
+        self.optimizer = optimizer
         self.learning_rate = learning_rate
         self.momentum = 0
         self.dampening = 0
         self.velocity_scaling = 1.0
         self.loss_scaling = 1.0
         self.task = "PRETRAINING"
-        self.projection_lr_scale = 0
-        self.pipeline_lr_scaling = 0
         self.weight_decay = weight_decay
         self.momentum_scaling = 0
         self.pipeline_momentum_scaling = 0
         self.execution_mode = "DEFAULT"
         self.squad_lr_scale = None
+        self.continuous_pipeline_optimizer_scaling = False
 
 
 class BertFCN(nn.Module):
@@ -93,7 +92,7 @@ def test_weight_decay(weight_decay):
 
     #  ------------------- PopART -------------------------
     config = BertConfig(vocab_length=128,
-                        batch_size=1,
+                        micro_batch_size=1,
                         hidden_size=768,
                         sequence_length=128,
                         popart_dtype="FLOAT",
@@ -113,7 +112,7 @@ def test_weight_decay(weight_decay):
                                    hidden_act=nn.functional.gelu)
 
     inputs = [
-        data.reshape(config.batch_size, config.sequence_length,
+        data.reshape(config.micro_batch_size, config.sequence_length,
                      config.hidden_size)
     ]
 
@@ -139,7 +138,7 @@ def popart_result_and_model(popart_config, weight_decay=0.0, lr=0.0, l1_lambda=0
     popart_model = Bert(popart_config, builder=builder)
 
     input_info = popart.TensorInfo(popart_config.popart_dtype, [
-        popart_config.batch_size * popart_config.sequence_length,
+        popart_config.micro_batch_size * popart_config.sequence_length,
         popart_config.hidden_size
     ])
     input_tensor = builder.addInputTensor(input_info)
@@ -156,8 +155,8 @@ def popart_result_and_model(popart_config, weight_decay=0.0, lr=0.0, l1_lambda=0
     proto = builder.getModelProto()
 
     iteration = MockIteration()
-    args = MockArgs(lr, weight_decay)
-    optimizer_factory = BaseOptimizerFactory(args, iteration, "SGD",
+    args = MockArgs("SGD", lr, weight_decay)
+    optimizer_factory = BaseOptimizerFactory(args, iteration,
                                              popart_model.tensors)
     optimizer = optimizer_factory.create()
 

@@ -5,7 +5,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#    http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,481 +13,512 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import re
+import time
 import argparse
 import datetime
-import json
-import os
 import random
-import re
-import sys
-import time
-from collections import OrderedDict, deque, namedtuple
-from functools import partial
 from socket import gethostname
-
+from collections import OrderedDict, namedtuple, Counter
+from shutil import copytree
+from contextlib import ExitStack
+import json
 import numpy as np
+import sys
+import math
 import tensorflow.compat.v1 as tf
 from tensorflow.python import ipu
+from tensorflow.python.ipu import pipelining_ops
 
-import Datasets.data as dataset
-import log as bert_logging
-import Models.modeling_ipu as bert_ipu
-from lr_schedules import make_lr_schedule
-import optimization
-from ipu_utils import get_ipu_config, ladder_numbering_iterator, next_power_of_two
+from ipu_optimizer import get_optimizer
+import ipu_utils
+import log
+import logging
 from log import logger
+from functools import partial
+import Datasets.data_loader as dataset
+import modeling as bert_ipu
+from multi_stage_wrapper import get_split_embedding_stages, get_split_matmul_stages, MultiStageEmbedding
+from lr_schedules import make_lr_schedule
+from loss_scaling_schedule import LossScalingScheduler
+from poplar_options import set_poplar_engine_options
+from tensorflow.python.ipu import horovod as hvd
 
-# Data structure containing the network state
-GraphOps = namedtuple(
-    'graphOps', ['graph',
-                 'session',
-                 'init',
-                 'ops',
-                 'placeholders',
-                 'iterator',
-                 'outfeed',
-                 'saver',
-                 'restore',
-                 'tvars'])
+import popdist
+import popdist.tensorflow
 
-
-def get_output_stage(learning_rate, layer_output, pooled_output,
-                     masked_labels, next_sentence_labels, masked_lm_weights,
-                     bert_model, matmul_serialization_factor):
-    """Calculate MLM and NSP losses"""
-
-    data_type = bert_model.bert_config.dtype
-
-    mlm_logits = bert_model.mlm_head(layer_output)
-
-    # Calculate MLM loss
-    with tf.variable_scope("cls/predictions"):
-        log_probs = tf.nn.log_softmax(mlm_logits, axis=-1)
-        label_ids = tf.reshape(masked_labels, [-1])
-        label_weights = tf.reshape(masked_lm_weights, [-1])
-
-        one_hot_labels = tf.one_hot(tf.cast(label_ids, dtype=tf.int32),
-                                    depth=bert_model.bert_config.vocab_size, dtype=data_type)
-
-        log_probs_per_example = tf.reshape(log_probs, [log_probs.shape[0]*log_probs.shape[1], log_probs.shape[2]])
-        per_example_loss = -tf.reduce_sum(log_probs_per_example * one_hot_labels, axis=[-1])
-        numerator = tf.reduce_sum(label_weights * per_example_loss)
-        denominator = tf.reduce_sum(label_weights) + 1e-5
-        mlm_loss = numerator / denominator
-        mlm_acc = tf.reduce_mean(
-            tf.cast(tf.equal(tf.cast(tf.argmax(log_probs_per_example, -1), dtype=tf.int32), label_ids), dtype=data_type))
-
-    # Calculate NSP loss
-    nsp_logits = bert_model.nsp_head(pooled_output)
-    with tf.variable_scope("cls/seq_relationship"):
-        # Google used loss
-        log_probs = tf.nn.log_softmax(nsp_logits, axis=-1)
-        next_sentence_labels = tf.reshape(next_sentence_labels, [-1])
-        one_hot_labels = tf.one_hot(next_sentence_labels, depth=2, dtype=data_type)
-        per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
-        nsp_loss = tf.reduce_mean(per_example_loss)
-        nsp_acc = tf.reduce_mean(
-            tf.cast(tf.equal(tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32), next_sentence_labels), dtype=data_type))
-
-    return learning_rate, mlm_loss, nsp_loss, mlm_acc, nsp_acc
+GraphOps = namedtuple('graphOps',
+                      ['graph', 'session', 'init', 'ops', 'placeholders',
+                       'iterator', 'outfeed', 'saver', 'restore', 'tvars'])
 
 
-def basic_pipelined_training_step(infeed,
-                                  outfeed,
-                                  iterations_per_step=1,
-                                  bert_config=None,
-                                  opts=None,
-                                  learning_rate=None,
-                                  is_training=True):
-    """ Re-create BERT model as a pipeline of individual stages """
-    model = bert_ipu.BertModel(bert_config, is_training=is_training)
-    # The computational stages composing the pipeline
+def create_popdist_strategy():
+    """
+    Creates a distribution strategy for use with popdist. We use the
+    Horovod-based IPUMultiReplicaStrategy. Horovod is used for the initial
+    broadcast of the weights and when reductions are requested on the host.
+    Imports are placed here so they are only done when required, as Horovod
+    might not always be available.
+    """
+
+    from tensorflow.python.ipu.horovod import ipu_multi_replica_strategy
+
+    hvd.init()
+
+    # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
+    # so disable them in the IPUMultiReplicaStrategy.
+    return ipu_multi_replica_strategy.IPUMultiReplicaStrategy(
+        add_ipu_cross_replica_reductions=False)
+
+
+def build_pretrain_pipeline_stages(model, bert_config, opts):
+    """
+    build pipeline stages according to "pipeline_stages" in config file
+    """
+
+    # flatten stages config into list of layers
+    flattened_layers = []
+    for stage in opts['pipeline_stages']:
+        flattened_layers.extend(stage)
+    layer_counter = Counter(flattened_layers)
+    assert layer_counter['hid'] == opts['num_hidden_layers']
+    assert layer_counter['emb'] == layer_counter['mlm']
+    # gradient_accumulation_count needs to be a multiple of stage_number*2
+    # this is constrained by sdk
+    assert opts['gradient_accumulation_count'] % (len(opts['pipeline_stages'])*2) == 0
+
     computational_stages = []
-    device_mapping = []
-    device_counter = iter(ladder_numbering_iterator())
-
-    # These variables will be set depending on the embeddings split across IPUs
-    word_embedding_device = -1
-    positional_embedding_device = -1
-
-    if opts['embeddings_placement'].lower() == 'two_ipus':
-        computational_stages.append(model.embedding_lookup_stage)
-        device_mapping.append(next(device_counter))
-        word_embedding_device = device_mapping[-1]
-
-        computational_stages.append(model.embedding_postprocessor_stage)
-        device_mapping.append(next(device_counter))
-        positional_embedding_device = device_mapping[-1]
-
-    elif opts['embeddings_placement'].lower() == 'same_ipu':
-        def word_and_positional_embeddings_same_stage(*inputs):
-            word_embedding_outputs = model.embedding_lookup_stage(*inputs)
-            positional_embedding_output = model.embedding_postprocessor_stage(
-                *word_embedding_outputs)
-            return positional_embedding_output
-
-        computational_stages.append(word_and_positional_embeddings_same_stage)
-        device_mapping.append(next(device_counter))
-        word_embedding_device = device_mapping[-1]
-        positional_embedding_device = word_embedding_device
-
-    elif opts['embeddings_placement'].lower() == 'same_as_hidden_layers':
-        # We will add the embeddings later, when we create the frst stage of hidden layers
-        pass
-
+    if layer_counter['emb'] > 1:
+        # support distribute embedding to multiple IPUs
+        embedding = MultiStageEmbedding(embedding_size=bert_config.hidden_size,
+                                        vocab_size=bert_config.vocab_size,
+                                        initializer_range=bert_config.initializer_range,
+                                        n_stages=layer_counter['emb'],
+                                        matmul_serialize_factor=opts["matmul_serialize_factor"],
+                                        dtype=bert_config.dtype)
+        embedding_stages = get_split_embedding_stages(
+            embedding=embedding, split_count=layer_counter['emb'], bert_config=bert_config, batch_size=opts["batch_size"], seq_length=opts['seq_length'])
+        # masked lm better be on same ipu with embedding layer for saving storage
+        masked_lm_output_post_stages = get_split_matmul_stages(
+            embedding=embedding, split_count=layer_counter['emb'], bert_config=bert_config)
     else:
-        raise ValueError("Configuration parameter 'embeddings_placement' not recognised.")
+        embedding_stages = [model.embedding_lookup_layer]
+        masked_lm_output_post_stages = [model.mlm_head]
 
-    # Place a multiple hidden layers into a same stage.
-    first_layer_idx = 0
-    for i, num_hidden_layer_in_stage in enumerate(bert_config.hidden_layers_per_stage):
-        logger.info(f"Adding {num_hidden_layer_in_stage} hidden layers in stage {i}")
+    layers = {
+        'emb': embedding_stages,
+        'pos': model.embedding_postprocessor_layer,
+        'hid': model.encoder,
+        'mlm': masked_lm_output_post_stages,
+        'nsp': model.get_next_sentence_output_layer
+    }
+    stage_layer_list = []
+    for stage in opts['pipeline_stages']:
+        func_list = []
+        for layer in stage:
+            # embedding layer and mlm layer can be splited to mutliple IPUs, so need to be dealt with separately
+            if layer == 'emb':
+                func_list.append(embedding_stages[0])
+                embedding_stages = embedding_stages[1:]
+            elif layer == 'mlm':
+                func_list.append(masked_lm_output_post_stages[0])
+                masked_lm_output_post_stages = masked_lm_output_post_stages[1:]
+            else:
+                func_list.append(layers[layer])
+        stage_layer_list.append(func_list)
+    computational_stages = ipu_utils.stages_constructor(
+        stage_layer_list, ['learning_rate', 'loss_scaling'],
+        ['learning_rate', 'loss_scaling', 'mlm_loss', 'nsp_loss', 'mlm_acc', 'nsp_acc'])
 
-        # Place the embeddings at the same time as the first few layers if
-        # the option 'embeddings_placement' is set to 'same_as_hidden_layers'
-        if i == 0 and opts['embeddings_placement'].lower() == 'same_as_hidden_layers':
-            # Put all embeddings and the first hidden layers in the same stage.
-            computational_stages.append(partial(
-                model.embeddings_and_hidden_layers_stage, first_layer_idx, num_hidden_layer_in_stage))
-            device_mapping.append(next(device_counter))
-            word_embedding_device = device_mapping[-1]
-            positional_embedding_device = device_mapping[-1]
-        else:
-            # Put multiple hidden layers in the same stage
-            computational_stages.append(partial(
-                model.multi_hidden_layers_stage, first_layer_idx, num_hidden_layer_in_stage))
-            device_mapping.append(next(device_counter))
+    return computational_stages
 
-        first_layer_idx += num_hidden_layer_in_stage
 
-    # We check that the two embeddings have been assigned to an IPU
-    assert word_embedding_device >= 0
-    assert positional_embedding_device >= 0
+def build_network(infeed,
+                  outfeed,
+                  bert_config=None,
+                  opts=None,
+                  learning_rate=None,
+                  loss_scaling=None,
+                  is_training=True):
 
-    # Place the loss functions on the first IPU
-    computational_stages.append(partial(
-        get_output_stage,
-        bert_model=model, matmul_serialization_factor=opts['logits_matmul_serialization_factor']))
-    device_mapping.append(word_embedding_device)
+    # build model
+    pipeline_model = bert_ipu.BertModel(bert_config, is_training=is_training)
 
-    logger.info("*** Pipeline summary ***")
-    for stage, device in zip(computational_stages, device_mapping):
-        logger.info(f"IPU {device:2d} - stage {str(stage):50s}")
+    # build stages & device mapping
+    computational_stages = build_pretrain_pipeline_stages(
+        pipeline_model, bert_config, opts,)
+    device_mapping = opts['device_mapping']
 
-    def optimizer_function(learning_rate, mlm_loss, nsp_loss, mlm_acc, nsp_acc):
+    logger.info(
+        f"************* computational stages: *************\n{computational_stages}")
+    logger.info(
+        f"************* device mapping: *************\n{device_mapping}")
+
+    # define optimizer
+    def optimizer_function(learning_rate, loss_scaling, mlm_loss, nsp_loss, mlm_acc, nsp_acc):
         total_loss = mlm_loss + nsp_loss
-        # Choose optimiser method from configuration flags.
-        optimizer = optimization.get_optimizer(learning_rate, opts)
+        optimizer = get_optimizer(learning_rate, loss_scaling, opts['total_replicas'], opts)
+        return ipu.ops.pipelining_ops.OptimizerFunctionOutput(optimizer, total_loss*loss_scaling)
 
-        if opts["replicas"] > 1:
-            optimizer = ipu.optimizers.cross_replica_optimizer.CrossReplicaOptimizer(
-                optimizer)
-        return ipu.ops.pipelining_ops.OptimizerFunctionOutput(optimizer, total_loss*opts["loss_scaling"])
+    # Set IPU-specific available memory proportion
+    if isinstance(opts['available_memory_proportion'], float):
+        available_memory_proportion_list = [
+            str(opts['available_memory_proportion'])
+        ] * len(device_mapping)
+    else:
+        available_memory_proportion_list = [
+            str(opts['available_memory_proportion'][device]) for device in device_mapping
+        ]
 
-    options = [ipu.pipelining_ops.PipelineStageOptions()] * len(device_mapping)
+    if len(available_memory_proportion_list) != len(device_mapping):
+        raise ValueError(
+            "The available_memory_proportion list must be the same length as the number of stages in the pipeline."
+        )
+
+    options = [ipu.pipelining_ops.PipelineStageOptions(
+        matmul_options={
+            "availableMemoryProportion": amp,
+            "partialsType": opts["partials_type"]
+        }) for amp in available_memory_proportion_list
+    ]
+
+    # define pipeline schedule
+    pipeline_schedule = pipelining_ops.PipelineSchedule.Grouped
+    # TODO (nicolasc): I don't think this is supported for BERT as we have multiple stages on the same IPU
+    if opts["pipeline_schedule"] == "Interleaved":
+        pipeline_schedule = pipelining_ops.PipelineSchedule.Interleaved
 
     if is_training:
         pipeline_ops = ipu.ops.pipelining_ops.pipeline(computational_stages=computational_stages,
                                                        gradient_accumulation_count=int(
-                                                           opts['pipeline_depth']),
-                                                       repeat_count=iterations_per_step,
-                                                       inputs=[learning_rate],
+                                                           opts['gradient_accumulation_count']),
+                                                       repeat_count=opts['batches_per_step'],
+                                                       inputs=[learning_rate, loss_scaling],
                                                        infeed_queue=infeed,
                                                        outfeed_queue=outfeed,
                                                        optimizer_function=optimizer_function,
                                                        device_mapping=device_mapping,
                                                        forward_propagation_stages_poplar_options=options,
                                                        backward_propagation_stages_poplar_options=options,
-                                                       offload_weight_update_variables=opts[
-                                                           'offload_weight_update_variables'],
-                                                       pipeline_schedule=ipu.ops.pipelining_ops.PipelineSchedule[opts['pipeline_schedule']],
-                                                       recomputation_mode=ipu.ops.pipelining_ops.RecomputationMode[opts['recomputation_mode']],
+                                                       offload_weight_update_variables=opts["variable_offloading"],
+                                                       pipeline_schedule=pipeline_schedule,
+                                                       recomputation_mode=ipu.ops.pipelining_ops.RecomputationMode[
+                                                           opts['recomputation_mode']],
                                                        name="Pipeline")
     else:
         pipeline_ops = ipu.ops.pipelining_ops.pipeline(computational_stages=computational_stages,
                                                        gradient_accumulation_count=int(
-                                                           opts['pipeline_depth']),
-                                                       repeat_count=iterations_per_step,
-                                                       inputs=[learning_rate],
+                                                           opts['gradient_accumulation_count']),
+                                                       repeat_count=opts['batches_per_step'],
+                                                       inputs=[learning_rate, loss_scaling],
                                                        infeed_queue=infeed,
                                                        outfeed_queue=outfeed,
                                                        device_mapping=device_mapping,
                                                        forward_propagation_stages_poplar_options=options,
                                                        backward_propagation_stages_poplar_options=options,
-                                                       offload_weight_update_variables=opts[
-                                                           'offload_weight_update_variables'],
-                                                       pipeline_schedule=opts['pipeline_schedule'],
-                                                       recomputation_mode=opts['recomputation_mode'],
+                                                       offload_weight_update_variables=opts["variable_offloading"],
+                                                       pipeline_schedule=pipeline_schedule,
+                                                       recomputation_mode=ipu.ops.pipelining_ops.RecomputationMode[
+                                                           opts['recomputation_mode']],
                                                        name="Pipeline")
 
     return pipeline_ops
 
 
-def training_step_with_infeeds_and_outfeeds(bert_config, train_iterator, outfeed, opts, learning_rate, iterations_per_step=1, is_training=True):
+def distributed_per_replica(function):
+    """Run the function with the distribution strategy (if any) in a per-replica context."""
+    def wrapper(*arguments):
+        if tf.distribute.has_strategy():
+            strategy = tf.distribute.get_strategy()
+            return strategy.experimental_run_v2(function, args=arguments)
+        else:
+            return function(*arguments)
 
-    if int(opts['pipeline_depth']) > 1:
-
-        _training_step = partial(basic_pipelined_training_step,
-                                 infeed=train_iterator,
-                                 outfeed=outfeed,
-                                 iterations_per_step=iterations_per_step,
-                                 bert_config=bert_config,
-                                 opts=opts,
-                                 learning_rate=learning_rate)
-
-        return ipu.ipu_compiler.compile(_training_step, [])
-    else:
-        raise NotImplementedError("Single-stage pipeline not supported by BERT pretraining.")
+    return wrapper
 
 
-def build_graph(bert_config, opts, iterations_per_step=1, is_training=True, feed_name=None):
-    """Build the graph for training.
-
-    Args:
-        bert_config: configuration for the BERT model.
-        opts: a dictionary containing all global options.
-        iterations_per_step: number of iterations per step
-        is_training (bool): if true return a graph with trainable variables.
-        feed_name: name of the IPU infeed.
-
-    Returns:
-        a GraphOps containing a BERT graph and session prepared for inference or training.
+@distributed_per_replica
+def training_step_with_infeeds_and_outfeeds(train_iterator, outfeed_queue, bert_config, opts, learning_rate, loss_scaling, is_training):
     """
+    Training step that uses an infeed loop with outfeeds. This runs 'iterations_per_step' steps per session call. This leads to
+    significant speed ups on IPU. Not compatible with running on CPU or GPU.
+    """
+
+    if opts['gradient_accumulation_count'] > 1:
+        training_step = partial(build_network,
+                                infeed=train_iterator,
+                                outfeed=outfeed_queue,
+                                bert_config=bert_config,
+                                opts=opts,
+                                learning_rate=learning_rate,
+                                loss_scaling=loss_scaling,
+                                is_training=is_training)
+
+    return ipu.ipu_compiler.compile(training_step, [])
+
+
+def build_graph(opts, is_training=True, feed_name=None):
     train_graph = tf.Graph()
-    with train_graph.as_default():
+    strategy = None
 
-        placeholders = dict()
-        placeholders['learning_rate'] = tf.placeholder(
-            bert_config.dtype, shape=[])
+    if opts['use_popdist']:
+        strategy = create_popdist_strategy()
+
+    with train_graph.as_default(), ExitStack() as stack:
+        if strategy:
+            stack.enter_context(strategy.scope())
+
+        bert_config = bert_ipu.BertConfig.from_dict(opts)
+        bert_config.dtype = tf.float32 if opts["precision"] == '32' else tf.float16
+
+        # define placeholders
+        placeholders = {
+            'learning_rate': tf.placeholder(bert_config.dtype, shape=[]),
+            'loss_scaling': tf.placeholder(bert_config.dtype, shape=[])
+        }
         learning_rate = placeholders['learning_rate']
+        loss_scaling = placeholders['loss_scaling']
 
-        train_iterator = ipu.ipu_infeed_queue.IPUInfeedQueue(
-            dataset.data(opts, is_training=is_training), feed_name=feed_name+"_in", replication_factor=opts['replicas'])
-
+        # define input, datasets must be defined outside the ipu device scope.
+        train_iterator = ipu.ipu_infeed_queue.IPUInfeedQueue(dataset.load(opts, is_training=is_training),
+                                                             feed_name=feed_name+"_in", replication_factor=opts['replicas'])
+        # define output
         outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue(
             feed_name=feed_name+"_out", replication_factor=opts['replicas'])
 
-        with ipu.scopes.ipu_scope('/device:IPU:0'):
-            train = training_step_with_infeeds_and_outfeeds(bert_config, train_iterator, outfeed_queue,
-                                                            opts, learning_rate, iterations_per_step, is_training=is_training)
+        # building networks with pipeline
+        def bert_net():
+            return build_network(train_iterator,
+                                 outfeed_queue,
+                                 bert_config,
+                                 opts,
+                                 learning_rate,
+                                 loss_scaling,
+                                 is_training)
 
+        with ipu.scopes.ipu_scope('/device:IPU:0'):
+            train = training_step_with_infeeds_and_outfeeds(train_iterator,
+                                                            outfeed_queue,
+                                                            bert_config,
+                                                            opts,
+                                                            learning_rate,
+                                                            loss_scaling,
+                                                            is_training)
+
+        # get result from outfeed queue
         outfeed = outfeed_queue.dequeue()
 
-        bert_logging.print_trainable_variables(opts['logs_path'])
+        if strategy:
+            # Take the mean of all the outputs across the distributed workers
+            outfeed = [strategy.reduce(tf.distribute.ReduceOp.MEAN, v) for v in outfeed]
 
-        model_variables = tf.trainable_variables() + tf.get_collection(tf.GraphKeys.TRAINABLE_RESOURCE_VARIABLES)
+        if opts['distributed_worker_index'] == 0 or opts['log_all_workers']:
+            log.print_trainable_variables(opts)
+
         model_and_optimiser_variables = tf.global_variables()
+        model_variables = tf.trainable_variables() + tf.get_collection(tf.GraphKeys.TRAINABLE_RESOURCE_VARIABLES)
+        restore = tf.train.Saver(
+            var_list=model_and_optimiser_variables
+            if opts['restore_optimiser_from_checkpoint'] else model_variables)
 
-        restore = tf.train.Saver(var_list=model_and_optimiser_variables if opts['restore_optimiser_from_ckpt'] else model_variables)
-
-        # We store two savers: one for the standard training and another one for the best checkpoint
-        savers = {
-            "train_saver": tf.train.Saver(var_list=model_variables if opts['ckpt_model_only'] else model_and_optimiser_variables, name='latest', max_to_keep=5),
-            "best_saver": tf.train.Saver(var_list=model_variables if opts['ckpt_model_only'] else model_and_optimiser_variables, name='best', max_to_keep=1)
-        }
+        train_saver = tf.train.Saver(
+            var_list=model_and_optimiser_variables
+            if opts['save_optimiser_to_checkpoint'] else model_variables,
+            max_to_keep=5)
 
         ipu.utils.move_variable_initialization_to_cpu()
         train_init = tf.global_variables_initializer()
         tvars = tf.trainable_variables()
 
-    # Calculate number of IPUs required for pretraining pipeline.
-    num_embedding_ipu = {
-        'two_ipus': 2,
-        'same_ipu': 1,
-        'same_as_hidden_layers': 0
-    }[opts['embeddings_placement']]
+    # calculate the number of required IPU
+    num_ipus = (max(opts['device_mapping']) + 1) * opts['replicas']
+    num_ipus = ipu_utils.next_power_of_two(num_ipus)
 
-    num_hidden_layer_stages = len(bert_config.hidden_layers_per_stage)
-    num_ipus_required = opts['replicas'] * next_power_of_two(num_hidden_layer_stages + num_embedding_ipu)
-
-    # Configure the IPU options.
-    ipu_options = get_ipu_config(
+    ipu_options = ipu_utils.get_config(
         fp_exceptions=opts["fp_exceptions"],
-        stochastic_rounding=opts['stochastic_rounding'],
         xla_recompute=opts["xla_recompute"],
-        available_memory_proportion=opts['available_memory_proportion'],
-        disable_graph_outlining=opts["disable_graph_outlining"],
-        num_ipus_required=num_ipus_required,
+        disable_graph_outlining=False,
+        num_required_ipus=num_ipus,
+        enable_stochastic_rounding=opts['stochastic_rounding'],
         max_cross_replica_sum_buffer_size=opts['max_cross_replica_sum_buffer_size'],
         scheduler_selection=opts['scheduler'],
         compile_only=opts['compile_only'],
-        partials_type=opts['partials_type']
-    )
+        ipu_id = opts['select_ipu'])
+
+    if opts['use_popdist']:
+        ipu_options = popdist.tensorflow.set_ipu_config(ipu_options, opts['shards'], configure_device=False)
+
     ipu.utils.configure_ipu_system(ipu_options)
 
-    train_sess = tf.Session(graph=train_graph, config=tf.ConfigProto())
+    # This is a workaround bug https://github.com/tensorflow/tensorflow/issues/23780
+    from tensorflow.core.protobuf import rewriter_config_pb2
+    sess_cfg = tf.ConfigProto()
+    sess_cfg.graph_options.rewrite_options.memory_optimization = (
+        rewriter_config_pb2.RewriterConfig.OFF)
 
-    return GraphOps(train_graph, train_sess, train_init, [train], placeholders, train_iterator, outfeed, savers, restore, tvars)
+    train_sess = tf.Session(graph=train_graph, config=sess_cfg)
+
+    return GraphOps(train_graph, train_sess, train_init, [train], placeholders, train_iterator, outfeed, train_saver, restore, tvars)
 
 
-def training_step(train, learning_rate):
-    """Run a single training step, over a global batch.
-    Args:
-        train (GraphOps): GraphOps containing the current training session and graph.
-        learning_rate: learnign at rate this training step.
-    """
-    # Run Training
+def training_step(train, learning_rate, loss_scaling):
     start = time.time()
     _ = train.session.run(train.ops, feed_dict={
-        train.placeholders['learning_rate']: learning_rate,
-    })
+                          train.placeholders['learning_rate']: learning_rate,
+                          train.placeholders['loss_scaling']: loss_scaling})
     batch_time = (time.time() - start)
     if not os.environ.get('TF_POPLAR_FLAGS') or '--use_synthetic_data' not in os.environ.get('TF_POPLAR_FLAGS'):
-        _learning_rate, _mlm_loss, _nsp_loss, _mlm_acc, _nsp_acc = train.session.run(train.outfeed)
+        _learning_rate, _loss_scaling_, _mlm_loss, _nsp_loss, _mlm_acc, _nsp_acc = train.session.run(train.outfeed)
         mlm_loss = np.mean(_mlm_loss)
         nsp_loss = np.mean(_nsp_loss)
         mlm_acc = np.mean(_mlm_acc)
         nsp_acc = np.mean(_nsp_acc)
+        if mlm_acc == -1 and nsp_acc == - 1:
+            # If they are both disabled then it is worth to put Nan instead
+            mlm_acc = np.nan
+            nsp_acc = np.nan
     else:
-        mlm_loss, nsp_loss, mlm_acc, nsp_acc = 0, 0, 0, 0
+        mlm_loss, nsp_loss = 0, 0
+        mlm_acc, nsp_acc = 0, 0
     return batch_time, mlm_loss, nsp_loss, mlm_acc, nsp_acc
 
 
-def train(bert_config, opts):
+def train(opts):
     # --------------- OPTIONS ---------------------
-    epochs = opts["epochs"]
     total_samples = dataset.get_dataset_files_count(opts, is_training=True)
-    logger.info("Total samples with duplications {}".format(total_samples))
-    total_independent_samples = total_samples//opts['duplication_factor']
-    logger.info("Total samples without duplications {}".format(total_independent_samples))
-    steps_per_epoch = total_independent_samples // (opts['batches_per_step']*opts["total_batch_size"])
-    iterations_per_epoch = total_independent_samples // (opts["total_batch_size"])
+    opts["dataset_repeat"] = math.ceil(
+        (opts["num_train_steps"]*opts["global_batch_size"])/total_samples)
 
-    # total iterations
-    if opts['steps']:
-        logger.warn("Ignoring the epoch flag and using the steps one")
-        steps = opts['steps']
-    else:
-        steps = epochs * steps_per_epoch
-    logger.info("Total training steps equal to {}, total number of samples being analyzed equal to {}".format(steps, steps*opts['batches_per_step']*opts['total_batch_size']))
-    iterations_per_step = opts['batches_per_step']
-    ckpt_per_step = opts['steps_per_ckpts']
+    total_samples_per_epoch = total_samples/opts["duplicate_factor"]
+    logger.info(f"Total samples for each epoch {total_samples_per_epoch}")
+    steps_per_epoch = total_samples_per_epoch//opts["global_batch_size"]
+    logger.info(f"Total steps for each epoch {steps_per_epoch}")
 
-    # avoid nan issue caused by queue length is zero.
-    queue_len = iterations_per_epoch // iterations_per_step
-    if queue_len == 0:
-        queue_len = 1
-    batch_times = deque(maxlen=queue_len)
+    steps_per_logs = math.ceil(
+        opts["steps_per_logs"] / opts['batches_per_step'])*opts['batches_per_step']
+    steps_per_tensorboard = math.ceil(
+        opts["steps_per_tensorboard"] / opts['batches_per_step'])*opts['batches_per_step']
+    steps_per_ckpts = math.ceil(
+        opts["steps_per_ckpts"] / opts['batches_per_step'])*opts['batches_per_step']
+    logger.info(f"Checkpoint will be saved every {steps_per_ckpts} steps.")
+
+    total_steps = (opts["num_train_steps"] //
+                   opts['batches_per_step'])*opts['batches_per_step']
+    logger.info(f"{opts['batches_per_step']} steps will be run for ipu to host synchronization once, it should be divided by num_train_steps, so num_train_steps will limit to {total_steps}.", opts)
 
     # learning rate strategy
     lr_schedule_name = opts['lr_schedule']
     logger.info(f"Using learning rate schedule {lr_schedule_name}")
-    LR = make_lr_schedule(lr_schedule_name, opts, steps)
+    learning_rate_schedule = make_lr_schedule(lr_schedule_name, opts, total_steps)
 
-    if opts['do_train']:
-        # -------------- BUILD TRAINING GRAPH ----------------
+    # variable loss scaling
+    loss_scaling_schedule = LossScalingScheduler(opts['loss_scaling'], opts['loss_scaling_by_step'])
 
-        train = build_graph(bert_config, opts, iterations_per_step, is_training=True, feed_name="trainfeed")
-        train.session.run(train.init)
-        train.session.run(train.iterator.initializer)
+    # -------------- BUILD TRAINING GRAPH ----------------
+    train = build_graph(opts,
+                        is_training=True, feed_name="trainfeed")
+    train.session.run(train.init)
+    train.session.run(train.iterator.initializer)
 
-        step = 0
-        i = 0
+    is_main_worker = opts['distributed_worker_index'] == 0
 
-        if opts['restore_path'] is not None:
-            if os.path.isdir(opts['restore_path']):
-                ckpt_file_path = tf.train.latest_checkpoint(opts['restore_path'])
-                logger.info(f"Restoring training from latest checkpoint")
-            else:
-                # Assume it's a directory
-                ckpt_file_path = opts['restore_path']
-
-            logger.info(f"Restoring training from checkpoint: {ckpt_file_path}")
-            train.restore.restore(train.session, ckpt_file_path)
-
-            ckpt_pattern = re.compile(".*ckpt-([0-9]+)$")
-            i = int(ckpt_pattern.match(ckpt_file_path).groups()[0])
-            step = int(i//iterations_per_step)
-
-        if opts['start_from_ckpt']:
-            # We use a checkpoint to initialise our model
-            train.restore.restore(train.session, opts['start_from_ckpt'])
-            logger.info("Starting the training from the checkpoint {}".format(opts['start_from_ckpt']))
-
-        # Initialise Weights & Biases if available
-        if opts['wandb']:
-            import wandb
-            wandb.init(project="tf-bert", sync_tensorboard=True)
-            wandb.config.update(opts)
-
-        # Tensorboard logs path
-        log_path = os.path.join(opts["logs_path"], 'event')
-        logger.info("Tensorboard event file path {}".format(log_path))
-        summary_writer = tf.summary.FileWriter(log_path, train.graph, session=train.session)
-
-        # ------------- TRAINING LOOP ----------------
+    step = 0
+    # -------------- SAVE AND RESTORE --------------
+    if opts["restore_dir"]:
+        restore_path = opts['restore_dir']
+        if os.path.isfile(restore_path):
+            latest_checkpoint = os.path.splitext(restore_path)[0]
+        else:
+            latest_checkpoint = tf.train.latest_checkpoint(restore_path)
         logger.info(
-            "################################################################################")
-        logger.info("Start training......")
-        print_format = (
-            "step: {step:6d}, iteration: {iteration:6d}, epoch: {epoch:6.3f}, lr: {lr:10.3g}, mlm_loss: {mlm_loss:6.3f}, nsp_loss: {nsp_loss:6.3f}, "
-            "samples/sec: {samples_per_sec:6.2f}, time: {iter_time:8.6f}, total_time: {total_time:8.1f}, mlm_acc: {mlm_acc:8.5f}, nsp_acc: {nsp_acc:8.5f}")
+            f"Restoring training from latest checkpoint: {latest_checkpoint}")
+        step_pattern = re.compile(".*ckpt-([0-9]+)$")
+        step = int(step_pattern.match(latest_checkpoint).groups()[0])
+        train.saver.restore(train.session, latest_checkpoint)
+        epoch = step / steps_per_epoch
 
-        start_all = time.time()
+        # restore event files
+        source_path = os.path.join(opts["restore_dir"], '/event')
+        target_path = os.path.join(opts["save_path"], '/event')
+        if os.path.isdir(source_path):
+            copytree(source_path, target_path)
+    else:
+        if opts["init_checkpoint"]:
+            train.saver.restore(train.session, opts["init_checkpoint"])
+            logger.info(
+                f'Init Model from checkpoint {opts["init_checkpoint"]}')
 
-        train_saver = train.saver["train_saver"]
-        best_saver = train.saver["best_saver"]
-        # We initialize the best loss to a super large value
-        best_total_loss = 1e10
-        best_step = 0
+    if opts['save_path']:
+        file_path = train.saver.save(train.session, opts["checkpoint_path"], global_step=0)
+        logger.info(f"Saved checkpoint to {file_path}")
 
-        while step < steps:
-            # Run Training
-            learning_rate = LR.feed_dict_lr(step)
+
+    # Initialise Weights & Biases if available
+    if opts['wandb'] and is_main_worker:
+        import wandb
+        wandb.init(project="tf-bert", sync_tensorboard=True)
+        wandb.config.update(opts)
+
+    # Tensorboard logs path
+    log_path = os.path.join(opts["logs_path"], 'event')
+    logger.info("Tensorboard event file path {}".format(log_path))
+    summary_writer = tf.summary.FileWriter(
+        log_path, train.graph, session=train.session)
+
+    # ------------- TRAINING LOOP ----------------
+    print_format = (
+        "step: {step:6d}, epoch: {epoch:6.2f}, lr: {lr:6.7f}, mlm_loss: {mlm_loss:6.3f}, nsp_loss: {nsp_loss:6.3f},\
+        mlm_acc: {mlm_acc:6.5f}, nsp_acc: {nsp_acc:6.5f}, samples/sec: {samples_per_sec:6.2f}, time: {iter_time:8.6f}, total_time: {total_time:8.1f}"
+    )
+    learning_rate = mlm_loss = nsp_loss = 0
+    start_all = time.time()
+
+    try:
+        while step < total_steps:
+            learning_rate = learning_rate_schedule.get_at_step(step)
+            loss_scaling = loss_scaling_schedule.get_at_step(step)
             try:
-                batch_time, mlm_loss, nsp_loss, mlm_acc, nsp_acc = training_step(train, learning_rate)
+                batch_time, mlm_loss, nsp_loss, mlm_acc, nsp_acc = training_step(
+                    train, learning_rate, loss_scaling)
             except tf.errors.OpError as e:
-                raise tf.errors.ResourceExhaustedError(e.node_def, e.op, e.message)
+                raise tf.errors.ResourceExhaustedError(
+                    e.node_def, e.op, e.message)
 
-            epoch = float(opts["total_batch_size"] * i) / total_independent_samples
+            batch_time /= opts['batches_per_step']
 
-            batch_time /= iterations_per_step
+            is_log_step = (step % steps_per_logs == 0)
+            is_save_tensorboard_step = (steps_per_tensorboard != 0 and (
+                step % steps_per_tensorboard == 0))
+            is_save_ckpt_step = (step and (
+                step % steps_per_ckpts == 0 or step == total_steps - opts['batches_per_step']))
 
-            if step != 0:
-                batch_times.append([batch_time])
-
-            if step == 1:
+            if (step == 1 and (is_main_worker or opts['log_all_workers'])):
                 poplar_compile_time = time.time() - start_all
+                logger.info(f"Poplar compile time: {poplar_compile_time:.2f}s")
                 poplar_summary = tf.Summary()
-                poplar_summary.value.add(tag='poplar/compile_time', simple_value=poplar_compile_time)
+                poplar_summary.value.add(
+                    tag='poplar/compile_time', simple_value=poplar_compile_time)
                 summary_writer.add_summary(poplar_summary)
 
-            # Print loss
-            if step % opts['steps_per_logs'] == 0:
-                if len(batch_times) != 0:
-                    avg_batch_time = np.mean(batch_times)
-                else:
-                    avg_batch_time = batch_time
-
-                samples_per_sec = opts['total_batch_size'] / avg_batch_time
-
-                # flush times every time it is reported
-                batch_times.clear()
-
+            if is_log_step:
                 total_time = time.time() - start_all
-
+                epoch = step / steps_per_epoch
                 stats = OrderedDict([
                     ('step', step),
-                    ('iteration', i),
                     ('epoch', epoch),
                     ('lr', learning_rate),
+                    ('loss_scaling', loss_scaling),
                     ('mlm_loss', mlm_loss),
                     ('nsp_loss', nsp_loss),
                     ('mlm_acc', mlm_acc),
                     ('nsp_acc', nsp_acc),
-                    ('iter_time', avg_batch_time),
-                    ('samples_per_sec', samples_per_sec),
+                    ('iter_time', batch_time),
+                    ('samples_per_sec', opts['global_batch_size']/batch_time),
                     ('total_time', total_time),
                 ])
 
                 logger.info(print_format.format(**stats))
-                bert_logging.write_to_csv(
-                    stats, i == 0, True, opts['logs_path'])
-
-                sys_summary = tf.Summary()
-                sys_summary.value.add(tag='perf/throughput_samples_per_second', simple_value=samples_per_sec)
-                sys_summary.value.add(tag='perf/average_batch_time', simple_value=avg_batch_time)
-                summary_writer.add_summary(sys_summary, step)
 
             # Log training statistics
             train_summary = tf.Summary()
@@ -496,35 +527,41 @@ def train(bert_config, opts):
             train_summary.value.add(tag='loss/NSP', simple_value=nsp_loss)
             train_summary.value.add(tag='accuracy/MLM', simple_value=mlm_acc)
             train_summary.value.add(tag='accuracy/NSP', simple_value=nsp_acc)
-            train_summary.value.add(tag='defaultLearningRate', simple_value=learning_rate)
-            train_summary.value.add(tag='samples', simple_value=step*opts['batches_per_step']*opts['total_batch_size'])
+            train_summary.value.add(
+                tag='learning_rate', simple_value=learning_rate)
+            train_summary.value.add(
+                tag='loss_scaling', simple_value=loss_scaling)
+            train_summary.value.add(
+                tag='samples_per_sec', simple_value=opts['global_batch_size']/batch_time)
+            train_summary.value.add(
+                tag='samples', simple_value=step*opts['batches_per_step']*opts['global_batch_size'])
             summary_writer.add_summary(train_summary, step)
             summary_writer.flush()
 
-            if step % ckpt_per_step == 0 and step:
-                filepath = train_saver.save(train.session, save_path=opts["checkpoint_path"], global_step=step)
-                logger.info("Saved checkpoint to {}".format(filepath))
+            if is_save_ckpt_step or is_save_tensorboard_step:
+                if is_main_worker:
+                    file_path = train.saver.save(train.session, opts["checkpoint_path"], global_step=step)
+                    logger.info(f"Saved checkpoint to {file_path}")
 
-                if not opts['wandb']:
-                    bert_logging.save_model_statistics(filepath, summary_writer, step)
+                    if is_save_tensorboard_step:
+                        log.save_model_statistics(file_path, summary_writer, step)
 
-            # Mechanism to checkpoint the best model.
-            # set opts["best_ckpt_min_steps"] to 0 to disable
-            if best_total_loss > mlm_loss + nsp_loss and step - best_step > opts["best_ckpt_min_steps"] and opts["best_ckpt_min_steps"]:
-                best_total_loss = mlm_loss + nsp_loss
-                best_step = step
-                filepath = best_saver.save(train.session, save_path=opts["checkpoint_path"]+'_best', global_step=step)
-                logger.info("Saved Best checkpoint to {}".format(filepath))
+                if opts['use_popdist']:
+                    ipu_utils.barrier()
 
-            i += iterations_per_step
-            step += 1
-
-        # --------------- LAST CHECKPOINT ----------------
-        filepath = train_saver.save(train.session, save_path=opts["checkpoint_path"]+'_last', global_step=step)
-        logger.info("Final model saved to to {}".format(filepath))
-
-        # --------------- CLEANUP ----------------
+            step += opts['batches_per_step']
+    finally:
         train.session.close()
+
+
+def str_to_bool(value):
+    if isinstance(value, bool) or value is None:
+        return value
+    if value.lower() in {'false', 'f', '0', 'no', 'n'}:
+        return False
+    elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
+        return True
+    raise argparse.ArgumentTypeError(f'{value} is not a valid boolean value')
 
 
 def add_main_arguments(parser):
@@ -535,161 +572,288 @@ def add_main_arguments(parser):
                        help="Type of NLP task.")
     group.add_argument('--config', type=str,
                        help='BERT configuration file in JSON format.')
-    group.add_argument('--restore_path', type=str, default=None,
-                       help='Path to directory containing the checkpoint to restore.')
-    group.add_argument('--start-from-ckpt', type=str, default=None,
-                       help='Initial checkpoint from where we want to initialise the training.')
     return parser
 
 
-def add_training_arguments(parser):
+def add_other_arguments(parser, required=True):
+    group = parser.add_argument_group('Main')
 
-    pipeline_schedules_available = [
-        p.name for p in ipu.ops.pipelining_ops.PipelineSchedule]
-    recomputation_mode_available = [
+    # Training options
+    group.add_argument('--batch-size', type=int,
+                       help="Set batch-size for training graph")
+    group.add_argument('--global-batch-size', type = int, default = None,
+                       help="The total batch size at which we want the model to run")
+    group.add_argument('--base-learning-rate', type=float, default=2e-5,
+                       help="Base learning rate exponent (2**N). blr = lr /  bs")
+    group.add_argument('--num-train-steps', type=int,
+                       help="Number of training steps.")
+    group.add_argument('--loss-scaling', type=float, default=1,
+                       help="Loss scaling factor.")
+    group.add_argument('--loss-scaling-by-step', type=str, default=None,
+                       help="Specify changing loss scaling factors at given training steps, as a dictionary.")
+    group.add_argument('--steps-per-ckpts', type=int, default=256,
+                       help="Steps per checkpoints")
+    group.add_argument('--optimizer', type=str, default="momentum",
+                       choices=['sgd', 'momentum', 'adamw', 'lamb'],
+                       help="Optimizer")
+    group.add_argument('--momentum', type=float, default=0.984375,
+                       help="Momentum coefficient.")
+    group.add_argument('--beta1', type=float, default=0.9,
+                       help="lamb/adam beta1 coefficient.")
+    group.add_argument('--beta2', type=float, default=0.999,
+                       help="lamb/adam beta2 coefficient.")
+    group.add_argument('--weight-decay-rate', type=float, default=0.0,
+                       help="Weight decay to use during optimisation.")
+    group.add_argument('--epsilon', type=float,
+                       default=1e-4, help="lamb/adam epsilon.")
+    group.add_argument('--lr-schedule', default='exponential',
+                       choices=["custom", "natural_exponential", "polynomial"],
+                       help="Learning rate schedule function.")
+    group.add_argument('--lr-schedule-by-step', type=str,
+                       help="Dictonary of changes in the learning rate at specified steps.")
+    group.add_argument('--warmup', default=0.1,
+                       help="Learning rate schedule warm-up period, in epochs (float) or number of steps (integer).")
+    group.add_argument('--seed', default=None,
+                       help="Seed for randomizing training")
+    group.add_argument('--wandb', action='store_true',
+                       help="Enable logging and experiment tracking with Weights & Biases.")
+    group.add_argument('--save-path', type=str, default="checkpoints",
+                       help='Save checkpoints to this directory.')
+    group.add_argument('--init-checkpoint', type=str, default=None,
+                       help='Initialise a new training session from this checkpoint.')
+    group.add_argument('--restore-dir', type=str, default=None,
+                       help='Path to directory containing the checkpoint to restore.')
+    group.add_argument('--restore-optimiser-from-checkpoint', default=True, action="store_true")
+    group.add_argument('--save-optimiser-to-checkpoint', default=True, action="store_true")
+    group.add_argument('--disable-acc', default=False, action='store_true',
+                       help='If passed, this flag disables the calculation of the accuracies to save some memory on the first IPU of the pipeline.')
+
+    # BERT options
+    group.add_argument('--vocab-size', type=int,
+                       help="""Vocabulary size of `inputs_ids` in `BertModel`.""")
+    group.add_argument('--hidden-size', type=int,
+                       help="""Size ofthe encoder layers and the pooler layer.""")
+    group.add_argument('--num-hidden-layers', type=int,
+                       help="""Number of hidden layers in the Transformer encoder.""")
+    group.add_argument('--num-attention-heads', type=int,
+                       help="""Number of attention heads for each attention layer in the Transformer encoder.""")
+    group.add_argument('--intermediate-size', type=int,
+                       help="""The size of the "intermediate" (i.e., feed-forward) layer in the Transformer encoder.""")
+    group.add_argument('--hidden-act', type=int,
+                       help="""The non-linear activation function (function or string) in the encoder and pooler.""")
+    group.add_argument('--hidden-dropout-prob', type=int,
+                       help="""The dropout probability for all fully connected layers in the embeddings, encoder, and pooler.""")
+    group.add_argument('--attention-probs-dropout-prob', type=int,
+                       help="""The dropout ratio for the attention probabilities.""")
+    group.add_argument('--max-position-embeddings', type=int,
+                       help= """The maximum sequence length that this model might ever be used with. Typically set this to something large just in case (e.g., 512 or 1024 or 2048).""")
+    group.add_argument('--type-vocab-size', type=int,
+                       help= """The vocabulary size of the `token_type_ids` passed into `BertModel`.""")
+    group.add_argument('--initializer-range', type=int,
+                       help= """The stdev of the truncated-normal-initializer for initializing all weight matrices.""")
+
+    # Model options
+    group.add_argument('--use-attention-projection-bias', type=str_to_bool, default=True,
+                       help="Whether to use bias in linear projection behind attention layer.")
+    group.add_argument('--use-cls-layer', type=str_to_bool, default=True,
+                       help="""Include the CLS layer in pretraining.
+                       This layer comes after the encoders but before the projection for the MLM loss.""")
+    group.add_argument('--use-qkv-bias', type=str_to_bool, default=True,
+                       help="""Whether to use bias in QKV calculation of attention layer.""")
+
+    # IPU options
+    pipeline_schedule_options = [
+        _.name for _ in ipu.ops.pipelining_ops.PipelineSchedule]
+    schedulers_available = ['Clustering',
+                            'PostOrder', 'LookAhead', 'ShortestPath']
+    recomputation_modes_available = [
         p.name for p in ipu.ops.pipelining_ops.RecomputationMode
     ]
 
-    tr_group = parser.add_argument_group('Training')
-    tr_group.add_argument('--batch-size', type=int,
-                          help="Set batch-size for training graph")
-    tr_group.add_argument('--base-learning-rate', type=float, default=2e-5,
-                          help="Base learning rate exponent (2**N). blr = lr /  bs")
-    tr_group.add_argument('--epochs', type=float, default=300,
-                          help="Number of training epochs")
-    tr_group.add_argument('--steps', type=int, default=0,
-                          help="Number of steps after which we stop training.")
-    tr_group.add_argument('--loss-scaling', type=float, default=1,
-                          help="Loss scaling factor")
-    tr_group.add_argument('--steps-per-ckpts', type=int, default=10,
-                          help="Steps per checkpoints")
-    tr_group.add_argument('--replicas', type=int, default=1,
-                          help="Replicate graph over N workers to increase batch to batch-size*N")
-    tr_group.add_argument('--pipeline-depth', type=int, default=1,
-                          help="Depth of pipeline to use.")
-    tr_group.add_argument('--pipeline-schedule', type=str, default='Grouped',
-                          choices=pipeline_schedules_available, help="Pipelining scheduler.")
-    tr_group.add_argument('--recomputation-mode', type=str, default="RecomputeAndBackpropagateInterleaved",
-                          choices=recomputation_mode_available)
-    tr_group.add_argument('--optimiser', type=str, default="SGD", choices=['SGD', 'momentum', 'lamb', 'adamw'],
-                          help="Which optimiser to use for the optimisation of the neural network. Choices are: SGD, momentum, lamb, adamw. Default: SGD.")
-    tr_group.add_argument('--momentum', type=float, default=0.984375,
-                          help="Momentum coefficient.")
-    tr_group.add_argument('--lr-schedule', default='natural_exponential',
-                          choices=["custom", "polynomial_decay", "natural_exponential"],
-                          help="Learning rate schedule function. Default: exponential")
-    tr_group.add_argument('--warmup', type = float, default=0,
-                          help="The Warmup period we want to use, default set to 0.")
-    tr_group.add_argument('--offload-weight-update-variables', type=bool, default=True,
-                          help="Offload variables used only during weight update to remote memory.")
-    tr_group.add_argument('--partials-type', type=str, choices=['float', 'half'], default='half',
-                          help="Storage type for the intermediate (partials) results of convolution and matmul operations")
-    tr_group.add_argument('--optimiser-epsilon', type=float, default=1e-4,
-                          help='Numerical Value to be used for numerical stability in the optimiser.')
-    tr_group.add_argument('--increase-optimiser-precision', action='store_true',
-                          help='In the LAMB optimiser, it performs more operations in fp32. This operation increase precision in the weight update but consumes more memory and reduce the Tput.')
-    tr_group.add_argument('--optimiser_beta1', type=float, default=0.9,
-                          help="Adam and LAMB beta_1 coefficient")
-    tr_group.add_argument('--optimiser_beta2', type=float, default=0.999,
-                          help="Adam and LAMB beta_2 coefficient")
-    tr_group.add_argument('--use-nvlamb', action='store_true',
-                          help="Flag to use the global normalisation for the gradients.")
-    tr_group.add_argument('--use-debiasing', action='store_true',
-                          help="Flag to use the de biasing for the momenta of LAMB")
-    tr_group.add_argument('--wandb', action='store_true',
-                          help="Enable logging and experiment tracking with Weights & Biases.")
-    tr_group.add_argument('--seed', default=None,
-                          help="Seed of the pseudo-random number generator used during traiing.")
-    tr_group.add_argument('--do_train', default=True,
-                          help="Configure the session for training.")
-    tr_group.add_argument('--duplication_factor', default=5, help='The amount of duplication factor inside the dataset.')
-    tr_group.add_argument('--ckpt-model-only', action='store_true',
-                          help='If this flag is passed, the saver is going to checkpoint just the model and not the optimiser states.')
-    tr_group.add_argument('--restore-optimiser-from-ckpt', action='store_true',
-                          help='If this flag is passed the optimiser is going to be restored from the previous run, if the checkpoint has these value saved.')
+    group.add_argument('--gradient-accumulation-count', type=int, default=None,
+                       help="Number of gradients to accumulate in the pipeline. Must also set --shards > 1.")
+    group.add_argument('--pipeline-schedule', type=str, default="Interleaved",
+                       choices=pipeline_schedule_options, help="Pipelining scheduler.")
+    group.add_argument('--replicas', type=int, default=1,
+                       help="Replicate graph over N workers to increase batch to batch-size*N")
+    group.add_argument('--precision', type=str, default="16", choices=["16", "32"],
+                       help="Precision of Ops(weights/activations/gradients) data types: 16, 32.")
+    group.add_argument('--batches-per-step', type=int, default=1,
+                       help="Maximum number of batches to perform on the device before returning to the host.")
+    group.add_argument('--available-memory-proportion', type=str, default=0.23,
+                       help="Proportion of IPU memory available to matmul operations. A list can be used to specify the value for each IPU.")
+    group.add_argument('--variable-offloading', type=str_to_bool, default=True,
+                       help="Enable offloading of training variables into remote memory.")
+    group.add_argument('--stochastic-rounding', type=str_to_bool, default=True,
+                       help="Enable stochastic rounding. Set to False when run evaluation.")
+    group.add_argument('--no-outlining', type=str_to_bool, default=False,
+                       help="Disable TF outlining optimisations. This will increase memory for a small throughput improvement.")
+    group.add_argument("--xla_recompute", default=True, action="store_true",
+                       help="Recompute activations during backward pass")
+    group.add_argument('--fp-exceptions', default=False, action="store_true",
+                       help="Enable floating-point exeptions.")
+    group.add_argument('--partials-type', type=str, default="half", choices=["half", "float"],
+                       help="Mamul&Conv precision data type.")
+    group.add_argument('--max-cross-replica-sum-buffer-size', type=int, default=10*1024*1024,
+                       help="""The maximum number of bytes that can be waiting before a cross replica sum op is scheduled. [Default=10*1024*1024]""")
+    group.add_argument('--scheduler', type=str, default='Clustering', choices=schedulers_available,
+                       help="""Forces the compiler to use a specific scheduler when ordering the instructions.""")
+    group.add_argument('--recomputation-mode', type=str, default="RecomputeAndBackpropagateInterleaved",
+                       choices=recomputation_modes_available)
+    group.add_argument('--increase-optimiser-precision', action='store_true', default=False,
+                       help='In the LAMB optimiser, it performs more operations in fp32. This operation increase precision in the weight update but consumes more memory and reduce the Tput.')
+    group.add_argument('--use-nvlamb', action='store_true', default=False,
+                       help="Flag to use the global normalisation for the gradients.")
+    group.add_argument('--use-debiasing', action='store_true', default=False,
+                       help="Flag to use the de biasing for the momenta of LAMB")
+    group.add_argument('--duplicate-factor', default=5, type=int,
+                       help='The amount of duplication factor inside the dataset.')
+    group.add_argument('--reduction-type', type=str, choices=['sum', 'mean'], default='mean',
+                       help='The reduction type applied to the pipeline, the choice is between summation and mean.')
+    group.add_argument('--weight-norm-clip', type=float, default=0.,
+                       help='The value from which we want to clip the w_norm value, value of 0 is no weight clipping.')
+    group.add_argument('--compile-only', action="store_true", default=False,
+                       help="Configure Poplar to only compile the graph. This will not acquire any IPUs and thus facilitate profiling without using hardware resources.")
+    group.add_argument('--matmul-serialize-factor', type=int, default=6,
+                       help='Serialization factor of the embeddings lookup and projection. Must be a divisor of vocab_size.')
+    group.add_argument('--use-qkv-split', action='store_true', default=False,
+                       help='split the QKV layer into independent tensors.')
+    group.add_argument('--pipeline-stages', type=str,
+                       help="""Pipeline stages, a list of [emb, pos, hid, mlm, nsp] layers forming the pipeline.""")
+    group.add_argument('--device-mapping', type=str,
+                       help="""Mapping of pipeline stages to IPU""")
+    group.add_argument('--sync-replicas-independently', action='store_true', default=False,
+                       help='All the replicas will be in sync.')
+    group.add_argument('--log-all-workers', action='store_true',
+                       help='Allow all the workers to log into the terminal and the files.')
+
+    # Dataset options
+    group.add_argument('--train-file', type=str, required=False,
+                       help="path to wiki/corpus training dataset tfrecord file.")
+    group.add_argument("--seq-length", type=int, default=128,
+                       help="the max sequence length.")
+    group.add_argument("--max-predictions-per-seq", type=int, default=20,
+                       help="the number of masked words per sentence.")
+    group.add_argument('--parallell-io-threads', type=int, default=4,
+                       help="Number of cpu threads used to do data prefetch.")
+    group.add_argument('--generated-data', action="store_true", default=False,
+                       help="Generates synthetic-data on the host and then use it for training.")
+    group.add_argument('--synthetic-data', action='store_true',
+                       help="Run the model completely detaching it from the host.")
+    group.add_argument('--dataset-repeat', type=int, default=1,
+                       help="Number of times dataset to repeat.")
+    group.add_argument('--static-mask', action='store_true', default=False,
+                       help="Use if the pretraining dataset was created with the masked tokens always at the beginning of the input tensor.")
+
+    # Env flag specific arguments
+    group.add_argument('--execution-profile', action='store_true',
+                       help='Sets the Poplar engine options to output an execution profile to the profile-dir.')
+    group.add_argument('--memory-profile', action='store_true',
+                       help='Sets the Poplar engine options to output a memory profile to the profile-dir.')
+    group.add_argument('--profile-dir', type=str, default='./',
+                       help='Defines the directory where the profile will be found.')
+    group.add_argument('--progress-bar', type=str, choices=['auto', 'true', 'false'], default='auto',
+                       help='The compilation progress bar for the compilation. Pass false to disable it.')
+
+    # Add logging-specific arguments
+    log.add_arguments(parser)
+
+    return parser
+
+
+def create_command_line_parser():
+    parser = argparse.ArgumentParser(
+        description='BERT  Pretraining in TensorFlow',
+        add_help=False, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = add_main_arguments(parser)
+
+    return parser
+
+
+def set_distribution_defaults(opts):
+
+    if opts['use_popdist']:
+        opts['distributed_worker_count'] = popdist.getNumInstances()
+        opts['distributed_worker_index'] = popdist.getInstanceIndex()
+        opts['summary_str'] += 'Popdist\n'
+        opts['summary_str'] += ' Process count: {distributed_worker_count}\n'
+        opts['summary_str'] += ' Process index: {distributed_worker_index}\n'
+    else:
+        opts['distributed_worker_count'] = 1
+        opts['distributed_worker_index'] = 0
+
+    if opts['distributed_worker_index'] != 0 and not opts['log_all_workers']:
+        logger.setLevel(logging.ERROR)
+
+
+def create_all_options_parser():
+    parser = argparse.ArgumentParser(
+        description='BERT  Pretraining in TensorFlow',
+        add_help=False, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = add_main_arguments(parser)
+    parser = add_other_arguments(parser)
     return parser
 
 
 def set_training_defaults(opts):
     opts['name'] = 'BERT_' + opts['task']
-    opts['total_batch_size'] = opts['batch_size'] * opts['pipeline_depth']*opts['replicas']
-    logger.info(f"Total batch size: {opts['total_batch_size']}")
+    opts['summary_str'] = "Training\n"
+    opts['summary_str'] += " Batch Size: {global_batch_size}\n"
+    opts['summary_str'] += (" Base Learning Rate: {base_learning_rate}\n"
+                            " Loss Scaling: {loss_scaling}\n")
 
+    if opts['optimizer'].lower() == 'sgd':
+        opts['summary_str'] += "SGD\n"
+    elif opts['optimizer'].lower() == 'momentum':
+        opts['name'] += '_Mom'
+        opts['summary_str'] += ("SGD with Momentum\n"
+                                " Momentum Coefficient: {momentum}\n")
+    elif opts['optimizer'].lower() == 'adam':
+        opts['name'] += '_Adam'
+        opts['summary_str'] += ("Adam\n"
+                                " beta1: {beta1}, beta2: {beta2}, epsilon: {epsilon}\n")
+    elif opts['optimizer'].lower() == 'adamw':
+        opts['name'] += '_AdamW'
+        opts['summary_str'] += ("Adam With Weight decay\n"
+                                " beta1: {beta1}, beta2: {beta2}, epsilon: {epsilon}\n")
+    elif opts['optimizer'].lower() == 'lamb':
+        opts['name'] += '_LAMB'
+        opts['summary_str'] += ("LAMB\n"
+                                " beta1: {beta1}, beta2: {beta2}, epsilon: {epsilon}\n")
 
-def add_ipu_arguments(parser):
-    schedulers_available = ['Clustering', 'PostOrder', 'LookAhead', 'ShortestPath']
+    # Automatic pipeline depth counter
+    if opts["global_batch_size"]:
+        gradients_to_accumulate = opts["global_batch_size"]//(opts["total_replicas"]*opts['batch_size'])
+        divisor = len(opts['pipeline_stages'])*2
+        # We need then to fix the gradient_to_accumulate according to the pipeline
+        gradients_to_accumulate = divisor*(1 + gradients_to_accumulate//divisor)
+        if opts['gradient_accumulation_count'] and opts['gradient_accumulation_count'] != gradients_to_accumulate:
+            logger.error("Passed a gradient to accumulate and a global batch size. Disable one of them to run.")
+            sys.exit(os.EX_OK)
+        opts['gradient_accumulation_count'] = gradients_to_accumulate
+        # We update the global_batch_size
+        proposed_global_batch_size = opts['gradient_accumulation_count'] * opts["total_replicas"] * opts["batch_size"]
+        if proposed_global_batch_size != opts['global_batch_size']:
+            logger.info("Changing the global batch size to match the pipeline requirements.")
+            opts['global_batch_size'] = proposed_global_batch_size
+    else:
+        opts['global_batch_size'] = opts['batch_size'] * opts['gradient_accumulation_count']*opts['total_replicas']
 
-    group = parser.add_argument_group('IPU')
-    group.add_argument('--precision', type=int, default=16, choices=[16, 32],
-                       help="Precision of Ops(weights/activations/gradients).")
-    group.add_argument('--batches_per_step', type=int, default=1,
-                       help="Maximum number of batches to perform on the device before returning to the host.")
-    group.add_argument('--available_memory_proportion', default=0.23, nargs='+',
-                       help="Proportion of memory which is available for convolutions. Use a value of less than 0.6 "
-                            "to reduce memory usage.")
-    group.add_argument('--disable_graph_outlining', default=False, action="store_true",
-                       help="Disable TensorFlow outlining optimisations.")
-    group.add_argument("--embeddings_placement", type=str, default='two_ipus', choices=['two_ipus', 'same_ipu', 'same_as_hidden_layers'],
-                       help="Placement of the embeddings layers in a pipelined model.\n"
-                            "- 'two_ipus': Word embeddings on IPU 0, positional embeddings on IPU 1\n"
-                            "- 'same_ipu: Word and positional embeddings in the same pipeline stage\n"
-                            "- 'same_as_hidden_layers': Word and positional embeddings and hidden layers in the same pipeline stage")
-    group.add_argument("--outline_hidden_layers", default=True, action="store_true",
-                       help="Outline the hidden layers by using the @ipu.function decorator.")
-    group.add_argument("--stochastic_rounding", default=True, action="store_true",
-                       help="Use stochastic rounding.")
-    group.add_argument("--fp_exceptions", default=False, action="store_true",
-                       help="If true floating point invalid operations will cause an exception.")
-    group.add_argument("--xla_recompute", default=True, action="store_true",
-                       help="Recompute activations during backward pass")
-    group.add_argument('--max-cross-replica-sum-buffer-size', type=int, default=10*1024*1024,
-                       help="""The maximum number of bytes that can be waiting before a cross replica sum op is scheduled. [Default=10*1024*1024]""")
-    group.add_argument('--scheduler', type=str, default='', choices=schedulers_available,
-                       help="""Forces the compiler to use a specific scheduler when ordering the instructions.""")
-    group.add_argument('--compile-only', action="store_true", default=False,
-                       help="Configure Poplar to only compile the graph. This will not acquire any IPUs and thus facilitate profiling without using hardware resources.")
-    group.add_argument('--logits_matmul_serialization_factor', type=int, default=4,
-                       help="Number of smaller matrix multiplications the logits calculation is split into.")
-    group.add_argument('--reduction-type', type=str, choices=['sum', 'mean'], default='sum',
-                       help='The reduction type applied to the pipeline, the choice is between summation and mean.')
-    group.add_argument('--weight-norm-clip', type=float, default=0.,
-                       help='The value from which we want to clip the w_norm value, value of 0 is no weight clipping.')
-    group.add_argument('--fix_synth_seed', default=False, action="store_true",
-                       help='Set the seed for synthetic data generation, used in testing for consistency.')
-    group.add_argument('--best-ckpt-min-steps', type=int, default=0,
-                       help='Which is the minimal distance between two best checkpoints.')
-    return parser
+    if opts['gradient_accumulation_count'] > 1:
+        opts['summary_str'] += "  Gradient Accumulation Count {gradient_accumulation_count} \n"
 
-
-def add_bert_arguments(parser):
-    group = parser.add_argument_group('BERT')
-    group.add_argument('--vocab_size', type=int, default=31528)
-    group.add_argument('--hidden_size', type=int, default=768)
-    group.add_argument('--num_hidden_layers', type=int, default=12)
-    group.add_argument('--num_attention_heads', type=int, default=12)
-    group.add_argument('--hidden_act', type=str, default='gelu')
-    group.add_argument('--hidden_dropout_prob', type=float, default=0.1)
-    group.add_argument('--attention_probs_dropout_prob', type=float, default=0.1)
-    group.add_argument('--max_position_embeddings', type=int, default=512)
-    group.add_argument('--type_vocab_size', type=int, default=16)
-    group.add_argument('--initializer_range', type=float, default=0.02)
-    group.add_argument('--hidden_layers_per_stage', default=1)
-    group.add_argument('--max_predictions_per_seq', type=int, default=20)
-    group.add_argument('--use_attention_projection_bias', type=bool, default=False,
-                       help="Use biases in the projection dense layer.")
-    group.add_argument('--use_cls_layer', type=bool, default=False,
-                       help="Insert a dense layer before the output MLM logits.")
-    group.add_argument('--use_qkv_bias', type=bool, default=False,
-                       help="Use biases in the QKV dense layer.")
-    return parser
+    # In order to improve readability we set another flag
+    opts['compute_acc'] = not opts['disable_acc']
+    if opts['disable_acc']:
+        logger.info("Disabling computation of the accuracies. Just the losses will be reported.")
 
 
 def set_ipu_defaults(opts):
     poplar_version = os.popen('popc --version').read()
-    logger.info(f"Poplar version: {poplar_version}")
+    opts['poplar_version'] = poplar_version
     logger.info(f"Running on host: {gethostname()}")
     logger.info(f"Current date/time: {str(datetime.datetime.now())}")
-    commit_hash = bert_logging.get_git_revision()
+    commit_hash = log.get_git_revision()
     logger.info(f"Code revision: {commit_hash}")
 
     if opts['seed']:
@@ -703,56 +867,13 @@ def set_ipu_defaults(opts):
         ipu.utils.reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
 
 
-def create_command_line_parser():
-    parser = argparse.ArgumentParser(
-        description='BERT  Pretraining in TensorFlow',
-        add_help=False, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser = add_main_arguments(parser)
-
-    return parser
-
-
-def create_all_options_parser():
-    parser = argparse.ArgumentParser(
-        description='BERT  Pretraining in TensorFlow',
-        add_help=False, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser = add_main_arguments(parser)
-    parser = dataset.add_arguments(parser)
-    parser = add_training_arguments(parser)
-    parser = add_ipu_arguments(parser)
-    parser = bert_logging.add_arguments(parser)
-    parser = add_bert_arguments(parser)
-    return parser
-
-
 def set_defaults(opts):
+    opts['summary_str'] = "\n"
     dataset.set_defaults(opts)
+    set_distribution_defaults(opts)
     set_training_defaults(opts)
     set_ipu_defaults(opts)
-    bert_logging.set_defaults(opts)
-
-
-def get_bert_config_from_options(opts):
-    return bert_ipu.BertConfig(
-        opts['vocab_size'],
-        opts['hidden_size'],
-        opts['num_hidden_layers'],
-        opts['num_attention_heads'],
-        opts['hidden_act'],
-        opts['hidden_dropout_prob'],
-        opts['attention_probs_dropout_prob'],
-        opts['max_position_embeddings'],
-        opts['type_vocab_size'],
-        opts['initializer_range'],
-        opts['hidden_layers_per_stage'],
-        opts['max_predictions_per_seq'],
-        opts['use_attention_projection_bias'],
-        opts['use_cls_layer'],
-        opts['use_qkv_bias'],
-        opts['outline_hidden_layers'],
-        opts['logits_matmul_serialization_factor'],
-        tf.float32 if opts["precision"] == 32 else tf.float16
-    )
+    log.set_defaults(opts)
 
 
 if __name__ == '__main__':
@@ -764,9 +885,9 @@ if __name__ == '__main__':
 
     known_command_line_args, unknown_command_line_args = command_line_parser.parse_known_args()
 
-    if known_command_line_args.help:
+    if known_command_line_args.help or known_command_line_args.config is None:
         all_options_parser.print_help()
-        sys.exit(0)
+        sys.exit(os.EX_OK)
 
     # Parse options specified in the configuration file into
     config_file_path = known_command_line_args.config
@@ -775,20 +896,66 @@ if __name__ == '__main__':
     # Build the global options structure from the default options
     current_options = vars(all_options_parser.parse_args())
 
+    unknown_options = [
+        opt for opt in opts_from_config_file.keys()
+        if opt not in current_options.keys()
+    ]
+
+    if unknown_options:
+        logger.error(f"Unonwn options: {unknown_options}")
+        sys.exit(os.EX_USAGE)
+
     # Overwrite global options by those specified in the config file.
     current_options.update(opts_from_config_file)
     options_namespace = argparse.Namespace(**current_options)
+
     # Overwrite with command-line arguments
     all_options_namespace = all_options_parser.parse_args(unknown_command_line_args, options_namespace)
-    logger.info(f"Overwrite configuration parameters: {', '.join(unknown_command_line_args)}")
 
     # argparse.Namespace -> dict()
     opts = vars(all_options_namespace)
 
-    # Group the options
-    bert_config = get_bert_config_from_options(opts)
+    opts['shards'] = ipu_utils.next_power_of_two(max(opts["device_mapping"]) + 1)
+
+    if popdist.isPopdistEnvSet():
+        opts['use_popdist'] = True
+        opts['replicas'] = popdist.getNumLocalReplicas()
+        opts['total_replicas'] = popdist.getNumTotalReplicas()
+        if opts['compile_only']:
+            opts['select_ipu'] = None
+        else:
+            opts['select_ipu'] = popdist.getDeviceId()
+    else:
+        opts['use_popdist'] = False
+        opts['total_replicas'] = opts['replicas']
+        opts['select_ipu'] = None
 
     set_defaults(opts)
+
+    set_poplar_engine_options(
+        execution_profile=opts['execution_profile'],
+        memory_profile=opts['memory_profile'],
+        profile_dir=str(opts['profile_dir']),
+        sync_replicas_independently=opts['replicas'] > 1 and opts['sync_replicas_independently'],
+        synthetic_data=opts['synthetic_data'],
+        tensorflow_progress_bar=opts['progress_bar']
+    )
+
+    logger.info(f"Overwrite configuration parameters: {', '.join(unknown_command_line_args)}")
+
+    if unknown_options:
+        logger.error(f"Unonwn options: {unknown_options}")
+        sys.exit(os.EX_USAGE)
+
+    poplar_options = os.getenv('POPLAR_ENGINE_OPTIONS', 'unset')
+    logger.info(f"Poplar options: {poplar_options}")
     logger.info("Command line: " + ' '.join(sys.argv))
-    logger.info("Option flags:\n" + json.dumps(opts, indent=1))
-    train(bert_config, opts)
+    if opts['use_popdist'] and opts['log_all_workers']:
+        option_string = f"Option flags for worker {opts['distributed_worker_index']}:\n"
+    else:
+        option_string = f"Option flags:\n"
+    logger.info(option_string + json.dumps(
+            OrderedDict(sorted(opts.items())), indent=1))
+
+    # Start training
+    train(opts)

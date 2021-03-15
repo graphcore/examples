@@ -62,11 +62,11 @@ public:
 static popart::OpDefinition PreventConstFoldingOpDef({});
 
 static popart::OpCreator<PreventConstFoldingOp> PreventConstFoldingOpCreator(
-    popart::OpDefinitions({{CustomOperators::PreventConstFolding, PreventConstFoldingOpDef}}),
-    [](const popart::OperatorIdentifier &_opid,
-       const popart::Op::Settings &settings,
-       const popart::Attributes &attr) -> std::unique_ptr<popart::Op> {
-        return std::unique_ptr<PreventConstFoldingOp>(new PreventConstFoldingOp(_opid, settings));
+    popart::OpDefinitions({{CustomOperators::PreventConstFolding,
+                            PreventConstFoldingOpDef}}),
+    [](const popart::OpCreatorInfo &oci) -> std::unique_ptr<popart::Op> {
+      return std::unique_ptr<PreventConstFoldingOp>(
+          new PreventConstFoldingOp(oci.opid, oci.settings));
     },
     true);
 

@@ -4,7 +4,7 @@
 ## Advanced Poplar Example
 
 This example performs a simple computation but uses more advanced
-features of Poplar than the SDK tutorials. This includes:
+features of Poplar than the tutorials. This includes:
 
 * Moving I/O into separate Poplar programs
 * Use of multiple programs

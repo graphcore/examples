@@ -11,12 +11,12 @@ import tensorflow.compat.v1 as tf
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu import ipu_infeed_queue
-from tensorflow.python.ipu import cross_replica_optimizer
-from tensorflow.python.ipu import gradient_accumulation_optimizer
 from tensorflow.python.ipu import loops
 from tensorflow.python.ipu import utils
 from tensorflow.python.ipu import embedding_ops
 from tensorflow.python.ipu import rnn_ops
+from tensorflow.python.ipu.optimizers import CrossReplicaOptimizer
+from tensorflow.python.ipu.optimizers import GradientAccumulationOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope
 from tensorflow.keras.layers import Dense
 
@@ -149,9 +149,9 @@ def build_train_op(previous_loss, *infeed_data):
         loss = tf.reduce_sum(action_prob * infeed_data[-2])
         opt = tf.train.GradientDescentOptimizer(LEARNING_RATE)
         if args.accumulate_grad:
-            opt = gradient_accumulation_optimizer.GradientAccumulationOptimizer(
+            opt = GradientAccumulationOptimizer(
                 opt, num_mini_batches=args.num_mini_batches)
-        opt = cross_replica_optimizer.CrossReplicaOptimizer(opt)
+        opt = CrossReplicaOptimizer(opt)
         train_op = opt.minimize(loss)
         with tf.control_dependencies([train_op]):
             loss = tf.identity(loss)

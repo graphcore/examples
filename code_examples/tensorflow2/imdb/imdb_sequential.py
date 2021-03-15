@@ -33,7 +33,7 @@ def get_dataset():
 
 # Define the model.
 def get_model():
-    return ipu.keras.SequentialPipelineModel(
+    return ipu.keras.PipelineSequential(
         [[Embedding(max_features, 128)],
          [LSTM(128, dropout=0.2),
           Dense(1, activation='sigmoid')]],

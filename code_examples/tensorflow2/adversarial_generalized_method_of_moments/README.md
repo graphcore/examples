@@ -39,13 +39,12 @@ Make sure to run the `enable.sh` script for Poplar.
 
 ### 2) Prepare the TensorFlow environment
  
-Create and activate a Python virtualenv 
-with the appropriate version of gc_tensorflow 
-for TensorFlow 2 installed.
+Create and activate a Python virtualenv with the version of tensorflow-2 from
+the Poplar SDK installed.
 ```
 virtualenv venv -p python3.6
 source venv/bin/activate
-pip install gc_tensorflow-2.X.X+XXXXXX
+pip install tensorflow-2.X.X+XXXXXX
 ```
 Then install proper versions of numpy and tensorflow-probability by doing:
 ```
@@ -105,3 +104,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+

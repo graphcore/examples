@@ -10,7 +10,9 @@ This feature allows to keep the weights in Streaming Memory, loading them in In-
 
 * `phased_execution.py` The main PopART program.
 * `README.md` This file.
+* `requirements.txt` Requirements needed to run this example.
 * `test_phased_execution.py` Test script.
+* `conftest.py` Pytest conftest file holds test fixtures.
 
 ### How to use this demo
 

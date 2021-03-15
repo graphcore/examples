@@ -360,28 +360,41 @@ def preprocess_options(opts):
         print("Error: Must have as many learning rate values as IPU devices!")
         sys.exit(1)
 
-    dataset_suffix = os.path.basename(opts.training_data_file)
-    batch_size_dict = {'3m_train.txt': [64, 128],
-                       '6m_train.txt': [64, 256],
-                       '1y_train.txt': [32, 256],
-                       'full_train.txt': [8, 512]}
+    if opts.training_data_file:
+        dataset_suffix = os.path.basename(opts.training_data_file)
+        batch_size_dict = {'3m_train.txt': [64, 128],
+                           '6m_train.txt': [64, 256],
+                           '1y_train.txt': [32, 256],
+                           'full_train.txt': [8, 512]}
 
-    if not opts.batch_size:
-        if dataset_suffix in batch_size_dict.keys():
-            opts.batch_size = batch_size_dict[dataset_suffix][0]
-        else:
-            raise Exception("\n\nError: Unrecognised training dataset file name: \"{}\"\n"
-                            "Either set batch and graph sizes manually, or ensure "
-                            "training dataset file name is one of the following:"
-                            "\n\t{}, {}, {}, {}\n".format(dataset_suffix, *batch_size_dict))
-    if not opts.size:
-        if dataset_suffix in batch_size_dict.keys():
-            opts.size = batch_size_dict[dataset_suffix][1]
-        else:
-            raise Exception("\n\nError: Unrecognised training dataset file name: \"{}\"\n"
-                            "Either set batch and graph sizes manually, or ensure "
-                            "training dataset file name is one of the following:"
-                            "\n\t{}, {}, {}, {}\n".format(dataset_suffix, *batch_size_dict))
+        if not opts.epochs:
+            opts.epochs = 160
+
+        if not opts.batch_size:
+            if dataset_suffix in batch_size_dict.keys():
+                opts.batch_size = batch_size_dict[dataset_suffix][0]
+            else:
+                raise Exception("\n\nError: Unrecognised training dataset file name: \"{}\"\n"
+                                "Either set batch and graph sizes manually, or ensure "
+                                "training dataset file name is one of the following:"
+                                "\n\t{}, {}, {}, {}\n".format(dataset_suffix, *batch_size_dict))
+        if not opts.size:
+            if dataset_suffix in batch_size_dict.keys():
+                opts.size = batch_size_dict[dataset_suffix][1]
+            else:
+                raise Exception("\n\nError: Unrecognised training dataset file name: \"{}\"\n"
+                                "Either set batch and graph sizes manually, or ensure "
+                                "training dataset file name is one of the following:"
+                                "\n\t{}, {}, {}, {}\n".format(dataset_suffix, *batch_size_dict))
+
+    else:
+        # If no data file is provided, generated random data will be used
+        if not opts.epochs:
+            opts.epochs = 2
+        if not opts.batch_size:
+            opts.batch_size = 64
+        if not opts.size:
+            opts.size = 128
 
     # Logs and checkpoint paths
     name = "bs{}-rn{}-{}".format(opts.batch_size,
@@ -407,7 +420,6 @@ def get_options():
     group.add_argument(
         '--training-data-file',
         type=str,
-        required=True,
         help="Training data file.")
     group.add_argument(
         '--pipeline-num-parallel',
@@ -507,7 +519,6 @@ def get_options():
     group.add_argument(
         '--epochs',
         type=int,
-        default=160,
         help="Number of training epochs")
     group.add_argument(
         '--steps-per-log',
@@ -560,8 +571,8 @@ if __name__ == '__main__':
 
     print(log_str.format(**vars(opts)))
 
-    # load data
-    print("Loading training data")
+    # Load data
+    print(f"{'Loading' if opts.training_data_file else 'Generating random'} training data")
     training_data = AutoencoderData(data_file_name=opts.training_data_file)
 
     print("Users: {}".format(training_data.size))

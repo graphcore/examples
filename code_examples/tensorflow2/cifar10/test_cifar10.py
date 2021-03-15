@@ -15,10 +15,6 @@ def run_cifar10(file_name):
 
 
 class TestCIFAR10(unittest.TestCase):
-    @pytest.mark.category3
-    @pytest.mark.ipus(1)
-    def test_ipu_strategy(self):
-        run_cifar10("ipu_strategy")
 
     @pytest.mark.category2
     @pytest.mark.ipus(1)

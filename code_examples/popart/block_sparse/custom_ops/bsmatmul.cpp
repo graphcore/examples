@@ -173,9 +173,10 @@ static OpDefinition
 
 static OpCreator<BsMatMulOp> BsMatMulOpCreator(
     OpDefinitions({{CustomOperators::bsMatMul, bsMatMulOpDef}}),
-    [](const OperatorIdentifier &_opid,
-       const Op::Settings &settings,
-       const Attributes &attr) -> std::unique_ptr<Op> {
+    [](const OpCreatorInfo &info) -> std::unique_ptr<Op> {
+       const OperatorIdentifier &opid = info.opid;
+       const Op::Settings &settings = info.settings;
+       const Attributes &attr = info.attributes;
 
       std::vector<int64_t> bsr_rhs_lengths_per_2d_plane   =
         attr.getAttribute<Attributes::Ints>("bsr_rhs_lengths_per_2d_plane");
@@ -217,7 +218,7 @@ static OpCreator<BsMatMulOp> BsMatMulOpCreator(
                     static_cast<int64_t>(bsMatMulType));
       }
 
-      return std::unique_ptr<Op>(new BsMatMulOp(_opid,
+      return std::unique_ptr<Op>(new BsMatMulOp(opid,
                                                 bsr_rhs_lengths_per_2d_plane,
                                                 matrix_dims,
                                                 block_size,

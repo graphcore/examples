@@ -182,14 +182,14 @@ static poplar::program::Program InternalBuild(
 
 void BuildDSoftmax_metadata(
   std::vector<std::int64_t>& allocating_indices,
-  std::uint32_t& num_inplace,
+  std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
+  bool& is_hashable,
   std::uint32_t num_inputs) {
 
   logger->trace("BuildDSoftmax_metadata()");
   allocating_indices.clear();
-  num_inplace = 0;
   is_elementwise = true;
   is_stateless = true;
 }
@@ -210,14 +210,16 @@ poplar::program::Program BuildSoftmax(
 
 void BuildDSoftmaxInPlace_metadata(
   std::vector<std::int64_t>& allocating_indices,
-  std::uint32_t& num_inplace,
+  std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
+  bool& is_hashable,
   std::uint32_t num_inputs) {
 
   logger->trace("BuildDSoftmaxInPlace_metadata()");
   allocating_indices.clear();
-  num_inplace = 1;
+  input_to_output_tensor_aliasing = {
+      {/*input tensor index*/ 0, /*output tensor index=*/0}};
   is_elementwise = true;
   is_stateless = true;
 }
@@ -377,14 +379,14 @@ static poplar::program::Program InternalBuild_grad(
 
 void BuildDSoftmaxGrad_metadata(
   std::vector<std::int64_t>& allocating_indices,
-  std::uint32_t& num_inplace,
+  std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
+  bool& is_hashable,
   std::uint32_t num_inputs) {
 
   logger->trace("BuildDSoftmaxGrad_metadata()");
   allocating_indices.clear();
-  num_inplace = 0;
   is_elementwise = true;
   is_stateless = true;
 }

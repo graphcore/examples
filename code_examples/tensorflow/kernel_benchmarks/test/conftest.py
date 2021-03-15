@@ -36,7 +36,7 @@ def ipu_sparse_ops(scope="session"):
         print("\nipu_sparse_ops is already building.")
 
     exist = [path.exists() for path in paths]
-    timeout = 15
+    timeout = 120
     while not all(exist):
         time.sleep(1)
         exist = [path.exists() for path in paths]

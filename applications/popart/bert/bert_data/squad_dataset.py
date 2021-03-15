@@ -118,13 +118,15 @@ class BertDataTransform(object):
     '''
     Masks the indices that are larger than the vocab_length
     '''
-    def __init__(self, dataloader, vocab_length, sequence_length, embedding_dict,  positional_dict, merge_both_embeddings, is_training=True):
+
+    def __init__(self, dataloader, vocab_length, sequence_length, is_training=True,
+                 host_embeddings=None, merge_both_embeddings=True):
         self.dataloader = dataloader
         self.vocab_length = vocab_length
         self.sequence_length = sequence_length
         self.is_training = is_training
-        self.embedding_dict = embedding_dict
-        self.positional_dict = positional_dict
+        self.embedding_dict = host_embeddings[0] if host_embeddings else None
+        self.positional_dict = host_embeddings[1] if host_embeddings else None
         self.merge_both_embeddings = merge_both_embeddings
 
     def __len__(self):
@@ -282,84 +284,73 @@ class SquadDataSet(DataSet):
             logger.info(status_string)
 
 
-def get_bert_dataset(tensor_shapes,
-                     input_file,
-                     output_dir,
-                     sequence_length,
-                     vocab_file,
-                     vocab_length,
-                     batch_size,
-                     batches_per_step,
-                     embedding_dict,
-                     positional_dict,
-                     merge_both_embeddings=False,
-                     replication_factor=1,
-                     accumulation_factor=1,
-                     shuffle=True,
-                     is_training=True,
-                     overwrite_cache=False,
-                     no_drop_remainder=False,
-                     evaluate_script=None,
-                     generated_data=False,
-                     do_lower_case=False,
-                     max_pipeline_stage=1,
-                     seed=0,
-                     mpi_size=1,
-                     mpi_rank=0,
-                     is_distributed=False):
-    samples_per_step = batch_size * batches_per_step * \
-        replication_factor * accumulation_factor
+def get_bert_dataset(args,
+                     tensor_shapes,
+                     host_embeddings=None):
+    input_file = args.input_files[0] if len(args.input_files) > 0 else None
+    is_training = not args.inference
+    generated_data = args.generated_data or args.synthetic_data
 
-    div_factor = batch_size * replication_factor * accumulation_factor * batches_per_step
-
-    pad = 0
+    samples_per_step = args.micro_batch_size * args.batches_per_step * \
+        args.replication_factor * args.gradient_accumulation_factor
 
     if generated_data:
+        random_samples = samples_per_step
+        if args.use_popdist:
+            random_samples *= args.popdist_size
+
         features = generate_random_features(
-            sequence_length, vocab_length, samples_per_step)
+            args.sequence_length, args.vocab_length, random_samples)
         examples = None
-        output_dir = None
-        logger.info("Generating random dataset")
+        args.squad_results_dir = None
+        logger.info(f"Generating random dataset of {random_samples} samples")
     else:
         features, examples = load_or_cache_features(
             input_file,
-            vocab_file,
-            sequence_length,
+            args.vocab_file,
+            args.sequence_length,
             is_training,
-            overwrite_cache=overwrite_cache,
-            do_lower_case=do_lower_case)
+            overwrite_cache=args.overwrite_cache,
+            do_lower_case=args.do_lower_case)
 
-    if no_drop_remainder and not generated_data:
+    pad = 0
+
+    if args.no_drop_remainder and not generated_data:
         # dataset will be padded to be divisible by batch-size and samples-per-step
-        pad = int(np.ceil(len(features)/div_factor)) * div_factor - len(features)
+        pad = int(np.ceil(len(features)/samples_per_step)) * samples_per_step - len(features)
 
-    if is_distributed:
+    if args.use_popdist:
         sampler = DistributedDataSampler(
-            features, seed, shuffle,
-            mpi_size, mpi_rank, padding=False, padding_sub=pad, div_factor=div_factor)
-        pad = sampler.get_subpadding_size()
-    elif shuffle:
-        sampler = ShuffledSampler(features, seed, pad)
+            features,
+            args.seed,
+            args.shuffle,
+            args.popdist_size,
+            args.popdist_rank,
+            padding=False,
+            subsample_padding=pad,
+            samples_per_step=samples_per_step)
+        pad = sampler.subsample_padding
+    elif args.shuffle:
+        sampler = ShuffledSampler(features, args.seed, pad)
     else:
         sampler = SequentialSampler(features, pad)
-    if no_drop_remainder and not generated_data:
-        logger.info(f"no_drop_remainder: Dataset padded by {pad} samples")
+
+    if pad:
+        logger.info(f"Dataset padded by {pad} samples")
 
     dl = SquadDataLoader(
         features,
-        sequence_length=sequence_length,
+        sequence_length=args.sequence_length,
         batch_size=samples_per_step,
-        sampler=sampler
-        )
+        sampler=sampler)
 
     bert_ds = BertDataTransform(
         dl,
-        vocab_length,
-        sequence_length,
-        embedding_dict,
-        positional_dict,
-        merge_both_embeddings,
-        is_training=is_training)
+        args.vocab_length,
+        args.sequence_length,
+        is_training=is_training,
+        host_embeddings=host_embeddings,
+        merge_both_embeddings=args.host_embedding == "MERGE")
 
     if not is_training:
         # Add uid to the data dictionary so evaluation script can be run
@@ -373,13 +364,13 @@ def get_bert_dataset(tensor_shapes,
         examples,
         input_file,
         is_training,
-        output_dir,
-        evaluate_script,
-        do_lower_case=do_lower_case,
+        args.squad_results_dir,
+        args.squad_evaluate_script,
+        do_lower_case=args.do_lower_case,
         n_extra=pad,
         loader=bert_ds,
         tensor_shapes=tensor_shapes,
-        batches_per_step=batches_per_step,
-        replication_factor=replication_factor,
-        accumulation_factor=accumulation_factor)
+        batches_per_step=args.batches_per_step,
+        replication_factor=args.replication_factor,
+        accumulation_factor=args.gradient_accumulation_factor)
     return ds

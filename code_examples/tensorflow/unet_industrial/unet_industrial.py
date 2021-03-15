@@ -4,9 +4,11 @@ import argparse
 import numpy as np
 import tensorflow.compat.v1 as tf
 from functools import partial
+from packaging import version
 import time
 import os
 import random
+from threading import Thread
 from tensorflow.keras.layers import Activation, Conv2D, Conv2DTranspose, MaxPooling2D
 from tensorflow.python import ipu
 
@@ -181,7 +183,7 @@ def model_fn(mode=None, params=None, args=None, inference_features=None):
             return grad + (args.weight_decay * var)
 
         if args.weight_decay > 0:
-            optimizer = ipu.map_gradient_optimizer.MapGradientOptimizer(
+            optimizer = ipu.optimizers.MapGradientOptimizer(
                 optimizer, map_fn_decay)
 
         return ipu.pipelining_ops.OptimizerFunctionOutput(optimizer, loss)
@@ -270,28 +272,31 @@ class ThroughputCalcHook(tf.train.SessionRunHook):
 
 
 def create_estimator(args):
-    ipu_options = ipu.utils.create_ipu_config()
-    ipu_options = ipu.utils.set_floating_point_behaviour_options(ipu_options,
-                                                                 inv=True, div0=True, oflo=True, esr=args.stochastic_rounding, nanoo=True)
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_floating_point_behaviour_options(
+        cfg, inv=True, div0=True, oflo=True, esr=args.stochastic_rounding, nanoo=True)
 
-    ipu_options = ipu.utils.set_optimization_options(ipu_options,
-                                                     max_cross_replica_sum_buffer_size=20000000)
+    cfg = ipu.utils.set_optimization_options(cfg,
+                                             max_cross_replica_sum_buffer_size=20000000)
 
     if args.allow_recompute:
-        ipu_options = ipu.utils.set_recomputation_options(
-            ipu_options, allow_recompute=True)
+        cfg = ipu.utils.set_recomputation_options(
+            cfg, allow_recompute=True)
 
     num_replicas = args.num_replicas_train
     num_shards = args.num_ipus_in_pipeline_train
 
     ipu.utils.auto_select_ipus(
-        ipu_options, num_ipus=num_replicas * num_shards)
+        cfg, num_ipus=num_replicas * num_shards)
+
+    cfg = ipu.utils.set_ipu_connection_type(
+        cfg, ipu.utils.DeviceConnectionType.ALWAYS, ipu_version=2)
 
     ipu_run_config = ipu.ipu_run_config.IPURunConfig(
         iterations_per_loop=args.batches_per_step,
         num_replicas=num_replicas,
         num_shards=num_shards,
-        ipu_options=ipu_options,
+        ipu_options=cfg,
     )
 
     config = ipu.ipu_run_config.RunConfig(
@@ -324,11 +329,9 @@ def data_fn(args, mode, count_only=False):
 
     # Build dataset
     if mode == tf.estimator.ModeKeys.PREDICT:
-        dataset = tf.data.Dataset.from_generator(
-            lambda: x, x.dtype, x.shape[1:])
+        dataset = tf.data.Dataset.from_tensor_slices(x)
     else:
-        dataset = tf.data.Dataset.from_generator(lambda: zip(
-            x, y), (x.dtype, y.dtype), (x.shape[1:], y.shape[1:]))
+        dataset = tf.data.Dataset.from_tensor_slices((x, y))
     dataset = dataset.batch(
         bs, drop_remainder=True).prefetch(l).cache().repeat()
     return dataset
@@ -414,14 +417,12 @@ def inference_test(args):
         args.gradient_accumulation_batches
 
     def test_loop_op(args=None):
-        def body(idx, a, features):
+        def body(features):
             predictions = model_fn(
                 inference_features=features, mode=tf.estimator.ModeKeys.PREDICT, params=[], args=args)
-            with tf.control_dependencies([outfeed.enqueue(predictions)]):
-                return tf.identity(idx+1), a + 0  # predictions
-        init_idx = tf.zeros([], dtype=tf.int32)
-        init_a = tf.zeros([], dtype=tf.float16)
-        return ipu.loops.while_loop(lambda i, *_: i < inference_batches_per_step, body, [init_idx, init_a], infeed_queue=infeed)
+            outfeed_op = outfeed.enqueue(predictions)
+            return outfeed_op
+        return ipu.loops.repeat(inference_batches_per_step, body, infeed_queue=infeed)
 
     with ipu.scopes.ipu_scope('/device:IPU:0'):
         compiled = ipu.ipu_compiler.compile(partial(test_loop_op, args=args))
@@ -432,15 +433,31 @@ def inference_test(args):
         init_g = tf.global_variables_initializer()
         sess.run(infeed.initializer)
         sess.run(init_g)
+        outfeed_dequeue_op = outfeed.dequeue()
 
         print(f"Warming up...")
         sess.run(compiled)
-        r = sess.run(outfeed.dequeue())
+        r = sess.run(outfeed_dequeue_op)
 
         loop_steps = 10 if not args.profile else 1
         num_items = loop_steps * inference_batches_per_step * \
             args.batch_size_infer * args.num_replicas_infer
         print(f"Inferring on {num_items} items")
+
+        # Receive predictions in a separate thread
+        def dequeue_thread_fn():
+            counter = 0
+            while counter != num_items:
+                r = sess.run(outfeed_dequeue_op)
+                if r.size:
+                    counter += np.product(r.shape[0:2]
+                                          if args.num_replicas_infer == 1 else r.shape[0:3])
+            print(f"Received results for {counter} items")
+
+        if not args.use_synthetic_data:
+            dequeue_thread = Thread(target=dequeue_thread_fn)
+            dequeue_thread.start()
+
         t0 = time.time()
         tp = t0
         for step in range(loop_steps):
@@ -451,7 +468,8 @@ def inference_test(args):
             sess.run(compiled)
         t1 = time.time()
 
-        r = sess.run(outfeed.dequeue())
+        if not args.use_synthetic_data:
+            dequeue_thread.join()
 
     duration_seconds = t1 - t0
     throughput = num_items / duration_seconds
@@ -674,26 +692,22 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    os.environ["GM2"] = "mk2"
     os.environ["GCDA_MONITOR"] = "1"
+
+    # Assert TensorFlow version compatibility
+    assert version.parse(tf.__version__) > version.parse("1.15") and \
+        version.parse(tf.__version__) < version.parse("2"), \
+        f"TensorFlow version is {tf.__version__}, but version >=1.15 and <2 is required"
 
     # Parse args, check for correctness, and apply to OS variables
     args = parse_args()
 
-    if args.output_classes != 2:
-        raise RuntimeError(
-            f"Number of output classes must be 2 (given {args.output_classes}).")
-
+    assert args.output_classes == 2, f"Number of output classes must be 2 (given {args.output_classes})."
     assert args.num_ipus_in_pipeline_train == 2, "num_ipus_in_pipeline_train must be equal to 2"
     assert args.num_ipus_in_pipeline_infer == 1, "num_ipus_in_pipeline_infer must be equal to 1"
 
     if args.training + args.evaluation + args.inference == 0:
-        args.training, args.evaluation, args.inference = True, True, True
-
-    if not (args.training or args.evaluation or args.inference):
-        print(
-            "\n\nDid you mean to keep at least one of training, evaluation, or inference?\n")
-        exit(1)
+        args.training, args.evaluation, args.inference = True, False, True
 
     if args.profile and (args.training + args.evaluation + args.inference != 1):
         print("\n\nDid you mean to profile only one of training, evaluation, or inference?"
@@ -737,13 +751,15 @@ if __name__ == "__main__":
     if not (args.training or args.evaluation):
         # Configure IPU system for inference only
         # (no need to do this if an Estimator was already initialized)
-        ipu_options = ipu.utils.create_ipu_config()
+        cfg = ipu.utils.create_ipu_config()
         if args.allow_recompute:
-            ipu_options = ipu.utils.set_recomputation_options(
-                ipu_options, allow_recompute=True)
-        ipu_options = ipu.utils.auto_select_ipus(
-            ipu_options, args.num_replicas_infer * args.num_ipus_in_pipeline_infer)
-        ipu.utils.configure_ipu_system(ipu_options)
+            cfg = ipu.utils.set_recomputation_options(
+                cfg, allow_recompute=True)
+        cfg = ipu.utils.auto_select_ipus(
+            cfg, args.num_replicas_infer * args.num_ipus_in_pipeline_infer)
+        cfg = ipu.utils.set_ipu_connection_type(
+            cfg, ipu.utils.DeviceConnectionType.ALWAYS, ipu_version=2)
+        ipu.utils.configure_ipu_system(cfg)
 
     if args.inference:
         print("\nTesting inference...")

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import pytest
 import subprocess
 import sys
 import unittest
@@ -38,14 +39,18 @@ class TestTensorFlowResNetSyntheticBenchmarks(unittest.TestCase):
         pass
 
     # Resnet inference
+    @pytest.mark.ipus(1)
     def test_resnet_18_inference_batch_size_1(self):
         out = run_resnet(**{'--size': 18, '--batch-size': 1})
 
+    @pytest.mark.ipus(1)
     def test_resnet_18_inference_batch_size_16(self):
         out = run_resnet(**{'--size': 18, '--batch-size': 16})
 
+    @pytest.mark.ipus(1)
     def test_resnet_50_inference_batch_size_1(self):
         out = run_resnet(**{'--size': 50, '--batch-size': 1})
 
+    @pytest.mark.ipus(1)
     def test_resnet_50_inference_batch_size_8(self):
         out = run_resnet(**{'--size': 50, '--batch-size': 8})

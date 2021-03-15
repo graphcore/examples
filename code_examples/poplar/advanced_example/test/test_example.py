@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 from pathlib import Path
+import pytest
 
 # NOTE: The import below is dependent on 'pytest.ini' in the root of
 # the repository

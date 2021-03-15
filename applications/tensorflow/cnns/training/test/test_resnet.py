@@ -130,12 +130,12 @@ class TestCifar10FullTraining(unittest.TestCase):
 class TestResNet50SingleIPUTraining(unittest.TestCase):
     """ResNet-50 example on a single IPU.
         This is differs from the command line in the README:
-        here we are testing with synthetic data and only 10 iterations.
+        here we are testing with generated random data and only 10 iterations.
     """
 
     @classmethod
     def setUpClass(cls):
-        out = run_train(**{'--synthetic-data': '',
+        out = run_train(**{'--generated-data': '',
                            '--dataset': 'ImageNet',
                            '--model-size': 50,
                            '--batch-size': 1,
@@ -152,7 +152,7 @@ class TestResNet50SingleIPUTraining(unittest.TestCase):
 @pytest.mark.category2
 @pytest.mark.ipus(2)
 class TestResNet50Pipelining2IPUs(unittest.TestCase):
-    """Pipelined ResNet-50 from the README but with synthetic data
+    """Pipelined ResNet-50 from the README but with generated random data
         and only 10 iterations.
     """
 
@@ -161,7 +161,7 @@ class TestResNet50Pipelining2IPUs(unittest.TestCase):
         out = run_train(**{'--iterations': 10,
                            '--batches-per-step': 10,
                            '--dataset': 'imagenet',
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--model-size': 50,
                            '--shards': 2,
                            '--pipeline': '',
@@ -181,7 +181,7 @@ class TestResNet50Pipelining2IPUs(unittest.TestCase):
 @pytest.mark.category2
 @pytest.mark.ipus(4)
 class TestResNet50Pipelining2IPUs2Replicas(unittest.TestCase):
-    """Pipelined and replicated ResNet-50 from the README but with synthetic
+    """Pipelined and replicated ResNet-50 from the README but with generated random
        data and only 10 iterations.
     """
 
@@ -190,7 +190,7 @@ class TestResNet50Pipelining2IPUs2Replicas(unittest.TestCase):
         out = run_train(**{'--iterations': 10,
                            '--batches-per-step': 10,
                            '--dataset': 'imagenet',
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--model-size': 50,
                            '--shards': 2,
                            '--replicas': 2,
@@ -247,14 +247,13 @@ class TestLotsOfOptions(unittest.TestCase):
                            '--model-size': 14,
                            '--batch-norm': '',
                            '--pipeline-num-parallel': 8,
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--batch-size': 16,
                            '--base-learning-rate': -4,
                            '--precision': '32.32',
                            '--seed': 1234,
                            '--warmup-epochs': 0,
                            '--no-stochastic-rounding': '',
-                           '--no-hostside-norm': '',
                            '--batches-per-step': 100
                            })
         cls.validation = get_csv(out, 'validation.csv')
@@ -291,7 +290,7 @@ class TestPopdist(unittest.TestCase):
                 sys.executable,
                 'train.py',
                 '--dataset=cifar-10',
-                '--synthetic-data',
+                '--generated-data',
                 '--model-size=8',
                 '--batch-size=1',
                 '--batches-per-step=10',
@@ -301,21 +300,14 @@ class TestPopdist(unittest.TestCase):
                 '--iterations=100',
                 '--log-dir', logdir,
                 '--name-suffix', 'popdist_instance',
+                '--ckpt-all-instances', "true",
+                '--log-all-instances', "true"
             ]
 
-            # Add the MPI library dirs on the LD_LIBRARY_PATH, as these are not
-            # always searched by default (e.g. on CentOS). A user would normally
-            # do "module load mpi/openmpi-x86_64" on CentOS to achieve this instead.
-            libdirs = subprocess.check_output(["mpic++", "--showme:libdirs"])
-            libdirs = libdirs.decode().strip().replace(" ", ":")
-            ld_library_path = "{}:{}".format(os.environ["LD_LIBRARY_PATH"], libdirs)
-
-            # Add some debug logging, and use executable cache which is shared between instances.
+            # Add some debug logging.
             extra_env = {
                 'POPRUN_LOG_LEVEL': 'TRACE',
                 'TF_CPP_VMODULE': 'poplar_compiler=1,poplar_executor=1',
-                'TF_POPLAR_FLAGS': f"--executable_cache_path={logdir}/exec_cache",
-                'LD_LIBRARY_PATH': ld_library_path,
             }
 
             cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -376,7 +368,7 @@ class TestDistributedTraining(unittest.TestCase):
             cmd = [
                 'python3', 'train.py',
                 '--dataset=imagenet',
-                '--synthetic-data',
+                '--generated-data',
                 '--model-size=50',
                 '--batch-size=4',
                 '--batches-per-step=1',
@@ -393,6 +385,8 @@ class TestDistributedTraining(unittest.TestCase):
                 '--learning-rate-schedule=1',
                 '--base-learning-rate=-14',
                 '--log-dir', logdir,
+                '--ckpt-all-instances', "true",
+                '--log-all-instances', "true"
             ]
 
             extra_env = {
@@ -489,3 +483,25 @@ class TestDistributedTraining(unittest.TestCase):
             worker_log_dirs.append(logdirs[0])
 
         return worker_log_dirs
+
+
+@pytest.mark.category1
+@pytest.mark.ipus(1)
+class TestConfig(unittest.TestCase):
+    """Testing lots of other options to check they are still available"""
+
+    @classmethod
+    def setUpClass(cls):
+        out = run_train(**{'--config': 'resnet50_1_ipu_training',
+                           '--model-size': 8,
+                           '--epochs': 10,
+                           '--data-dir': cifar10_data_dir,
+                           '--dataset': 'cifar-10',
+                           '--gradient-accumulation-count': 1
+                           })
+        cls.training = get_csv(out, 'training.csv')
+
+
+    def test_results(self):
+        # test the cmd line arg overrode config arg
+        self.assertEqual(int(self.training['epoch'][-1]), 10)

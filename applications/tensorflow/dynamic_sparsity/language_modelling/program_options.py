@@ -146,7 +146,4 @@ def get_program_options():
     parser.set_defaults(**default_settings)
     opts = parser.parse_args()
 
-    if opts.pipeline and opts.num_shards < 2:
-        raise Exception(f"Pipelining requires at least 2 stages: you requested {opts.num_shards}.")
-
     return opts

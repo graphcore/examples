@@ -12,36 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
-import os
-import sys
-import math
 import ctypes
-import random
 import datetime
-from functools import reduce
-from collections import deque
-from collections import defaultdict
-from itertools import chain
+import errno
 import logging
+import math
+import os
+import random
 import socket
+import sys
+import time
+from collections import defaultdict
+from functools import reduce
+from itertools import chain
 
-import popart
 import numpy as np
+import popart
+import popdist
+import popdist.popart
 from torch.utils.tensorboard import SummaryWriter
 
-from bert_model import ExecutionMode, get_model, BertConfig
-from bert_data import get_pretraining_dataset, get_squad_dataset
-from bert_tf_loader import load_initializers_from_tf
-from bert_optimizer import ScheduledOptimizerFactory, BaseOptimizerFactory
-from phased_execution.weight_mapping import get_phased_initializers_from_default
 import utils
 import utils.popvision as popvision
+from bert_data import get_pretraining_dataset, get_squad_dataset
+from bert_model import BertConfig, ExecutionMode, get_model
+from bert_optimizer import ScheduledOptimizerFactory, LinearOptimizerFactory
+from bert_tf_loader import load_initializers_from_tf
+from phased_execution.weight_mapping import \
+    get_phased_initializers_from_default
+from utils.device import acquire_device, device_is_replicated
+from utils.distributed import popdist_root, distributed_barrier
+from utils.iteration import Iteration, PretrainingIteration
 from utils.inference import (create_callback_stepio,
                              realtime_scheduling,
                              compute_latency_from_durations,
                              compute_latency_from_callbacks)
-
 
 logger = logging.getLogger('BERT')
 
@@ -51,6 +56,22 @@ if os.path.exists(so_path):
     ctypes.cdll.LoadLibrary(so_path)
 else:
     logger.warning("Could not find custom_ops.so. Execute `make` before running this script.")
+
+
+def io_schedule(schedule_str):
+    if schedule_str == 'Preload':
+        return popart.ExecutionPhaseIOSchedule.Preload
+    if schedule_str == 'OnDemand':
+        return popart.ExecutionPhaseIOSchedule.OnDemand
+
+
+def optimizer_schedule(schedule_str):
+    if schedule_str == 'Interleaving':
+        return popart.ExecutionPhaseSchedule.Interleaving
+    if schedule_str == 'Batch':
+        return popart.ExecutionPhaseSchedule.Batch
+    if schedule_str == 'BatchClusteredIO':
+        return popart.ExecutionPhaseSchedule.BatchClusteredIO
 
 
 def set_library_seeds(seed):
@@ -69,7 +90,7 @@ def bert_add_embedding_inputs(args, model, sequence_info):
         positions = model.builder.addInputTensor(sequence_info, "positions")
     else:   # "ALL", "WORD", "MERGE"
         expanded_sequence_info = popart.TensorInfo(
-            "FLOAT16", [args.batch_size * args.sequence_length, args.hidden_size])
+            "FLOAT16", [args.micro_batch_size * args.sequence_length, args.hidden_size])
         indices = model.builder.addInputTensor(
             expanded_sequence_info, "indices_expanded")
         if args.host_embedding == "ALL":
@@ -83,29 +104,29 @@ def bert_add_embedding_inputs(args, model, sequence_info):
 
 def bert_add_inputs(args, model):
     sequence_info = popart.TensorInfo(
-        "UINT32", [args.batch_size * args.sequence_length])
+        "UINT32", [args.micro_batch_size * args.sequence_length])
     indices, positions = bert_add_embedding_inputs(args, model, sequence_info)
 
     segments = model.builder.addInputTensor(sequence_info, "segments")
     labels = []
     masks = []
-    mask_info = popart.TensorInfo("UINT32", [args.batch_size, 1])
+    mask_info = popart.TensorInfo("UINT32", [args.micro_batch_size, 1])
     if args.task == "PRETRAINING":
         masks.append(
             model.builder.addInputTensor(mask_info, "mask_tokens_mask_idx"))
         masks.append(
             model.builder.addInputTensor(mask_info, "sequence_mask_idx"))
         mlm_info = popart.TensorInfo(
-            "UINT32", [args.batch_size, args.mask_tokens])
+            "UINT32", [args.micro_batch_size, args.mask_tokens])
         labels.append(model.builder.addInputTensor(mlm_info, "mask_labels"))
         nsp_info = popart.TensorInfo(
-            "UINT32", [args.batch_size])
+            "UINT32", [args.micro_batch_size])
         labels.append(model.builder.addInputTensor(nsp_info, "nsp_labels"))
     elif args.task == "SQUAD":
         masks.append(model.builder.addInputTensor(mask_info, "seq_pad_idx"))
         if not args.inference:
             labels_info = popart.TensorInfo(
-                "UINT32", [args.batch_size])
+                "UINT32", [args.micro_batch_size])
             labels.append(model.builder.addInputTensor(
                 labels_info, "start_labels"))
             labels.append(model.builder.addInputTensor(
@@ -298,6 +319,49 @@ def bert_add_logit_outputs(model, logits):
     return outputs
 
 
+def set_phased_options(options, engine_options, model, args):
+    options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
+    options.enableOutliningCopyCostPruning = False
+    options.outlineThreshold = -np.inf
+    options.outlineSequenceBreakCost = 100000.0
+    options.executionPhaseSettings.phases = model.total_execution_phases
+    options.batchSerializationSettings.factor = args.batch_serialize
+    options.batchSerializationSettings.transformContext = popart.BatchSerializationTransformContext.Fwd
+    options.batchSerializationSettings.concatOnVirtualGraphChange = False
+    options.batchSerializationSettings.concatOnExecutionPhaseChange = False
+    options.batchSerializationSettings.concatOnPipelineStageChange = False
+    options.batchSerializationSettings.batchSchedule = popart.BatchSerializationBatchSchedule.OverlapOnCompute
+    options.autoRecomputation = popart.RecomputationType.Standard
+    options.explicitRecomputation = True
+    options.aliasZeroCopy = True
+
+    varLocation = popart.TensorLocation()
+    varLocation.storage = popart.TensorStorage.OffChip
+    varLocation.loadTileSet = popart.TileSet.IO
+    varLocation.storageTileSet = popart.TileSet.IO
+    varLocation.replicatedTensorSharding = (popart.ReplicatedTensorSharding.On
+                                            if args.replicated_tensor_sharding else
+                                            popart.ReplicatedTensorSharding.Off)
+
+    options.weightTensorLocationSettings.location = varLocation
+    options.optimizerStateTensorLocationSettings.location = varLocation
+    options.accumulatorTensorLocationSettings.location = varLocation
+    options.activationTensorLocationSettings.location = varLocation
+
+    if args.tensor_storage_onchip:
+        options.weightTensorLocationSettings.location.storage = popart.TensorStorage.OnChip
+        options.optimizerStateTensorLocationSettings.location.storage = popart.TensorStorage.OnChip
+        options.accumulatorTensorLocationSettings.location.storage = popart.TensorStorage.OnChip
+    options.executionPhaseSettings.activationIOSchedule = io_schedule(args.activation_io_schedule)
+    options.executionPhaseSettings.weightIOSchedule = io_schedule(args.weight_io_schedule)
+    options.executionPhaseSettings.schedule = optimizer_schedule(args.optimizer_schedule)
+    options.numIOTiles = args.num_io_tiles
+    engine_options["target.syncReplicasIndependently"] = "false"
+    if args.activations_on_chip:
+        options.activationTensorLocationSettings = popart.TensorLocationSettings(
+            popart.TensorStorage.OnChip, 0)
+
+
 def bert_session_options(args, model):
     engine_options = {}
     options = popart.SessionOptions()
@@ -314,6 +378,8 @@ def bert_session_options(args, model):
         options.enableReplicatedGraphs = True
         options.replicatedGraphCount = args.replication_factor
         engine_options["target.syncReplicasIndependently"] = "true"
+    if args.use_popdist:
+        popdist.popart.configureSessionOptions(options)
     # Increasing the outlineThreshold prevents creating subgraphs of cheap Ops
     # such as add or reshapeInplace.
     # Instead only reusing ops with a highSubgraphValue such as matmul or normalisation.
@@ -322,39 +388,12 @@ def bert_session_options(args, model):
         options.enablePipelining = True
         options.autoRecomputation = popart.RecomputationType.Pipeline
     elif args.execution_mode == "PHASED":
-        options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
-        options.enableOutliningCopyCostPruning = False
-        options.outlineThreshold = -np.inf
-        options.executionPhaseSettings.phases = model.total_execution_phases
-        options.batchSerializationSettings.factor = args.batch_serialize
-        options.autoRecomputation = popart.RecomputationType.Standard
-        options.explicitRecomputation = True
-        options.aliasZeroCopy = True
-
-        options.activationTensorLocationSettings.location.storage = popart.TensorStorage.OffChip
-
-        varLocation = popart.TensorLocation()
-        varLocation.storage = popart.TensorStorage.OffChip
-        varLocation.loadTileSet = popart.TileSet.IO
-        varLocation.storageTileSet = popart.TileSet.IO
-        varLocation.replicatedTensorSharding = (popart.ReplicatedTensorSharding.On
-                                                if args.replicated_weight_sharding else
-                                                popart.ReplicatedTensorSharding.Off)
-
-        options.weightTensorLocationSettings.location = varLocation
-        options.optimizerStateTensorLocationSettings.location = varLocation
-        options.accumulatorTensorLocationSettings.location = varLocation
-
-        options.numIOTiles = args.num_io_tiles
-        options.timeLimitScheduler = -1
-        options.swapLimitScheduler = -1
-        engine_options["target.syncReplicasIndependently"] = "false"
-        if args.activations_on_chip:
-            options.activationTensorLocationSettings = popart.TensorLocationSettings(
-                popart.TensorStorage.OnChip, 0)
+        set_phased_options(options, engine_options, model, args)
 
     if args.optimizer_state_offchip:
         options.optimizerStateTensorLocationSettings.location.storage = popart.TensorStorage.OffChip
+    if args.replicated_tensor_sharding:
+        options.optimizerStateTensorLocationSettings.location.replicatedTensorSharding = popart.ReplicatedTensorSharding.On
     if args.gradient_accumulation_factor > 1:
         options.enableGradientAccumulation = True
         options.accumulationFactor = args.gradient_accumulation_factor
@@ -363,7 +402,7 @@ def bert_session_options(args, model):
 
         # When not replicated SyncPattern.SinglePipeline will provide better overlap
         # than this option.
-        if args.optimizer_state_offchip and args.replication_factor > 1:
+        if args.optimizer_state_offchip and device_is_replicated(args):
             options.accumulateOuterFragmentSettings = popart.AccumulateOuterFragmentSettings(
                 popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized, [0])
     if args.engine_cache is not None:
@@ -439,20 +478,6 @@ def bert_session_patterns(args):
     return patterns
 
 
-def calc_required_ipus(args, model):
-    if args.execution_mode == "PHASED":
-        if args.phased_execution_type == "DUAL":
-            num_ipus = 2
-        else:
-            num_ipus = 1
-    else:
-        num_ipus = model.total_ipus
-    num_ipus *= args.replication_factor
-    request_ipus = pow(2, math.ceil(math.log2(num_ipus)))
-    logger.info(f"Need {num_ipus} IPUs. Requesting {request_ipus}")
-    return request_ipus, num_ipus
-
-
 def compile_graph_checked(args, session):
     start_time = time.time()
     session.prepareDevice()
@@ -461,6 +486,26 @@ def compile_graph_checked(args, session):
     logger.info(f"Compiled. Duration {compile_time} seconds")
     if args.profile:
         popvision.save_app_info({"compile_time": compile_time})
+        if args.device_connection_type == "offline":
+            sys.exit(0)
+
+
+def bert_distributed_training_session(args, **kwargs):
+    try:
+        import horovod.popart as hvd
+        hvd.init()
+    except ImportError:
+        raise ImportError("Could not find the PopART horovod extension. "
+                          "Please install the horovod .whl provided in the Poplar SDK.")
+
+    session = hvd.DistributedTrainingSession(**kwargs)
+    logger.info("Compiling Training Graph")
+    compile_graph_checked(args, session)
+
+    logger.info("Broadcasting weights to all instances")
+    hvd.broadcast_weights(session)
+
+    return session
 
 
 def bert_training_session(model, args, feed, loss, device,
@@ -474,16 +519,19 @@ def bert_training_session(model, args, feed, loss, device,
     optimizer = optimizer_factory.create()
 
     logger.info("Creating Session")
-    session = popart.TrainingSession(fnModel=proto,
-                                     loss=loss,
-                                     deviceInfo=device,
-                                     optimizer=optimizer,
-                                     dataFlow=feed,
-                                     patterns=patterns,
-                                     userOptions=options)
-
-    logger.info("Compiling Training Graph")
-    compile_graph_checked(args, session)
+    session_kwargs = dict(fnModel=proto,
+                          loss=loss,
+                          deviceInfo=device,
+                          optimizer=optimizer,
+                          dataFlow=feed,
+                          patterns=patterns,
+                          userOptions=options)
+    if args.use_popdist:
+        session = bert_distributed_training_session(args, **session_kwargs)
+    else:
+        session = popart.TrainingSession(**session_kwargs)
+        logger.info("Compiling Training Graph")
+        compile_graph_checked(args, session)
 
     session.weightsFromHost()
     session.setRandomSeed(args.seed)
@@ -519,101 +567,36 @@ def bert_inference_session(model, args, feed, device):
 
 
 def bert_writer(args):
-    log_name = f"{os.path.basename(args.checkpoint_dir)}."\
-               f"{datetime.datetime.now().isoformat()}"
-    log_dir = os.path.join(
-        args.log_dir, log_name)
-    writer = SummaryWriter(log_dir=log_dir)
+    writer = None
+    if args.log_dir is not None and popdist_root(args):
+        log_name = f"{os.path.basename(args.checkpoint_dir)}."\
+                   f"{datetime.datetime.now().isoformat()}"
+        log_dir = os.path.join(
+            args.log_dir, log_name)
+        writer = SummaryWriter(log_dir=log_dir)
     return writer
 
 
-def get_bert_dataset(model, args, inputs, embedding_dict=None, positional_dict=None, merge_both_embeddings=False):
-    config = model.config
+def get_bert_dataset(model, args, inputs):
     shapeOf = model.builder.getTensorShape
     # The inputs after the first three (ind, pos, seg) are always lists
     inputs = reduce(chain, inputs[3:], inputs[:3])
     tensor_shapes = [(tensorId, shapeOf(tensorId)) for tensorId in inputs]
 
-    if config.task == "PRETRAINING":
-        return get_pretraining_dataset(
-            tensor_shapes,
-            input_files=args.input_files,
-            sequence_length=config.sequence_length,
-            mask_tokens=config.mask_tokens,
-            vocab_length=config.vocab_length,
-            batch_size=config.batch_size,
-            batches_per_step=args.batches_per_step,
-            accumulation_factor=args.gradient_accumulation_factor,
-            replication_factor=args.replication_factor,
-            duplication_factor=args.duplication_factor,
-            shuffle=args.shuffle,
-            generated_data=args.generated_data or args.synthetic_data,
-            epochs_to_cache=args.epochs_to_cache,
-            start_data_at_epoch=args.continue_training_from_epoch)
-
-    if config.task == "SQUAD":
-        ds = get_squad_dataset(
-            tensor_shapes,
-            input_file=args.input_files[0],
-            output_dir=args.squad_results_dir,
-            sequence_length=config.sequence_length,
-            vocab_file=args.vocab_file,
-            vocab_length=config.vocab_length,
-            batch_size=config.batch_size,
-            batches_per_step=args.batches_per_step,
-            embedding_dict=embedding_dict,
-            positional_dict=positional_dict,
-            merge_both_embeddings=merge_both_embeddings,
-            accumulation_factor=args.gradient_accumulation_factor,
-            replication_factor=args.replication_factor,
-            shuffle=args.shuffle,
-            is_training=not args.inference,
-            overwrite_cache=args.overwrite_cache,
-            no_drop_remainder=args.no_drop_remainder,
-            evaluate_script=args.squad_evaluate_script,
-            generated_data=args.generated_data or args.synthetic_data,
-            do_lower_case=args.do_lower_case,
-            max_pipeline_stage=model.total_pipeline_stages if args.execution_mode == "PIPELINE" else 1,
-            seed=args.seed,
-            mpi_size=args.mpi_size,
-            mpi_rank=args.mpi_rank,
-            is_distributed= args.mpi_size > 1)
-        return ds
-
-
-def bert_reduce_metric(args, anchors, metrics, mean=False):
-    accumulated_stats = args.gradient_accumulation_factor * args.batches_per_step
-    if len(metrics) > 1:
-        metric = np.add(*[anchors[metric] for metric in metrics])
-        if mean:
-            accumulated_stats *= len(metrics)
+    if args.task == "PRETRAINING":
+        ds = get_pretraining_dataset(args, tensor_shapes)
+    elif args.task == "SQUAD":
+        ds = get_squad_dataset(args,
+                               tensor_shapes,
+                               host_embeddings=model.get_model_embeddings())
     else:
-        metric = anchors[metrics[0]]
-    return np.mean(metric / accumulated_stats)
+        raise RuntimeError(f"Unsupported Task {args.task} in get_bert_dataset")
 
-
-def bert_output_stats(args, anchors, losses, accuracies):
-    return (bert_reduce_metric(args, anchors, losses),
-            bert_reduce_metric(args, anchors, accuracies, mean=True))
-
-
-def bert_pretraining_stats(args, anchors, losses, accuracies):
-    losses = map(lambda loss: bert_reduce_metric(args, anchors, [loss]), losses)
-    accuracies = map(lambda acc: bert_reduce_metric(args, anchors, [acc]), accuracies)
-    return tuple(losses), tuple(accuracies)
-
-
-def bert_pretraining_inference_stats(args, anchors, losses, accuracies):
-    if args.inference_lm_perplexity:
-        loss = bert_reduce_metric(args, anchors, [losses[0]])
-    else:
-        loss = None
-    accuracies = map(lambda acc: bert_reduce_metric(args, anchors, [acc]), accuracies)
-    return loss, tuple(accuracies)
+    return ds
 
 
 def save_model_and_stats(args, session, writer, step, epoch=None, step_in_filename=False):
-    if not args.no_model_save:
+    if not args.no_model_save and popdist_root(args):
         save_file = "model"
         if epoch is not None:
             save_file += f"_{epoch}"
@@ -626,141 +609,6 @@ def save_model_and_stats(args, session, writer, step, epoch=None, step_in_filena
         utils.save_model_statistics(save_path, writer, step)
 
 
-class Iteration:
-    def __init__(self, args, batches_per_step, steps_per_epoch, writer, recording_steps=None):
-        self.start_epoch = args.continue_training_from_epoch
-        self.count = self.start_epoch * steps_per_epoch
-        self.epoch = 0
-        self.epochs = args.epochs
-        self.epochs_per_save = args.epochs_per_save
-        self.steps_per_log = args.steps_per_log
-        self.samples_per_step = batches_per_step * \
-            args.gradient_accumulation_factor * args.replication_factor * args.batch_size
-        self.steps_per_epoch = steps_per_epoch
-        self.total_steps = self.steps_per_epoch * self.epochs
-        self.writer = writer
-        self.task = args.task
-        self.calculate_perplexity = args.inference_lm_perplexity
-        # This should get overridden but will ensure we can always write a scalar to TB.
-        self.learning_rate = 0
-        if recording_steps is None:
-            recording_steps = self.steps_per_epoch
-        self.durations = deque(maxlen=recording_steps)
-        self.cycles = deque(maxlen=recording_steps)
-        if self.task == "PRETRAINING":
-            self.mlm_losses = deque(maxlen=recording_steps)
-            self.nsp_losses = deque(maxlen=recording_steps)
-            self.mlm_accuracies = deque(maxlen=recording_steps)
-            self.nsp_accuracies = deque(maxlen=recording_steps)
-            if args.inference:
-                self.stats_fn = bert_pretraining_inference_stats
-            else:
-                self.stats_fn = bert_pretraining_stats
-        else:
-            self.losses = deque(maxlen=recording_steps)
-            self.accuracies = deque(maxlen=recording_steps)
-            self.stats_fn = bert_output_stats
-
-    def add_stats(self, duration, hw_cycles, *args):
-        self.durations.append(duration)
-        if hw_cycles:
-            self.cycles.append(hw_cycles)
-        loss, accuracy = self.stats_fn(*args)
-        self.writer.add_scalar("defaultLearningRate",
-                               self.learning_rate,
-                               self.count)
-        self.writer.add_scalar("throughput",
-                               np.average(self.throughput),
-                               self.count)
-        if self.task == "PRETRAINING":
-            self.mlm_losses.append(loss[0])
-            self.nsp_losses.append(loss[1])
-            self.mlm_accuracies.append(accuracy[0])
-            self.nsp_accuracies.append(accuracy[1])
-            self.writer.add_scalar("loss/MLM",
-                                   np.average(self.mlm_losses),
-                                   self.count)
-            self.writer.add_scalar("loss/NSP",
-                                   np.average(self.nsp_losses),
-                                   self.count)
-            self.writer.add_scalar("accuracy/MLM",
-                                   np.average(self.mlm_accuracies),
-                                   self.count)
-            self.writer.add_scalar("accuracy/NSP",
-                                   np.average(self.nsp_accuracies),
-                                   self.count)
-        else:
-            self.losses.append(loss)
-            self.accuracies.append(accuracy)
-            self.writer.add_scalar("loss",
-                                   np.average(self.losses),
-                                   self.count)
-            self.writer.add_scalar("accuracy",
-                                   np.average(self.accuracies),
-                                   self.count)
-
-
-    def add_inference_stats(self, duration, hw_cycles, *args):
-        self.durations.append(duration)
-        if hw_cycles:
-            self.cycles.append(hw_cycles)
-
-        if self.task == "PRETRAINING":
-            loss, accuracy = self.stats_fn(*args)
-            self.mlm_accuracies.append(accuracy[0])
-            self.nsp_accuracies.append(accuracy[1])
-
-            if loss is not None:
-                self.mlm_losses.append(loss)
-
-    @property
-    def throughput(self):
-        return np.divide(self.samples_per_step, self.durations)
-
-    def report_stats(self):
-        avg = np.average
-        status_string = \
-            f"Iteration: {self.count:6} " \
-            f"Epoch: {self.count/self.steps_per_epoch:6.2f}/{self.epochs} "
-        if self.task == "PRETRAINING":
-            status_string += \
-                f"Loss (MLM NSP): {avg(self.mlm_losses):5.3f} {avg(self.nsp_losses):5.3f} " \
-                f"Accuracy (MLM NSP): {avg(self.mlm_accuracies):5.3f} {avg(self.nsp_accuracies):5.3f} "
-        else:
-            status_string += \
-                f"Loss: {avg(self.losses):5.3f} " \
-                f"Accuracy: {avg(self.accuracies):5.3f} "
-        status_string += \
-            f"Learning Rate: {self.learning_rate:.5f} "
-        status_string += \
-            f"Duration: {avg(self.durations):6.4f} s " \
-            f"Throughput: {avg(self.throughput):6.1f} samples/s"
-        if self.cycles:
-            status_string += f" Cycles: {int(avg(self.cycles))}"
-        logger.info(status_string)
-
-    def report_inference_stats(self, mean_latency, min_latency, max_latency, hw_cycles):
-        avg = np.average
-        status_string = \
-            f"Iteration: {self.count:6} " \
-            f"Duration: {avg(self.durations):6.4f} s " \
-            f"Throughput: {avg(self.throughput):6.1f} samples/s"
-
-        if self.task == "PRETRAINING":
-            status_string += \
-                f" Accuracy (MLM NSP): {avg(self.mlm_accuracies):5.3f} {avg(self.nsp_accuracies):5.3f}"
-
-            if self.calculate_perplexity:
-                status_string += \
-                    f" LM Perplexity: {np.exp(avg(self.mlm_losses)):5.3f}"
-
-        if mean_latency is not None:
-            status_string += f" Per-sample Latency: {mean_latency} {min_latency} {max_latency} seconds (mean min max)"
-        if hw_cycles is not None:
-            status_string += f" Cycles: {hw_cycles}"
-        logger.info(status_string)
-
-
 def bert_process_data(args,
                       session,
                       data,
@@ -768,7 +616,7 @@ def bert_process_data(args,
                       losses,
                       accuracies,
                       iteration: Iteration,
-                      optimizer_factory: BaseOptimizerFactory):
+                      optimizer_factory):
     stepio = popart.PyStepIO(data, anchors)
 
     start = time.time()
@@ -830,14 +678,14 @@ def bert_process_infer_data(args,
     duration = time.perf_counter() - start
     hw_cycles = session.getCycleCount() if args.report_hw_cycle_count else None
 
-    iteration.add_inference_stats(
+    iteration.add_stats(
         duration, hw_cycles, args, anchors, losses, accuracies)
 
     mean_latency, min_latency, max_latency = compute_latency(
         args, start_times, end_times, iteration.durations)
 
     if (iteration.count % iteration.steps_per_log) == 0:
-        iteration.report_inference_stats(mean_latency, min_latency, max_latency, hw_cycles)
+        iteration.report_inference_stats(mean_latency, min_latency, max_latency)
 
     if args.profile:
         sys.exit(0)
@@ -861,13 +709,13 @@ def bert_train_loop(args,
                     losses,
                     anchors,
                     iteration,
-                    optimizer_factory: BaseOptimizerFactory):
-    losses = [loss for loss in losses]
+                    optimizer_factory):
 
     save_model_and_stats(args, session, writer,
                          iteration.count, iteration.epoch)
 
-    for iteration.epoch in range(iteration.start_epoch, args.epochs):
+    start_epoch = iteration.epoch
+    for iteration.epoch in range(start_epoch, iteration.epochs):
         for data in dataset:
             bert_process_data(args, session, data, anchors,
                               losses, accuracies, iteration, optimizer_factory)
@@ -876,11 +724,13 @@ def bert_train_loop(args,
                 save_model_and_stats(args, session, writer,
                                      iteration.count, iteration.epoch, True)
 
+            if args.training_steps and iteration.count >= args.training_steps:
+                logger.info(f"Ending Training at {iteration.count} Steps")
+                return
+
         if args.epochs_per_save > 0 and ((iteration.epoch + 1) % iteration.epochs_per_save) == 0:
             save_model_and_stats(args, session, writer,
                                  iteration.count, iteration.epoch + 1)
-
-    save_model_and_stats(args, session, writer, iteration.count)
 
 
 def bert_infer_loop(args,
@@ -926,62 +776,29 @@ def bert_infer_loop(args,
         dataset.write_predictions()
 
 
-def acquire_device(args, request_ipus):
-    if args.use_ipu_model:
-        model_opts = {"numIPUs": request_ipus}
-        if args.ipu_model_version is not None:
-            model_opts["ipuVersion"] = args.device_version
-        device = popart.DeviceManager().createIpuModelDevice(model_opts)
+def bert_required_ipus(args, model):
+    if args.execution_mode == "PHASED":
+        if args.phased_execution_type == "DUAL":
+            num_ipus = 2
+        else:
+            num_ipus = 1
     else:
-        connection_type = popart.DeviceConnectionType.Always
-        if args.device_connection_type == "ondemand":
-            connection_type = popart.DeviceConnectionType.OnDemand
-        if args.execution_mode == "PHASED":
-            if args.phased_execution_type == "DUAL":
-                sync_pattern = popart.SyncPattern.ReplicaAndLadder
-            else:
-                sync_pattern = popart.SyncPattern.Full
-        elif args.execution_mode == "PIPELINE" and args.replication_factor <= 1:
-            sync_pattern = popart.SyncPattern.SinglePipeline
-        else:
-            sync_pattern = popart.SyncPattern.Full
-
-        manager = popart.DeviceManager()
-        manager.setOnDemandAttachTimeout(args.device_ondemand_timeout)
-        if args.device_connection_type == "offline":
-            opts = dict()
-            opts["numIPUs"] = request_ipus
-            opts["syncPattern"] = str(sync_pattern)
-            if args.device_tiles:
-                opts["tilesPerIPU"] = args.device_tiles
-            if args.device_version:
-                opts["ipuVersion"] = args.device_version
-            device = manager.createOfflineIPUDevice(opts)
-        else:
-            if args.device_id:
-                device = manager.acquireDeviceById(
-                    args.device_id,
-                    pattern=sync_pattern,
-                    connectionType=connection_type)
-            else:
-                device = manager.acquireAvailableDevice(
-                    request_ipus,
-                    pattern=sync_pattern,
-                    connectionType=connection_type)
-    if device is None:
-        raise OSError("Failed to acquire IPU.")
-    logger.info(f"Acquired device: {device}")
-    return device
+        num_ipus = model.total_ipus
+    num_ipus *= args.replication_factor
+    return num_ipus
 
 
 def bert_pretrained_initialisers(config, args):
-
     if args.synthetic_data:
         logger.info("Initialising from synthetic_data")
         return None
 
     if args.generated_data:
         logger.info("Initialising from generated_data")
+        return None
+
+    # The initialised weights will be broadcast after the session has been created
+    if not popdist_root(args):
         return None
 
     init = None
@@ -997,6 +814,32 @@ def bert_pretrained_initialisers(config, args):
         init.update(**get_phased_initializers_from_default(args, init))
 
     return init
+
+
+def bert_optimizer_factory(args, model, iteration):
+    if args.learning_rate_function == "Linear":
+        return LinearOptimizerFactory(args,
+                                      iteration,
+                                      model.tensors)
+    else:
+        return ScheduledOptimizerFactory(args,
+                                         iteration,
+                                         model.tensors)
+
+
+def bert_iteration(args, dataset, writer):
+    if args.task == "PRETRAINING":
+        return PretrainingIteration(
+            args,
+            steps_per_epoch=len(dataset),
+            writer=writer,
+            recording_steps=args.aggregate_metrics_over_steps)
+    else:
+        return Iteration(
+            args,
+            steps_per_epoch=len(dataset),
+            writer=writer,
+            recording_steps=args.aggregate_metrics_over_steps)
 
 
 def main(args):
@@ -1019,7 +862,6 @@ def main(args):
                                args.execution_mode)
 
     if args.inference:
-
         accuracies = None
         losses = []
         if args.task == "PRETRAINING":
@@ -1046,28 +888,16 @@ def main(args):
         outputs, accuracies, losses = bert_add_validation_outputs(args, model, predictions, labels, losses)
         writer = bert_writer(args)
 
-    embedding_dict, positional_dict = model.get_model_embeddings()
+    device = acquire_device(args, bert_required_ipus(args, model))
 
     dataset = get_bert_dataset(model,
                                args,
-                               [indices, positions, segments, masks, labels],
-                               embedding_dict,
-                               positional_dict,
-                               config.host_embedding == "MERGE")
+                               [indices, positions, segments, masks, labels])
     logger.info(f"Dataset length: {len(dataset)}")
 
-    data_flow = popart.DataFlow(dataset.batches_per_step, outputs)
+    data_flow = popart.DataFlow(args.batches_per_step, outputs)
 
-    iteration = Iteration(
-        args,
-        batches_per_step=dataset.batches_per_step,
-        steps_per_epoch=len(dataset),
-        writer=writer,
-        recording_steps=args.aggregate_metrics_over_steps)
-
-    request_ipus, required_ipus = calc_required_ipus(args, model)
-
-    device = acquire_device(args, request_ipus)
+    iteration = bert_iteration(args, dataset, writer)
 
     if args.inference:
         session, anchors = bert_inference_session(
@@ -1080,10 +910,7 @@ def main(args):
         device.detach()
     else:
         if not args.no_training:
-            optimizer_factory = ScheduledOptimizerFactory(args,
-                                                          iteration,
-                                                          args.optimizer,
-                                                          model.tensors)
+            optimizer_factory = bert_optimizer_factory(args, model, iteration)
 
             session, anchors = bert_training_session(model,
                                                      args,
@@ -1096,6 +923,8 @@ def main(args):
                             dataset, accuracies, losses, anchors,
                             iteration, optimizer_factory)
 
+            save_model_and_stats(args, session, writer, iteration.count)
+
             device.detach()
             logger.info("Training Finished")
 
@@ -1103,13 +932,13 @@ def main(args):
 
 
 def setup_logger(log_level, handler=None):
-
     # Define a root config with a format which is simpler for console use
     root = logging.getLogger()
     root.setLevel(log_level)
     root_handler = logging.StreamHandler(sys.stdout)
-    root_formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s',
-                                       '%Y-%m-%d %H:%M:%S')
+    root_formatter = logging.Formatter(
+        '%(asctime)s %(name)s %(levelname)s %(message)s',
+        '%Y-%m-%d %H:%M:%S')
     root_handler.setFormatter(root_formatter)
     root.handlers = [root_handler]
     if handler is not None:
@@ -1117,21 +946,30 @@ def setup_logger(log_level, handler=None):
 
     # Define a specific Handler for this file that removes the root name.
     console = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s',
-                                  '%Y-%m-%d %H:%M:%S')
+    formatter = logging.Formatter(
+        '%(asctime)s %(levelname)s %(message)s',
+        '%Y-%m-%d %H:%M:%S')
     console.setFormatter(formatter)
-    logger.addHandler(console)
+    logger.handlers = [console]
     if handler is not None:
-        logger.addHandler(handler)
+        logger.handlers += [handler]
     logger.propagate = False
 
 
 if __name__ == "__main__":
+    setup_logger(logging.INFO)
 
     args = utils.parse_bert_args()
+    if not (args.synthetic_data or args.generated_data):
+        for filepath in args.input_files:
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), filepath)
 
     if args.profile:
-        popvision.set_profiling_vars(args.profile_dir, args.profile_instrument)
+        path = args.profile_dir
+        if args.use_popdist:
+            path += f"_rank{args.popdist_rank}"
+        popvision.set_profiling_vars(path, args.profile_instrument)
         popvision.set_logging_vars()
         args_dict = vars(args)
         args_dict["hostname"] = socket.gethostname()
@@ -1143,11 +981,10 @@ if __name__ == "__main__":
 
     setup_logger(logging.getLevelName(args.log_level), logging_handler)
 
-    if args.wandb:
+    if args.wandb and popdist_root(args):
         import wandb
         wandb.init(project="popart-bert", sync_tensorboard=True)
         wandb_config = vars(args)
-        wandb_config["global_batch_size"] = args.batch_size * args.replication_factor * args.gradient_accumulation_factor
         wandb.config.update(args)
 
     logger.info("Program Start")
@@ -1159,9 +996,8 @@ if __name__ == "__main__":
         main(args)
 
     # If this was a training session and validation isn't disabled; validate.
-    if not args.inference and not args.no_validation and not args.no_model_save:
+    if not args.inference and not args.no_validation and not args.no_model_save and popdist_root(args):
         logger.info("Doing Validation")
-        args.remap = False
         main(utils.get_validation_args(args))
 
     logger.info("Program Finished")

@@ -13,8 +13,8 @@ resnet50: &resnet50
   norm_type: group
   norm_num_groups: 32
   loss_scaling: 128
-  lr_scheduler_freq: 16 
-  
+  lr_scheduler_freq: 16
+
 
 resnet50-16ipu-mk1:
   <<: *resnet50
@@ -22,18 +22,57 @@ resnet50-16ipu-mk1:
   gradient_accumulation: 64
   device_iterations: 1
   pipeline_splits: [layer1/2, layer2/3, layer3/4]
-  enable_pipeline_recompute: true
   replicas: 4
+  offload_optimizer: false
 
 
-resnet50-16ipu-mk2:
+resnet50-16ipu-mk2: &resnet50-16ipu-mk2
   <<: *resnet50
-  batch_size: 7
-  gradient_accumulation: 37
+  batch_size: 6
+  gradient_accumulation: 11
   device_iterations: 1
   pipeline_splits: []
-  enable_pipeline_recompute: false
   replicas: 16
+  offload_optimizer: false
+  enable_recompute: false
+  recompute_checkpoints: []
+  half_partial: true
+  loss_velocity_scaling_ratio: 1
+  epoch: 100
+  warmup_epoch: 16
+  learning_rate: 0.3125
+  initial_loss_scaling: 64
+  loss_scaling: 512
+  seed: 42
+
+
+resnet50-16ipu-mk2-recompute:
+  <<: *resnet50-16ipu-mk2
+  batch_size: 8
+  gradient_accumulation: 8
+  enable_recompute: true
+  recompute_checkpoints: [conv, norm]
+
+
+resnet50_mk2_pipelined:
+  model: resnet50
+  data: imagenet
+  precision: "16.32"
+  momentum: 0.9
+  label_smoothing: 0.1
+  lr_schedule: cosine
+  lr: 2.0
+  pipeline_splits: [layer1/2, layer2/3, layer3/4]
+  batch_size: 16
+  epoch: 100
+  gradient_accumulation: 256
+  device_iterations: 1
+  replicas: 4
+  norm_type: batch
+  weight_decay: 0.0001
+  enable_stochastic_rounding: true
+  lr_schedule: cosine
+  loss_scaling: 128
 
 
 efficientnet-b0: &efficientnet-b0
@@ -58,20 +97,20 @@ efficientnet-b0: &efficientnet-b0
 
 efficientnet-b0-16ipu-mk1:
   <<: *efficientnet-b0
-  pipeline_splits: [_blocks/1/_project_conv _blocks/4/_bn1]
+  pipeline_splits: [_blocks/1/_project_conv, _blocks/4/_project_conv, _blocks/11/_bn1]
   device_iteration: 1
-  available_memory_proportion: 0.1
-  enable_pipeline_recompute: true
+  available_memory_proportion: [0.1]
   batch_size: 2
   gradient_accumulation: 128
+  offload_optimizer: false
 
 
 efficientnet-b0-16ipu-mk2:
   <<: *efficientnet-b0
   pipeline_splits: [_blocks/1/_project_conv, _blocks/4, _blocks/8/_project_conv]
   device_iteration: 1
-  enable_pipeline_recompute: false
   batch_size: 16
   gradient_accumulation: 128
+  offload_optimizer: false
 
 

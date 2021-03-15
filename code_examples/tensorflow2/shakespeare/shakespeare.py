@@ -49,7 +49,7 @@ def get_model():
          LSTM(EMBEDDING_DIM, return_sequences=True),
          LSTM(EMBEDDING_DIM, return_sequences=True),
          TimeDistributed(Dense(256, activation='softmax'))],
-        accumulation_count = REPEAT_COUNT)
+        gradient_accumulation_count=REPEAT_COUNT)
 
 
 def main():

@@ -32,10 +32,7 @@
         "20": 0.000215
     },
     "momentum": 0.984375,
-    "pipeline_lr_scaling": true,
-    "pipeline_lr_scaling_offset": 0.25,
-    "pipeline_momentum_scaling": true,
-    "pipeline_momentum_scaling_offset": 0.1,
+    "continuous_pipeline_optimizer_scaling": true,
     "loss_scaling": 20.0,
     "stochastic_rounding": true,
     "batches_per_step": 1897,

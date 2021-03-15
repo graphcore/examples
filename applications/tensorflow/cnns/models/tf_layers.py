@@ -144,8 +144,7 @@ def norm(input_tensor: tf.Tensor, norm_type: Optional[str] = 'BATCH',
         output_tensor = normalization_ops.group_norm(input_tensor, groups=groups,
                                                      center=center, scale=scale,
                                                      training=training, trainable=training,
-                                                     channels_axis=-1, reduction_axes=[-3, -2],
-                                                     scope=name)
+                                                     channels_axis=-1, scope=name)
     else:
         raise ValueError('norm_type must be "BATCH" or "GROUP", got %s instead' % norm_type)
     return output_tensor

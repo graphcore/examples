@@ -31,8 +31,8 @@ class LearningRate:
         self.warmup_steps = warmup_steps
 
 
-    def feed_dict_lr(self, step):
-        if step < self.warmup_steps:
+    def get_at_step(self, step):
+        if step <= self.warmup_steps:
             lr = self.base_lr*(step/self.warmup_steps)
         else:
             lr = self.base_lr * exp(- self.decay_rate * floor((step - self.warmup_steps) / self.decay_step))

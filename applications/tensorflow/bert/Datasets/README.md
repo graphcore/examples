@@ -33,13 +33,14 @@ All the instructions given below should be executed from the `Datasets/` folder.
 cd /path/to/examples/applications/tensorflow/bert/Datasets
 ```
 
-**1)** **Download the latest Wikipedia dump**
+**1) Download the latest Wikipedia dump**
 
 BERT is trained on text taken from Wikipedia articles.
 The user needs to download and extract in XML format the latest Wikipedia dump.
 
+Dumps are available from https://dumps.wikimedia.org/ and are licensed under CC BY-SA 3.0 and GNU Free Documentation Licenses.
 
-**2)** **Extract the data**
+**2) Extract the data**
 
 In order to create the pre-training data we need to extract the Wikipedia dump and put it in this form:
 
@@ -67,7 +68,7 @@ A command line example to perform the extraction is the following:
 python -m wikiextractor.WikiExtractor -b 1000M --processes 16 --filter_disambig_pages -o /output/path/ /path/to/the/wikidump.xml
 ```
 
-**3)** **Pre-process the files**
+**3) Pre-process the files**
 
 The files from step 3 require further pre-processing with the `wiki_preprocess.py` script:
 
@@ -102,7 +103,7 @@ python create_pretraining_data.py \
         --output-file /path/to/output/seq_384 \
         --vocab-file ./vocab.txt \
         --sequence-length 384 \
-        --mask-tokens 58 \
+        --mask-tokens 56 \
         --duplication-factor 5 \
         --do-lower-case
 ```
@@ -112,5 +113,6 @@ python create_pretraining_data.py \
 
 **NOTE:** Make sure to use the same values for `mask-tokens` and `duplication-factor` when generating the data and using the pre-training script.
 
-The Wikipedia dataset is now ready to be used in the Graphcore BERT model.
+**NOTE:** The option `--remask` can be used to move the masked elements at the beginning of the sequence. This will improve the inference and training performance.
 
+The Wikipedia dataset is now ready to be used in the Graphcore BERT model.

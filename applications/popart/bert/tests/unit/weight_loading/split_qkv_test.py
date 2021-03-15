@@ -27,7 +27,7 @@ from tests.utils import check_onnx_model
 def get_model_proto(config, initializers=None):
     model = get_model(config, ExecutionMode.PIPELINE, initializers=initializers)
 
-    sequence_info = popart.TensorInfo("UINT32", [config.batch_size * config.sequence_length])
+    sequence_info = popart.TensorInfo("UINT32", [config.micro_batch_size * config.sequence_length])
     indices = model.builder.addInputTensor(sequence_info)
     positions = model.builder.addInputTensor(sequence_info)
     segments = model.builder.addInputTensor(sequence_info)
@@ -47,7 +47,7 @@ def get_initializers(proto):
 def test_split_qkv_weight_loading():
     config = BertConfig(task="SQUAD",
                         vocab_length=1024,
-                        batch_size=1,
+                        micro_batch_size=1,
                         hidden_size=64,
                         attention_heads=2,
                         sequence_length=20,

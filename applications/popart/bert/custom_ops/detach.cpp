@@ -45,13 +45,14 @@ static popart::OpDefinition detachOpDef({});
 
 static popart::OpCreator<DetachOp> detachOpCreator(
     popart::OpDefinitions({{CustomOperators::Detach, detachOpDef}}),
-  [](const popart::OperatorIdentifier &_opid,
-     const popart::Op::Settings &settings,
-     const popart::Attributes &attr) -> std::unique_ptr<popart::Op> {
-    int64_t pass_through_creation = attr.getAttribute<popart::Attributes::Int>("pass_through_creation", 0);
-    return std::unique_ptr<DetachOp>(new DetachOp(_opid, settings, pass_through_creation));
-  },
-  true);
+    [](const popart::OpCreatorInfo &oci) -> std::unique_ptr<popart::Op> {
+      int64_t pass_through_creation =
+          oci.attributes.getAttribute<popart::Attributes::Int>(
+              "pass_through_creation", 0);
+      return std::unique_ptr<DetachOp>(
+          new DetachOp(oci.opid, oci.settings, pass_through_creation));
+    },
+    true);
 
 class DetachOpx : public popart::popx::Opx
 {

@@ -31,7 +31,7 @@ from utils import load_initializers_from_onnx
 def get_model_proto(config, mode, initializers=None):
     model = get_model(config, mode, initializers=initializers)
 
-    sequence_info = popart.TensorInfo("UINT32", [config.batch_size * config.sequence_length])
+    sequence_info = popart.TensorInfo("UINT32", [config.micro_batch_size * config.sequence_length])
     indices = model.builder.addInputTensor(sequence_info)
     positions = model.builder.addInputTensor(sequence_info)
     segments = model.builder.addInputTensor(sequence_info)
@@ -48,7 +48,7 @@ def get_model_proto(config, mode, initializers=None):
 def test_weight_mapping(num_vocab_splits, task):
     config = BertConfig(task=task,
                         vocab_length=1024,
-                        batch_size=1,
+                        micro_batch_size=1,
                         hidden_size=64,
                         attention_heads=2,
                         sequence_length=20,
@@ -89,7 +89,7 @@ def test_weight_mapping(num_vocab_splits, task):
 def test_trainable_params():
     config = BertConfig(task="PRETRAINING",
                         vocab_length=1024,
-                        batch_size=1,
+                        micro_batch_size=1,
                         hidden_size=64,
                         attention_heads=2,
                         sequence_length=20,
@@ -106,14 +106,14 @@ def test_trainable_params():
     model = get_model(config, ExecutionMode.PHASED)
     data = {
         'indices': np.random.randint(
-            0, config.vocab_length, (config.batch_size * config.sequence_length)).astype(np.uint32),
+            0, config.vocab_length, (config.micro_batch_size * config.sequence_length)).astype(np.uint32),
         'positions': np.random.randint(
-            0, config.sequence_length, (config.batch_size * config.sequence_length)).astype(np.uint32),
+            0, config.sequence_length, (config.micro_batch_size * config.sequence_length)).astype(np.uint32),
         'segments': np.random.randint(
-            0, 2, (config.batch_size * config.sequence_length)).astype(np.uint32)
+            0, 2, (config.micro_batch_size * config.sequence_length)).astype(np.uint32)
     }
 
-    sequence_info = popart.TensorInfo("UINT32", [config.batch_size * config.sequence_length])
+    sequence_info = popart.TensorInfo("UINT32", [config.micro_batch_size * config.sequence_length])
     indices = model.builder.addInputTensor(sequence_info)
     positions = model.builder.addInputTensor(sequence_info)
     segments = model.builder.addInputTensor(sequence_info)

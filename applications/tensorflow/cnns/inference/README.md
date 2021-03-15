@@ -1,9 +1,11 @@
 Graphcore
 ---
-## Image classification inference
 
-Run inference using optimized data pipelining for image classification with pre-trained weights.
-Optionally, this harness can generate compilation reports for these models.
+## Benchmarking
+
+Inference benchmarking is run using the training harness. To reproduce the published Mk2 inference throughput benchmarks, please follow the setup instructions in (../training/README.md), and then follow the instructions in [../training/README_Benchmarks.md](../training/README_Benchmarks.md) 
+
+## Image classification inference
 
 
 The following models can be run on a single IPU using this inference harness.
@@ -44,7 +46,7 @@ EfficentNet pre-trained weights are available from the [TensorFlow TPU repositor
 
    Install the Poplar SDK following the the instructions in the Getting Started
    guide for your IPU system. Make sure to run the enable.sh script and
-   activate a Python virtualenv with gc_tensorflow installed.
+   activate a Python virtualenv with tensorflow-1 wheel from the Poplar SDK installed.
 
    Install additional python packages specified in requirements.txt
 

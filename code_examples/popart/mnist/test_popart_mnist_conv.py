@@ -24,7 +24,8 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
         cls.generic_arguments = {
             "--batch-size": 4,
             "--batches-per-step": 1000,
-            "--epochs": 10
+            "--epochs": 10,
+            "--validation-final-epoch": "",
         }
 
     @pytest.mark.ipus(1)
@@ -36,9 +37,7 @@ class TestPopARTMNISTImageClassificationConvolution(unittest.TestCase):
             run_popart_mnist_training,
             **py_args
         )
-        expected_accuracy = [
-            97.72, 98.15, 98.51, 98.55, 98.55, 98.38, 98.34, 98.35, 98.43, 98.41
-        ]
+        expected_accuracy = [98.41]
         test_util.parse_results_for_accuracy(
             out, expected_accuracy, self.accuracy_tolerances
         )

@@ -14,7 +14,9 @@ Regularisation techniques such as dropout are used to prevent over-fitting. The 
 
 ### Dataset
 
-The autoencoder model uses the Netflix Prize training dataset, as shown below:
+The autoencoder model uses the Netflix Prize training dataset, as shown below.
+Please note that the dataset can be downloaded separately from this web page: [Netflix Prize Data Set](https://academictorrents.com/details/9b13183dc4d60676b773c9e2cd6de5e5542cee9a). 
+If the path to training data file is not specified, random data generated on the host will be used by the scripts.
 
 |      | Full | 3 months | 6 months | 1 year |
 | ---- | ---- | -------- | -------- | ------ |
@@ -31,11 +33,10 @@ The autoencoder model uses the Netflix Prize training dataset, as shown below:
 | Autoencoder files           | Description                                                  |
 | --------------------------- | ------------------------------------------------------------ |
 | `README.md`                 | This file, describing how to run the model                   |
-| `auto encoder_benchmark.py` | Script to perform a hyperparameter scan over learning rate values and benchmark training throughput across numerous IPU devices |
+| `autoencoder_benchmark.py` | Script to perform a hyperparameter scan over learning rate values and benchmark training throughput across numerous IPU devices |
 | `autoencoder_data.py`       | Autoencoder end-to-end data pipeline                         |
 | `autoencoder_main.py`       | Main training and validation loop                            |
 | `autoencoder_model.py`      | Autoencoder model definition                                 |
-| `get_data.sh`               | Data preparation helper script                               |
 | `util.py`                   | Helper functions for running on the IPU                      |
 
 ## Quick start guide
@@ -44,19 +45,19 @@ The autoencoder model uses the Netflix Prize training dataset, as shown below:
 	Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
     Make sure to source the `enable.sh` scripts for Poplar.
 
-2)	Download the data. Execute the following command: 
+2)	Run the training program on random data: 
 ```
-sh get_data.sh
+python3 autoencoder_main.py
 ```
 
-3)	Run the training program. Use the --training-data-file and --validation-data-file options to specify a path to the data. For example: 
+NOTE: If you have downloaded the dataset, you can use the --training-data-file and --validation-data-file options to specify a path to the data:
 ```
 python3 autoencoder_main.py --training-data-file netflix_data/3m_train.txt --validation-data-file netflix_data/3m_valid.txt --size 128
 ```
 
 ## Examples of running the model
 
-The autoencoder can be run with standard TensorFlow and Poplar on 1xIPU or 2xIPU on a C2 card. Different batch sizes and either mixed precision (fp16.32) or half precision (fp16.16) can be used to test the IPU. The original paper suggests using different network layer sizes for different datasets, as described below.
+The autoencoder can be run with standard TensorFlow and Poplar on 1xIPU or 2xIPU. Different batch sizes and either mixed precision (fp16.32) or half precision (fp16.16) can be used to test the IPU. The original paper suggests using different network layer sizes for different datasets, as described below.
 
 The following options are available:
 
@@ -78,7 +79,7 @@ The following options are available:
 
 `--help` shows the available options.
 
-Some examples of running the model:
+Some examples of running the model on real data:
 
 ```
 python3 autoencoder_main.py --training-data-file netflix_data/3m_train.txt --validation-data-file netflix_data/3m_valid.txt --size 128

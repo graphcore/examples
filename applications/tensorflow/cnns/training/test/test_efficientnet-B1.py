@@ -17,7 +17,7 @@ class TestEfficientNetB1Pipelining2IPUs(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        out = run_train(**{'--synthetic-data': '',
+        out = run_train(**{'--generated-data': '',
                            '--dataset': 'ImageNet',
                            '--model': 'efficientnet',
                            '--model-size': 'B1',

@@ -69,6 +69,7 @@ args = argp.parse_args()
 
 # Model parameters
 TUNED_LEARNING_RATE = {16: 5e-4,    # Batch size -> Learning rate
+                       100: 5e-4,
                        128: 9e-4,
                        512: 9e-4,
                        1024: 13e-4}

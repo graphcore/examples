@@ -295,7 +295,7 @@ def train_process(opts, training_data, valid_data):
     print('TRAINING LOOP')
     print_format = (
         "step: {step:6d}, epoch: {epoch:6.2f}, lr: {lr:6.2g}, loss: {loss:6.3f}, RMSE: {train_acc:6.3f}"
-        ", users/sec: {img_per_sec:6.2f}, time: {it_time:8.6f}")
+        ", users/sec: {items_per_sec:6.2f}, time: {it_time:8.6f}")
 
     for e in range(iterations):
 
@@ -331,7 +331,7 @@ def train_process(opts, training_data, valid_data):
                 'loss': loss,
                 'train_acc': train_acc,
                 'it_time': avg_batch_time,
-                'img_per_sec': opts.batches_per_step * opts.batch_size / avg_batch_time}
+                'items_per_sec': opts.batches_per_step * opts.batch_size / avg_batch_time}
 
             print(print_format.format(**stats))
             # Save accuracy
@@ -459,28 +459,43 @@ def preprocess_options(opts):
     else:
         opts.select_ipus = list(map(int, opts.select_ipus.split(',')))
 
-    dataset_suffix = os.path.basename(opts.training_data_file)
-    batch_size_dict = {'3m_train.txt': [64, 128],
-                       '6m_train.txt': [64, 256],
-                       '1y_train.txt': [32, 256],
-                       'full_train.txt': [8, 512]}
+    if opts.training_data_file:
+        dataset_suffix = os.path.basename(opts.training_data_file)
+        batch_size_dict = {'3m_train.txt': [64, 128],
+                           '6m_train.txt': [64, 256],
+                           '1y_train.txt': [32, 256],
+                           'full_train.txt': [8, 512]}
 
-    if not opts.batch_size:
-        if dataset_suffix in batch_size_dict.keys():
-            opts.batch_size = batch_size_dict[dataset_suffix][0]
-        else:
-            raise Exception("\n\nError: Unrecognised training dataset file name: \"{}\"\n"
-                            "Either set batch and graph sizes manually, or ensure "
-                            "training dataset file name is one of the following:"
-                            "\n\t{}, {}, {}, {}\n".format(dataset_suffix, *batch_size_dict))
-    if not opts.size:
-        if dataset_suffix in batch_size_dict.keys():
-            opts.size = batch_size_dict[dataset_suffix][1]
-        else:
-            raise Exception("\n\nError: Unrecognised training dataset file name: \"{}\"\n"
-                            "Either set batch and graph sizes manually, or ensure "
-                            "training dataset file name is one of the following:"
-                            "\n\t{}, {}, {}, {}\n".format(dataset_suffix, *batch_size_dict))
+        if not opts.epochs:
+            opts.epochs = 160
+
+        if not opts.batch_size:
+            if dataset_suffix in batch_size_dict.keys():
+                opts.batch_size = batch_size_dict[dataset_suffix][0]
+            else:
+                raise Exception("\n\nError: Unrecognised training dataset file name: \"{}\"\n"
+                                "Either set batch and graph sizes manually, or ensure "
+                                "training dataset file name is one of the following:"
+                                "\n\t{}, {}, {}, {}\n".format(dataset_suffix, *batch_size_dict))
+        if not opts.size:
+            if dataset_suffix in batch_size_dict.keys():
+                opts.size = batch_size_dict[dataset_suffix][1]
+            else:
+                raise Exception("\n\nError: Unrecognised training dataset file name: \"{}\"\n"
+                                "Either set batch and graph sizes manually, or ensure "
+                                "training dataset file name is one of the following:"
+                                "\n\t{}, {}, {}, {}\n".format(dataset_suffix, *batch_size_dict))
+    else:
+        # If no data file is provided, generated random data will be used
+        if not opts.epochs:
+            opts.epochs = 2
+        if not opts.validation_batch_size:
+            opts.validation_batch_size = 128
+        if not opts.batch_size:
+            opts.batch_size = 64
+        if not opts.size:
+            opts.size = 128
+
     if not opts.validation_batch_size:
         opts.validation_batch_size = opts.batch_size
 
@@ -508,12 +523,10 @@ def get_options():
     group.add_argument(
         '--training-data-file',
         type=str,
-        required=True,
         help="Training data file.")
     group.add_argument(
         '--validation-data-file',
         type=str,
-        required=True,
         help="Validation data file.")
     group.add_argument(
         '--pipeline-num-parallel',
@@ -613,7 +626,6 @@ def get_options():
     group.add_argument(
         '--epochs',
         type=int,
-        default=160,
         help="Number of training epochs")
     group.add_argument(
         '--select-ipus',
@@ -699,13 +711,13 @@ if __name__ == '__main__':
     opts.learning_rate = (2**opts.base_learning_rate) * opts.batch_size
     print(log_str.format(**vars(opts)))
 
-    # load data
-    print("Loading training data")
+    # Load data
+    print(f"{'Loading' if opts.training_data_file else 'Generating random'} training data")
     training_data = AutoencoderData(data_file_name=opts.training_data_file)
     print("Users: {}".format(training_data.size))
     print("Items: {}".format(training_data.input_size))
 
-    print("Loading evaluation data")
+    print(f"{'Loading' if opts.validation_data_file else 'Generating random'} evaluation data")
     valid_data = AutoencoderData(data_file_name=opts.validation_data_file,
                                  training_data=training_data)
     print("Users: {}".format(valid_data.size))

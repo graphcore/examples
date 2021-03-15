@@ -93,7 +93,7 @@ class TestShardedTraining(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        out = run_train(**{'--synthetic-data': '',
+        out = run_train(**{'--generated-data': '',
                            '--dataset': 'ImageNet',
                            '--model': 'resnext',
                            '--model-size': 14,
@@ -118,7 +118,7 @@ class TestPipelineResNeXt14(unittest.TestCase):
                            '--dataset': 'imagenet',
                            '--model': 'resnext',
                            '--model-size': 14,
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--shards': 2,
                            '--pipeline': '',
                            '--gradient-accumulation-count': 128,
@@ -179,7 +179,7 @@ class TestLotsOfOptions(unittest.TestCase):
                            '--batch-size': 4,
                            '--batch-norm': '',
                            '--pipeline-num-parallel': 8,
-                           '--synthetic-data': '',
+                           '--generated-data': '',
                            '--base-learning-rate': -4,
                            '--precision': '32.32',
                            '--seed': 1234,

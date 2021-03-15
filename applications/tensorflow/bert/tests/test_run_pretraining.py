@@ -21,7 +21,7 @@ import os
 import unittest
 import pytest
 
-from run_train import run_train
+from .run_train import run_train
 
 
 def get_configs():
@@ -58,7 +58,7 @@ class TestBuild(object):
 
     def test_build(self, config):
         out = run_train(**{'--config': config,
-                           '--steps': 10,
+                           '--num-train-steps': 10,
                            '--generated-data': ''})
         output = str(out.stdout, 'utf-8')
         print(f"'\nOutput was:\n{output}")

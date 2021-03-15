@@ -57,6 +57,8 @@ def add_arguments(parser):
                        help="Suffix added to name string")
     group.add_argument('--steps-per-logs', type=int, default=1,
                        help="Logs per epoch (if number of epochs specified)")
+    group.add_argument('--steps-per-tensorboard', type=int, default=0,
+                       help='Number of steps between saving statistics to TensorBoard. 0 to disable.')
     return parser
 
 
@@ -81,21 +83,19 @@ def set_defaults(opts):
     time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     name += "_{}".format(time)
 
-    if not os.path.isdir(opts["checkpoint_path"]):
-        os.makedirs(opts["checkpoint_path"])
+    if not os.path.isdir(opts["save_path"]):
+        os.makedirs(opts["save_path"], exist_ok=True)
 
-    opts["logs_path"] = os.path.join(opts["checkpoint_path"], name)
-    opts["checkpoint_path"] = os.path.join(
-        opts["checkpoint_path"], name, 'ckpt')
+    opts["logs_path"] = os.path.join(opts["save_path"], name)
+    opts["checkpoint_path"] = os.path.join(opts["save_path"], name, 'ckpt')
 
     if not os.path.isdir(opts["logs_path"]):
-        os.makedirs(opts["logs_path"])
+        os.makedirs(opts["logs_path"], exist_ok=True)
 
     set_log_file_path(os.path.join(opts['logs_path'], 'log.txt'))
 
     with open(os.path.join(opts["logs_path"], 'arguments.json'), 'w') as fp:
         json.dump(opts, fp, sort_keys=True, indent=4, separators=(',', ': '))
-
     return opts
 
 

@@ -16,7 +16,7 @@ def estimator_model(features, labels, mode):
     preds = tf.argmax(input=logits, axis=-1)
     optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=0.01)
     # Wrap the optimiser for sharding
-    optimiser = ipu.cross_replica_optimizer.CrossReplicaOptimizer(optimizer)
+    optimiser = ipu.optimizers.CrossReplicaOptimizer(optimizer)
     train_op = optimiser.minimize(loss)
     eval_accuracy, eval_op = tf.compat.v1.metrics.accuracy(labels, preds)
     metric_ops = {"accuracy": (eval_accuracy, eval_op)}

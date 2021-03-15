@@ -8,6 +8,12 @@ import torchvision
 import poptorch
 import torch.optim as optim
 
+# The following is a workaround for pytorch issue #1938
+from six.moves import urllib
+opener = urllib.request.build_opener()
+opener.addheaders = [("User-agent", "Mozilla/5.0")]
+urllib.request.install_opener(opener)
+
 
 def get_mnist_data(opts):
     training_data = torch.utils.data.DataLoader(

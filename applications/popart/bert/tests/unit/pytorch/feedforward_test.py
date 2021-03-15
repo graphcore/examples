@@ -23,12 +23,19 @@ import onnx
 from bert_model import BertConfig, Bert, ExecutionMode, get_model
 from bert import set_library_seeds
 from tests.torch_bert import BertConfig as TorchBertConfig, BertOutput, BertIntermediate
-from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tensors, check_model
+from tests.utils import (
+    run_py,
+    copy_weights_to_torch,
+    run_fwd_model,
+    check_tensors,
+    check_model,
+    requires_remote_buffers,
+    sanity)
 
 '''
 Tests the fully connected layers.
 '''
-test_modes = [ExecutionMode.DEFAULT, pytest.param(ExecutionMode.PHASED, marks=pytest.mark.requires_remote_buffers)]
+test_modes = [ExecutionMode.DEFAULT, requires_remote_buffers(ExecutionMode.PHASED)]
 num_reps_bwd = 5
 lr = 1e-3
 
@@ -88,30 +95,29 @@ def setup_function(func):
     np.random.seed(1984)
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize('mode', test_modes)
-@pytest.mark.parametrize('activation_function', ['Gelu'])
-@pytest.mark.parametrize("phase,momentum", [('bwd', 0.984375)])
-@pytest.mark.parametrize('batch_size, batch_serialization_factor', [(4, 2)])
-def test_activation_function_sanity(mode, activation_function, phase, momentum, batch_size, batch_serialization_factor):
-    run_activation_function(mode, activation_function, phase, momentum, batch_size, batch_serialization_factor)
+@pytest.mark.parametrize('micro_batch_size, batch_serialization_factor, phase, momentum',
+                         [sanity(4, 2, "bwd", 0.984375),
 
-
-@pytest.mark.parametrize('mode', test_modes)
-@pytest.mark.parametrize('activation_function', ACTIVATIONS.keys())
-@pytest.mark.parametrize("phase,momentum", [('bwd', 0.0), ('bwd', 0.984375), ('fwd', 0.0)])
-@pytest.mark.parametrize('batch_size, batch_serialization_factor', [(1, 1), (2, 1), (2, 2), (4, 2)])
-def test_activation_function(mode, activation_function, phase, momentum, batch_size, batch_serialization_factor):
-    run_activation_function(mode, activation_function, phase, momentum, batch_size, batch_serialization_factor)
-
-
-def run_activation_function(mode, activation_function, phase, momentum, batch_size, batch_serialization_factor):
+                          (1, 1, "fwd", 0.0),
+                          (2, 1, "fwd", 0.0),
+                          (2, 2, "fwd", 0.0),
+                          (4, 2, "fwd", 0.0),
+                          (1, 1, "bwd", 0.0),
+                          (2, 1, "bwd", 0.0),
+                          (2, 2, "bwd", 0.0),
+                          (4, 2, "bwd", 0.0),
+                          (1, 1, "bwd", 0.984375),
+                          (2, 1, "bwd", 0.984375),
+                          (2, 2, "bwd", 0.984375),
+                          (4, 2, "bwd", 0.984375)])
+def test_activation_function(mode, phase, momentum, micro_batch_size, batch_serialization_factor):
 
     set_library_seeds(0)
 
-    popart_act_function, pytorch_activation = ACTIVATIONS[activation_function]
+    popart_act_function, pytorch_activation = ACTIVATIONS["Gelu"]
     config = BertConfig(vocab_length=128,
-                        batch_size=batch_size,
+                        micro_batch_size=micro_batch_size,
                         hidden_size=768,
                         sequence_length=128,
                         popart_dtype="FLOAT",
@@ -122,7 +128,7 @@ def run_activation_function(mode, activation_function, phase, momentum, batch_si
         config, mode, batch_serialization_factor, is_bwd=False if phase is 'fwd' else True, momentum=momentum)
 
     inputs = [
-        data.reshape(config.batch_size, config.sequence_length,
+        data.reshape(config.micro_batch_size, config.sequence_length,
                      config.hidden_size)
     ]
 
@@ -157,7 +163,7 @@ def popart_result_and_model(popart_config, mode, batch_serialization_factor, is_
     popart_model = get_model(popart_config, mode, 'feedforward')
 
     input_info = popart.TensorInfo(popart_config.popart_dtype, [
-        popart_config.batch_size * popart_config.sequence_length,
+        popart_config.micro_batch_size * popart_config.sequence_length,
         popart_config.hidden_size
     ])
     input_tensor = popart_model.builder.addInputTensor(input_info)

@@ -94,7 +94,7 @@ def get_weights(save_dir: Path, model_name: str, dtype: str) -> str:
         elif model_name == "inceptionv3":
             InceptionV3(weights='imagenet')
             saver = tf.train.Saver()
-        elif model_name in ("googleNet", "inceptionv1"):
+        elif model_name in ("googlenet", "inceptionv1"):
             tar_file = get_file(fname='inceptionv1_tar.gz',
                                 origin='http://download.tensorflow.org/models/inception_v1_2016_08_28.tar.gz')
             tar_file_reader = tarfile.open(tar_file)

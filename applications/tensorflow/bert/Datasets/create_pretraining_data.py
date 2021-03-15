@@ -93,61 +93,79 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
             instance.masked_lm_labels)
         masked_lm_weights = [1.0] * len(masked_lm_ids)
 
-        # Removing this makes sure that the logic below doesn't mask the CLS token as idx of CLS == 0.
-        while len(masked_lm_ids) < mask_tokens:
-            # masked_lm_positions.append(0)
-            masked_lm_ids.append(0)
-            masked_lm_weights.append(0.0)
-
         next_sentence_label = 1 if instance.is_random_next else 0
 
-        # -----------------------------------------
-        # Main Change to original script. This handles the re-arranging of samples to put mask_tokens at the start.
-        formatted_input = [0] * max_seq_length
-        formatted_pos = [pad_position_value] * max_seq_length
-        formatted_seg = [0] * max_seq_length
-        formatted_label = [0] * mask_tokens
+        if args.remask:
+            # Removing this makes sure that the logic below doesn't mask the CLS token as idx of CLS == 0.
+            while len(masked_lm_ids) < mask_tokens:
+                masked_lm_ids.append(0)
+                masked_lm_weights.append(0.0)
 
-        current_mask_idx = 0
-        current_seq_idx = mask_tokens
-        for idx, input_id in enumerate(input_ids):
-            if input_id == 0:
-                continue
-            try:
-                masked_lm_idx = masked_lm_positions.index(idx)
-                formatted_input[current_mask_idx] = input_id
-                formatted_pos[current_mask_idx] = idx
-                formatted_seg[current_mask_idx] = segment_ids[idx]
-                formatted_label[current_mask_idx] = masked_lm_ids[masked_lm_idx]
-                current_mask_idx += 1
-            except ValueError:
-                formatted_input[current_seq_idx] = input_id
-                formatted_pos[current_seq_idx] = idx
-                formatted_seg[current_seq_idx] = segment_ids[idx]
-                current_seq_idx += 1
+            # Main Change to original script. This handles the re-arranging of samples to put mask_tokens at the start.
+            formatted_input = [0] * max_seq_length
+            formatted_pos = [pad_position_value] * max_seq_length
+            formatted_seg = [0] * max_seq_length
+            formatted_label = [0] * mask_tokens
 
-        mask_tokens_padding_idx = [current_mask_idx]
-        sequence_padding_idx = [current_seq_idx]
-        nsp_label = [next_sentence_label]
+            current_mask_idx = 0
+            current_seq_idx = mask_tokens
+            for idx, input_id in enumerate(input_ids):
+                if input_id == 0:
+                    continue
+                try:
+                    masked_lm_idx = masked_lm_positions.index(idx)
+                    formatted_input[current_mask_idx] = input_id
+                    formatted_pos[current_mask_idx] = idx
+                    formatted_seg[current_mask_idx] = segment_ids[idx]
+                    formatted_label[current_mask_idx] = masked_lm_ids[
+                        masked_lm_idx]
+                    current_mask_idx += 1
+                except ValueError:
+                    formatted_input[current_seq_idx] = input_id
+                    formatted_pos[current_seq_idx] = idx
+                    formatted_seg[current_seq_idx] = segment_ids[idx]
+                    current_seq_idx += 1
 
-        features = collections.OrderedDict()
-        features["input_ids"] = create_int_feature(formatted_input)
-        features["input_position"] = create_int_feature(formatted_pos)
-        features["segment_ids"] = create_int_feature(formatted_seg)
+            mask_tokens_padding_idx = [current_mask_idx]
+            sequence_padding_idx = [current_seq_idx]
+            nsp_label = [next_sentence_label]
 
-        features["mask_padding_index"] = create_int_feature(
-            mask_tokens_padding_idx)
-        features["seq_padding_index"] = create_int_feature(
-            sequence_padding_idx)
-        features["masked_lm_positions"] = create_int_feature(
-            masked_lm_positions)
-        features["masked_labels"] = create_int_feature(formatted_label)
-        features["masked_lm_ids"] = create_int_feature(masked_lm_ids)
-        features["masked_lm_weights"] = create_float_feature(masked_lm_weights)
-        features["next_sentence_labels"] = create_int_feature(nsp_label)
+            features = collections.OrderedDict()
+            features["input_ids"] = create_int_feature(formatted_input)
+            features["input_position"] = create_int_feature(formatted_pos)
+            features["segment_ids"] = create_int_feature(formatted_seg)
 
-        tf_example = tf.train.Example(
-            features=tf.train.Features(feature=features))
+            features["mask_padding_index"] = create_int_feature(
+                mask_tokens_padding_idx)
+            features["seq_padding_index"] = create_int_feature(
+                sequence_padding_idx)
+            features["masked_lm_positions"] = create_int_feature(
+                masked_lm_positions)
+            features["masked_labels"] = create_int_feature(formatted_label)
+            features["masked_lm_ids"] = create_int_feature(masked_lm_ids)
+            features["masked_lm_weights"] = create_float_feature(
+                masked_lm_weights)
+            features["next_sentence_labels"] = create_int_feature(nsp_label)
+        else:
+            while len(masked_lm_positions) < mask_tokens:
+                masked_lm_positions.append(0)
+                masked_lm_ids.append(0)
+                masked_lm_weights.append(0.0)
+
+            features = collections.OrderedDict()
+            features["input_ids"] = create_int_feature(input_ids)
+            features["input_mask"] = create_int_feature(input_mask)
+            features["segment_ids"] = create_int_feature(segment_ids)
+            features["masked_lm_positions"] = create_int_feature(
+                masked_lm_positions)
+            features["masked_lm_ids"] = create_int_feature(masked_lm_ids)
+            features["masked_lm_weights"] = create_float_feature(
+                masked_lm_weights)
+            features["next_sentence_labels"] = create_int_feature(
+                [next_sentence_label])
+
+        tf_example = tf.train.Example(features=tf.train.Features(
+            feature=features))
 
         writers[writer_index].write(tf_example.SerializeToString())
         writer_index = (writer_index + 1) % len(writers)
@@ -497,5 +515,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-samples", type=int, default=-1)
     parser.add_argument("--pad-position-value", type=int, default=384,
                         help="Value in the positional input for [PAD] tokens")
+    parser.add_argument("--remask", action="store_true",
+                        help="Rearrange tokens to the start position")
     args = parser.parse_args()
     main(args)

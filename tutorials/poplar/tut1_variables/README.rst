@@ -233,7 +233,7 @@ These handles are used after the engine is created.
 
     // Copy host data via the write handle to v3 on the device
     std::vector<float> h3(4 * 4, 0);
-    engine.writeTensor("v3-write", h3.data());
+    engine.writeTensor("v3-write", h3.data(), h3.data() + h3.size());
 
 Here, ``h3`` holds data on the host (initialised to zeros) and the
 ``writeTensor`` call performs a synchronous write over the PCIe bus (simulated
@@ -245,7 +245,7 @@ on the device will be set to zero.
   .. code-block:: c++
 
     // Copy v3 back to the host via the read handle
-    engine.readTensor("v3-read", h3.data());
+    engine.readTensor("v3-read", h3.data(), h3.data() + h3.size());
 
     // Output the copied back values of v3
     std::cout << "\nh3 data:\n";

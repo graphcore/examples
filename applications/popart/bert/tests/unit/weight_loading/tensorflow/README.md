@@ -6,8 +6,8 @@ To run this test, you need to provide a checkpoint and a BERT config file.
 You can also optionally provide a frozen graph to test the frozen-graph loading
 functionalty.
 
-The test is run through `pytest` and will require `tensorflow` or `gc-tensorflow`
-to installed in your environment. 
+The test is run through `pytest` and will require the `tensorflow` wheel from the
+Poplar SDK to be installed in your environment. 
 
 ### Required Data
 

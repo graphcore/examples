@@ -47,6 +47,7 @@ class BertConfig(object):
                  mask_tokens=20,
                  no_cls_layer=True,
                  update_embedding_dict=False,
+                 attention_bias=False
                  ):
         """Constructs BertConfig.
         Args:
@@ -74,6 +75,7 @@ class BertConfig(object):
             mask_tokens: Maximum number of masked tokens in the sequence (NOTE: Added to match PopART BERT).
             no_cls_layer: If True, don't apply BertPredictionHeadTransform in the BertLMPredictionHead.
             update_embedding_dict: If True, update embedding dict in the embedding stage.
+            attention_bias: If True, include bias in attention layer.
         """
         if isinstance(vocab_size_or_config_json_file, str) or (sys.version_info[0] == 2
                                                                and isinstance(vocab_size_or_config_json_file, unicode)):
@@ -98,6 +100,7 @@ class BertConfig(object):
             self.mask_tokens = mask_tokens
             self.no_cls_layer = no_cls_layer
             self.update_embedding_dict = update_embedding_dict
+            self.attention_bias = attention_bias
         else:
             raise ValueError("First argument must be either a vocabulary size (int)"
                              "or the path to a pretrained model config file (str)")
@@ -210,11 +213,11 @@ class BertSelfAttention(nn.Module):
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
         self.query = nn.Linear(
-            config.hidden_size, self.all_head_size, bias=False)
+            config.hidden_size, self.all_head_size, bias=config.attention_bias)
         self.key = nn.Linear(config.hidden_size,
-                             self.all_head_size, bias=False)
+                             self.all_head_size, bias=config.attention_bias)
         self.value = nn.Linear(
-            config.hidden_size, self.all_head_size, bias=False)
+            config.hidden_size, self.all_head_size, bias=config.attention_bias)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
 
@@ -269,7 +272,7 @@ class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super(BertSelfOutput, self).__init__()
         self.dense = nn.Linear(
-            config.hidden_size, config.hidden_size, bias=False)
+            config.hidden_size, config.hidden_size, bias=config.attention_bias)
         self.LayerNorm = BertLayerNorm(
             config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)

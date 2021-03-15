@@ -94,7 +94,9 @@ class IPUOptimizer(optimizer.Optimizer):
             summed_grads_and_vars = self.add_WD(summed_grads_and_vars)
 
         if self._grad_scale != 1.0:
-            summed_grads_and_vars = [(grad / self._grad_scale, var) for grad, var in summed_grads_and_vars]
+            # don't rescale batch norm moving average statistics as they are not affected by loss scaling
+            summed_grads_and_vars = [(grad, var) if 'batch_norm/moving_' in var.name else (grad / self._grad_scale, var)
+                                     for grad, var in summed_grads_and_vars]
         ret = self._optimizer.apply_gradients(summed_grads_and_vars, global_step, name)
         if self._sharded:
             sharding.propagate_sharding(ops.get_default_graph())

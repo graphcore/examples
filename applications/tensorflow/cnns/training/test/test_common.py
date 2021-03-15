@@ -5,6 +5,7 @@ from urllib import request
 import tarfile
 import subprocess
 import tempfile
+import time
 
 
 cifar10_data_dir = None
@@ -23,7 +24,17 @@ def download_cifar():
         with tempfile.TemporaryDirectory(dir=data_dir) as tmpdirname:
             tmpfilepath = os.path.join(tmpdirname, filename)
             print('Downloading', filename, "to", tmpfilepath)
-            tmpfilepath, _ = request.urlretrieve(DATA_URL, tmpfilepath)
+            error_count = 0
+            while True:
+                try:
+                    tmpfilepath, _ = request.urlretrieve(DATA_URL, tmpfilepath)
+                    break
+                except:
+                    error_count += 1
+                    if error_count > 5:
+                        print("Couldn't download", DATA_URL)
+                        raise
+                    time.sleep(5)
             print('Successfully downloaded, extracting to', tmpdirname)
             tarfile.open(tmpfilepath, 'r:gz').extractall(tmpdirname)
             print('Moving', tmpdirname, "to", data_dir)
@@ -61,12 +72,16 @@ def run_validation(mypath, **kwargs):
 
 
 def parse_csv(filepath):
+    non_numeric_columns = ['name']
     with open(filepath) as csv:
         lines = csv.read().split('\n')
         items = [line.split(',') for line in lines if line]
         results = {}  # dict with headers of csv as keys
         for i in range(len(items[0])):
-            values = [float(v[i]) for v in items[1:]]
+            if items[0][i] in non_numeric_columns:
+                values = [v[i] for v in items[1:]]
+            else:
+                values = [float(v[i]) for v in items[1:]]
             results[items[0][i]] = values
     return results
 

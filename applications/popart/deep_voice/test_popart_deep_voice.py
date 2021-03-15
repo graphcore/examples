@@ -31,6 +31,7 @@ def assert_lists_equal(alist, blist):
     assert(all([a == b for a, b in zip(alist, blist)]))
 
 
+@pytest.mark.ipus(2)
 @pytest.mark.category1
 @pytest.mark.parametrize("batch_size,replication_factor,num_ipus", [(2, 1, 1), (4, 2, 2)])
 def test_train_graph_build(batch_size, replication_factor, num_ipus):

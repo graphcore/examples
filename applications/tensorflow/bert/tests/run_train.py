@@ -32,3 +32,18 @@ def run_train(**kwargs):
                                stderr=subprocess.STDOUT,
                                )
     return completed
+
+
+@pytest.mark.category1
+def run_popdist_train(**kwargs):
+    os.chdir(os.path.dirname(os.path.realpath(__file__)))
+    os.chdir('..')
+    poprun_cmd = ['poprun', '-vv', '--mpi-global-args=--allow-run-as-root', '--num-instances', str(kwargs['--replicas']), '--ipus-per-replica', '1', '--num-replicas', str(kwargs['--replicas']), 'python3', 'run_pretraining.py']
+    args = [str(item) for sublist in kwargs.items() for item
+            in sublist if item != '']
+    poprun_cmd.extend(args)
+    completed = subprocess.run(args=poprun_cmd,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT,
+                               )
+    return completed

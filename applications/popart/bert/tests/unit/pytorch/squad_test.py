@@ -20,7 +20,7 @@ import numpy as np
 from bert_model import BertConfig, ExecutionMode, get_model
 from tests.torch_bert import BertConfig as TorchBertConfig, BertForQuestionAnswering
 
-from tests.utils import requires_remote_buffers
+from tests.utils import requires_remote_buffers, sanity
 
 from .full_graph_utils import fwd_graph, bwd_graph
 
@@ -40,20 +40,21 @@ ONNX_TORCH_MAPPING[ExecutionMode.PHASED] = {
 }
 
 
-@pytest.mark.parametrize("mode, replication_factor, replicated_weight_sharding",
+@pytest.mark.parametrize("mode, replication_factor, replicated_tensor_sharding",
                          [(ExecutionMode.DEFAULT, 1, False),
                           requires_remote_buffers(ExecutionMode.PHASED, 1, False),
                           requires_remote_buffers(ExecutionMode.PHASED, 4, True),
                           requires_remote_buffers(ExecutionMode.PHASED, 4, False)])
-def test_squad_fwd(mode, replication_factor, replicated_weight_sharding):
-    split_qkv = False
+def test_squad_fwd(custom_ops, mode, replication_factor, replicated_tensor_sharding):
     #  ------------------- PopART --------------------
     config = BertConfig(task="SQUAD",
-                        vocab_length=9728,
-                        num_layers=2,
-                        batch_size=1,
-                        hidden_size=768,
-                        sequence_length=128,
+                        encoder_start_ipu=1,
+                        vocab_length=1024,
+                        micro_batch_size=1,
+                        hidden_size=64,
+                        attention_heads=2,
+                        sequence_length=20,
+                        max_positional_length=20,
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
@@ -61,7 +62,7 @@ def test_squad_fwd(mode, replication_factor, replicated_weight_sharding):
                         inference=True,
                         no_mask=True,
                         execution_mode=mode,
-                        split_qkv=split_qkv,
+                        split_qkv=False,
                         squad_single_output=False)
 
     popart_model = get_model(config, mode)
@@ -75,7 +76,7 @@ def test_squad_fwd(mode, replication_factor, replicated_weight_sharding):
                         hidden_act="relu",
                         max_position_embeddings=config.max_positional_length,
                         layer_norm_eps=config.layer_norm_eps,
-                        mask_tokens=config.mask_tokens,
+                        mask_tokens=2,
                         num_labels=2))
 
     fwd_graph(popart_model,
@@ -86,11 +87,16 @@ def test_squad_fwd(mode, replication_factor, replicated_weight_sharding):
                   "qa_outputs.weight": np.transpose
               },
               replication_factor=replication_factor,
-              replicated_weight_sharding=replicated_weight_sharding)
+              replicated_tensor_sharding=replicated_tensor_sharding)
 
 
-@pytest.mark.parametrize("mode, replication_factor, replicated_weight_sharding, opt_type",
-                         [(ExecutionMode.DEFAULT, 1, False, "SGD"),
+@pytest.mark.parametrize("mode, replication_factor, replicated_tensor_sharding, opt_type",
+                         [sanity(ExecutionMode.DEFAULT, 2, True, "SGD"),
+                          sanity(ExecutionMode.DEFAULT, 2, False, "LAMB"),
+                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 2, False, "SGD")),
+                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 2, True, "LAMB")),
+
+                          (ExecutionMode.DEFAULT, 1, False, "SGD"),
                           (ExecutionMode.DEFAULT, 2, True, "SGD"),
                           (ExecutionMode.DEFAULT, 2, False, "LAMB"),
                           (ExecutionMode.DEFAULT, 2, True, "LAMB"),
@@ -98,31 +104,17 @@ def test_squad_fwd(mode, replication_factor, replicated_weight_sharding):
                           requires_remote_buffers(ExecutionMode.PHASED, 2, False, "SGD"),
                           requires_remote_buffers(ExecutionMode.PHASED, 2, False, "LAMB"),
                           requires_remote_buffers(ExecutionMode.PHASED, 2, True, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 1, False, "LAMB")
-                          ])
-def test_squad_bwd(mode, replication_factor, replicated_weight_sharding, opt_type):
-    squad_bwd(mode, replication_factor, replicated_weight_sharding, opt_type)
-
-
-@pytest.mark.sanity
-@pytest.mark.parametrize("mode, replication_factor, replicated_weight_sharding, opt_type",
-                         [(ExecutionMode.DEFAULT, 2, True, "SGD"),
-                          (ExecutionMode.DEFAULT, 2, False, "LAMB"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, False, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, True, "LAMB")
-                          ])
-def test_squad_bwd_sanity(mode, replication_factor, replicated_weight_sharding, opt_type):
-    squad_bwd(mode, replication_factor, replicated_weight_sharding, opt_type, 2432, 288)
-
-
-def squad_bwd(mode, replication_factor, replicated_weight_sharding, opt_type, vocab_length=9728, hidden_size=768):
+                          requires_remote_buffers(ExecutionMode.PHASED, 1, False, "LAMB")])
+def test_squad_bwd(custom_ops, mode, replication_factor, replicated_tensor_sharding, opt_type):
     #  ------------------- PopART --------------------
     config = BertConfig(task="SQUAD",
-                        vocab_length=vocab_length,
-                        num_layers=1,
-                        batch_size=1,
-                        hidden_size=hidden_size,
-                        sequence_length=128,
+                        num_layers=2,
+                        encoder_start_ipu=1,
+                        vocab_length=1024,
+                        micro_batch_size=1,
+                        hidden_size=64,
+                        attention_heads=2,
+                        sequence_length=20,
                         activation_type="relu",
                         popart_dtype="FLOAT",
                         no_dropout=True,
@@ -142,7 +134,7 @@ def squad_bwd(mode, replication_factor, replicated_weight_sharding, opt_type, vo
                         hidden_act="relu",
                         max_position_embeddings=config.max_positional_length,
                         layer_norm_eps=config.layer_norm_eps,
-                        mask_tokens=config.mask_tokens,
+                        mask_tokens=2,
                         update_embedding_dict=True,
                         num_labels=2))
 
@@ -188,5 +180,5 @@ def squad_bwd(mode, replication_factor, replicated_weight_sharding, opt_type, vo
                   "qa_outputs.weight": np.transpose
               },
               replication_factor=replication_factor,
-              replicated_weight_sharding=replicated_weight_sharding,
+              replicated_tensor_sharding=replicated_tensor_sharding,
               opt_type=opt_type)
