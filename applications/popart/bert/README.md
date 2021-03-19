@@ -18,7 +18,7 @@ There are two BERT models:
 - BERT Large – 24 layers (transformer blocks), 340 million parameters
 
 The JSON configuration files provided in the `configs` directory define how the layers
-are distributed across IPUs for these BERT models for training and inference.
+are distributed across IPUs for these BERT models for training and inference. There are also IPU Mk2 optimised configs in the `configs/mk2` sub-directory.
 
 ## Datasets
 
@@ -138,7 +138,7 @@ Download pre-trained Base checkpoint containing the vocabulary from https://gith
 ```bash
 $ cd <examples_repo>/applications/popart/bert
 $ curl --create-dirs -L https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip -o data/ckpts/uncased_L-12_H-768_A-12.zip
-$ unzip data/ckpts/uncased_L-12_H-768_A-12.zip -d data/ckpts
+$ unzip data/ckpts/uncased_L-12_H-768_A-12.zip -d data/ckpts/uncased_L-12_H-768_A-12
 ```
 
 #### SQuAD 1.1 Dataset and Evaluation Script
@@ -242,6 +242,6 @@ and for BERT Large with a sequence length of 384:
 
 View the JSON files in configs for detailed parameters.
 
-It is also possible to run inference on the pretraining graph to validate the MLM/NSP results. It requires input files to be provided, either by adding them to the config or by using the following command-line for sequence length of 384:
+It is also possible to run inference on the pretraining graph to validate the MLM/NSP results. It requires input files to be provided, either by adding them to the config or by using the following command-line for sequence length of 128:
 
 `python3 bert.py --config configs/mlm_nsp_base_128_inference.json --input-files <path_to_input_file>`

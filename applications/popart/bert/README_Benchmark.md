@@ -38,6 +38,12 @@ python bert.py --config configs/mk2/pretrain_large_384.json --input-files=$DATAS
 python3 bert.py --config configs/mk2/pretrain_large_384.json --input-files=$DATASETS_DIR/wikipedia/AA/sequence_384/wiki_00_tokenised --epochs 1 --epochs 10 --no-model-save --no-validation --steps-per-log 1 --gradient-accumulation-factor 512 --replication-factor 16
 ```
 
+1 x IPU-POD64
+
+```
+python bert.py --config configs/mk2/pretrain_large_384.json --replication-factor 16 --input-files=$DATASETS_DIR/wikipedia/AA/sequence_128/wiki_00_tokenised --epochs 1 --no-model-save --no-validation --steps-per-log 1
+```
+
 #### BERT-Base Phase 1 Pre-training (Sequence length 128)
 
 1 x IPU-POD16
@@ -46,6 +52,11 @@ python3 bert.py --config configs/mk2/pretrain_large_384.json --input-files=$DATA
 python bert.py --config configs/mk2/pretrain_base_128.json --input-files=$DATASETS_DIR/wikipedia/AA/sequence_128/wiki_00_tokenised --epochs 1 --no-model-save --no-validation --steps-per-log 1
 ```
 
+1 x IPU-POD64
+
+```
+python bert.py --config configs/mk2/pretrain_large_128.json --replication-factor 16 --loss-scaling 128 --available-memory-proportion 0.15 0.2 0.2 0.2 --input-files=$DATASETS_DIR/wikipedia/AA/sequence_128/wiki_00_tokenised --epochs 1 --no-model-save --no-validation --steps-per-log 1
+```
 
 #### BERT-Base Phase 3 Pre-training (Sequence length 384)
 

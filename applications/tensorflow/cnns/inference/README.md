@@ -3,7 +3,7 @@ Graphcore
 
 ## Benchmarking
 
-Inference benchmarking is run using the training harness. To reproduce the published Mk2 inference throughput benchmarks, please follow the setup instructions in (../training/README.md), and then follow the instructions in [../training/README_Benchmarks.md](../training/README_Benchmarks.md) 
+Inference benchmarking is run using the training harness. To reproduce the published Mk2 inference throughput benchmarks, please follow the setup instructions in [../training/README.md](../training/README.md), and then follow the instructions in [../training/README_Benchmarks.md](../training/README_Benchmarks.md) 
 
 ## Image classification inference
 

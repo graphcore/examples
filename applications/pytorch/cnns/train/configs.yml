@@ -40,7 +40,7 @@ resnet50-16ipu-mk2: &resnet50-16ipu-mk2
   loss_velocity_scaling_ratio: 1
   epoch: 100
   warmup_epoch: 16
-  learning_rate: 0.3125
+  lr: 0.3125
   initial_loss_scaling: 64
   loss_scaling: 512
   seed: 42

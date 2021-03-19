@@ -16,8 +16,8 @@ Each of the tutorials contains its own README file with full instructions.
 
 ## TensorFlow 1
 
-- [Tutorial 1: Porting a simple example](tensorflow1/part_1)
-- [Tutorial 2: Loops and data pipelines](tensorflow1/part_2)
+- [Tutorial 1: Porting a simple example](tensorflow1/basics/tut1_porting_a_model)
+- [Tutorial 2: Loops and data pipelines](tensorflow1/basics/tut2_loops_data_pipeline)
 
 ## TensorFlow 2
 
