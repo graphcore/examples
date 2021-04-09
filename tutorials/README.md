@@ -18,6 +18,7 @@ Each of the tutorials contains its own README file with full instructions.
 
 - [Tutorial 1: Porting a simple example](tensorflow1/basics/tut1_porting_a_model)
 - [Tutorial 2: Loops and data pipelines](tensorflow1/basics/tut2_loops_data_pipeline)
+- [Training a model using half- and mixed-precision](tensorflow1/half_precision_training)
 
 ## TensorFlow 2
 
@@ -27,6 +28,8 @@ Each of the tutorials contains its own README file with full instructions.
 ## PyTorch
 
 - [Tutorial 1: From 0 to 1: Introduction to PopTorch](pytorch/tut1_basics)
+- [Tutorial 2: Efficient data loading with PopTorch](pytorch/tut2_efficient_data_loading)
+- [Tutorial 3: Half and mixed precision in PopTorch](pytorch/tut3_mixed_precision)
 
 ## PopVision
 
