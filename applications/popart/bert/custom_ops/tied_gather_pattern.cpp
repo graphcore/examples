@@ -150,10 +150,10 @@ public:
             name = std::to_string(gather->id);
         }
 
-        auto replace_with_tied_gather = [&](popart::TensorId dict, popart::TensorId ind, int64_t i, const std::string &debugPrefix) {
+        auto replace_with_tied_gather = [&](popart::TensorId dict, popart::TensorId ind, int64_t i, const std::string &debugContext) {
             auto tied_gather_up = std::make_unique<TiedGatherOp>(
                 axis,
-                popart::Op::Settings(graph, debugPrefix));
+                popart::Op::Settings(graph, debugContext));
             auto tied_gather = tied_gather_up.get();
             transferBaseProperties(gather, tied_gather);
             graph.moveIntoGraph(std::move(tied_gather_up));
@@ -163,7 +163,7 @@ public:
 
             auto out_id = out->id;
             if (i >= 0) {
-                out_id = debugPrefix + ":0";
+                out_id = debugContext + ":0";
                 tied_gather->createAndConnectOutTensor(TiedGatherOp::outIndex(), out_id);
             } else {
                 tied_gather->connectOutTensor(TiedGatherOp::outIndex(), out_id);
@@ -185,27 +185,27 @@ public:
                 throw popart::error("CustomOps Error: Tied Gather Pattern only supports Serialisation::Mode::OutputChannels");
             }
 
-            auto slice_op = [&](int64_t starts, int64_t ends, const std::string &debugPrefix) {
+            auto slice_op = [&](int64_t starts, int64_t ends, const std::string &debugContext) {
                 auto slice_up = std::make_unique<popart::SliceOp>(
                     popart::Onnx::AiOnnx::OpSet9::Slice,
                     std::vector<int64_t>({starts}),
                     std::vector<int64_t>({ends}),
                     std::vector<int64_t>({axis}),
-                    popart::Op::Settings(graph, debugPrefix + "/slice"));
+                    popart::Op::Settings(graph, debugContext + "/slice"));
                 auto slice = slice_up.get();
                 transferBaseProperties(gather, slice);
                 graph.moveIntoGraph(std::move(slice_up));
                 slice->connectInTensor(popart::SliceOp::getInIndex(), data->id);
-                auto data_slice = debugPrefix + "/slice:0";
+                auto data_slice = debugContext + "/slice:0";
                 slice->createAndConnectOutTensor(popart::SliceOp::getOutIndex(), data_slice);
                 slice->setup();
                 return data_slice;
             };
 
-            auto subtract_with_constant = [&](popart::Tensor *a, int64_t c, const std::string &debugPrefix) {
+            auto subtract_with_constant = [&](popart::Tensor *a, int64_t c, const std::string &debugContext) {
                 auto sub_up = std::make_unique<popart::SubtractOp>(
                     popart::Onnx::Operators::Sub_7,
-                    popart::Op::Settings(graph, debugPrefix + "/sub"));
+                    popart::Op::Settings(graph, debugContext + "/sub"));
                 auto sub = sub_up.get();
                 transferBaseProperties(gather, sub);
                 graph.moveIntoGraph(std::move(sub_up));
@@ -217,16 +217,16 @@ public:
                 std::vector<unsigned> d(1, c);
                 graph.getTensors().addConstInit(sub_const_id, subInfo, d.data());
                 sub->connectInTensor(popart::SubtractOp::getArg1InIndex(), sub_const_id);
-                auto indices_sub = debugPrefix + "/sub:0";
+                auto indices_sub = debugContext + "/sub:0";
                 sub->createAndConnectOutTensor(popart::SubtractOp::getOutIndex(), indices_sub);
                 sub->setup();
                 return indices_sub;
             };
 
-            auto add_op = [&](popart::TensorId a, popart::TensorId b, popart::TensorId out, const std::string &debugPrefix) {
+            auto add_op = [&](popart::TensorId a, popart::TensorId b, popart::TensorId out, const std::string &debugContext) {
                 auto add_up = std::make_unique<popart::AddOp>(
                     popart::Onnx::Operators::Add_6,
-                    popart::Op::Settings(graph, debugPrefix + "/add"));
+                    popart::Op::Settings(graph, debugContext + "/add"));
                 auto add = add_up.get();
                 transferBaseProperties(gather, add);
                 graph.moveIntoGraph(std::move(add_up));

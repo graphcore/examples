@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import time
 import wandb
 import warnings
-from tqdm import trange, tqdm
-from math import ceil
+from tqdm import tqdm
 import logging
 
 import torch
@@ -27,8 +27,8 @@ from bert_data import get_dataset, get_generated_datum
 from bert_model import PipelinedBertWithLoss
 from bert_ipu import get_options
 from bert_optimization import get_lr_scheduler, get_optimizer
-from bert_checkpoint import save_model, maybe_load_checkpoint_passing_constraints, prepare_checkpoint_metrics
-from utils import parse_bert_args
+from bert_checkpoint import save_checkpoint, restore_checkpoint, checkpoints_exist
+from utils import parse_bert_args, cycle, logger
 
 
 if __name__ == "__main__":
@@ -40,22 +40,28 @@ if __name__ == "__main__":
     # Build config from args
     config = transformers.BertConfig(**(vars(parse_bert_args())))
 
-    # Retrieve relevant checkpoint
-    checkpoint = maybe_load_checkpoint_passing_constraints(config)
+    # Checkpoints should be saved to a directory with no existing checkpoints
+    if config.checkpoint_dir and checkpoints_exist(config):
+        raise RuntimeError("Found previously saved checkpoint(s) at checkpoint-dir. "
+                           "Overwriting checkpoints is not supported. "
+                           "Please specify a different checkpoint-dir to "
+                           "save checkpoints from this run.")
+    # Restore from checkpoint if necessary
+    checkpoint = restore_checkpoint(config) if config.checkpoint_file else None
+
+    # Execution parameters
+    opts = get_options(config)
 
     # W&B
     if config.wandb:
         wandb.init(project="torch-bert")
         wandb.config.update(vars(config))
 
-    # Execution parameters
-    opts = get_options(config)
-
     # Dataset selection
     dataset = get_dataset(config)
 
     # Dataloader
-    print("---------- Data Loading Started ---------")
+    logger("------------------- Data Loading Started ------------------")
     start_loading = time.perf_counter()
     loader = DataLoader(opts,
                         dataset,
@@ -68,8 +74,8 @@ if __name__ == "__main__":
         raise RuntimeError("Not enough data in input_files for current configuration, "
                            "try reducing deviceIterations or gradientAccumulation.")
     duration_loader = time.perf_counter() - start_loading
-    print(f"Data loaded in {duration_loader} secs")
-    print("-----------------------------------------")
+    logger(f"Data loaded in {duration_loader} secs")
+    logger("-----------------------------------------------------------")
 
     # IPU Model and Optimizer
     model = PipelinedBertWithLoss(config).half().train()
@@ -78,91 +84,95 @@ if __name__ == "__main__":
                                  config.lr_warmup, config.training_steps)
 
     # Restore model from checkpoint
-    epochs_finished = 0
+    steps_finished = 0
     if checkpoint:
         model.load_state_dict(checkpoint["model_state_dict"])
-        if config.restore_epochs_and_optimizer:
+        if config.restore_steps_and_optimizer:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            scheduler.last_epoch = epochs_finished = checkpoint["epoch"]
+            scheduler.last_epoch = steps_finished = checkpoint["step"]
             checkpoint_metrics = checkpoint["metrics"]
         else:
             # Checkpoint model with epochs and optimizer state reset
             # for further training
-            save_model(config, model, optimizer, epochs_finished)
+            save_checkpoint(config, model, optimizer, steps_finished)
     else:
         # Checkpoint model at start of run
-        save_model(config, model, optimizer, epochs_finished)
+        save_checkpoint(config, model, optimizer, steps_finished)
 
     poptorch_model = trainingModel(model, opts, optimizer=optimizer)
 
     # Compile model
-    print("---------- Compilation Started ---------")
+    logger("---------- Compilation/Loading from Cache Started ---------")
     start_compile = time.perf_counter()
     datum = get_generated_datum(config)
     poptorch_model.compile(*datum)
     duration_compilation = time.perf_counter() - start_compile
-    print(f"Compiled model in {duration_compilation} secs")
-    print("---------------------------------------")
+    logger(f"Compiled/Loaded model in {duration_compilation} secs")
+    logger("-----------------------------------------------------------")
 
     # Training loop
-    print("---------- Training Started -----------")
-
+    logger("--------------------- Training Started --------------------")
     factor = config.gradient_accumulation * config.batches_per_step
-    epochs = ceil(config.training_steps / steps_per_epoch) - epochs_finished
-    training_steps = config.training_steps - (steps_per_epoch * epochs_finished)
     start_train = time.perf_counter()
-    train_iterator = trange(epochs, desc="Training")
-    for epoch in train_iterator:
-        epoch_iterator = tqdm(loader, desc="Epoch")
+    loader = cycle(loader)
+    train_iterator = tqdm(range(steps_finished, config.training_steps),
+                          desc="Training", disable=config.disable_progress_bar)
+    for step in train_iterator:
         start_step = time.perf_counter()
-        for step, datum in enumerate(epoch_iterator):
-            current_step = step + epoch * steps_per_epoch
-            outputs = poptorch_model(*datum)
-            scheduler.step()
-            poptorch_model.setOptimizer(optimizer)
-            step_length = time.perf_counter() - start_step
-            step_throughput = config.samples_per_step / step_length
+        outputs = poptorch_model(*next(loader))
+        scheduler.step()
+        poptorch_model.setOptimizer(optimizer)
+        step_length = time.perf_counter() - start_step
+        step_throughput = config.samples_per_step / step_length
 
-            epoch_iterator.set_description(
-                f"Epoch: {epoch} / {epochs} - "
-                f"LR: {scheduler.get_last_lr()[0]:.2e} - "
-                f"Step: {current_step} / {training_steps} - "
-                f"Loss: {outputs[0].div(factor).mean().item():3.3f} - "
-                f"Loss/MLM: {outputs[1].div(factor).mean().item():3.3f} - "
-                f"Loss/NSP: {outputs[2].div(factor).mean().item():3.3f} - "
-                f"Acc/MLM: {outputs[3].div(factor).mean().item():3.3f} - "
-                f"Acc/NSP: {outputs[4].div(factor).mean().item():3.3f}")
+        train_iterator.set_description(
+            f"Step: {step} / {config.training_steps-1} - "
+            f"LR: {scheduler.get_last_lr()[0]:.2e} - "
+            f"Loss: {outputs[0].div(factor).mean().item():3.3f} - "
+            f"Loss/MLM: {outputs[1].div(factor).mean().item():3.3f} - "
+            f"Loss/NSP: {outputs[2].div(factor).mean().item():3.3f} - "
+            f"Acc/MLM: {outputs[3].div(factor).mean().item():3.3f} - "
+            f"Acc/NSP: {outputs[4].div(factor).mean().item():3.3f}")
+        train_iterator.set_postfix_str(f"{step_throughput:.1f} sequences/s")
+        if config.disable_progress_bar:
+            print(train_iterator.desc, train_iterator.postfix, file=sys.stderr)
 
-            epoch_iterator.set_postfix_str(f"{step_throughput:.1f} sequences/s")
-            if config.wandb:
-                wandb.log({"Loss": outputs[0].div(factor).mean().item(),
-                           "Loss/MLM": outputs[1].div(factor).mean().item(),
-                           "Loss/NSP": outputs[2].div(factor).mean().item(),
-                           "Acc/MLM": outputs[3].div(factor).mean().item(),
-                           "Acc/NSP": outputs[4].div(factor).mean().item(),
-                           "LR": scheduler.get_last_lr()[0],
-                           "Epoch": epoch,
-                           "Throughput": step_throughput})
+        if config.wandb:
+            wandb.log({"Loss": outputs[0].div(factor).mean().item(),
+                       "Loss/MLM": outputs[1].div(factor).mean().item(),
+                       "Loss/NSP": outputs[2].div(factor).mean().item(),
+                       "Acc/MLM": outputs[3].div(factor).mean().item(),
+                       "Acc/NSP": outputs[4].div(factor).mean().item(),
+                       "LR": scheduler.get_last_lr()[0],
+                       "Step": step,
+                       "Throughput": step_throughput})
 
-            start_step = time.perf_counter()
-            if current_step + 1 == training_steps:
-                break  # Training finished mid-epoch
+            if config.wandb_param_every_nsteps and (step % config.wandb_param_every_nsteps) == 0:
+                for name, parameter in poptorch_model.named_parameters():
+                    wandb.run.history.torch.log_tensor_stats(parameter.data, name)
 
-        if config.checkpoint_every_epoch and (current_step + 1 != training_steps):
-            save_model(config, model, optimizer, epoch + epochs_finished + 1,
-                       metrics=prepare_checkpoint_metrics(outputs, factor))
+        if config.checkpoint_every_nsteps and (step % config.checkpoint_every_nsteps) == 0:
+            save_checkpoint(config, model, optimizer, step,
+                            metrics={"Loss": outputs[0].div(factor).mean().item(),
+                                     "Acc/MLM": outputs[3].div(factor).mean().item(),
+                                     "Acc/NSP": outputs[4].div(factor).mean().item()})
+
+        if step + 1 == config.training_steps:
+            break  # Training finished mid-epoch
 
     stop_train = time.perf_counter()
     # Checkpoint at end of run
-    save_model(config, model, optimizer, epoch + epochs_finished + 1,
-               metrics=prepare_checkpoint_metrics(outputs, factor))
-    print("---------------------------------------")
+    save_checkpoint(config, model, optimizer, step,
+                    metrics={"Loss": outputs[0].div(factor).mean().item(),
+                             "Acc/MLM": outputs[3].div(factor).mean().item(),
+                             "Acc/NSP": outputs[4].div(factor).mean().item()})
+    logger("-----------------------------------------------------------")
 
-    print("---------- Training Metrics -----------")
-    print(f"global_batch_size: {config.global_batch_size}")
-    print(f"batches_per_step: {config.batches_per_step}")
-    print(f"training_steps: {training_steps}")
+    logger("-------------------- Training Metrics ---------------------")
+    logger(f"global_batch_size: {config.global_batch_size}")
+    logger(f"batches_per_step: {config.batches_per_step}")
+    logger(f"training_steps: {config.training_steps}")
     duration_run = stop_train - start_train
-    num_samples = config.samples_per_step * training_steps
-    print(f"Training time: {duration_run:.3f} secs")
-    print("---------------------------------------")
+    num_samples = config.samples_per_step * config.training_steps
+    logger(f"Training time: {duration_run:.3f} secs")
+    logger("-----------------------------------------------------------")

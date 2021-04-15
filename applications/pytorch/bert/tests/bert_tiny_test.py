@@ -88,14 +88,16 @@ def test_loss_down_accuracy_up(embedding_serialization, pred_head_transform, rep
     """
     _, stderr = run_bert_cmdline({
         "--config": "demo_tiny_128",
+        "--training-steps": 350,
         "--replication-factor": replication,
         "--pred-head-transform": pred_head_transform,
-        "--embedding-serialization-factor": embedding_serialization
+        "--embedding-serialization-factor": embedding_serialization,
+        "--disable-progress-bar": True
     })
     losses, accs = parse_result_for_loss_accuracy(stderr)
     loss_going_down(losses)
     accuracy_going_up(accs)
-    accuracy_reached_threshold(accs, 0.20)
+    accuracy_reached_threshold(accs, 0.95)
 
 
 @pytest.mark.category3
@@ -110,6 +112,7 @@ def test_base_convergence():
         "--config": "pretrain_base_3L_128_single",
         "--training-steps": 150,
         "--replication": 4,
+        "--disable-progress-bar": True
     })
     losses, accs = parse_result_for_loss_accuracy(stderr)
     loss_going_down(losses)

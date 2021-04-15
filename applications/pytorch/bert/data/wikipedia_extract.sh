@@ -11,4 +11,4 @@ dump_path="${1}"
 
 output_path="${2}"
 
-python3 -m wikiextractor.WikiExtractor --processes 16 -o "${output_path}" "${dump_path}"
+python3 -m wikiextractor.WikiExtractor -b 100M --processes 64 -o "${output_path}" "${dump_path}"

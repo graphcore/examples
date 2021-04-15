@@ -19,12 +19,17 @@ import numpy as np
 import ctypes
 import os
 
+from utils import logger
+
 
 def get_options(config):
     '''
     Set ipu specific options for the model, see documentation:
     https://docs.graphcore.ai/en/latest/
     '''
+
+    if poptorch.ipuHardwareVersion() != 2:
+        raise RuntimeError("This version of BERT requires an IPU Mk2 system to run.")
 
     # Custom ops
     if config.custom_ops is True:
@@ -36,7 +41,7 @@ def get_options(config):
             ops_and_patterns.setEmbeddingSize(config.hidden_size)
             ops_and_patterns.setHiddenSize(config.hidden_size)
         else:
-            print("Could not find custom_ops.so. Execute `make` before running this script.")
+            logger("Could not find custom_ops.so. Execute `make` before running this script.")
             exit()
 
     # Numpy options
@@ -49,9 +54,11 @@ def get_options(config):
     opts.deviceIterations(config.batches_per_step)
     opts.replicationFactor(config.replication_factor)
     opts.Training.gradientAccumulation(config.gradient_accumulation)
+    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
     opts.anchorMode(poptorch.AnchorMode.Sum)
     opts.TensorLocations.setOptimizerLocation(
-        poptorch.TensorLocationSettings().useOnChipStorage(False))
+        poptorch.TensorLocationSettings()
+        .useOnChipStorage(False))
     opts.randomSeed(config.random_seed)
     opts.setExecutionStrategy(
         poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
@@ -61,6 +68,8 @@ def get_options(config):
         for i in range(config.ipus_per_replica)
     }
     opts.setAvailableMemoryProportion(mem_prop)
+    if config.executable_cache_dir:
+        opts.enableExecutableCaching(config.executable_cache_dir)
 
     # Precision options
     opts.Precision.enableStochasticRounding(True)
@@ -69,6 +78,7 @@ def get_options(config):
 
     # PopART options
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
+    opts._Popart.set("subgraphCopyingStrategy", int(popart.SubgraphCopyingStrategy.JustInTime))
     opts._Popart.set("outlineThreshold", 10.0)
     opts._Popart.set("enableGroupedMatmuls", False)
     opts._Popart.set("accumulateOuterFragmentSettings.schedule",

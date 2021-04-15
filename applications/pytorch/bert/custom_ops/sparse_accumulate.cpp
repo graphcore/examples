@@ -150,7 +150,7 @@ public:
             getInTensor(SparseAccumulateOp::getDpsf1InIndex());
 
         if (dpsf.elementType() != accl.elementType()) {
-            dpsf = popops::cast(graph(), dpsf, accl.elementType(), prog, debugPrefix("dpsf_cast"));
+            dpsf = popops::cast(graph(), dpsf, accl.elementType(), prog, debugContext("dpsf_cast"));
         }
 
         if (isConst && op.initDpsf1.val() == 0.0f) {
@@ -164,7 +164,7 @@ public:
         indices = indices.expand({1 - axis});
 
 	if (grad.elementType() != accl.elementType()) {
-          grad = popops::cast(graph(), grad, accl.elementType(), prog, debugPrefix("grad_cast"));
+          grad = popops::cast(graph(), grad, accl.elementType(), prog, debugContext("grad_cast"));
 	}
 
         // Accumulate the updates into the target
@@ -178,7 +178,7 @@ public:
                                prog,
                                popops::SlicePlan(),
                                poplar::OptionFlags(),
-                               debugPrefix("nonConstSparseSGD1Accl"));
+                               debugContext("nonConstSparseSGD1Accl"));
 
         // reference accl returned
         setOutTensor(SparseAccumulateOp::getUpdatedVarOutIndex(), accl);

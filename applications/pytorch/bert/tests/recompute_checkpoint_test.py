@@ -34,8 +34,7 @@ def test_checkpoint_in_ir():
     args = """
     --config unit_test
     --lr-schedule constant
-    --encoder-start-ipu 1
-    --layers-per-ipu 3
+    --layers-per-ipu 0 3
     --vocab-size 30400
     --weight-decay 0.0
     --recompute-checkpoint-every-layer True
@@ -76,8 +75,7 @@ def test_checkpoint_not_in_ir():
     args = """
     --config unit_test
     --lr-schedule constant
-    --encoder-start-ipu 1
-    --layers-per-ipu 3
+    --layers-per-ipu 0 3
     --vocab-size 30400
     --weight-decay 0.0
     --recompute-checkpoint-every-layer False

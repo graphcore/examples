@@ -295,7 +295,7 @@ public:
     switch (reduction) {
     case popart::ReductionType::Sum:
       tmp = reduce(graph(), negLogLikelihood, {0}, params, prog,
-                   debugPrefix("CtcLoss"));
+                   debugContext("CtcLoss"));
 
       setOutTensor(0, popops::cast(graph(), tmp, poplarOutType, prog));
       break;
@@ -311,7 +311,7 @@ public:
       popops::mapInPlace(graph(), _1 / _2, {negLogLikelihood, lengths}, prog);
 
       tmp = reduce(graph(), negLogLikelihood, {0}, scaleParams, prog,
-                   debugPrefix("CtcLoss"));
+                   debugContext("CtcLoss"));
       setOutTensor(0, popops::cast(graph(), tmp, poplarOutType, prog));
     } break;
     case popart::ReductionType::NoReduction:
@@ -375,7 +375,7 @@ public:
       graph().setTileMapping(bsTensor, 0);
       popops::mulInPlace(graph(), len, bsTensor, prog);
       popops::divInPlace(graph(), grad, len.reshape({1, 1, len.shape()[0]}),
-                         prog, debugPrefix("rescaleLossTgtlenafter"));
+                         prog, debugContext("rescaleLossTgtlenafter"));
     }
 
     auto output = grad.dimShuffle({2, 0, 1});

@@ -138,7 +138,7 @@ public:
                                  pe::Lt(pe::_1, pe::Const(0.0f)));
 
     popops::mapInPlace(graph(), expression, {input}, prog,
-                       debugPrefix("LeakyRelu"), poplar::OptionFlags());
+                       debugContext("LeakyRelu"), poplar::OptionFlags());
 
     setOutTensor(0, input);
   }
@@ -167,7 +167,7 @@ public:
 
     auto output =
         popops::map(graph(), expression, {grad, input}, prog,
-                    debugPrefix("LeakyReluGrad"), poplar::OptionFlags());
+                    debugContext("LeakyReluGrad"), poplar::OptionFlags());
 
     setOutTensor(0, output);
   }

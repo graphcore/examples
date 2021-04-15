@@ -18,6 +18,9 @@ import torch.nn.functional as F
 import poptorch
 import transformers
 
+from bert_fused_attention import BertFusedSelfAttention
+from utils import logger
+
 
 def gather_indices(sequence, positions):
     """
@@ -54,10 +57,10 @@ class SerializedLinear(nn.Linear):
         return output
 
 
-def _get_layer_ipu(layers_per_ipu, encoder_start_ipu):
+def _get_layer_ipu(layers_per_ipu):
     # List of the IPU Id for each encoder layer
     layer_ipu = []
-    for ipu, n_layers in enumerate(layers_per_ipu, encoder_start_ipu):
+    for ipu, n_layers in enumerate(layers_per_ipu):
         layer_ipu += [ipu] * n_layers
     return layer_ipu
 
@@ -89,6 +92,9 @@ class PipelinedBertWithLoss(nn.Module):
         self.config = config
         self.model = transformers.BertForPreTraining(config)
 
+        for layer in self.model.bert.encoder.layer:
+            layer.attention.self = BertFusedSelfAttention(config)
+
         if not self.config.pred_head_transform:
             # Disable prediction head transform
             self.model.cls.predictions.transform = nn.Identity()
@@ -100,24 +106,24 @@ class PipelinedBertWithLoss(nn.Module):
                                                                   mode=poptorch.MatMulSerializationMode.OutputChannels)
             self.model.tie_weights()
 
-        layer_ipu = _get_layer_ipu(config.layers_per_ipu, config.encoder_start_ipu)
+        layer_ipu = _get_layer_ipu(config.layers_per_ipu)
 
-        print("---------- Device Allocation -----------")
-        print("Embedding  --> IPU 0")
+        logger("-------------------- Device Allocation --------------------")
+        logger("Embedding  --> IPU 0")
         self.model.bert.embeddings = poptorch.BeginBlock(self.model.bert.embeddings, "Embedding", ipu_id=0)
 
         for index, layer in enumerate(self.model.bert.encoder.layer):
             ipu = layer_ipu[index]
             layer = RecomputationCheckpoint(layer) if config.recompute_checkpoint_every_layer else layer
             self.model.bert.encoder.layer[index] = poptorch.BeginBlock(layer, f"Encoder{index}", ipu_id=ipu)
-            print(f"Encoder {index:<2} --> IPU {ipu}")
+            logger(f"Encoder {index:<2} --> IPU {ipu}")
 
-        print("Pooler     --> IPU 0")
+        logger("Pooler     --> IPU 0")
         self.model.bert.pooler = poptorch.BeginBlock(self.model.bert.pooler, "Pooler", ipu_id=0)
 
-        print("Classifier --> IPU 0")
+        logger("Classifier --> IPU 0")
         self.model.cls = poptorch.BeginBlock(self.model.cls, "Classifier", ipu_id=0)
-        print("---------------------------------------")
+        logger("-----------------------------------------------------------")
 
     def forward(self, input_ids, attention_mask, token_type_ids, masked_lm_positions, masked_lm_labels=None, next_sentence_label=None):
         inputs = {

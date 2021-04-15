@@ -79,7 +79,7 @@ poprun -vv --host xxx.xxx.xxx.xx1,xxx.xxx.xxx.xx2,xxx.xxx.xxx.xx3,xxx.xxx.xxx.xx
 1 x IPU-M2000
 
 ```
-python3 train.py --model=efficientnet --model-size=4 --data-dir $DATASETS_DIR/ --precision=16.32 --group-dim=16 --expand-ratio=4 --dataset=imagenet --groups=4 --optimiser=RMSprop --lr-schedule=exponential --xla-recompute --enable-conv-dithering --available-memory-proportion=0.15 --pipeline-schedule Grouped --internal-exchange-optimisation-target balanced --weight-avg-exp 0.97 --enable-half-partials --cutmix-lambda 0.85 --mixup-alpha=0.2 --disable-variable-offloading --batch-size=5 --shards=4 --pipeline-split block2c block4c block6a --pipeline --gradient-accumulation-count=40 --no-validation --epochs 2
+python3 train.py --model=efficientnet --model-size=4 --data-dir $DATASETS_DIR/ --precision=16.32 --group-dim=16 --expand-ratio=4 --dataset=imagenet --groups=4 --optimiser=RMSprop --lr-schedule=exponential --xla-recompute --enable-conv-dithering --available-memory-proportion=0.15 --pipeline-schedule Grouped --internal-exchange-optimisation-target balanced --weight-avg-exp 0.97 --enable-half-partials --cutmix-lambda 0.85 --mixup-alpha=0.2 --disable-variable-offloading --batch-size=5 --shards=4 --pipeline-split block2c block4c block6a --pipeline --gradient-accumulation-count=160 --no-validation --epochs 2
 ```
 
 1 x IPU-POD16 (using poprun)
@@ -91,7 +91,7 @@ poprun --numa-aware 1 --num-replicas 4 --ipus-per-replica 4 --num-instances 4 py
 1 x IPU-POD64
 
 xxx.xxx.xxx.xxx: Replace with IP addresses as appropriate for the target hardware
-'--mca btl_tcp_if_include xxx.xxx.xxx.0/xx' sets the default route for traffic between Poplar hosts. It should be configured for a network to which all Poplar hosts have access, and for which the interfaces only have a single IP address. 
+'--mca btl_tcp_if_include xxx.xxx.xxx.0/xx' sets the default route for traffic between Poplar hosts. It should be configured for a network to which all Poplar hosts have access, and for which the interfaces only have a single IP address.
 
 ```
 poprun -vv --host xxx.xxx.xxx.xx1,xxx.xxx.xxx.xx2,xxx.xxx.xxx.xx3,xxx.xxx.xxx.xx4 --numa-aware=yes --only-output-from-instance 0 --vipu-server-host=xxx.xxx.xxx.xx1 --vipu-partition=pod64_partition_name --reset-partition=no --update-partition=no --mpi-global-args="--tag-output --mca btl_tcp_if_include xxx.xxx.xxx.0/xx" --mpi-local-args="--tag-output -x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x IPUOF_VIPU_API_TIMEOUT=300 -x OPAL_PREFIX -x TF_POPLAR_FLAGS=--executable_cache_path=/localdata/$USER/exec_cache" --num-replicas=16 --num-instances=16 --ipus-per-replica 4 python3 train.py --config mk2_efficientnet_b4_g16_64ipus --no-validation --epochs 10
@@ -111,7 +111,7 @@ python3 validation.py --model resnet --model-size 50 --dataset imagenet --batch-
 
 Change the --batch-size argument to be one of 1, 4, 16, 32, 64, 90
 
-#### ResNeXt-101 - synthetic data 
+#### ResNeXt-101 - synthetic data
 
 1 x IPU
 

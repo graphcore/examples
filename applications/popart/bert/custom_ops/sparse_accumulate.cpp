@@ -148,7 +148,7 @@ public:
             getInTensor(SparseAccumulateOp::getDpsf1InIndex());
 
         if (dpsf.elementType() != accl.elementType()) {
-            dpsf = popops::cast(graph(), dpsf, accl.elementType(), prog, debugPrefix("dpsf_cast"));
+            dpsf = popops::cast(graph(), dpsf, accl.elementType(), prog, debugContext("dpsf_cast"));
         }
 
         if (isConst && op.initDpsf1.val() == 0.0f) {
@@ -172,7 +172,7 @@ public:
                                prog,
                                popops::SlicePlan(),
                                poplar::OptionFlags(),
-                               debugPrefix("nonConstSparseSGD1Accl"));
+                               debugContext("nonConstSparseSGD1Accl"));
 
         // reference accl returned
         setOutTensor(SparseAccumulateOp::getUpdatedVarOutIndex(), accl);

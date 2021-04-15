@@ -118,7 +118,7 @@ public:
     // shape
     if (indices.numElements() == 0) {
       auto result = graph().addVariable(
-          data.elementType(), outputShape, debugPrefix("result"));
+          data.elementType(), outputShape, debugContext("result"));
 
       setOutTensor(TiedGatherOp::outIndex(), result);
     } else {
@@ -139,9 +139,9 @@ public:
       poplar::Tensor mask;
       if (op.check_indices) {
         auto gather_size = data.shape()[0];
-        mask = popops::lt(graph(), offsets, static_cast<unsigned>(gather_size), prog, debugPrefix("mask<size"));
-        auto indices_mask = popops::cast(graph(), mask, offsets.elementType(), prog, debugPrefix("mask_castInt"));
-        offsets = popops::mul(graph(), offsets, indices_mask, prog, debugPrefix("masked_indices"));
+        mask = popops::lt(graph(), offsets, static_cast<unsigned>(gather_size), prog, debugContext("mask<size"));
+        auto indices_mask = popops::cast(graph(), mask, offsets.elementType(), prog, debugContext("mask_castInt"));
+        offsets = popops::mul(graph(), offsets, indices_mask, prog, debugContext("masked_indices"));
       }
 
       // Change (1)
@@ -151,12 +151,12 @@ public:
                                    0,
                                    prog,
                                    popops::GatherParams(),
-                                   debugPrefix());
+                                   debugContext());
       
       // Change (2)
       if (op.check_indices) {
-        auto out_mask = popops::cast(graph(), mask, data.elementType(), prog, debugPrefix("mask_cast"));
-        popops::mulInPlace(graph(), result, out_mask.expand({1}), prog, debugPrefix("masked_result"));
+        auto out_mask = popops::cast(graph(), mask, data.elementType(), prog, debugContext("mask_cast"));
+        popops::mulInPlace(graph(), result, out_mask.expand({1}), prog, debugContext("masked_result"));
       }
 
       // Reshape the result to "unflatten" the other dimensions.

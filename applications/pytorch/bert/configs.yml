@@ -16,7 +16,6 @@
 defaults: &defaults
   random_seed: 42
   vocab_size: 30400
-  encoder_start_ipu: 1
   dataloader_workers: 64
   async_dataloader: True
   file_buffer_size: 100
@@ -56,7 +55,7 @@ demo_tiny_128:
   num_attention_heads: 8
   sequence_length: 128
   mask_tokens: 20
-  layers_per_ipu: 1
+  layers_per_ipu: [0, 1, 1, 1]
   matmul_proportion: 0.6
 
   # Optimizer
@@ -75,12 +74,11 @@ pretrain_base_128: &pretrain_base_128
   <<: *defaults
 
   # Execution
-  batch_size: 16
+  batch_size: 32
   training_steps: 7038
   batches_per_step: 1
   replication_factor: 4
-  gradient_accumulation: 1024
-  mask_tokens: 20
+  gradient_accumulation: 512
 
   # Model
   hidden_size: 768
@@ -88,15 +86,16 @@ pretrain_base_128: &pretrain_base_128
   num_attention_heads: 12
   sequence_length: 128
   mask_tokens: 20
-  layers_per_ipu: 4
-  matmul_proportion: 0.28
+  layers_per_ipu: [0, 4, 4, 4]
+  matmul_proportion: 0.25
+  recompute_checkpoint_every_layer: True
 
   # Optimizer
   optimizer: LAMBNoBiasCorrection
   lr_warmup: 0.28
   lr_schedule: linear
   learning_rate: 0.006
-  loss_scaling: 512.0
+  loss_scaling: 16384.0
   weight_decay: 0.01
 
   # Dataset
@@ -108,9 +107,9 @@ pretrain_base_384:
   <<: *pretrain_base_128
 
   # Execution
-  batch_size: 4
+  batch_size: 8
   training_steps: 2137
-  gradient_accumulation: 1024
+  gradient_accumulation: 512
 
   # Model
   sequence_length: 384
@@ -130,11 +129,11 @@ pretrain_large_128: &pretrain_large_128
   <<: *defaults
 
   # Execution
-  batch_size: 4
+  batch_size: 8
   training_steps: 7038
   batches_per_step: 1
   replication_factor: 4
-  gradient_accumulation: 4096
+  gradient_accumulation: 2048
 
   # Model
   hidden_size: 1024
@@ -142,7 +141,6 @@ pretrain_large_128: &pretrain_large_128
   num_attention_heads: 16
   sequence_length: 128
   mask_tokens: 20
-  encoder_start_ipu: 0
   layers_per_ipu: [3, 7, 7, 7]
   matmul_proportion: [0.15, 0.25, 0.25, 0.25]
   embedding_serialization_factor: 2
@@ -152,8 +150,8 @@ pretrain_large_128: &pretrain_large_128
   optimizer: LAMB
   lr_warmup: 0.28
   lr_schedule: linear
-  learning_rate: 0.005
-  loss_scaling: 64.0
+  learning_rate: 0.006
+  loss_scaling: 8192.0
   weight_decay: 0.01
 
   # Dataset
@@ -161,13 +159,26 @@ pretrain_large_128: &pretrain_large_128
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-pretrain_large_384:
+pretrain_large_128_POD64:
   <<: *pretrain_large_128
 
   # Execution
-  batch_size: 1
+  replication_factor: 16
+  gradient_accumulation: 512
+
+  # Optimizer
+  loss_scaling: 16384.0
+
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_384: &pretrain_large_384
+  <<: *pretrain_large_128
+
+  # Execution
+  batch_size: 2
   training_steps: 2137
-  gradient_accumulation: 4096
+  gradient_accumulation: 2048
 
   # Model
   sequence_length: 384
@@ -183,6 +194,18 @@ pretrain_large_384:
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
+pretrain_large_384_POD64:
+  <<: *pretrain_large_384
+
+  # Execution
+  replication_factor: 16
+  gradient_accumulation: 512
+
+  # Optimizer
+  loss_scaling: 1024.0
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
 unit_test:
   <<: *defaults
   vocab_size: 1000
@@ -190,7 +213,7 @@ unit_test:
   num_hidden_layers: 3
   num_attention_heads: 8
   sequence_length: 128
-  layers_per_ipu: 1
+  layers_per_ipu: [0, 1, 1, 1]
   gradient_accumulation: 16
   replication_factor: 1
   batch_size: 1
@@ -210,14 +233,14 @@ pretrain_base_3L_128_single:
   batches_per_step: 64
   replication_factor: 1
   gradient_accumulation: 128
-  dataloader_workers: 4
+  dataloader_workers: 1
 
   # Model
   hidden_size: 768
   num_hidden_layers: 3
   num_attention_heads: 12
   sequence_length: 128
-  layers_per_ipu: 1
+  layers_per_ipu: [0, 1, 1, 1]
   matmul_proportion: 0.28
 
   # Optimizer

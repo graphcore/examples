@@ -85,7 +85,7 @@ public:
         auto seed = getInTensor(SeedModifyOp::getInputIndex());
         auto seed_modifier = op.seed_modifier;
 
-        auto modified = popops::add(graph(), seed, seed_modifier*MODIFIER_SHIFT, prog, debugPrefix());
+        auto modified = popops::add(graph(), seed, seed_modifier*MODIFIER_SHIFT, prog, debugContext());
 
         setOutTensor(SeedModifyOp::getOutputIndex(), modified);
     }

@@ -180,7 +180,7 @@ public:
                        popops::expr::Mul(popops::expr::Mul(popops::expr::_1,
                                                            popops::expr::_1),
                                          popops::expr::_1),
-                       {get(inId(0))}, prog, debugPrefix("CubeOp")));
+                       {get(inId(0))}, prog, debugContext("CubeOp")));
   }
 };
 
@@ -205,7 +205,7 @@ public:
                                                             popops::expr::_1),
                                           popops::expr::_2)),
                     {get(inId(0)), get(inId(1))}, // FwdOut, GradOut
-                    prog, debugPrefix("CubeGradOp")));
+                    prog, debugContext("CubeGradOp")));
   }
 };
 

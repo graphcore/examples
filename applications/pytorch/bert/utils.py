@@ -16,8 +16,19 @@ import sys
 import yaml
 import argparse
 
+import logging
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 config_file = "./configs.yml"
+
+
+def cycle(iterator):
+    """
+    Loop `iterator` forever
+    """
+    while True:
+        for item in iterator:
+            yield item
 
 
 def str_to_bool(value):
@@ -63,12 +74,13 @@ def parse_bert_args(args=None):
     parser.add_argument("--enable-half-partials", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Enable half partials for matmuls and convolutions globally")
     parser.add_argument("--ipus-per-replica", type=int, help="Number of IPUs required by each replica")
-    parser.add_argument("--encoder-start-ipu", type=int, choices=[0, 1],
-                        help="The index of the IPU that the first encoder will be placed on. Can be 0 or 1.")
     parser.add_argument("--layers-per-ipu", type=int, nargs="+",
                         help="Number of encoders placed on each IPU. Can be a single number, for an equal number encoder layers per IPU.\
                               Or it can be a list of numbers, specifying number of encoder layers for each individual IPU.")
     parser.add_argument("--matmul-proportion", type=float, nargs="+", help="Relative IPU memory proportion size allocated for matmul")
+    parser.add_argument("--executable-cache-dir", type=str, default="",
+                        help="Directory where Poplar executables are cached. If set, recompilation of identical graphs can be avoided. "
+                        "Required for both saving and loading executables.")
     parser.add_argument("--async-dataloader", type=str_to_bool, nargs="?", const=True, default=True,
                         help="Enable asynchronous mode in the DataLoader")
     parser.add_argument("--file-buffer-size", type=int, help="Number of files to load into the Dataset internal buffer for shuffling.")
@@ -112,16 +124,20 @@ def parse_bert_args(args=None):
                         help="Enable custom ops")
     parser.add_argument("--wandb", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Enabling logging to Weights and Biases")
+    parser.add_argument("--wandb-param-every-nsteps", type=int, default=None,
+                        help="Log the model parameter statistics to Weights and Biases after every n training steps")
+    parser.add_argument("--disable-progress-bar", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Disable the training progress bar. This is useful if you want to parse the stdout of a run")
 
     # Checkpointing
     parser.add_argument("--checkpoint-dir", type=str, default="", help="Directory where checkpoints will be saved and restored from.\
                              This can be either an absolute or relative path. If this is not specified, only end of run checkpoint is\
                              saved in an automatically generated directory at the root of this project. Specifying directory is\
                              recommended to keep track of checkpoints.")
-    parser.add_argument("--checkpoint-every-epoch", type=str_to_bool, nargs="?", const=True, default=False,
-                        help="Option to checkpoint model after each epoch.")
-    parser.add_argument("--restore-epochs-and-optimizer", type=str_to_bool, nargs="?", const=True, default=False,
-                        help="Restore epoch and optimizer state to continue training. This should normally be True when resuming a\
+    parser.add_argument("--checkpoint-every-nsteps", type=int, default=None,
+                        help="Option to checkpoint model after every n training steps.")
+    parser.add_argument("--restore-steps-and-optimizer", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Restore steps and optimizer state to continue training. This should normally be True when resuming a\
                               previously stopped run, otherwise False.")
     parser.add_argument("--checkpoint-file", type=str, default="", help="Checkpoint to be retrieved for further training. This can\
                               be either an absolute or relative path to the checkpoint file.")
@@ -144,7 +160,7 @@ def parse_bert_args(args=None):
     unknown_args = set(yaml_args) - known_args
 
     if unknown_args:
-        print(f" Warning: Unknown arg(s) in config file: {unknown_args}")
+        logger(f" Warning: Unknown arg(s) in config file: {unknown_args}")
 
     parser.set_defaults(**yaml_args)
     args = parser.parse_args(remaining_args)
@@ -158,7 +174,7 @@ def parse_bert_args(args=None):
         args.layers_per_ipu = [layers_per_ipu_] * (args.num_hidden_layers // layers_per_ipu_)
 
     if sum(args.layers_per_ipu) != args.num_hidden_layers:
-        raise ValueError(f"layers_per_ipu not compatible with number of hidden layers: {args.layers_per_ipu} and {args.num_hidden_layers}")
+        parser.error(f"layers_per_ipu not compatible with number of hidden layers: {args.layers_per_ipu} and {args.num_hidden_layers}")
 
     # Expand matmul_proportion input into list representation
     if isinstance(args.matmul_proportion, float):
@@ -168,9 +184,16 @@ def parse_bert_args(args=None):
         if len(args.matmul_proportion) == 1:
             args.matmul_proportion = args.matmul_proportion * args.ipus_per_replica
         else:
-            raise ValueError(f"Length of matmul_proportion doesn't match ipus_per_replica: {args.matmul_proportion} vs {args.ipus_per_replica}")
+            parser.error(f"Length of matmul_proportion doesn't match ipus_per_replica: {args.matmul_proportion} vs {args.ipus_per_replica}")
+
+    if args.checkpoint_every_nsteps is not None and args.checkpoint_every_nsteps < 1:
+        parser.error("checkpoint-every-nsteps must be >=1")
 
     args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.batch_size
     args.samples_per_step = args.global_batch_size * args.batches_per_step
     args.intermediate_size = args.hidden_size * 4
     return args
+
+
+def logger(msg):
+    logging.info(msg)

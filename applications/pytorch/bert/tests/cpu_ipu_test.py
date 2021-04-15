@@ -37,8 +37,7 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization):
     args = """
     --config unit_test
     --lr-schedule constant
-    --encoder-start-ipu 1
-    --layers-per-ipu 3
+    --layers-per-ipu 0 3
     --vocab-size 30400
     --batch-size 10
     --batches-per-step 1

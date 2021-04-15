@@ -32,6 +32,11 @@ To see the available options available to use in the command line interface use 
 python bert.py --help
 ```
 
+## Caching executables
+
+When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable saving/loading from the cache store, use `--executable-cache-dir <relative/path/to/cache/store>` when running the application.
+
+
 ## Run the tests
 
 Setup your environment and generate the sample dataset as explained above and run `pytest` from the root folder.
@@ -73,10 +78,10 @@ The result should be a folder containing directories named `AA`, `AB`...
 ### Pre-processing
 
 Install nltk package with `pip install nltk`.
-Use the `wikipedia_preprocessing.py` script to preprocess the extracted files.
+Use the `wikipedia_preprocess.py` script to preprocess the extracted files.
 
 ```console
-./data/wikipedia_preprocessing.py --input-file-path <chosen-folder-for-extracted-files> --output-file-path <chosen-folder-for-preprocessed-files>
+./data/wikipedia_preprocess.py --input-file-path <chosen-folder-for-extracted-files> --output-file-path <chosen-folder-for-preprocessed-files>
 ```
 
 ### Tokenization
