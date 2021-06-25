@@ -15,10 +15,18 @@
 from collections import defaultdict
 import re
 import numpy as np
+import popart
 import onnx
+from onnx import numpy_helper
+from onnx.external_data_helper import load_external_data_for_model
+from onnx.onnx_pb import TensorProto
 
 
-def load_initializers_from_onnx(model_path):
+def is_external_weight(weight):
+    return weight.HasField("data_location") and weight.data_location == TensorProto.EXTERNAL
+
+
+def load_initializers_from_onnx(model_path, load_optimizer=False):
     """Load initial weights from an onnx checkpoint.
 
     Args:
@@ -28,18 +36,39 @@ def load_initializers_from_onnx(model_path):
         Dict: Mapping of popart weight names to numpy values.
     """
     initializers = {}
-    model = onnx.load(model_path)
+    # By default onnx.load will look for initializers in the same dir as onnx model.
+    # However builder.saveIntializersExternally takes real path or path relative to run dir
+    # and stores it in the onnxproto.
+    model = onnx.load(model_path, load_external_data=False)
+
+    has_external_data = any(is_external_weight(weight) for weight in model.graph.initializer)
+    if has_external_data:
+        load_external_data_for_model(model, '')
+
+    optimizer_prefix = (popart.reservedAccl1Prefix(),
+                        popart.reservedAccl2Prefix(),
+                        popart.reservedAcclPrefix(),
+                        popart.reservedAccumPrefix(),
+                        popart.reservedStepPrefix())
+
     for weight in model.graph.initializer:
-        if weight.data_type == onnx.TensorProto.FLOAT16:
+        is_optimizer_state = any(x in weight.name for x in optimizer_prefix)
+        if not load_optimizer and is_optimizer_state:
+            continue
+
+        if is_external_weight(weight) or weight.data_type != onnx.TensorProto.FLOAT16:
+            np_weight = numpy_helper.to_array(weight)
+        else:
             int_data = np.asarray(weight.int32_data, np.int32)
             np_weight = int_data.view(dtype=np.float16).reshape(weight.dims)
+
+        if is_optimizer_state:
+            initializers[weight.name] = np_weight.astype(np.float32)
         else:
-            np_weight = onnx.numpy_helper.to_array(weight)
-        initializers[weight.name] = np_weight
+            initializers[weight.name] = np_weight
 
     initializers = handle_split_qkv(initializers)
     initializers = handle_split_word_embedding(initializers)
-
     return initializers
 
 
@@ -57,7 +86,7 @@ def handle_split_qkv(initializers):
 
     for i, layer in layer_splits.items():
         if set(layer.keys()) != {"Q", "K", "V"}:
-            raise RuntimeError(f"Could not find Q, K and V in the initializers. Only {layers.keys()}")
+            raise RuntimeError(f"Could not find Q, K and V in the initializers. Only {layer.keys()}")
         initializers[f"Layer{i}/Attention/QKV"] = np.concatenate([layer["Q"], layer["K"], layer["V"]], axis=1)
 
     return initializers

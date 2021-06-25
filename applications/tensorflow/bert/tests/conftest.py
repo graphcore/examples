@@ -16,15 +16,7 @@ import subprocess
 from pathlib import Path
 import pytest
 import ctypes
-
-
-def remote_buffers_available():
-    output = subprocess.run(["gc-info -d 0 -i | grep 'remote buffers: 1'"],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            shell=True,
-                            check=False)
-    return output.returncode == 0
+from examples_tests.test_util import remote_buffers_available
 
 
 def pytest_collection_modifyitems(config, items):

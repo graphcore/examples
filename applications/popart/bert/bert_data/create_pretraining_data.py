@@ -22,25 +22,36 @@ This script has been adapated from the original google-research/bert repo found 
 Main changes:
   Remove dependency on TensorFlow
   Save files as binaries
-  Rearrange examples to match the input requirements for the IPU version of BERT. For more details see README.md
+  Optionally rearrange MLM tokens to the front of the sequence (required for un-packed BERT on IPU)
+  Perform tokenization in parallel
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 from tqdm import tqdm
 import collections
 import random
 import argparse
 import glob
 import struct
-from itertools import chain
+from itertools import chain, repeat
 from functools import reduce
-
-import torch
+from concurrent.futures import ProcessPoolExecutor
 
 import tokenization
+
+def parallel_tokenizer(chunk, tokenizer):
+  indices, lines = chunk
+  tokens = {}
+  for i, index in enumerate(indices):
+    line = tokenization.convert_to_unicode(lines[i])
+    line = line.strip()
+    t = tokenizer.tokenize(line)
+    tokens[index] = t
+  return tokens
 
 
 class TrainingInstance(object):
@@ -72,7 +83,7 @@ class TrainingInstance(object):
 
 
 def write_instance_to_example_files(instances, tokenizer, max_seq_length,
-                                    mask_tokens, output_files, pad_position_value, max_samples=-1):
+                                    mask_tokens, output_files, args, max_samples=-1):
   """Create Binary files from `TrainingInstance`s."""
   writers = []
   for output_file in output_files:
@@ -98,14 +109,7 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
 
     masked_lm_positions = list(instance.masked_lm_positions)
     masked_lm_ids = tokenizer.convert_tokens_to_ids(instance.masked_lm_labels)
-    masked_lm_weights = [1.0] * len(masked_lm_ids)
-
-    # Removing this makes sure that the logic below doesn't mask the CLS token as idx of CLS == 0.
-    # while len(masked_lm_positions) < mask_tokens:
-    #   masked_lm_positions.append(0)
-    #   masked_lm_ids.append(0)
-    #   masked_lm_weights.append(0.0)
-
+    masked_lm_weights = [1] * len(masked_lm_ids)
     next_sentence_label = 1 if instance.is_random_next else 0
 
     features = collections.OrderedDict()
@@ -117,47 +121,79 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     features["masked_lm_weights"] = masked_lm_weights
     features["next_sentence_labels"] = [next_sentence_label]
 
-    # -----------------------------------------
-    # Main Change to original script. This handles the re-arranging of samples to put mask_tokens at the start.
+    if not args.dont_rearrange_mlm_tokens_to_front:
+      # -----------------------------------------
+      # Main Change to original script. This handles the re-arranging of samples to put mask_tokens at the start.
+      formatted_input = [0] * max_seq_length
+      formatted_pos = [args.pad_position_value] * max_seq_length
+      formatted_seg = [0] * max_seq_length
+      formatted_label = [0] * mask_tokens
+      current_mask_idx = 0
+      current_seq_idx = mask_tokens
+      for idx, input_id in enumerate(input_ids):
+        if input_id == 0:
+          continue
+        try:
+          masked_lm_idx = masked_lm_positions.index(idx)
+          formatted_input[current_mask_idx] = input_id
+          formatted_pos[current_mask_idx] = idx
+          formatted_seg[current_mask_idx] = segment_ids[idx]
+          formatted_label[current_mask_idx] = masked_lm_ids[masked_lm_idx]
+          current_mask_idx += 1
+        except ValueError:
+          formatted_input[current_seq_idx] = input_id
+          formatted_pos[current_seq_idx] = idx
+          formatted_seg[current_seq_idx] = segment_ids[idx]
+          current_seq_idx += 1
 
-    formatted_input = [0] * max_seq_length
-    formatted_pos = [pad_position_value] * max_seq_length
-    formatted_seg = [0] * max_seq_length
-    formatted_label = [0] * mask_tokens
-    current_mask_idx = 0
-    current_seq_idx = mask_tokens
-    for idx, input_id in enumerate(input_ids):
-      if input_id == 0:
-        continue
-      try:
-        masked_lm_idx = masked_lm_positions.index(idx)
-        formatted_input[current_mask_idx] = input_id
-        formatted_pos[current_mask_idx] = idx
-        formatted_seg[current_mask_idx] = segment_ids[idx]
-        formatted_label[current_mask_idx] = masked_lm_ids[masked_lm_idx]
-        current_mask_idx += 1
-      except ValueError:
-        formatted_input[current_seq_idx] = input_id
-        formatted_pos[current_seq_idx] = idx
-        formatted_seg[current_seq_idx] = segment_ids[idx]
-        current_seq_idx += 1
+      mask_tokens_padding_idx = [current_mask_idx]
+      sequence_padding_idx = [current_seq_idx]
+      nsp_label = [next_sentence_label]
 
-    mask_tokens_padding_idx = [current_mask_idx]
-    sequence_padding_idx = [current_seq_idx]
-    nsp_label = [next_sentence_label]
+      # Pack into binary format
+      line = reduce(lambda accl, i: accl + struct.pack('<I', i),
+                    chain(formatted_input,
+                          formatted_pos,
+                          formatted_seg,
+                          mask_tokens_padding_idx,
+                          sequence_padding_idx,
+                          formatted_label,
+                          nsp_label), b'')
+      writers[writer_index].write(line)
+      # -------------------------------------------
+    else:
+      #   Using the packed data format for 1 seq per pack
+      #   SEQ:
+      #   input_ids, [sequence_length]
+      #   input_mask, [sequence_length]
+      #   segment_ids, [sequence_length]
+      #   positions, [sequence_length] 
+      #   MLM:
+      #   masked_lm_positions, [mask_tokens + max_sequences_per_pack]
+      #   masked_lm_ids, [mask_tokens + max_sequences_per_pack]
+      #   masked_lm_weights, [mask_tokens + max_sequences_per_pack]
+      #   NSP:
+      #   next_sentence_positions, [max_sequences_per_pack]
+      #   next_sentence_labels, [max_sequences_per_pack]
+      #   next_sentence_weights, [max_sequences_per_pack]
+      while len(masked_lm_positions) < (mask_tokens + 1):
+        masked_lm_positions.append(0)
+        masked_lm_ids.append(0)
+        masked_lm_weights.append(0)
 
-    # Pack into binary format
-    line = reduce(lambda accl, i: accl + struct.pack('<I', i),
-                  chain(formatted_input,
-                        formatted_pos,
-                        formatted_seg,
-                        mask_tokens_padding_idx,
-                        sequence_padding_idx,
-                        formatted_label,
-                        nsp_label), b'')
-    writers[writer_index].write(line)
+      line = reduce(lambda accl, i: accl + struct.pack('<I', i),
+                    chain(input_ids,
+                          input_mask,
+                          segment_ids,
+                          list(range(max_seq_length)),
+                          masked_lm_positions,
+                          masked_lm_ids,
+                          masked_lm_weights,
+                          [0],
+                          [next_sentence_label],
+                          [1]), b'')
+      writers[writer_index].write(line)
 
-    # -------------------------------------------
 
     writer_index = (writer_index + 1) % len(writers)
     total_written += 1
@@ -180,13 +216,6 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
   print("Wrote %d total instances" % total_written)
 
 
-def count_lines(fname):
-    with open(fname) as f:
-        for i, l in enumerate(f):
-            pass
-    return i + 1
-
-
 def create_training_instances(input_files, tokenizer, max_seq_length,
                               dupe_factor, short_seq_prob, mlm_prob,
                               mask_tokens, rng):
@@ -199,25 +228,36 @@ def create_training_instances(input_files, tokenizer, max_seq_length,
   # sentence boundaries for the "next sentence prediction" task).
   # (2) Blank lines between documents. Document boundaries are needed so
   # that the "next sentence prediction" task doesn't span between documents.
+  lines = []
+  num_lines = 0
   for input_file in input_files:
-    lines = count_lines(input_file)
-    print(f"Line count {lines}")
     with open(input_file, "r") as reader:
-      print(f"*** Tokenising input file '{input_file}' ***")
-      for line_count in tqdm(range(lines+1)):
-        line = tokenization.convert_to_unicode(reader.readline())
-        if not line:
-          break
-        line = line.strip()
+      new_lines = reader.readlines() + ["\n"]
+      num_lines += len(new_lines)
+      lines.extend(new_lines)
 
-        # Empty lines are used as document delimiters
-        if not line:
-          all_documents.append([])
-        tokens = tokenizer.tokenize(line)
-        if tokens:
-          all_documents[-1].append(tokens)
+  # Tokenization is slow and can be done in parallel
+  start = time.time()
+  chunks = []
+  chunksize = 4000
+  for i, t in enumerate(range(0, num_lines, chunksize)):
+    line_chunk = lines[t:min(t+chunksize, num_lines)]
+    chunks.append([range(i*chunksize, i*chunksize+len(line_chunk)), line_chunk])
 
-  print("*** Done Tokenising ***")
+  tokens = {}
+  with ProcessPoolExecutor() as executor:
+    work = chunks, repeat(tokenizer)
+    for partial_result in executor.map(parallel_tokenizer, *work):
+      tokens.update(partial_result)
+
+  # Build documents
+  for i in range(num_lines):
+    # Empty lines are used as document delimiters
+    if len(tokens[i]) == 0:
+      all_documents.append([])
+    else:
+      all_documents[-1].append(tokens[i])
+  print(f"Tokenizing {num_lines} lines from {len(all_documents)} docs took {time.time() - start:3.2f} seconds.")
 
   # Remove empty documents
   all_documents = [x for x in all_documents if x]
@@ -365,7 +405,20 @@ def create_masked_lm_predictions(tokens, mlm_prob,
   for (i, token) in enumerate(tokens):
     if token == "[CLS]" or token == "[SEP]":
       continue
-    cand_indexes.append([i])
+    # Whole Word Masking means that if we mask all of the wordpieces
+    # corresponding to an original word. When a word has been split into
+    # WordPieces, the first token does not have any marker and any subsequence
+    # tokens are prefixed with ##. So whenever we see the ## token, we
+    # append it to the previous set of word indexes.
+    #
+    # Note that Whole Word Masking does *not* change the training code
+    # at all -- we still predict each WordPiece independently, softmaxed
+    # over the entire vocabulary.
+    if (args.do_whole_word_mask and len(cand_indexes) >= 1 and
+        token.startswith("##")):
+      cand_indexes[-1].append(i)
+    else:
+      cand_indexes.append([i])
 
   rng.shuffle(cand_indexes)
 
@@ -448,34 +501,32 @@ def main(args):
   tokenizer = tokenization.FullTokenizer(
       vocab_file=args.vocab_file, do_lower_case=args.do_lower_case)
 
-  input_files = []
+  input_files_glob = []
   for input_pattern in args.input_file.split(","):
-    input_files.extend(glob.glob(input_pattern))
-
-  print("*** Reading from input files ***")
-  for input_file in input_files:
-    print(f"  {input_file}")
-
-  print("*** Done reading files ***")
+    input_files_glob.extend(sorted(glob.glob(input_pattern)))
 
   rng = random.Random(args.seed)
-  instances = create_training_instances(
-      input_files, tokenizer, args.sequence_length, args.duplication_factor,
-      args.short_seq_prob, args.mlm_prob, args.mask_tokens,
-      rng)
+  num_files = len(input_files_glob)
+  print(f"*** Reading {num_files} input files in batches of {args.max_open_files}***")
+  for i in tqdm(range(0, num_files, args.max_open_files)):
+    input_files = input_files_glob[i:min(i + args.max_open_files, num_files)]
+    for input_file in input_files:
+      print(f"processing:  {input_file}")
 
-  output_files = args.output_file.split(",")
-  print("*** Writing to output files ***")
-  for output_file in output_files:
-    print(f"  {output_file}")
+    instances = create_training_instances(input_files, tokenizer, args.sequence_length,
+                                          args.duplication_factor, args.short_seq_prob,
+                                          args.mlm_prob, args.mask_tokens, rng)
 
-  write_instance_to_example_files(instances, tokenizer, args.sequence_length,
-                                  args.mask_tokens, output_files, args.pad_position_value, args.max_samples)
+    output_files = [args.output_file + f"_{i//args.max_open_files}"]
+    print("*** Writing to output files ***")
+
+    write_instance_to_example_files(instances, tokenizer, args.sequence_length,
+                                    args.mask_tokens, output_files, args, args.max_samples)
 
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(
-      "PreTraining Data for Mlm/Next Sentence prediction")
+    "PreTraining Data for Mlm/Next Sentence prediction")
   parser.add_argument("--input-file", type=str, required=True)
   parser.add_argument("--output-file", type=str, required=True)
   parser.add_argument("--vocab-file", type=str, required=True)
@@ -489,5 +540,8 @@ if __name__ == "__main__":
   parser.add_argument("--max-samples", type=int, default=-1)
   parser.add_argument("--pad-position-value", type=int, default=384,
                       help="Value in the positional input for [PAD] tokens")
+  parser.add_argument("--do-whole-word-mask", type=bool, default=False)
+  parser.add_argument("--dont-rearrange-mlm-tokens-to-front", action="store_true")
+  parser.add_argument("--max-open-files", type=int, default=1)
   args = parser.parse_args()
   main(args)

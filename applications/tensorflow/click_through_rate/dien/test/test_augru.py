@@ -21,6 +21,7 @@ import pytest
 import numpy as np
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ipu import utils
+from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.framework import ops
 from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu.ops.rnn_ops import PopnnAUGRU
@@ -57,9 +58,9 @@ class TestDIENAUGRU(unittest.TestCase):
         seq_len = tf.placeholder(shape=[bs], dtype=tf.int32)
         alphas = tf.placeholder(shape=[seqlen, bs], dtype=self.model_dtype)
 
-        cfg = utils.create_ipu_config(profiling=False, profile_execution=False)
-        cfg = utils.auto_select_ipus(cfg, 1)
-        utils.configure_ipu_system(cfg)
+        cfg = IPUConfig()
+        cfg.auto_select_ipus = 1
+        cfg.configure_ipu_system()
         utils.move_variable_initialization_to_cpu()
 
         with ops.device("/device:IPU:0"):

@@ -17,8 +17,8 @@ import poptorch
 import pytest
 import numpy as np
 from transformers import BertTokenizer, BertConfig
-from bert_model import PipelinedBertWithLoss
-from bert_ipu import get_options
+from modeling import PipelinedBertForPretraining
+from ipu_options import get_options
 from utils import parse_bert_args
 
 
@@ -55,8 +55,8 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization):
     # Models and options
     opts = get_options(config)
     opts.anchorMode(poptorch.AnchorMode.Final)
-    model_cpu = PipelinedBertWithLoss(config).train()
-    model_ipu = PipelinedBertWithLoss(config).train()
+    model_cpu = PipelinedBertForPretraining(config).train()
+    model_ipu = PipelinedBertForPretraining(config).train()
     model_ipu.load_state_dict(model_cpu.state_dict())
 
     # Check that copy was successful

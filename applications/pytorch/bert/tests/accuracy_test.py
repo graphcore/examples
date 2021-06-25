@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import torch
-from bert_model import accuracy, accuracy_masked
+from modeling import accuracy, accuracy_masked
 
 
 def test_accuracy():

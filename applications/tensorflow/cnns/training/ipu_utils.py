@@ -13,86 +13,110 @@
 # limitations under the License.
 
 import os
+import subprocess
+import re
+from tensorflow.python.ipu.config import IPUConfig, SchedulingAlgorithm
 from tensorflow.python.ipu import utils
 from tensorflow.python.ipu.utils import ExecutionProfileType
+
+
+def get_ipu_arch():
+    try:
+        cmd = ['gc-info', '-d', '0', '--ipu-arch']
+        ret = subprocess.check_output(cmd).decode('utf-8')
+
+        pattern = re.compile('ipu(\d)')
+        match = pattern.match(ret)
+        arch = int(match.group(1))
+    except:
+        arch = 2
+    return arch
 
 
 def get_config(prng=False,
                ipu_id=-1,
                shards=1,
                number_of_replicas=1,
-               max_cross_replica_buffer_size=10*1024*1024,
+               max_cross_replica_buffer_size=50*1024*1024,
                merge_infeed_io_copies=True,
                fp_exceptions=True,
                half_partials=False,
                conv_dithering=False,
-               xla_recompute=False,
+               conv_output=False,
+               enable_recomputation=False,
                seed=None,
                profile=None,
                availableMemoryProportion=None,
                stable_norm=False,
                internalExchangeOptimisationTarget=None,
-               limitVertexState=None):
+               num_io_tiles=0,
+               number_of_distributed_batch_norm_replicas=1,
+               min_remote_tensor_size=128,
+               compile_only=False,
+               nanoo=True,
+               scheduling_algorithm=SchedulingAlgorithm.CHOOSE_BEST
+               ):
     """Builds ipu_options"""
+    config = IPUConfig()
 
-    profile_exec_modes = {"NO_PROFILE": ExecutionProfileType.NO_PROFILE,
-                          "TILE_PROFILE": ExecutionProfileType.TILE_PROFILE,
-                          "DEVICE_PROFILE": ExecutionProfileType.DEVICE_PROFILE,
-                          "IPU_PROFILE": ExecutionProfileType.IPU_PROFILE}
-
-    config = utils.create_ipu_config(merge_infeed_io_copies=merge_infeed_io_copies,
-                                     always_rearrange_copies_on_the_host=False,
-                                     profiling=profile is not None,
-                                     profile_execution=profile_exec_modes[profile] if profile else None)
-
-    config = utils.set_optimization_options(config,
-                                            max_cross_replica_sum_buffer_size=max_cross_replica_buffer_size)
+    config.optimizations.merge_infeed_io_copies = merge_infeed_io_copies
+    if scheduling_algorithm == SchedulingAlgorithm.CHOOSE_BEST:
+        if get_ipu_arch() == 2:
+            scheduling_algorithm = SchedulingAlgorithm.SHORTEST_PATH
+        else:
+            # work around to avoid OOM on MK1
+            scheduling_algorithm = SchedulingAlgorithm.CHOOSE_BEST
+    config.scheduling.algorithm = scheduling_algorithm
+    config.experimental.always_rearrange_copies_on_the_host = False
+    config.optimizations.minimum_remote_tensor_size = min_remote_tensor_size
+    config.optimizations.maximum_cross_replica_sum_buffer_size = (
+        max_cross_replica_buffer_size)
 
     if ipu_id == -1:
-        config = utils.auto_select_ipus(config, number_of_replicas*shards)
+        config.auto_select_ipus = number_of_replicas * shards
     else:
-        config = utils.select_ipus(config, [ipu_id])
-    config = utils.set_compilation_options(config, {
-        "device.clearAtomicFlagAfterExchange": "false",
-        "prng.enable": "true" if prng else "false",
-        "target.deterministicWorkers": "false" if seed is None else "portable",
-    })
+        config.select_ipus = [ipu_id]
+    config.compilation_poplar_options = {
+        'target.deterministicWorkers': 'false' if seed is None else 'portable'}
 
     if internalExchangeOptimisationTarget is not None:
-        utils.set_compilation_options(config, {
-            "opt.internalExchangeOptimisationTarget": internalExchangeOptimisationTarget
-        })
+        config.compilation_poplar_options['opt.internalExchangeOptimisationTarget'] = internalExchangeOptimisationTarget
 
-    if limitVertexState is not None:
-        config = utils.set_compilation_options(config, {
-            "opt.limitVertexStateToLower256K": "true" if limitVertexState else "false"
-        })
+    if num_io_tiles != 0:
+        config.io_tiles.place_ops_on_io_tiles = True
+        config.io_tiles.num_io_tiles = num_io_tiles
+
+    config.convolutions.poplar_options = {}
 
     if availableMemoryProportion is not None:
-        config = utils.set_convolution_options(config, {
-            "availableMemoryProportion": str(availableMemoryProportion)
-        })
+        config.convolutions.poplar_options['availableMemoryProportion'] = str(availableMemoryProportion)
 
     if half_partials:
-        config = utils.set_convolution_options(config, {
-            "partialsType": 'half'
-        })
-        config = utils.set_matmul_options(config, {
-            "partialsType": 'half'
-        })
-
+        config.convolutions.poplar_options['partialsType'] = 'half'
+        config.matmuls.poplar_options['partialsType'] = 'half'
     if conv_dithering:
-        config = utils.set_convolution_options(config, {
-            "enableConvDithering": "true"
-        })
+        config.convolutions.poplar_options['enableConvDithering'] = 'true'
+    if conv_output:
+        config.convolutions.poplar_options['gatherConvOutput'] = 'true'
 
     if stable_norm:
-        config = utils.set_norm_options(config, use_stable_statistics=True)
+        config.norms.use_stable_statistics = True
 
-    if xla_recompute:
-        utils.set_recomputation_options(config, allow_recompute=True)
+    if enable_recomputation:
+        config.allow_recompute = True
 
-    config = utils.set_floating_point_behaviour_options(config, inv=fp_exceptions, div0=fp_exceptions,
-                                                        oflo=fp_exceptions, esr=prng, nanoo=True)
+    config.floating_point_behaviour.inv = fp_exceptions
+    config.floating_point_behaviour.div0 = fp_exceptions
+    config.floating_point_behaviour.oflo = fp_exceptions
+    config.floating_point_behaviour.esr = prng
+    config.floating_point_behaviour.nanoo = nanoo
+
+    config.norms.experimental.distributed_batch_norm_replica_group_size = (
+        number_of_distributed_batch_norm_replicas)
+
+    if compile_only:
+        config.device_connection.version = 'ipu2'
+        config.device_connection.enable_remote_buffers = True
+        config.device_connection.type = utils.DeviceConnectionType.NEVER
 
     return config

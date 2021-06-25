@@ -1,8 +1,8 @@
-# CNN Benchmarking on IPUs
+# Benchmarking on IPUs
 
 This README describes how to run PyTorch CNN models for training throughput benchmarking on the Mk2 IPU.
 
-### PyTorch CNNs Training
+## Preparation
 
 Follow the installation instructions in applications/pytorch/cnns.
 Follow the instructions in applications/pytorch/cnns/datasets/README.md to create a directory containing the ImageNet dataset in the WebDataset format.
@@ -12,32 +12,27 @@ Run the following command lines from inside the applications/pytorch/cnns/traini
 
 The first value reported will always be lower than the subsequent values. When calculating an average throughput, remove the first reported result from the calculation in order to get a fair indication of the throughput of a full training run.
 
-#### ResNet-50 v1.5 Training
+## Training
 
-1 x IPU-M2000
+### ResNet-50 v1.5
 
-```
-python train.py --model resnet50 --data imagenet --imagenet-data-path $DATASETS_DIR/imagenet-webdata-format --replicas 4 --batch-size 6 --gradient-accumulation 44 --epoch 2 --optimizer sgd --momentum 0.85 --half-partial --validation-mode none --disable-metrics --precision 16.16 --device-iterations 1 --norm-type group --norm-num-groups 32  --enable-stochastic-rounding 
-```
+#### 1 x IPU-M2000
 
-1 x IPU-POD16
-
-```
-python train.py --model resnet50 --data imagenet --imagenet-data-path $DATASETS_DIR/imagenet-webdata-format --replicas 16 --batch-size 6 --gradient-accumulation 11 --epoch 2 --optimizer sgd --momentum 0.85 --half-partial --validation-mode none --disable-metrics --precision 16.16 --device-iterations 1 --norm-type group --norm-num-groups 32 --enable-stochastic-rounding 
+Command:
+```console
+python train.py --config resnet50_mk2_pipelined --imagenet-data-path $DATASETS_DIR/imagenet-webdata-img --replicas 1 --gradient-accumulation 1024 --epoch 2 --validation-mode none --disable-metrics
 ```
 
-#### EfficientNet-B4  Modified (Group Dim 16) Training
+#### 1 x IPU-POD16
 
-1 x IPU-M2000
-
-```
-python train.py --model efficientnet-b4 --data imagenet --imagenet-data-path $DATASETS_DIR/imagenet-webdata-format --replicas 1 --batch-size 4 --gradient-accumulation 256 --epoch 2 --optimizer rmsprop --half-partial --validation-mode none --disable-metrics --precision 16.32 --device-iterations 1 --norm-type group --norm-num-groups 4 --efficientnet-group-dim 16 --efficientnet-expand-ratio 4 --pipeline-splits _blocks/3 _blocks/9 _blocks/22 --enable-stochastic-rounding
-```
-
-1 x IPU-POD16
-
-```
-python train.py --model efficientnet-b4 --data imagenet --imagenet-data-path $DATASETS_DIR/imagenet-webdata-format --replicas 4 --batch-size 4 --gradient-accumulation 64 --epoch 2 --optimizer rmsprop --half-partial --validation-mode none --disable-metrics --precision 16.32 --device-iterations 1 --norm-type group --norm-num-groups 4 --efficientnet-group-dim 16 --efficientnet-expand-ratio 4 --pipeline-splits _blocks/3 _blocks/9 _blocks/22 --enable-stochastic-rounding
+Command:
+```console
+poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --ipus-per-replica 4 --num-instances 4 --num-replicas 4 python train.py --config resnet50_mk2_pipelined --imagenet-data-path $DATASETS_DIR/imagenet-webdata-img --epoch 2 --validation-mode none --disable-metrics
 ```
 
+#### 1 x IPU-POD64
 
+Command:
+```console
+./rn50_pod64.sh --wandb --imagenet-data-path $DATASETS_DIR/imagenet-webdata-img --checkpoint-path checkpoints/pod64_convergence
+```

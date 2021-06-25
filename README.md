@@ -1,7 +1,6 @@
 # Graphcore code examples
 
-This repository contains sample applications, code examples and tutorials for use with
-Graphcore IPUs.
+This repository contains sample applications and code examples for use with Graphcore IPUs.
 
 If you are interested in finding out more about Graphcore, including
 getting preview access to IPUs to run these examples, please register
@@ -12,7 +11,7 @@ repository. If you are actively using this repository and want to report any iss
 
 The latest version of the documentation for the Poplar software stack, and other developer resources, is available at https://www.graphcore.ai/developer.
 
->  The code presented here requires using Poplar SDK 2.0.x
+>  The code presented here requires using Poplar SDK 2.1.x
 
 Please install and enable the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
 
@@ -26,11 +25,13 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 | ------- | ---- |
 | BERT (PopART) | [code](applications/popart/bert) |
 | BERT (TensorFlow) | [code](applications/tensorflow/bert) |
-| BERT (Pytorch) | [code](applications/pytorch/bert) |
-| DeepVoice3 (PopART) | [code](applications/popart/deep_voice) |
+| BERT (PyTorch) | [code](applications/pytorch/bert) |
+| DeepVoice3 speech synthesis (PopART) | [code](applications/popart/deep_voice) |
+| Conformer speech recognition (PopART) | [code](applications/popart/conformer_asr) |
 | CNN Training including ResNet, ResNeXt & EfficientNet (TensorFlow) | [code](applications/tensorflow/cnns/training) |
 | CNN Inference including ResNet, MobileNet & EfficientNet (TensorFlow) | [code](applications/tensorflow/cnns/inference) |
 | CNN Training & Inference including ResNet, ResNeXt & EfficientNet (PyTorch) | [code](applications/pytorch/cnns) |
+| Yolo v3 Object Detection (TensorFlow) | [code](applications/tensorflow/detection) |
 | ResNext Inference (PopART) | [code](applications/popart/resnext_inference) |
 | Recommendation using Autoencoders (TensorFlow) | [code](applications/tensorflow/autoencoder) |
 | Sales forecasting example (TensorFlow) | [code](applications/tensorflow/sales_forecasting) |
@@ -47,21 +48,11 @@ The [applications/](applications) folder contains example applications written i
 
 ### Code examples
 
-The [code_examples/](code_examples) folder contains small code examples showing you how to use various software features when developing for IPUs. See the READMEs in each folder for details.
+The [code_examples/](code_examples) folder contains smaller models and code examples. See the READMEs in each folder for details.
 
 ### Tutorials
 
-The [tutorials/](tutorials) folder contains tutorials to help you get started using the Poplar SDK and Graphcore tools. Currently, this contains:
-
-* [tutorials/poplar](tutorials/poplar) - A set of tutorials to introduce the Poplar graph programming framework and the PopLibs libraries.
-* [tutorials/pytorch](tutorials/pytorch) - A tutorial to introduce the PyTorch framework support for the IPU.
-* [tutorials/tensorflow1](tutorials/tensorflow1) - A set of tutorials to introduce the TensorFlow 1 framework support for the IPU.
-* [tutorials/tensorflow2](tutorials/tensorflow2) - A set of tutorials to introduce the TensorFlow 2 framework support for the IPU.
-* [tutorials/popvision](tutorials/popvision) - A set of tutorials to introduce PopVision, our suite of graphical application analysis tools.
-
-A complete list of available tutorials can be found in the [tutorials/](tutorials) folder.
-
-The README files for the tutorials are best viewed on GitHub.
+Tutorials and further code examples can be found in our dedicated [Tutorials repository](https://github.com/graphcore/tutorials).
 
 ### Utilities
 

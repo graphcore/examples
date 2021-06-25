@@ -25,7 +25,7 @@ def test_wikipedia_dataset():
     '''
 
     # Read config and get inputs
-    json_config = "configs/pretrain_large_128.json"
+    json_config = "configs/mk1/pretrain_large_128.json"
     with open(json_config, "r") as cfg:
         config = json.loads(cfg.read())
     sequence_length = config['sequence_length']

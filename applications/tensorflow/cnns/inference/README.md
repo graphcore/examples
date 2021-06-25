@@ -18,9 +18,6 @@ The following models can be run on a single IPU using this inference harness.
 6. EfficientNet-Edgetpu-M (up to bs=2, fp32)
 7. EfficientNet-Edgetpu-L (up to bs=1, fp32)
 
-The following models require multiple IPUs to be able to run using this inference harness.
-1. DenseNet (up to bs=4 (with sharding=2), fp16)
-
 The application example downloads pre-trained weights using the `tensorflow.compat.v1.keras.applications` API.
 Further details can be found [on the TensorFlow website](https://www.tensorflow.org/api_docs/python/tf/keras/applications/).
 

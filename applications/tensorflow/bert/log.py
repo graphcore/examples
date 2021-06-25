@@ -63,15 +63,7 @@ def add_arguments(parser):
 
 
 def set_defaults(opts):
-    name = opts['name']
-
-    if opts["name_suffix"]:
-        name = name + "_" + opts["name_suffix"]
-
-    if opts.get("poplar_version"):
-        v = opts['poplar_version']
-        # name += "_v" + v[v.find("version ") + 8: v.rfind(' ')]
-        name += "_v" + v[v.find("version ") + 8: v.find(' (')]
+    name = f"{opts['task']}_{opts['optimizer']}"
 
     # We want this to be random even if random seeds have been set so that we don't overwrite
     # when re-running with the same seed
@@ -80,7 +72,7 @@ def set_defaults(opts):
     random.setstate(random_state)
 
     # System time with milliseconds
-    time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S.%f')[:-3]
     name += "_{}".format(time)
 
     if not os.path.isdir(opts["save_path"]):

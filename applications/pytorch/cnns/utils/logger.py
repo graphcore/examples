@@ -99,6 +99,12 @@ class Logger:
             if cls.wandb_logging:
                 write_to_wandb(results)
 
+    @classmethod
+    def log_model_histogram(cls, model):
+        for name, parameter in model.named_parameters():
+            if parameter.requires_grad:
+                wandb.run.history.torch.log_tensor_stats(parameter.data, name)
+
 
 def write_to_csv(filename, results):
     if os.path.exists(filename):

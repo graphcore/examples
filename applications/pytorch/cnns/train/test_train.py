@@ -23,7 +23,7 @@ def run_script(script_name, parameters, python=True):
     else:
         cmd = [script_name]
     cmd = cmd + param_list
-    out = subprocess.check_output(cmd, cwd=cwd).decode("utf-8")
+    out = subprocess.check_output(cmd, cwd=cwd, stderr=subprocess.PIPE).decode("utf-8")
     return out
 
 
@@ -52,17 +52,19 @@ def test_recomputation_checkpoints():
         labels_data = torch.ones(1).long()
         model_opts = poptorch.Options()
         if recompute:
-            model_opts.Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
+            model_opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
         model_opts.anchorMode(poptorch.AnchorMode.All)
         model_opts.randomSeed(0)
         model_opts.Training.gradientAccumulation(1)
+        model_opts.Precision.enableStochasticRounding(False)
         model_with_loss = TrainingModelWithLoss(model)
-        optimizer = SGD(model_with_loss.parameters(), lr=0.01, momentum=0.)
+        optimizer = SGD(model_with_loss.parameters(), lr=0.01, momentum=0., use_combined_accum=True)
         training_model = poptorch.trainingModel(model_with_loss, model_opts, optimizer=optimizer)
         predictions = []
         for _ in range(3):
-            preds, loss = training_model(input_data, labels_data)
+            preds, loss, _ = training_model(input_data, labels_data)
             predictions.append(preds)
+        training_model.destroy()
         return predictions
 
     class Options():
@@ -74,6 +76,7 @@ def test_recomputation_checkpoints():
             self.full_precision_norm = False
             self.normalization_location = "none"
             self.pipeline_splits = []
+            self.eight_bit_io = False
     opts = Options()
     torch.manual_seed(0)
     model = models.get_model(opts, datasets.datasets_info["cifar10"], pretrained=True)
@@ -93,33 +96,33 @@ def test_replicas_reduction():
 
     def common_model_opts():
         model_opts = poptorch.Options()
-        model_opts.Training.accumulationReductionType(poptorch.ReductionType.Mean)
+        model_opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
         model_opts.anchorMode(poptorch.AnchorMode.All)
         model_opts.randomSeed(0)
         model_opts.Training.gradientAccumulation(1)
         return model_opts
 
-    def run_model(model_opts, replicas):
+    def run_model(model_opts):
         input_data = torch.ones(4, 1)
         labels_data = torch.ones(4).long()
         model = torch.nn.Linear(1, 2, bias=False)
-        model_with_loss = TrainingModelWithLoss(model, replicas, 0.1)
-        optimizer = SGD(model_with_loss.parameters(), lr=0.1, momentum=0.)
+        model_with_loss = TrainingModelWithLoss(model, 0.1)
+        optimizer = SGD(model_with_loss.parameters(), lr=0.1, momentum=0., use_combined_accum=True)
         training_model = poptorch.trainingModel(model_with_loss, model_opts, optimizer=optimizer)
         for _ in range(3):
-            preds, loss = training_model(input_data, labels_data)
+            preds, loss, _ = training_model(input_data, labels_data)
         # return the weights of the model
         return list(model_with_loss.model.named_parameters())[0][1], loss
 
     # Single replica
     model_opts = common_model_opts()
     model_opts.replicationFactor(1)
-    single_replica_weights, single_replica_loss = run_model(model_opts, 1)
+    single_replica_weights, single_replica_loss = run_model(model_opts)
     # 4 replica running
     gc.collect()
     model_opts = common_model_opts()
     model_opts.replicationFactor(4)
-    replicated_weights, replicated_loss = run_model(model_opts, 4)
+    replicated_weights, replicated_loss = run_model(model_opts)
 
     assert torch.allclose(single_replica_weights, replicated_weights, atol=1e-05)
     assert torch.allclose(single_replica_loss, replicated_loss, atol=1e-05)
@@ -129,7 +132,7 @@ def test_replicas_reduction():
 @pytest.mark.ipus(1)
 def test_generated():
     gc.collect()
-    run_script("train.py", f"--data generated --model resnet18 --epoch 1 --precision 16.16 --validation-mode none --lr 0.001 --gradient-accumulation 128 --batch-size 1")
+    run_script("train.py", f"--data generated --model resnet18 --epoch 1 --precision 16.16 --validation-mode none --optimizer sgd_combined --lr 0.001 --gradient-accumulation 128 --batch-size 1 --dataloader-worker 4 --seed 0")
 
 
 @pytest.mark.category3
@@ -137,7 +140,20 @@ def test_generated():
 @pytest.mark.parametrize("precision", ["16.16", "32.32"])
 def test_synthetic(precision):
     gc.collect()
-    run_script("train.py", f"--data synthetic --model resnet18 --epoch 1 --precision {precision} --validation-mode none --lr 0.001 --gradient-accumulation 64 --batch-size 1")
+    run_script("train.py", f"--data synthetic --model resnet18 --epoch 1 --precision {precision} --validation-mode none --optimizer sgd_combined --lr 0.001 --gradient-accumulation 64 --batch-size 1 --dataloader-worker 4 --seed 0")
+
+
+@pytest.mark.parametrize("label_smoothing", [0.0, 1.0, 0.1, 0.5])
+def test_loss_function(label_smoothing):
+    torch.manual_seed(0)
+    inp = torch.rand(4, 10) * 10 - 5  # create random input between [-5,5)
+    label = torch.ones(4).long()
+    # calculate the ground truth
+    log_pred = torch.nn.functional.log_softmax(inp, dim=-1)
+    ground_truth = - torch.mean(torch.sum((label_smoothing / 10.0) * log_pred, dim=1) + (1.0 - label_smoothing) * log_pred[:, 1])
+    model_with_loss = TrainingModelWithLoss(lambda x: x, label_smoothing=label_smoothing)
+    _, loss, _ = model_with_loss(inp, label)
+    assert torch.allclose(ground_truth, loss, atol=1e-05)
 
 
 class TestSynthetic:
@@ -147,7 +163,7 @@ class TestSynthetic:
     def test_synthetic_mixed_precision(self):
         gc.collect()
         run_script("train.py", "--data synthetic --model resnet18 --epoch 1 --precision 16.32 --pipeline-splits layer4/0 "
-                   "--validation-mode none --lr 0.001 --gradient-accumulation 64")
+                   "--validation-mode none --optimizer sgd_combined --lr 0.001 --gradient-accumulation 64 --dataloader-worker 4 --seed 0")
 
 
 class TestTrainCIFAR10:
@@ -155,18 +171,19 @@ class TestTrainCIFAR10:
     @pytest.mark.ipus(1)
     def test_single_ipu_validation_groupnorm(self):
         gc.collect()
-        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 3 --precision 16.16 --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
-                                     "--norm-type group --norm-num-groups 32 --enable-stochastic-rounding")
+        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 3 --precision 16.16 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
+                                     "--norm-type group --norm-num-groups 32 --enable-stochastic-rounding --dataloader-worker 4 --seed 0")
         acc = get_test_accuracy(out)
         assert acc > 15.0
 
 
     @pytest.mark.category3
     @pytest.mark.ipus(1)
+    @pytest.mark.ipu_version("ipu2")
     def test_single_ipu_validation_batchnorm(self):
         gc.collect()
-        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 3 --precision 16.16 --lr 0.1 --gradient-accumulation 32 "
-                                     "--norm-type batch --batch-size 2 --enable-stochastic-rounding")
+        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 2 --precision 16.16 --optimizer sgd_combined --lr 0.1 --gradient-accumulation 8 "
+                                     "--norm-type batch --batch-size 16 --enable-stochastic-rounding --dataloader-worker 4 --seed 0")
         acc = get_test_accuracy(out)
         assert acc > 15.0
 
@@ -175,8 +192,8 @@ class TestTrainCIFAR10:
     @pytest.mark.ipus(2)
     def test_replicas(self):
         gc.collect()
-        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 2 --replicas 2 --precision 16.16 --validation-mode none --lr 0.1 "
-                                     "--gradient-accumulation 32 --enable-stochastic-rounding")
+        out = run_script("train.py", "--data cifar10 --model resnet18 --epoch 2 --replicas 2 --precision 16.16 --validation-mode none --optimizer sgd_combined --lr 0.1 "
+                                     "--gradient-accumulation 32 --enable-stochastic-rounding --dataloader-worker 4 --seed 0")
         acc = get_train_accuracy(out)
         assert acc > 15.0
 
@@ -185,8 +202,8 @@ class TestTrainCIFAR10:
     @pytest.mark.ipus(2)
     def test_efficient_net(self):
         gc.collect()
-        out = run_script("train.py", "--data cifar10 --epoch 2 --model efficientnet-b0 --precision 16.16 --validation-mode none --lr 0.1 --gradient-accumulation 64 "
-                                     "--pipeline-splits _blocks/4/_bn1 --norm-type group --norm-num-groups 4 --enable-stochastic-rounding")
+        out = run_script("train.py", "--data cifar10 --epoch 2 --model efficientnet-b0 --precision 16.16 --validation-mode none --optimizer sgd_combined --lr 0.1 --gradient-accumulation 64 "
+                                     "--pipeline-splits _blocks/4/_bn1 --norm-type group --norm-num-groups 4 --enable-stochastic-rounding --dataloader-worker 4 --seed 0")
         acc = get_train_accuracy(out)
         assert acc > 15.0
 
@@ -195,7 +212,7 @@ class TestTrainCIFAR10:
     @pytest.mark.ipus(1)
     def test_full_precision(self):
         gc.collect()
-        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 32.32 --lr 0.1 --batch-size 1 --gradient-accumulation 64")
+        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 32.32 --optimizer sgd_combined --lr 0.1 --batch-size 1 --gradient-accumulation 64 --dataloader-worker 4 --seed 0")
         acc = get_train_accuracy(out)
         assert acc > 15.0
 
@@ -205,8 +222,8 @@ class TestTrainCIFAR10:
     @pytest.mark.ipu_version("ipu2")
     def test_mixed_precision(self):
         gc.collect()
-        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --pipeline-splits layer4/0 --precision 16.32 "
-                                     "--lr 0.1 --batch-size 1 --gradient-accumulation 64 --validation-mode none")
+        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --pipeline-splits layer4/0 --precision 16.32 --optimizer sgd_combined "
+                                     "--lr 0.1 --batch-size 1 --gradient-accumulation 64 --validation-mode none --dataloader-worker 4 --seed 0")
         acc = get_train_accuracy(out)
         assert acc > 15.0
 
@@ -217,8 +234,8 @@ class TestRestoreCheckpoint:
     def test_restore_train(self):
         gc.collect()
         # create a model
-        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 16.16 --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
-                                     "--validation-mode none --norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_restore_train")
+        out = run_script("train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 16.16 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 --seed 0 "
+                                     "--validation-mode none --norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_restore_train --dataloader-worker 4")
         saved_train_acc = get_train_accuracy(out)
         # reload the model
         out = run_script("restore.py", "--checkpoint-path restore_test_path_test_restore_train/resnet18_cifar10_1.pt")
@@ -234,8 +251,8 @@ class TestRestoreCheckpoint:
     def test_validation(self):
         gc.collect()
         # create a model
-        out = run_script("train.py", "--data cifar10 --epoch 1 --model resnet18 --precision 16.16 --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
-                                     "--norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_validation")
+        out = run_script("train.py", "--data cifar10 --epoch 1 --model resnet18 --precision 16.16 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 --seed 0 "
+                                     "--norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_validation --dataloader-worker 4")
         saved_test_acc = get_test_accuracy(out)
         # validate the model
         out = run_script("validate.py", "--checkpoint-path restore_test_path_test_validation/resnet18_cifar10_1.pt")
@@ -253,8 +270,8 @@ class TestRestoreCheckpoint:
         gc.collect()
         script_dir = os.path.dirname(os.path.abspath(__file__))
         out1 = run_script("train.py", "--data cifar10 --epoch 3 --model resnet18 --precision 16.16 --weight-avg-strategy mean --norm-type group "
-                          "--norm-num-groups 32 --lr 0.1 --batch-size 1 --gradient-accumulation 64 --checkpoint-path restore_test_path_weight_avg "
-                          "--weight-avg-N 2")
+                          "--norm-num-groups 32 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 --checkpoint-path restore_test_path_weight_avg "
+                          "--weight-avg-N 2 --dataloader-worker 4 --seed 0")
         os.remove(os.path.join(script_dir, "restore_test_path_weight_avg", "resnet18_cifar10_3_averaged.pt"))
         _ = run_script("weight_avg.py", "--checkpoint-path restore_test_path_weight_avg --weight-avg-strategy mean --weight-avg-N 2")
         out2 = run_script("validate.py", "--checkpoint-path restore_test_path_weight_avg/resnet18_cifar10_3_averaged.pt")
@@ -270,8 +287,9 @@ class TestPopDist:
     @pytest.mark.ipus(4)
     def test_popdist(self):
         gc.collect()
-        out = run_script("poprun", "--num-instances=2 --numa-aware=yes --num-replicas=4 --ipus-per-replica 1 python train.py --data cifar10 --model resnet18 --epoch 2 "
-                                   "--precision 16.16 --lr 0.1 --batch-size 2 --gradient-accumulation 8 --enable-stochastic-rounding --validation-mode after", python=False)
+        out = run_script("poprun", "--mpi-global-args='--allow-run-as-root' --num-instances=2 --numa-aware=yes --num-replicas=4 --ipus-per-replica 1 python train.py --data cifar10 --model resnet18 --epoch 2 "
+                                   "--precision 16.16 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 8 --enable-stochastic-rounding --validation-mode after --dataloader-worker 4 "
+                                   "--norm-type group --norm-num-groups 32", python=False)
         train_acc = get_train_accuracy(out)
         assert train_acc > 15.0
         test_acc = get_test_accuracy(out)

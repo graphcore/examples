@@ -75,12 +75,12 @@ python3 conformer_inference.py --model-conf-file  model_configs/small_model_conf
 The ground-truth and model predictions will be saved in a `.txt` file at `/path/to/inference_results/`.
 
 
-### Run unit-tests for the conformer model
+### Run unit-tests
 
 To run unit-tests, simply do:
 
 ```
-pytest test_conformer.py
+pytest
 ```
 
 

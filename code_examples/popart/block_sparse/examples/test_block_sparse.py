@@ -373,7 +373,7 @@ def sparse_mm_train(sparse_mm_type, lhs_dims, vanilla_rhs_dims, block_size, spar
     label_tensorInfo = popart.TensorInfo("INT32", labels_shape)
     labelTensor = builder.addInputTensor(label_tensorInfo)
 
-    loss = builder.aiGraphcore.nllloss([probs, labelTensor], debugPrefix = "nllLossVal")
+    loss = builder.aiGraphcore.nllloss([probs, labelTensor], debugContext = "nllLossVal")
 
     proto = builder.getModelProto()
     #######################

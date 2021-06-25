@@ -94,7 +94,9 @@ def compute_latency_from_durations(durations: Iterable[float]):
     mean_latency = np.average(durations)
     min_latency = min(durations)
     max_latency = max(durations)
-    return mean_latency, min_latency, max_latency
+    p99_latency = np.percentile(durations, 99)
+    p999_latency = np.percentile(durations, 99.9)
+    return mean_latency, min_latency, max_latency, p99_latency, p999_latency
 
 
 def compute_latency_from_callbacks(start_times: DefaultDict[str, list],
@@ -112,7 +114,9 @@ def compute_latency_from_callbacks(start_times: DefaultDict[str, list],
     mean_latency = (sum(rtts)) / batches_per_step
     min_latency = min(rtts)
     max_latency = max(rtts)
+    p99_latency = np.percentile(rtts, 99)
+    p999_latency = np.percentile(rtts, 99.9)
     if (logging.getLogger().isEnabledFor(logging.DEBUG)):
         for i, v in enumerate(rtts):
             logging.debug(f"LATENCY: {i} {v}")
-    return mean_latency, min_latency, max_latency
+    return mean_latency, min_latency, max_latency, p99_latency, p999_latency

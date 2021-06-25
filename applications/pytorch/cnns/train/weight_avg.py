@@ -67,7 +67,7 @@ def average_model_weights(checkpoint_path, average_fn, checkpoint_N):
 def create_average_fn(opts):
     if opts.weight_avg_strategy == 'exponential':
         return lambda averaged_model_parameter, model_parameter, num_averaged:\
-            opts.weight_exp_decay * averaged_model_parameter + (1-opts.weight_exp_decay) * model_parameter
+            opts.weight_avg_exp_decay * averaged_model_parameter + (1-opts.weight_avg_exp_decay) * model_parameter
     else:  # mean strategy
         return None
 

@@ -26,19 +26,3 @@ source venv/bin/activate
 ```
 make all
 ```
-
-4. Run tests.
-
-   To run tests, first install `pytorch` and `pytest` by doing:
-   
-```
-pip install -r tests/requirements.txt
-```
-
-Then run the tests as follows: 
-```
-pytest tests/test_ctc_loss.py
-```
-  
-To see an example application where the CTC loss is used, 
-look at the Speech Recognition training example at `applications/popart/conformer_asr/conformer_train.py`

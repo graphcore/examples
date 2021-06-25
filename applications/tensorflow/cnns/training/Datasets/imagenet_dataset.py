@@ -33,6 +33,8 @@ class ImageNetData:
         self.n_splits = None
         self.split_fnames = None
         self.n_validation_images = 50000
+        self.dataset_percentage_to_use = opts['dataset_percentage_to_use']
+
 
     def _get_subset(self, split_id, batch_size, is_training, datatype):
         """
@@ -87,6 +89,17 @@ class ImageNetData:
         dataset = dataset.batch(batch_size, drop_remainder=True)
         return dataset
 
+
+    def _align_dataset_size(self):
+        num_of_files_to_use = len(self.fnames)
+        if num_of_files_to_use < self.n_splits:
+            raise ValueError(f"increase --dataset-percentage-to-use to have enough files to feed {self.n_splits} splits.")
+        num_of_files_to_use = num_of_files_to_use - (num_of_files_to_use % self.n_splits)
+
+        self.fnames = self.fnames[:num_of_files_to_use]
+        self.n_files = len(self.fnames)
+
+
     def n_validation_images_useable(self, batch_size):
         """
         Calculates how many validation images will be used for a given batch_size.
@@ -118,7 +131,6 @@ class ImageNetData:
         Calculates how many splits the TFRecords dataset should be divided into
         """
         n_splits = next_pow_2(self.n_cores / batch_size)
-        assert self.n_files % n_splits == 0, "splits must evenly divide number of files"
 
         # condition to work if 'train_with_valid_preprocessing' is set
         if (not is_training) and (len(self.fnames) <= 128):
@@ -129,6 +141,10 @@ class ImageNetData:
 
     def get_dataset(self, batch_size, is_training, datatype):
         self.n_splits = self._how_many_splits(batch_size, is_training)
+
+        self._align_dataset_size()
+        assert self.n_files % self.n_splits == 0, "splits must evenly divide number of files"
+
         self.split_fnames = self.even_split(self.fnames, self.n_splits)
 
         # Each of these dummies will map to a dataset
@@ -165,8 +181,12 @@ def next_pow_2(x):
 def accelerator_side_preprocessing(image, opts):
     # To speed up the data input, these steps can be done off-host
     from Datasets.imagenet_preprocessing import normalise_image
-    if opts["eight_bit_io"]:
-        dtypes = opts["precision"].split('.')
-        image = tf.cast(image, dtype=tf.float16 if dtypes[0] == '16' else tf.float32)
     image = normalise_image(image, full_normalisation=opts["normalise_input"])
+    return image
+
+
+def fused_accelerator_side_preprocessing(image, opts):
+    # To speed up the data input, these steps can be done off-host
+    from Datasets.imagenet_preprocessing import fused_normalise_image
+    image = fused_normalise_image(image, full_normalisation=opts["normalise_input"])
     return image

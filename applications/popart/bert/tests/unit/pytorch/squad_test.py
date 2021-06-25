@@ -145,23 +145,23 @@ def test_squad_bwd(custom_ops, mode, replication_factor, replicated_tensor_shard
             with popart_model.scope_provider(popart_model.builder, popart_model.squad_scope):
                 losses = [
                     popart_model.builder.aiGraphcore.l1loss(
-                        [outputs[0]], l1_lambda, debugPrefix="startsLossVal", reduction=popart.ReductionType.Sum),
+                        [outputs[0]], l1_lambda, debugContext="startsLossVal", reduction=popart.ReductionType.Sum),
                     popart_model.builder.aiGraphcore.l1loss(
-                        [outputs[1]], l1_lambda, debugPrefix="endsLossVal", reduction=popart.ReductionType.Sum),
+                        [outputs[1]], l1_lambda, debugContext="endsLossVal", reduction=popart.ReductionType.Sum),
                 ]
-                final_loss = popart_model.builder.aiOnnx.sum(losses, debugPrefix="finalLoss")
+                final_loss = popart_model.builder.aiOnnx.sum(losses, debugContext="finalLoss")
 
         else:
             losses = [
                 popart_model.builder.aiGraphcore.l1loss(
-                    [outputs[0]], l1_lambda, debugPrefix="startsLossVal", reduction=popart.ReductionType.Sum),
+                    [outputs[0]], l1_lambda, debugContext="startsLossVal", reduction=popart.ReductionType.Sum),
                 popart_model.builder.aiGraphcore.l1loss(
-                    [outputs[1]], l1_lambda, debugPrefix="endsLossVal", reduction=popart.ReductionType.Sum),
+                    [outputs[1]], l1_lambda, debugContext="endsLossVal", reduction=popart.ReductionType.Sum),
             ]
             for loss in losses:
                 popart_model.builder.virtualGraph(loss, popart_model.squad_scope.virtualGraph)
 
-            final_loss = popart_model.builder.aiOnnx.sum(losses, debugPrefix="finalLoss")
+            final_loss = popart_model.builder.aiOnnx.sum(losses, debugContext="finalLoss")
             popart_model.builder.virtualGraph(final_loss, popart_model.squad_scope.virtualGraph)
         return final_loss
 

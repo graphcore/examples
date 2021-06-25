@@ -91,22 +91,21 @@ def model_fn(mode=None, params=None, args=None, inference_features=None):
     def pipeline_stage1(global_step, features, labels):
         x = features
         skip_connections = []
-        with ipu.scopes.partials_type(partials_type):
-            x = conv2d_chain(x, [32, 32], 'encoder0')
-            skip_connections.append(x)
-            x = MaxPooling2D((2, 2))(x)
+        x = conv2d_chain(x, [32, 32], 'encoder0')
+        skip_connections.append(x)
+        x = MaxPooling2D((2, 2))(x)
 
-            x = conv2d_chain(x, [32, 32], 'encoder1')
-            skip_connections.append(x)
-            x = MaxPooling2D((2, 2))(x)
+        x = conv2d_chain(x, [32, 32], 'encoder1')
+        skip_connections.append(x)
+        x = MaxPooling2D((2, 2))(x)
 
-            x = conv2d_chain(x, [64, 64], 'encoder2')
-            skip_connections.append(x)
-            x = MaxPooling2D((2, 2))(x)
+        x = conv2d_chain(x, [64, 64], 'encoder2')
+        skip_connections.append(x)
+        x = MaxPooling2D((2, 2))(x)
 
-            x = conv2d_chain(x, [128, 128], 'encoder3')
-            skip_connections.append(x)
-            x = MaxPooling2D((2, 2))(x)
+        x = conv2d_chain(x, [128, 128], 'encoder3')
+        skip_connections.append(x)
+        x = MaxPooling2D((2, 2))(x)
 
         return tuple([global_step, x, labels] + skip_connections)
 
@@ -114,53 +113,52 @@ def model_fn(mode=None, params=None, args=None, inference_features=None):
     # Pipeline stage: decoder
     def pipeline_stage2(global_step, x, labels, *skip_connections):
         skip_connections = [s for s in skip_connections]
-        with ipu.scopes.partials_type(partials_type):
-            x = conv2d_chain(x, [256, 256], 'bottleneck')
+        x = conv2d_chain(x, [256, 256], 'bottleneck')
 
-            x = conv2d_transpose(x, 128, 'decoder1')
-            x = tf.concat([x, skip_connections.pop()], axis=-1)
-            x = conv2d_chain(x, [128, 64], 'decoder1')
+        x = conv2d_transpose(x, 128, 'decoder1')
+        x = tf.concat([x, skip_connections.pop()], axis=-1)
+        x = conv2d_chain(x, [128, 64], 'decoder1')
 
-            x = conv2d_transpose(x, 64, 'decoder2')
-            x = tf.concat([x, skip_connections.pop()], axis=-1)
-            x = conv2d_chain(x, [64, 32], 'decoder2')
+        x = conv2d_transpose(x, 64, 'decoder2')
+        x = tf.concat([x, skip_connections.pop()], axis=-1)
+        x = conv2d_chain(x, [64, 32], 'decoder2')
 
-            x = conv2d_transpose(x, 32, 'decoder3')
-            x = tf.concat([x, skip_connections.pop()], axis=-1)
-            x = conv2d_chain(x, [32, 16], 'decoder3')
+        x = conv2d_transpose(x, 32, 'decoder3')
+        x = tf.concat([x, skip_connections.pop()], axis=-1)
+        x = conv2d_chain(x, [32, 16], 'decoder3')
 
-            x = conv2d_transpose(x, 16, 'decoder4')
-            x = tf.concat([x, skip_connections.pop()], axis=-1)
-            x = conv2d_chain(x, [32, 32], 'decoder4')
+        x = conv2d_transpose(x, 16, 'decoder4')
+        x = tf.concat([x, skip_connections.pop()], axis=-1)
+        x = conv2d_chain(x, [32, 32], 'decoder4')
 
-            x = Conv2D(args.output_classes-1, (1, 1))(x)
+        x = Conv2D(args.output_classes-1, (1, 1))(x)
 
-            y_pred_logits = x
-            y_pred = tf.math.sigmoid(y_pred_logits)
-            predictions = tf.math.round(y_pred)
+        y_pred_logits = x
+        y_pred = tf.math.sigmoid(y_pred_logits)
+        predictions = tf.math.round(y_pred)
 
-            if mode == tf.estimator.ModeKeys.PREDICT:
-                return predictions
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            return predictions
 
-            labels_fp32 = tf.cast(labels, tf.float32)
-            y_pred_fp32 = tf.cast(y_pred, tf.float32)
-            dice_coef = dice_coef_fn(labels_fp32, y_pred_fp32)
-            dice_loss = 1 - dice_coef
-            dice_coef_loss_binary = dice_coef_loss_binary_fn(
-                labels_fp32, y_pred_fp32)
-            loss = tf.cond(
-                dice_loss < 0.2,
-                true_fn=lambda: dice_loss,
-                false_fn=lambda: dice_coef_loss_binary
-            )
+        labels_fp32 = tf.cast(labels, tf.float32)
+        y_pred_fp32 = tf.cast(y_pred, tf.float32)
+        dice_coef = dice_coef_fn(labels_fp32, y_pred_fp32)
+        dice_loss = 1 - dice_coef
+        dice_coef_loss_binary = dice_coef_loss_binary_fn(
+            labels_fp32, y_pred_fp32)
+        loss = tf.cond(
+            dice_loss < 0.2,
+            true_fn=lambda: dice_loss,
+            false_fn=lambda: dice_coef_loss_binary
+        )
 
-            if mode == tf.estimator.ModeKeys.EVAL:
-                return global_step, loss, predictions, labels
+        if mode == tf.estimator.ModeKeys.EVAL:
+            return global_step, loss, predictions, labels
 
-            if mode == tf.estimator.ModeKeys.TRAIN:
-                return global_step, loss
+        if mode == tf.estimator.ModeKeys.TRAIN:
+            return global_step, loss
 
-            raise NotImplementedError(mode)
+        raise NotImplementedError(mode)
 
     def optimizer_function(global_step, loss):
         learning_rate = tf.train.exponential_decay(
@@ -292,8 +290,18 @@ def create_estimator(args):
     cfg = ipu.utils.set_ipu_connection_type(
         cfg, ipu.utils.DeviceConnectionType.ALWAYS, ipu_version=2)
 
+    cfg = ipu.utils.set_convolution_options(cfg, {
+            "partialsType": 'half' if args.partials_type == 'float16' else 'float'
+        })
+    cfg = ipu.utils.set_matmul_options(cfg, {
+            "partialsType": 'half' if args.partials_type == 'float16' else 'float'
+        })
+
+    iterations_per_loop = (args.batches_per_step *
+                           args.gradient_accumulation_batches)
+
     ipu_run_config = ipu.ipu_run_config.IPURunConfig(
-        iterations_per_loop=args.batches_per_step,
+        iterations_per_loop=iterations_per_loop,
         num_replicas=num_replicas,
         num_shards=num_shards,
         ipu_options=cfg,
@@ -349,11 +357,12 @@ def train(estimator, args):
 
     print(f"Items in dataset: {num_train_examples}")
 
-    total_batch_size = args.batch_size_train * \
-        args.num_replicas_train * args.gradient_accumulation_batches
+    total_batch_size = args.batch_size_train * args.num_replicas_train
     steps = num_items_to_train_on // total_batch_size
-    # IPUEstimator requires no remainder; steps must be divisible by batches_per_step
-    steps += (args.batches_per_step - steps % args.batches_per_step)
+    iterations_per_loop = (args.batches_per_step *
+                           args.gradient_accumulation_batches)
+    # IPUEstimator requires no remainder; steps must be divisible by iterations_per_loop
+    steps += (iterations_per_loop - steps % iterations_per_loop)
 
     # Set up hooks
     hooks = [ThroughputCalcHook(total_batch_size *
@@ -363,7 +372,7 @@ def train(estimator, args):
         tf.train.get_or_create_global_step()
 
     if args.profile:
-        steps = args.batches_per_step
+        steps = iterations_per_loop
 
     t0 = time.time()
     input_fn = partial(data_fn, args=args, mode=tf.estimator.ModeKeys.TRAIN)
@@ -382,17 +391,18 @@ def evaluate(estimator, args):
         args, mode=tf.estimator.ModeKeys.EVAL, count_only=True)
     print(f"Items in dataset: {num_eval_examples}")
 
-    total_batch_size = args.batch_size_infer * \
-        args.num_replicas_infer * args.gradient_accumulation_batches
+    total_batch_size = args.batch_size_infer * args.num_replicas_infer
     steps = num_eval_examples // total_batch_size
-    # IPUEstimator requires no remainder; steps must be divisible by batches_per_step
-    steps -= steps % args.batches_per_step
+    iterations_per_loop = (args.batches_per_step *
+                           args.gradient_accumulation_batches)
+    # IPUEstimator requires no remainder; steps must be divisible by iterations_per_loop
+    steps -= steps % iterations_per_loop
     if steps == 0:
         print(f"Repeating the evaluation dataset to make at least 1 step")
-        steps = args.batches_per_step
+        steps = iterations_per_loop
 
     if args.profile:
-        steps = args.batches_per_step
+        steps = iterations_per_loop
 
     print(f"Evaluating on {steps * total_batch_size} examples")
 
@@ -702,7 +712,7 @@ if __name__ == "__main__":
     # Parse args, check for correctness, and apply to OS variables
     args = parse_args()
 
-    assert args.output_classes == 2, f"Number of output classes must be 2 (given {args.output_classes})."
+    assert args.output_classes == 2, f"Number of output classes must be 2 (given {args.output_classes})"
     assert args.num_ipus_in_pipeline_train == 2, "num_ipus_in_pipeline_train must be equal to 2"
     assert args.num_ipus_in_pipeline_infer == 1, "num_ipus_in_pipeline_infer must be equal to 1"
 
@@ -759,6 +769,12 @@ if __name__ == "__main__":
             cfg, args.num_replicas_infer * args.num_ipus_in_pipeline_infer)
         cfg = ipu.utils.set_ipu_connection_type(
             cfg, ipu.utils.DeviceConnectionType.ALWAYS, ipu_version=2)
+        cfg = ipu.utils.set_convolution_options(cfg, {
+            "partialsType": 'half' if args.partials_type == 'float16' else 'float'
+        })
+        cfg = ipu.utils.set_matmul_options(cfg, {
+            "partialsType": 'half' if args.partials_type == 'float16' else 'float'
+        })
         ipu.utils.configure_ipu_system(cfg)
 
     if args.inference:

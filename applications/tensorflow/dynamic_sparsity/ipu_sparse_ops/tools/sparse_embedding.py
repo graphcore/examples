@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import argparse
+from tensorflow.python.ipu.config import IPUConfig
 import numpy as np
 from functools import partial
 import tensorflow.compat.v1 as tf
@@ -154,9 +155,9 @@ if __name__ == "__main__":
         print(f"Reference weight grad:\n{reference_grads_w}")
 
     # Configure the IPU:
-    cfg = ipu.utils.create_ipu_config()
-    cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    ipu.utils.configure_ipu_system(cfg)
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 1
+    cfg.configure_ipu_system()
 
     with tf.device("cpu"):
         # Placeholders for the sparse representation:

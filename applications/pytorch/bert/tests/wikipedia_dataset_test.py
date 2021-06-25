@@ -70,8 +70,8 @@ import numpy as np
 from collections import Counter
 from tqdm import tqdm
 from utils import parse_bert_args
-from bert_data import get_dataset
-from bert_ipu import get_options
+from pretraining_data import get_dataloader
+from ipu_options import get_options
 from poptorch import DataLoader
 import transformers
 import pytest
@@ -220,7 +220,7 @@ def test_wikipedia_dataset():
     num_tokens = 0
     replacement_counts = Counter({"103": 0, "same": 0, "random": 0})
 
-    dataset = get_dataset(config)
+    dataset = get_dataloader(config)
     opts = get_options(config)
     loader = DataLoader(opts,
                         dataset,

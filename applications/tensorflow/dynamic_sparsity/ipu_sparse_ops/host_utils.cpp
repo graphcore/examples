@@ -27,6 +27,11 @@ popsparse::dynamic::PlanningCache* getCache() {
   return &global_cache;
 }
 
+poplar::DeviceManager* getDeviceManager() {
+  thread_local poplar::DeviceManager device_manager = poplar::DeviceManager::createDeviceManager();
+  return &device_manager;
+}
+
 struct MatmulSpec {
   std::size_t maxNonZeros;
   std::size_t blockSize;
@@ -47,9 +52,8 @@ static poplar::Target getTarget(
   switch(ipu_version) {
     case 0: {
       // Construct a small graph to get the information from Poplibs:
-      auto dm = poplar::DeviceManager::createDeviceManager();
 
-      auto hwDevices = dm.getDevices(poplar::TargetType::IPU, num_ipus);
+      auto hwDevices = getDeviceManager()->getDevices(poplar::TargetType::IPU, num_ipus);
       if (hwDevices.empty()) {
         throw std::runtime_error("No device found");
       }
@@ -77,6 +81,12 @@ static MatmulSpec matmulSpecFromNamedTuple(const py::object& obj) {
   spec.inputSize = obj.attr("input_size").cast<std::size_t>();
   spec.outputSize = obj.attr("output_size").cast<std::size_t>();
   return spec;
+}
+
+const auto initialize_device_manager_doc =
+"Initialize the Poplar device manager.";
+void initialize_device_manager() {
+  (void*)getDeviceManager();
 }
 
 const auto get_sparse_tensor_sizes_doc =
@@ -273,6 +283,7 @@ Triplets triplets_from_representation(
 
 PYBIND11_MODULE(host_utils, m) {
   m.doc() = "Host C++ code for ipu_sparse_ops module";
+  m.def("initialize_device_manager", &initialize_device_manager, initialize_device_manager_doc);
   m.def("get_sparse_tensor_sizes", &get_sparse_tensor_sizes, get_sparse_tensor_sizes_doc);
   m.def("representation_from_triplets", &representation_from_triplets, py::return_value_policy::move, representation_from_triplets_doc);
   m.def("triplets_from_representation", &triplets_from_representation, py::return_value_policy::move, triplets_from_representation_doc);

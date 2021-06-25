@@ -1,3 +1,91 @@
+mk2_resnet8_test:
+  model: resnet
+  model_size: 8
+  dataset: cifar-10
+  ckpts_per_epoch: 0
+  logs_per_epoch: 1
+  enable_half_partials: True
+  gradient_accumulation_count: 1
+  replicas: 1
+  epochs: 10
+  validation: False
+
+mk2_resnet50_mlperf_pod16: &mk2_resnet50_mlperf_pod16
+  model: resnet
+  model_size: 50
+  replicas: 16
+  batch_size: 16
+  pipeline: True
+  shards: 1
+  pipeline_splits: [b1/0/relu, b1/2/relu, b2/3/relu]
+  gradient_accumulation_count: 9
+  enable_recomputation: True
+  optimiser: momentum
+  momentum: 0.9
+  normalise_input: True
+  pipeline_schedule: Sequential
+  available_memory_proportion: [0.2]
+  epochs_per_ckpt: 4
+  batch_norm: True
+  dataset: imagenet
+  data_dir: /localdata/datasets/
+  internal_exchange_optimisation_target: balanced
+  enable_half_partials: True
+  eight_bit_io: True
+  lr_schedule: polynomial_decay_lr
+  warmup_epochs: 5
+  abs_learning_rate: 4.588
+  abs_end_learning_rate: 0.0001
+  epochs: 44
+  label_smoothing: 0.1
+  weight_decay: 2.5e-05
+  BN_decay: 0.9
+  BN_span: 2
+  disable_variable_offloading: True
+  mlperf_logging: True
+  standard_imagenet : True
+  max_cross_replica_buffer_size: 52428800
+  gather_conv_output: False
+  logs_per_epoch: 5
+  fused_preprocessing: True
+
+mk2_resnet50_mlperf_pod16_bs20:
+  <<: *mk2_resnet50_mlperf_pod16
+  gradient_accumulation_count: 6
+  batch_size: 20
+  available_memory_proportion: [0.15]
+  disable_variable_offloading: True
+  gather_conv_output: True
+  abs_learning_rate: 3.824
+  epochs: 44
+  pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+
+mk2_resnet50_mlperf_pod4_bs20:
+  <<: *mk2_resnet50_mlperf_pod16
+  gradient_accumulation_count: 24
+  batch_size: 20
+  available_memory_proportion: [0.145]
+  disable_variable_offloading: True
+  gather_conv_output: True
+  abs_learning_rate: 3.824
+  epochs: 44
+  replicas: 4
+  pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+
+mk2_resnet50_mlperf_pod64_bs20:
+  <<: *mk2_resnet50_mlperf_pod16
+  gradient_accumulation_count: 2
+  batch_size: 20
+  available_memory_proportion: [0.14]
+  disable_variable_offloading: True
+  gather_conv_output: True
+  abs_learning_rate: 5.098
+  epochs: 45
+  ckpt_epochs_offset: 1
+  replicas: 64
+  batches_per_step: 100000
+  pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+
 mk2_resnet50_base: &mk2_resnet50_base
   model: resnet
   model_size: 50
@@ -7,11 +95,13 @@ mk2_resnet50_base: &mk2_resnet50_base
   internal_exchange_optimisation_target: balanced
   enable_half_partials: True
   normalise_input: True
-  enable_half_partials: True
-  xla_recompute: True
+  enable_recomputation: True
   ckpts_per_epoch: 1
   logs_per_epoch: 1
   eight_bit_io: True
+  weight_decay: 0.0001
+  loss_scaling: 128
+  epochs: 100
 
 mk2_resnet50_gn_16ipus: &mk2_resnet50_gn_16ipus
   <<: *mk2_resnet50_base
@@ -69,7 +159,7 @@ mk2_resnext101_16ipus:
   batch_size: 6
   gradient_accumulation_count: 16
   epochs: 120
-  xla_recompute: True
+  enable_recomputation: True
   pipeline_splits: [b3/3/relu]
   pipeline_schedule: Grouped
   pipeline: True
@@ -81,7 +171,7 @@ mk2_resnext101_16ipus:
   normalise_input: True
   stable_norm: True
   base_learning_rate: -11
-  no_validation: True
+
   enable_half_partials: True
   lr_schedule: cosine
   label_smoothing: 0.1
@@ -96,7 +186,7 @@ mk2_efficientnet_b4_16ipus_base: &mk2_efficientnet_b4_16ipus_base
   groups: 4
   optimiser: RMSprop
   lr_schedule: exponential
-  xla_recompute: True
+  enable_recomputation: True
   enable_conv_dithering: True
   available_memory_proportion: ["0.15"]
   internal_exchange_optimisation_target: balanced
@@ -104,6 +194,7 @@ mk2_efficientnet_b4_16ipus_base: &mk2_efficientnet_b4_16ipus_base
   weight_avg_exp: [0.97]
   enable_half_partials: True
   cutmix_lambda: 0.85
+  cutmix_version: 1
   mixup_alpha: 0.2
   disable_variable_offloading: True
   shards: 4
@@ -115,7 +206,7 @@ mk2_efficientnet_b4_g1_16ipus: &mk2_efficientnet_b4_g1_16ipus
   group_dim: 1
   expand_ratio: 6
   batch_size: 3
-  gradient_accumulation: 64
+  gradient_accumulation_count: 64
   pipeline_splits: [block2b, block4b, block6c]
 
 mk2_efficientnet_b4_g16_16ipus: &mk2_efficientnet_b4_g16_16ipus
@@ -123,7 +214,7 @@ mk2_efficientnet_b4_g16_16ipus: &mk2_efficientnet_b4_g16_16ipus
   group_dim: 16
   expand_ratio: 4
   batch_size: 5
-  gradient_accumulation: 40
+  gradient_accumulation_count: 40
   pipeline_splits: [block2c, block4c, block6a]
 
 mk2_efficientnet_b4_g1_64ipus:
@@ -135,6 +226,16 @@ mk2_efficientnet_b4_g16_64ipus:
   <<: *mk2_efficientnet_b4_g16_16ipus
   gradient_accumulation_count: 8
   replicas: 16
+
+mk2_efficientnet_b4_g16_64ipus_LARS:
+  <<: *mk2_efficientnet_b4_g16_16ipus
+  optimiser: LARS
+  lr_schedule: polynomial_decay_lr
+  base_learning_rate: -9.5
+  available_memory_proportion: ["0.2"]
+  replicas: 16
+  gradient_accumulation_count: 38
+  warmup_epochs: 50
 
 mk1_resnet50_16ipus:
   model: resnet
@@ -149,7 +250,7 @@ mk1_resnet50_16ipus:
   pipeline_splits: [b1/2/relu, b2/3/relu, b3/5/relu]
   pipeline: True
   pipeline_schedule: Grouped
-  xla_recompute: True
+  enable_recomputation: True
   optimiser: momentum
   momentum: 0.9
   available_memory_proportion: ['0.6', '0.6', '0.6', '0.6', '0.6', '0.6', '0.16', '0.2']
@@ -160,4 +261,4 @@ mk1_resnet50_16ipus:
   enable_half_partials: True
   lr_schedule: cosine
   label_smoothing: 0.1
-  ckpts-per-epoch: 1
+  ckpts_per_epoch: 1

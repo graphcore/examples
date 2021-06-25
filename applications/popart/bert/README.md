@@ -196,11 +196,11 @@ tensorboard --logdir logs
 
 For BERT Base phase 1, use the following command:
 
-`python3 bert.py --config configs/pretrain_base_128.json`
+`python3 bert.py --config configs/{mk1,mk2}/pretrain_base_128.json`
 
 For BERT Base phase 2, use the following command:
 
-`python3 bert.py --config configs/pretrain_base_384.json`
+`python3 bert.py --config configs/{mk1,mk2}/pretrain_base_384.json`
 
 You will also need to specify the option `--onnx-checkpoint <path-to-checkpoint>` to load the weights from a previous training phase. You will find the checkpoint path for a training phase logged just after the compilation has completed in a date-time stamped directory. The checkpoints will be of the form `{checkpoint-dir}/{timestamp}/model_{epoch}.onnx`.
 
@@ -212,11 +212,11 @@ You can then extract the weights and launch SQuAD fine tuning using one of the p
 
 To run SQuAD with a BERT Base model and sequence length of 384:
 
-`python3 bert.py --config configs/squad_base_384.json`
+`python3 bert.py --config configs/{mk1,mk2}/squad_base_384.json`
 
 and for BERT Large:
 
-`python3 bert.py --config configs/squad_large_384.json`
+`python3 bert.py --config configs/{mk1,mk2}/squad_large_384.json`
 
 View the JSON files in configs for detailed parameters.
 
@@ -234,14 +234,14 @@ How to get the SQuAD 1.1 files required for inference is described in `bert_data
 
 To run SQuAD BERT Base inference with a sequence length of 128:
 
-`python3 bert.py --config configs/squad_base_128_inference.json`
+`python3 bert.py --config configs/{mk1,mk2}/squad_base_128_inference.json`
 
 and for BERT Large with a sequence length of 384:
 
-`python3 bert.py --config configs/squad_large_384_inference.json`
+`python3 bert.py --config configs/{mk1,mk2}/squad_large_384_inference.json`
 
 View the JSON files in configs for detailed parameters.
 
 It is also possible to run inference on the pretraining graph to validate the MLM/NSP results. It requires input files to be provided, either by adding them to the config or by using the following command-line for sequence length of 128:
 
-`python3 bert.py --config configs/mlm_nsp_base_128_inference.json --input-files <path_to_input_file>`
+`python3 bert.py --config configs/{mk1,mk2}/mlm_nsp_base_128_inference.json --input-files <path_to_input_file>`

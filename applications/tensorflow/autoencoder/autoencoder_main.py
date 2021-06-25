@@ -147,7 +147,7 @@ def training_graph(opts, training_data):
         flush_secs=30)
 
     ipu_options = util.get_config(opts, profiling=opts.compiler_report)
-    ipu_utils.configure_ipu_system(ipu_options)
+    ipu_options.configure_ipu_system()
     train_sess = tf.Session(graph=train_graph)
 
     return GraphOps(train_graph,
@@ -204,9 +204,9 @@ def validation_graph(opts, valid_data):
         graph=valid_graph,
         flush_secs=30)
 
-    ipu_options = util.get_config(opts, False)
+    ipu_options = util.get_config(opts)
     if opts.multiprocessing:
-        ipu_utils.configure_ipu_system(ipu_options)
+        ipu_options.configure_ipu_system()
     valid_sess = tf.Session(graph=valid_graph)
 
     return GraphOps(valid_graph,

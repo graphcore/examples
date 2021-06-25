@@ -14,7 +14,7 @@ SQuAD is a large reading comprehension dataset used for training (fine tuning) w
 
 The following files are found in the `bert_data/` folder:
 
-* `create_pretraining_data.py`: creates pretraining dataset from a txt file
+* `create_pretraining_data.py`: Graphcore version which supports option to move MLM tokens to the front of the sequence.
 * `dataset.py`: dataset class
 * `pretraining_dataset.py`: dataset class for pretraining task
 * `squad_dataset.py`: dataset class for SQuAD fine tuning task
@@ -88,9 +88,9 @@ where `target_folder/AA` contains the files from step 3 and `preprocessed_target
 
 The data can now be tokenised to create the pre-training dataset for BERT. For this step a vocabulary file is required. A vocabulary can be downloaded from the pre-trained model checkpoints at https://github.com/google-research/bert. We recommend to use the pre-trained BERT-Base Uncased model checkpoints.
 
-The script `create_pretraining_data.py` will accept a glob of input and output files to tokenise however attempting to process them all at once may result in the process being killed by the OS for consuming too much memory. It is therefore preferable to convert the files one by one:
+The script `create_pretraining_data.py` will accept a glob of input and output files to tokenise. Attempting to process them all at once may result in the process being killed by the OS for consuming too many system resources (e.g. memory). The 'create_pretraining_data.py' will open at most `--max-open-files` at a time.
 
-`python3 create_pretraining_data.py --input-file /preprocessed_target_folder/wiki_00_cleaned --output-file /preprocessed_target_folder/wiki_00_tokenised --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 --mask-tokens 20 --duplication-factor 6`
+`python3 create_pretraining_data.py --input-file /preprocessed_target_folder/wiki_**_cleaned --output-file /preprocessed_target_folder/wiki_tokenised --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 --mask-tokens 20 --duplication-factor 6 --max-open-files=1`
 
 **NOTE:** When using an uncased vocab, use `--do-lower-case`.
 
@@ -104,6 +104,28 @@ and that the Bert-Base, uncased checkpoint has been downloaded from Google and i
 `data/ckpts/uncased_L-12_H-768_A-12`.
 
 The Wikipedia dataset is now ready to be used in the Graphcore BERT model.
+
+**5) Create packed pretraining input data**
+Starting from the output of step **2)** we first tokenize the data using `create_pretraining_data.py`:
+```
+python3 create_pretraining_data.py --input-file=cleaned/part-00* --output-file=binarized_data/part --vocab-file=path_to_the_vocab/vocab.txt --do-lower-case --sequence-length 512 --mask-tokens 76 --duplication-factor 1 --dont-rearrange-mlm-tokens-to-front --max-open-files=10
+```
+
+**NOTE:** Packing (next step) will produce a dataset with duplication factor of 1, regardless of the duplication factor of the provided un-packed pretraining dataset. It is therefore recommended to also generate the un-packed pretraining dataset (using `create_pretraining_data.py`) with a duplication factor of 1, as shown above. Any additional duplication will go unused by the packing script but would take significant time to generate through `create_pretraining_data.py`.
+
+**Note:** in order to later be able pack the dataset, the option `--dont-rearrange-mlm-tokens-to-front` must be used. This is the crucial difference with the previous use of `create_pretraining_data.py` in step **3)**
+
+The second step is to pack the sequences: 
+```
+python3 -m bert_data.pack_pretraining_data --input-glob="binarized_data/part_*" --output-dir="packed_pretraining_data" --max-sequences-per-pack=3 --mlm-tokens=76 --max-sequence-length=512 --unpacked-dataset-duplication-factor=1`
+```
+**Note:** the `pack_pretraining_data` should be run from the parent folder as a python module with no `.py` extension (see example).
+
+**Note:** the argument '--unpacked-dataset-duplication-factor' should have the same value as the `--duplication-factor` argument passed to `create_pretraining_data.py` in the previous step.
+
+**Note:** The argument `--max-sequences-per-pack` controls the depth of the packing problem. A value of 3 is typically sufficient for high packing efficiency at sequence lengths 128 to 512.
+
+The packed Wikipedia dataset is now ready to be used in the Graphcore BERT model.
 
 ## Book-Corpus pre-training data
 

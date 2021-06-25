@@ -15,7 +15,7 @@
 
 import math
 import tensorflow as tf
-from tensorflow.python.ipu import utils
+from tensorflow.python.ipu.config import IPUConfig, DeviceConnectionType, SchedulingAlgorithm, MergeRemoteBuffersBehaviour
 from collections import OrderedDict
 from tensorflow.python.ipu import horovod as hvd
 
@@ -30,52 +30,61 @@ def next_power_of_two(x):
 
 
 def get_config(fp_exceptions,
-               xla_recompute,
+               enable_recomputation,
                disable_graph_outlining,
                num_required_ipus,
                enable_stochastic_rounding,
                max_cross_replica_sum_buffer_size,
                scheduler_selection,
                compile_only,
-               ipu_id):
+               ipu_id,
+               available_memory_proportion=None,
+               partials_type="half",
+               minimum_remote_tensor_size=128):
 
     # Builds ipu_options
-    config = utils.create_ipu_config(
-        merge_infeed_io_copies=True,
-        always_rearrange_copies_on_the_host=False,
-        disable_graph_outlining=disable_graph_outlining,
-        selection_order=utils.SelectionOrder.AUTO,
-        scheduler_selection=scheduler_selection
-    )
+    cfg = IPUConfig()
 
     if ipu_id:
-        config = utils.select_ipus(config, [ipu_id])
+        cfg.select_ipus = [ipu_id]
     else:
-        config = utils.auto_select_ipus(config, num_required_ipus)
+        cfg.auto_select_ipus = num_required_ipus
 
-    config = utils.set_recomputation_options(
-        config, allow_recompute=xla_recompute)
-    # simple way to skip the big `Transpose` operation due to bad allocation
-    # config = utils.set_matmul_options(config, clear_pass_type=True)
-    config = utils.set_norm_options(config, use_stable_statistics=True)
-    config = utils.set_floating_point_behaviour_options(
-        config,
-        inv=fp_exceptions,
-        div0=fp_exceptions,
-        oflo=fp_exceptions,
-        esr=enable_stochastic_rounding,
-        nanoo=fp_exceptions)
-    config = utils.set_optimization_options(
-        config,
-        merge_remote_buffers=True,
-        max_cross_replica_sum_buffer_size=max_cross_replica_sum_buffer_size)
+    cfg.allow_recompute = enable_recomputation
+    cfg.scheduling.algorithm = SchedulingAlgorithm[scheduler_selection]
+    cfg.norms.use_stable_statistics = True
+    cfg.matmuls.clear_pass_type = True
+
+    # Floating-point exceptions
+    cfg.floating_point_behaviour.inv = fp_exceptions
+    cfg.floating_point_behaviour.div0 = fp_exceptions
+    cfg.floating_point_behaviour.oflo = fp_exceptions
+    cfg.floating_point_behaviour.nanoo = fp_exceptions
+
+    # Stochastic rounding
+    cfg.floating_point_behaviour.esr = enable_stochastic_rounding
+    cfg.optimizations.merge_remote_buffers = MergeRemoteBuffersBehaviour.MERGE
+    cfg.optimizations.maximum_cross_replica_sum_buffer_size = max_cross_replica_sum_buffer_size
+    cfg.optimizations.merge_infeed_io_copies = True
+    cfg.optimizations.enable_graph_outlining = not disable_graph_outlining
+
+    if available_memory_proportion is not None:
+        cfg.convolutions.poplar_options = {
+            "availableMemoryProportion": str(available_memory_proportion),
+            "partialsType": partials_type
+        }
+        cfg.matmuls.poplar_options = {
+            "availableMemoryProportion": str(available_memory_proportion),
+            "partialsType": partials_type
+        }
 
     # Do not acquire a device, compile only.
     if compile_only:
-        config = utils.set_ipu_connection_type(
-            config, utils.DeviceConnectionType.NEVER, ipu_version=2, enable_remote_buffers=True)
+        cfg.device_connection.type = DeviceConnectionType.NEVER
+        cfg.device_connection.version = "ipu2"
+        cfg.device_connection.enable_remote_buffers = True
 
-    return config
+    return cfg
 
 
 def get_var_list(func):

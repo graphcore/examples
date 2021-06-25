@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import sys
 from typing import NamedTuple
 
 import numpy as np
@@ -39,8 +37,8 @@ TF_TO_TORCH = {
     "word_embeddings:0": "word_embeddings.weight",
     "position_embeddings:0": "position_embeddings.weight",
     "token_type_embeddings:0": "token_type_embeddings.weight",
-    "GroupNorm/gamma:0": "LayerNorm.weight",
-    "GroupNorm/beta:0": "LayerNorm.bias"
+    "LayerNorm/gamma:0": "LayerNorm.weight",
+    "LayerNorm/beta:0": "LayerNorm.bias"
 }
 
 
@@ -209,8 +207,8 @@ def test_embedding(config, phase):
                 # sess.run(opt, {input_ids: indices, position_ids: positions, segment_ids: segments})
                 # Compare the farward output
                 check_tf_torch_model(
-                    sess, torch_model, TF_TO_TORCH, margin=5e-7)
-            check_tensors(torch_outputs, tf_outputs, margin=5e-7)
+                    sess, torch_model, TF_TO_TORCH, margin=1e-4)
+            check_tensors(torch_outputs, tf_outputs, margin=1e-4)
     else:
         raise ValueError(
             f"`phase` only can be set to [`fwd`, `bwd`] which mean farward or backward respectively.")

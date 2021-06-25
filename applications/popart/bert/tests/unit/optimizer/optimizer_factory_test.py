@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 import pytest
 import numpy as np
 import popart
@@ -86,12 +86,22 @@ class TestConfig(NamedTuple):
     # Needed for iteration/optimizer integration test
     continue_training_from_epoch: int = 0
     epochs: int = 1
+    training_steps: Optional[int] = None
     epochs_per_save: int = 1
     steps_per_log: int = 1
     micro_batch_size: int = 1
     batches_per_step: int = 1
     gradient_accumulation_factor: int = 1
     replication_factor: int = 1
+    popdist_size: int = 1
+
+    use_half_optimizer_state: bool = False
+
+    use_packed_sequence_format: bool = False
+
+    @property
+    def global_batch_size(self):
+        return self.micro_batch_size * self.gradient_accumulation_factor * self.replication_factor
 
     inference_lm_perplexity: bool = False
     inference: bool = False
@@ -422,14 +432,13 @@ def test_per_tensor_lr(steps_per_epoch, lr_schedule_by_step, layer_inputs, pipel
         add0 = builder.aiOnnx.add([w0Id, input0])
         add1 = builder.aiOnnx.add([w1Id, add0])
         add2 = builder.aiOnnx.add([w2Id, add1])
-        loss = builder.aiGraphcore.l1loss([add2], 1.0, debugPrefix="l1LossVal")
+        loss = builder.aiGraphcore.l1loss([add2], 1.0, debugContext="l1LossVal")
         builder.addOutputTensor(add2)
 
         proto = builder.getModelProto()
         dataFlow = popart.DataFlow(1, {})
         opts = popart.SessionOptions()
         opts.reportOptions = {"showExecutionSteps": "true"}
-        opts.enableGroupedMatmuls = False
         pat = popart.Patterns(popart.PatternsLevel.Default)
         dm = popart.DeviceManager()
         dm.setOnDemandAttachTimeout(int(1e4))

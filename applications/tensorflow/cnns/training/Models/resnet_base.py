@@ -162,8 +162,6 @@ def max_pool(x, ksize=3, stride=2):
 def conv(x, ksize, stride, filters_out, groups=1, seed=None):
     in_filters = x.get_shape().as_list()[3]
     with tf.variable_scope("conv", use_resource=True):
-        if stride > 1:
-            x = fixed_padding(x, ksize, "channels_last")
         W = tf.get_variable(
             "conv2d/kernel",
             shape=[ksize, ksize, in_filters / groups, filters_out],
@@ -175,7 +173,7 @@ def conv(x, ksize, stride, filters_out, groups=1, seed=None):
             x,
             filters=W,
             strides=[1, stride, stride, 1],
-            padding=("SAME" if stride == 1 else "VALID"),
+            padding="SAME",
             data_format="NHWC",
         )
 

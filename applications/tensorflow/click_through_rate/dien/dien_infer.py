@@ -30,6 +30,7 @@ from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu.scopes import ipu_scope
 from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import ipu_outfeed_queue
+from tensorflow.python.ipu.config import IPUConfig
 import set_path
 from common.utils import calc_auc, setup_logger
 from common.embedding import get_dataset_embed, id_embedding, get_synthetic_dataset
@@ -101,13 +102,12 @@ def generic_graph(opts, is_training):
         if opts['use_ipu_model']:
             os.environ["TF_POPLAR_FLAGS"] = "--use_ipu_model"
 
-    ipu_options = utils.create_ipu_config(profiling=False,
-                                          profile_execution=False,
-                                          max_cross_replica_sum_buffer_size=10000000,
-                                          max_inter_ipu_copies_buffer_size=10000000)
-    ipu_options = utils.set_recomputation_options(ipu_options, allow_recompute=True)
-    ipu_options = utils.auto_select_ipus(ipu_options, [opts['replicas']])
-    utils.configure_ipu_system(ipu_options)
+    ipu_options = IPUConfig()
+    ipu_options.allow_recompute = True
+    ipu_options.auto_select_ipus = [opts['replicas']]
+    ipu_options.optimizations.maximum_cross_replica_sum_buffer_size = 10000000
+    ipu_options.optimizations.maximum_inter_ipu_copies_buffer_size = 10000000
+    ipu_options.configure_ipu_system()
 
     graph_outputs = [outputs]
 

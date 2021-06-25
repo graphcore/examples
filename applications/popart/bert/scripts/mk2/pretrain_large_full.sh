@@ -12,4 +12,4 @@ python3 bert.py --config configs/mk2/pretrain_large_384.json \
     --onnx-checkpoint ckpts/mk2/pretrain_large_128/$PHASE1_DIR/model.onnx \
     --checkpoint-dir ckpts/mk2/pretrain_large_384 $@ 2>&1 | tee pretrain_large_384_log.txt
 
-# Final pre-training result will be in ckpts/pretrain_large_384
+# Final pre-training result will be in ckpts/mk2/pretrain_large_384

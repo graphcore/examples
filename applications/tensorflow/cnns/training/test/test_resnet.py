@@ -168,7 +168,7 @@ class TestResNet50Pipelining2IPUs(unittest.TestCase):
                            '--gradient-accumulation-count': 256,
                            '--batch-size': 2,
                            '--no-validation': '',
-                           '--xla-recompute': '',
+                           '--enable-recomputation': '',
                            '--available-memory-proportion': 0.1,
                            '--pipeline-splits': 'b3/1/relu'})
         cls.training = get_csv(out, 'training.csv')
@@ -199,7 +199,7 @@ class TestResNet50Pipelining2IPUs2Replicas(unittest.TestCase):
                            '--pipeline-schedule': 'Grouped',
                            '--batch-size': 2,
                            '--no-validation': '',
-                           '--xla-recompute': '',
+                           '--enable-recomputation': '',
                            '--available-memory-proportion': 0.1,
                            '--pipeline-splits': 'b3/0/relu'})
         cls.training = get_csv(out, 'training.csv')
@@ -275,7 +275,6 @@ class TestPopdist(unittest.TestCase):
 
     def test_resnet8(self):
 
-        TIMEOUT_SECONDS = 5 * 60
         NUM_TOTAL_REPLICAS = 4
         NUM_INSTANCES = 2
         NUM_LOCAL_REPLICAS = NUM_TOTAL_REPLICAS // NUM_INSTANCES
@@ -287,6 +286,7 @@ class TestPopdist(unittest.TestCase):
                 '--mpi-global-args=--tag-output --allow-run-as-root',
                 '--num-replicas=' + str(NUM_TOTAL_REPLICAS),
                 '--num-instances=' + str(NUM_INSTANCES),
+                '--vipu-server-timeout=600',
                 sys.executable,
                 'train.py',
                 '--dataset=cifar-10',
@@ -298,10 +298,12 @@ class TestPopdist(unittest.TestCase):
                 '--no-validation',
                 '--no-stochastic-rounding',
                 '--iterations=100',
+                '--warmup-epochs=0',
                 '--log-dir', logdir,
                 '--name-suffix', 'popdist_instance',
                 '--ckpt-all-instances', "true",
-                '--log-all-instances', "true"
+                '--log-all-instances', "true",
+                '--on-demand'
             ]
 
             # Add some debug logging.
@@ -313,7 +315,7 @@ class TestPopdist(unittest.TestCase):
             cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
             env = os.environ.copy()
             env.update(extra_env)
-            subprocess.check_call(cmd, cwd=cwd, env=env, timeout=TIMEOUT_SECONDS)
+            subprocess.check_call(cmd, cwd=cwd, env=env)
 
             instance_logdirs = glob.glob(f"{logdir}/*_popdist_instance_*")
             self.assertEqual(len(instance_logdirs), NUM_INSTANCES)
@@ -362,7 +364,7 @@ class TestDistributedTraining(unittest.TestCase):
     def test_resnet_50_from_readme(self):
 
         NUM_WORKERS = 2
-        WORKER_TIMEOUT_SECONDS = 30 * 60
+        WORKER_TIMEOUT_SECONDS = 60 * 60
 
         with tempfile.TemporaryDirectory() as logdir:
             cmd = [
@@ -376,7 +378,7 @@ class TestDistributedTraining(unittest.TestCase):
                 '--pipeline',
                 '--gradient-accumulation-count=64',
                 '--pipeline-splits', 'b1/2/relu', 'b2/3/relu', 'b3/5/relu',
-                '--xla-recompute',
+                '--enable-recomputation',
                 '--replicas=2',  # Instead of 4 to make two processes fit on one machine.
                 '--distributed',
                 '--no-stochastic-rounding',
@@ -386,7 +388,8 @@ class TestDistributedTraining(unittest.TestCase):
                 '--base-learning-rate=-14',
                 '--log-dir', logdir,
                 '--ckpt-all-instances', "true",
-                '--log-all-instances', "true"
+                '--log-all-instances', "true",
+                '--on-demand'
             ]
 
             extra_env = {
@@ -492,12 +495,8 @@ class TestConfig(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        out = run_train(**{'--config': 'resnet50_1_ipu_training',
-                           '--model-size': 8,
-                           '--epochs': 10,
+        out = run_train(**{'--config': 'mk2_resnet8_test',
                            '--data-dir': cifar10_data_dir,
-                           '--dataset': 'cifar-10',
-                           '--gradient-accumulation-count': 1
                            })
         cls.training = get_csv(out, 'training.csv')
 
@@ -505,3 +504,39 @@ class TestConfig(unittest.TestCase):
     def test_results(self):
         # test the cmd line arg overrode config arg
         self.assertEqual(int(self.training['epoch'][-1]), 10)
+
+
+@pytest.mark.category2
+@pytest.mark.ipus(2)
+@pytest.mark.ipu_version("ipu2")
+class TestResNet50RecomputeDbnTraining(unittest.TestCase):
+    """ResNet-50 example on two IPUs with distributed batch norm and recompute.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        out = run_train(**{'--generated-data': '',
+                           '--dataset': 'ImageNet',
+                           '--model-size': 50,
+                           '--batch-size': 8,
+                           '--available-memory-proportion': 0.1,
+                           '--iterations': 10,
+                           '--BN-span': 2,
+                           '--internal-exchange-optimisation-target': 'memory',
+                           '--pipeline': '',
+                           '--gradient-accumulation-count': 2,
+                           '--pipeline-schedule': 'Sequential',
+                           '--enable-recomputation': '',
+                           '--pipeline-splits': 'b1/0/relu',
+                           '--eight-bit': '',
+                           '--replicas': 2,
+                           '--enable-half-partials': '',
+                           '--disable-variable-offloading': '',
+                           '--batch-norm': '',
+                           '--normalise-input': ''
+                           })
+        cls.validation = get_csv(out, 'validation.csv')
+        cls.training = get_csv(out, 'training.csv')
+
+    def test_iterations_completed(self):
+        self.assertEqual(self.training['iteration'][-1], 500)

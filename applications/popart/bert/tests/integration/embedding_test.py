@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import popart
+import os
 import numpy as np
 from collections import defaultdict
 import pytest
@@ -29,7 +30,7 @@ from bert import (set_library_seeds,
                   create_callback_stepio,
                   bert_process_infer_data)
 from bert_model import Bert
-from tests.utils import TestFailureError
+from tests.utils import TestFailureError, bert_root_dir
 import logging
 import utils
 from utils.device import acquire_device
@@ -119,7 +120,7 @@ def run_embedding_layer(args):
 @pytest.mark.category1
 def test_host_embedding(custom_ops):
     args_string = ["--config",
-                   'configs/squad_base_128_inference.json',
+                   os.path.join(bert_root_dir(), 'configs/mk1/squad_base_128_inference.json'),
                    '--host-embedding=ALL',
                    '--device-connection-type=ondemand',
                    '--generated-data=true'

@@ -21,13 +21,27 @@ import csv
 import random
 import string
 import json
+import wandb
 import tensorflow as tf
+
+try:
+    # See
+    # https://github.com/mlcommons/logging/blob/master/mlperf_logging/mllog/examples/dummy_example.py
+    # for further details on mlperf logging configurations
+    from mlperf_logging import mllog
+
+    MLPERF_LOGGING = True
+    MLLOGGER = mllog.get_mllogger()
+except ImportError:
+    MLPERF_LOGGING = False
 
 
 def add_arguments(parser):
     group = parser.add_argument_group('Logging')
     group.add_argument('--log-dir', type=str, default="./logs/",
                        help="Log and weights save directory")
+    group.add_argument('--logs-path', type=str, default=None,
+                       help="Log and weights save directory for current run.")
     group.add_argument('--name-suffix', type=str,
                        help="Suffix added to name string")
     group.add_argument('--logs-per-epoch', type=int, default=16,
@@ -39,6 +53,12 @@ def add_arguments(parser):
     group.add_argument('--log-all-instances', type=bool,
                        help="""Allow all instances to log results.
                              By default only instance 0 creates logs.""")
+    group.add_argument('--mlperf-logging', action='store_true',
+                       help="Activate MLPerf logging if installed.")
+    group.add_argument("--wandb", action="store_true",
+                       help="Enable logging to Weights and Biases.")
+    group.add_argument("--wandb-project", type=str, default="tf-cnn",
+                       help="Configures project Weights and Biases logs to.")
     return parser
 
 
@@ -76,14 +96,20 @@ def set_defaults(opts):
     if ((not opts['no_logs']) and
             (not opts['restore_path'] or not opts.get('training')) and
             (opts['distributed_worker_index'] == 0 or opts['log_all_instances'])):
-        opts["logs_path"] = os.path.join(opts["log_dir"], '{}'.format(name))
-        opts["checkpoint_path"] = os.path.join(opts["log_dir"], '{}/ckpt'.format(name))
+        if "logs_path" not in opts or opts["logs_path"] is None:
+            opts["logs_path"] = os.path.join(opts["log_dir"], '{}'.format(name))
+
+        opts["checkpoint_path"] = os.path.join(opts["logs_path"], "ckpt")
 
         if not os.path.isdir(opts["logs_path"]):
             os.makedirs(opts["logs_path"])
 
         opts['summary_str'] += " Saving to {logs_path}\n"
-        with open(os.path.join(opts["logs_path"], 'arguments.json'), 'w') as fp:
+
+        fname = os.path.join(opts["logs_path"], 'arguments.json')
+        if os.path.isfile(fname):
+            fname = os.path.join(opts["logs_path"], 'arguments_restore.json')
+        with open(fname, 'w') as fp:
             json.dump(opts, fp, sort_keys=True, indent=4, separators=(',', ': '))
     elif (opts['restore_path'] and
             (opts['distributed_worker_index'] == 0 or opts['log_all_instances'])):
@@ -92,9 +118,28 @@ def set_defaults(opts):
     else:
         opts["logs_path"] = None
         opts["log_dir"] = None
+        opts["mlperf_logging"] = False
         opts["checkpoint_path"] = os.path.join('/tmp/', '{}/ckpt'.format(name))
         if not os.path.isdir(os.path.dirname(os.path.abspath(opts["checkpoint_path"]))):
             os.makedirs(os.path.dirname(os.path.abspath(opts["checkpoint_path"])))
+
+    global MLPERF_LOGGING
+    if opts["mlperf_logging"] and MLPERF_LOGGING and opts['distributed_worker_index'] == 0:
+        MLPERF_LOGGING = True
+        seed = opts.get("seed", "None")
+        try:
+            mllog.config(
+                default_namespace=mllog.constants.RESNET,
+                default_stack_offset=2,
+                default_clear_line=False,
+                root_dir=os.path.split(os.path.abspath(__file__))[0],
+                filename=os.path.join(opts["logs_path"],
+                                      "result_{}.txt".format(seed))
+            )
+        except NameError:
+            pass
+    else:
+        MLPERF_LOGGING = False
 
     return opts
 
@@ -128,3 +173,43 @@ def print_trainable_variables(opts):
             variable_parameters *= DIM.value
         total_parameters += variable_parameters
     print_to_file_and_screen('Total Parameters:' + str(total_parameters) + '\n', opts)
+
+
+def mlperf_logging(key, value=None, log_type="event", metadata=None):
+    if not MLPERF_LOGGING:
+        return
+    if key not in mllog.constants.__dict__:
+        import warnings
+        warnings.warn("Provided MLPERF key ('{}') is not supported.".format(key))
+        import time
+        time.sleep(10)
+        key = key.lower()
+    else:
+        key = mllog.constants.__dict__[key]
+    if log_type is "start":
+        MLLOGGER.start(
+            key=key, value=value, metadata=metadata)
+    elif log_type is "event":
+        MLLOGGER.event(
+            key=key, value=value, metadata=metadata)
+    elif log_type is "stop" or log_type is "end":
+        MLLOGGER.end(
+            key=key, value=value, metadata=metadata)
+    else:
+        raise NotImplementedError("Unknown log type {}".format(log_type))
+
+
+def initialise_wandb(opts):
+    """Initialises weights and biases run with model options"""
+    project = opts["wandb_project"]
+    name = opts["name"]
+    name_suffix = opts.get("name_suffix", None)
+    if name_suffix:
+        name += name_suffix
+    wandb.init(project=project, name=name, sync_tensorboard=True)
+    wandb.config.update(opts)
+
+
+def log_to_wandb(stats):
+    """Logs stats to weights and biases run"""
+    wandb.log(stats)

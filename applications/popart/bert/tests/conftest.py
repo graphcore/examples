@@ -12,38 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import subprocess
-from pathlib import Path
 import pytest
 import ctypes
+from tests.utils import bert_root_dir
+from examples_tests.test_util import remote_buffers_available
 
-custom_ops_loaded = False
 
-
-def load_custom_ops():
-    bert_dir = Path(__file__).parent.parent.resolve()
-    so_path = str(bert_dir / "custom_ops.so")
-    global custom_ops_loaded
-    if not custom_ops_loaded:
-        print("Building Custom Ops")
-        subprocess.run(['make'], shell=True, cwd=str(bert_dir))
-        ctypes.cdll.LoadLibrary(so_path)
-        custom_ops_loaded = True
-    return so_path
+def pytest_sessionstart(session):
+    subprocess.run(['make'], shell=True, cwd=bert_root_dir())
 
 
 @pytest.fixture
 def custom_ops():
-    return load_custom_ops()
-
-
-def remote_buffers_available():
-    output = subprocess.run(["gc-info -d 0 -i | grep 'remote buffers: 1'"],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            shell=True,
-                            check=False)
-    return output.returncode == 0
+    so_path = os.path.join(bert_root_dir(), "custom_ops.so")
+    ctypes.cdll.LoadLibrary(so_path)
+    return so_path
 
 
 def pytest_collection_modifyitems(config, items):
@@ -60,6 +45,9 @@ def pytest_collection_modifyitems(config, items):
         if "requires_remote_buffers" in item.keywords and not remote_buffers_available():
             item.add_marker(pytest.mark.skip(
                 reason="Requires remote buffers to be enabled on this system."))
+        if "PHASED" in item.name:
+            item.add_marker(pytest.mark.skip(
+                reason="Skipping phased execution tests."))
 
 
 def pytest_addoption(parser):

@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import os
+from tensorflow.python.ipu.config import IPUConfig
 import argparse
 import numpy as np
 from functools import partial
@@ -101,9 +102,9 @@ def create_sparse_layers(opts):
 
 
 def set_up_ipu_devices(opts):
-    config = ipu.utils.create_ipu_config()
-    config = ipu.utils.auto_select_ipus(config, 1)
-    ipu.utils.configure_ipu_system(config)
+    config = IPUConfig()
+    config.auto_select_ipus = 1
+    config.configure_ipu_system()
     # Set the seed for the stochastic rounding
     ipu.utils.reset_ipu_seed = opts.seed
 

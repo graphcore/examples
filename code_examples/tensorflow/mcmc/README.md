@@ -20,6 +20,12 @@ This MCMC model has been implemented using TensorFlow Probability to explore the
 
 This example uses a proprietary dataset representative of algorithmic trading scenarios. The dataset aligns 146 features with observed returns.
 
+The dataset has Copyright (c) 2021 by Carmot Capital LLC and Graphcore Ltd. All rights reserved. The dataset is licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+  
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, the dataset distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
 ## Running the model
 
 This directory contains the code required to run the MCMC model with TFP.

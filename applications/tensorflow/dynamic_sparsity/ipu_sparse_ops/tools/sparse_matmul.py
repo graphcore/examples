@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import argparse
+from tensorflow.python.ipu.config import IPUConfig
 import numpy as np
 from functools import partial
 import tensorflow.compat.v1 as tf
@@ -95,9 +96,9 @@ def make_fc_layer_and_test_inputs(args):
         if args.input_size != args.output_size:
             raise ValueError(
                 "random_orthogonal pattern requires square matrix")
-
+        ortho_rng = np.random.default_rng(seed=random_seed)
         matrix, max_non_zeros = sparse.gen_sparse_rand_orthog_mat(
-            args.output_size,  args.density, args.block_size)
+            args.output_size,  args.density, args.block_size, ortho_rng)
         triplets = sparse.triplets_from_dense(matrix, args.block_size)
 
         fc = layers.SparseFcLayer.from_triplets(
@@ -150,10 +151,11 @@ if __name__ == "__main__":
 
     if args.pattern == 'random_orthogonal':
         lhs_values = lhs_values / np.linalg.norm(lhs_values, axis=1, keepdims=True)
+
     # Configure the IPU:
-    cfg = ipu.utils.create_ipu_config()
-    cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    ipu.utils.configure_ipu_system(cfg)
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 1
+    cfg.configure_ipu_system()
 
     with tf.device("cpu"):
         # Placeholders for the dense matmul operands:

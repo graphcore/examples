@@ -41,9 +41,10 @@ from tensorflow.python.ipu import ipu_infeed_queue, ipu_outfeed_queue
 from tensorflow.python.ipu import loops
 from tensorflow.python.ipu import scopes
 from tensorflow.python.ipu import utils as ipu_utils
-from tensorflow.python.ipu import sharding, autoshard
+from tensorflow.python.ipu import sharding
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.tools.import_pb_to_tensorboard import import_to_tensorboard
+from tensorflow.python.ipu.config import IPUConfig
 
 from data import get_dataset
 from inference_network_base import InferenceNetwork
@@ -72,14 +73,13 @@ def get_report(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation, ou
     """
     # Set compile and device options
     use_poplar_text_report = report_mode == 'text'
-    opts = ipu_utils.create_ipu_config(profiling=True, use_poplar_text_report=use_poplar_text_report,
-                                       profile_execution=True)
-    opts = ipu_utils.set_matmul_options(opts, matmul_options={
-        "availableMemoryProportion": str(available_memory_proportion)})
-    opts = ipu_utils.set_convolution_options(opts, convolution_options={
-        "availableMemoryProportion": str(available_memory_proportion)})
-    ipu_utils.auto_select_ipus(opts, [1])
-    ipu_utils.configure_ipu_system(opts)
+    opts = IPUConfig()
+    opts.matmuls.poplar_options = {'availableMemoryProportion': str(
+        available_memory_proportion)}
+    opts.convolutions.poplar_options = {'availableMemoryProportion': str(
+        available_memory_proportion)}
+    opts.auto_select_ipus = [1]
+    opts.configure_ipu_system()
 
     with tf.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
@@ -118,27 +118,26 @@ def run_inference(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation,
         ground_truth: Ground-truth labels.
         num_iterations: Number of iterations to run the inference, if running in a loop.
         num_ipus: Number of ipus to run the inference on.
-        mode: Mode of inference - {"single_ipu", "replicated", "sharded"}
+        mode: Mode of inference - {"single_ipu", "replicated"}
         data: Run on real data transferred from host or on random synthetic data generated on device.
         available_memory_proportion: Proportion of tile memory available as temporary memory for
         matmul and convolution execution
 
     """
     # Set compile and device options
-    opts = ipu_utils.create_ipu_config(profiling=False, profile_execution=False, use_poplar_text_report=False)
-    opts = ipu_utils.set_matmul_options(opts,
-                                        matmul_options={"availableMemoryProportion": str(available_memory_proportion)})
-    opts = ipu_utils.set_convolution_options(opts,
-                                             convolution_options={
-                                                 "availableMemoryProportion": str(available_memory_proportion)})
+    opts = IPUConfig()
+    opts.matmuls.poplar_options = {'availableMemoryProportion': str(
+        available_memory_proportion)}
+    opts.convolutions.poplar_options = {'availableMemoryProportion': str(
+        available_memory_proportion)}
 
     if mode == 'replicated':
         num_replicas = num_ipus
         os.environ["TF_POPLAR_FLAGS"] += " --force_replicated_mode"
     else:
         num_replicas = 1
-    cfg = ipu_utils.auto_select_ipus(opts, num_ipus)
-    ipu_utils.configure_ipu_system(cfg)
+    opts.auto_select_ipus = num_ipus
+    opts.configure_ipu_system()
     with tf.Session() as session:
         session.run(infeed_queue_initializer)
         fps = []
@@ -270,23 +269,11 @@ def construct_graph(network_class: Type[InferenceNetwork],
     def comp_fn():
         def body(img):
             with scopes.ipu_scope('/device:IPU:0'):
-                if mode == 'sharded':
-                    with autoshard.ipu_autoshard():
-                        probs = tf.import_graph_def(network.optimized_graph,
-                                                    input_map={network.graph_input: img},
-                                                    name="optimized",
-                                                    return_elements=[network.graph_output])[0]
-                    autoshard.automatic_sharding(num_shards=num_ipus, input_ts=img, loss_ts=probs,
-                                                 frozen_inference=True)
-                    outfeed_op = outfeed_queue.enqueue(probs)
-                    outfeed_op._set_attr(sharding._XLA_SHARDING,
-                                         attr_value_pb2.AttrValue(s=probs.op.get_attr('_XlaSharding')))
-                else:
-                    probs = tf.import_graph_def(network.optimized_graph,
-                                                input_map={network.graph_input: img},
-                                                name="optimized",
-                                                return_elements=[network.graph_output])[0]
-                    outfeed_op = outfeed_queue.enqueue(probs)
+                probs = tf.import_graph_def(network.optimized_graph,
+                                            input_map={network.graph_input: img},
+                                            name="optimized",
+                                            return_elements=[network.graph_output])[0]
+                outfeed_op = outfeed_queue.enqueue(probs)
                 # Note that enqueue happens on the IPU.
                 return outfeed_op
 
@@ -318,7 +305,7 @@ def main(model_arch: str, images: List, batch_size: int,
         loop: Run inference on device in a loop for num_iterations steps.
         num_iterations: Number of iterations, if running in a loop.
         num_ipus: Number of IPU to run inference on.
-        mode: Mode of inference - {"single_ipu", "replicated", "sharded"}
+        mode: Mode of inference - {"single_ipu", "replicated"}
         data: Run on real data (transfer images host -> device) or using on-device synthetic data
         available_memory_proportion: Proportion of tile memory available as
          temporary memory for matmul and convolution execution
@@ -327,11 +314,6 @@ def main(model_arch: str, images: List, batch_size: int,
         use_ipu_model: Run code with a CPU based IPU simulator.
 
     """
-    if (model_arch == "densenet121") and (mode != "sharded"):
-        raise ValueError(f'{model_arch} requires sharding over at-least two ipus.')
-
-    if (model_arch == "xception") and (mode != "sharded"):
-        raise ValueError(f'{model_arch} requires sharding over at-least four ipus.')
 
     if (available_memory_proportion <= 0.05) or (available_memory_proportion > 1):
         raise ValueError('Invalid "availableMemoryProportion" value: must be a float >=0.05'
@@ -399,7 +381,7 @@ if __name__ == "__main__":
     parser.add_argument('--num-iterations', dest='num_iterations', type=int, default=100,
                         help="Number of iterations if running in a loop.")
     parser.add_argument('--mode', dest="mode", type=str, default="single_ipu",
-                        help="Inference mode.", choices=["single_ipu", "replicated", "sharded"])
+                        help="Inference mode.", choices=["single_ipu", "replicated"])
     parser.add_argument('--data', dest="data", type=str, default="real",
                         help="Run inference on real data (transfer images host -> device) "
                              "or using on-device synthetic data",
@@ -420,10 +402,10 @@ if __name__ == "__main__":
 
     if (args.mode == 'single_ipu') and (args.num_ipus > 1):
         logging.warning('num_ipus > 1 with single_ipu mode, setting num_ipus to 1. '
-                        'To run on multiple ipus, use mode=replicated or sharded.')
+                        'To run on multiple ipus, use mode=replicated')
         args.num_ipus = 1
 
-    if (args.mode in ("replicated", "sharded")) and (args.num_ipus == 1):
+    if (args.mode == 'replicated') and (args.num_ipus == 1):
         raise ValueError(f"num_ipus must be > 1 if mode is {args.mode}.")
 
     if not args.available_mem_prop:

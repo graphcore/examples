@@ -276,86 +276,87 @@ class BertModel(object):
         # `qkv_layer` = [B*S, 3N*H]    if use_qkv_split:
         if self.bert_config.use_qkv_split:
             head_shape = [num_attention_heads*size_per_head, num_attention_heads*size_per_head]
-            q_weight = tf.get_variable(
-                dtype=self.bert_config.dtype,
-                name="q_weight",
-                shape=head_shape,
-                initializer=create_initializer(self.bert_config.initializer_range),
-                trainable=True)
-            k_weight = tf.get_variable(
-                dtype=self.bert_config.dtype,
-                name="k_weight",
-                shape=head_shape,
-                initializer=create_initializer(self.bert_config.initializer_range),
-                trainable=True)
-            v_weight = tf.get_variable(
-                dtype=self.bert_config.dtype,
-                name="v_weight",
-                shape=head_shape,
-                initializer=create_initializer(self.bert_config.initializer_range),
-                trainable=True)
+            with tf.variable_scope('query'):
+                q_weight = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="kernel",
+                    shape=head_shape,
+                    initializer=create_initializer(self.bert_config.initializer_range),
+                    trainable=True)
+            with tf.variable_scope('key'):
+                k_weight = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="kernel",
+                    shape=head_shape,
+                    initializer=create_initializer(self.bert_config.initializer_range),
+                    trainable=True)
+            with tf.variable_scope('value'):
+                v_weight = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="kernel",
+                    shape=head_shape,
+                    initializer=create_initializer(self.bert_config.initializer_range),
+                    trainable=True)
             qkv_weight = tf.concat([q_weight, k_weight, v_weight], axis=-1)
 
         else:
-            qkv_weight = tf.get_variable(
-                dtype=self.bert_config.dtype,
-                name="qkv_weight",
-                shape=[num_attention_heads*size_per_head, 3*num_attention_heads*size_per_head],
-                initializer=create_initializer(self.bert_config.initializer_range),
-                trainable=True)
-
-        vs_scope = tf.get_variable_scope()
+            with tf.variable_scope('kernel'):
+                qkv_weight = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="qkv_weight",
+                    shape=[num_attention_heads*size_per_head, 3*num_attention_heads*size_per_head],
+                    initializer=create_initializer(self.bert_config.initializer_range),
+                    trainable=True)
 
         @ipu.outlined_function
         def inner_attention_func():
-            with tf.variable_scope(vs_scope.name):
-                qkv = tf.matmul(input_tensor_2d, qkv_weight)
+            qkv = tf.matmul(input_tensor_2d, qkv_weight)
 
-                if self.bert_config.use_qkv_bias:
-                    qkv_bias = tf.get_variable(
-                        dtype=self.bert_config.dtype,
-                        name="qkv_bias",
-                        shape=[3*num_attention_heads*size_per_head],
-                        initializer=tf.zeros_initializer(),
-                        trainable=True
-                    )
-                    qkv = tf.nn.bias_add(qkv, qkv_bias)
-                # Split and transpose to [B, N, S, H]
-                query_layer, key_layer, value_layer = [
-                    transpose_for_scores(layer, int(batch_size), int(
-                        num_attention_heads), int(seq_length), int(size_per_head))
-                    for layer in tf.split(qkv, [int(num_attention_heads*size_per_head)]*3, axis=-1, name='qkv_split')
-                ]
+            if self.bert_config.use_qkv_bias:
+                qkv_bias = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="qkv_bias",
+                    shape=[3*num_attention_heads*size_per_head],
+                    initializer=tf.zeros_initializer(),
+                    trainable=True
+                )
+                qkv = tf.nn.bias_add(qkv, qkv_bias)
+            # Split and transpose to [B, N, S, H]
+            query_layer, key_layer, value_layer = [
+                transpose_for_scores(layer, int(batch_size), int(
+                    num_attention_heads), int(seq_length), int(size_per_head))
+                for layer in tf.split(qkv, [int(num_attention_heads*size_per_head)]*3, axis=-1, name='qkv_split')
+            ]
 
-                # `attention_scores` = [B, N, S, S]
-                attention_scores = tf.matmul(query_layer, key_layer, transpose_b=True)
-                attention_scores = tf.multiply(
-                    attention_scores, 1.0 / math.sqrt(float(size_per_head)))
-                if mask is not None:
-                    # `mask` = [B, 1, 1, S]
-                    attention_scores = tf.add(
-                        attention_scores, tf.expand_dims(mask, axis=1))
+            # `attention_scores` = [B, N, S, S]
+            attention_scores = tf.matmul(query_layer, key_layer, transpose_b=True)
+            attention_scores = tf.multiply(
+                attention_scores, 1.0 / math.sqrt(float(size_per_head)))
+            if mask is not None:
+                # `mask` = [B, 1, 1, S]
+                attention_scores = tf.add(
+                    attention_scores, tf.expand_dims(mask, axis=1))
 
-                # `attention_probs` = [B, N, S, S]
-                attention_probs = tf.nn.softmax(attention_scores)
+            # `attention_probs` = [B, N, S, S]
+            attention_probs = tf.nn.softmax(attention_scores)
 
-                # This is actually dropping out entire tokens to attend to, which might
-                # seem a bit unusual, but is taken from the original Transformer paper.
-                attention_probs = dropout(
-                    attention_probs, self.bert_config.attention_probs_dropout_prob)
+            # This is actually dropping out entire tokens to attend to, which might
+            # seem a bit unusual, but is taken from the original Transformer paper.
+            attention_probs = dropout(
+                attention_probs, self.bert_config.attention_probs_dropout_prob)
 
-                # `context_layer` = [B, N, S, H]
-                context_layer = tf.matmul(attention_probs, value_layer)
+            # `context_layer` = [B, N, S, H]
+            context_layer = tf.matmul(attention_probs, value_layer)
 
-                # `context_layer` = [B, S, N, H]
-                context_layer = tf.transpose(context_layer, [0, 2, 1, 3])
+            # `context_layer` = [B, S, N, H]
+            context_layer = tf.transpose(context_layer, [0, 2, 1, 3])
 
-                # `context_layer` = [B*S, N*H]
-                context_layer = tf.reshape(
-                    context_layer,
-                    [batch_size * seq_length, self.bert_config.hidden_size])
+            # `context_layer` = [B*S, N*H]
+            context_layer = tf.reshape(
+                context_layer,
+                [batch_size * seq_length, self.bert_config.hidden_size])
 
-                return context_layer
+            return context_layer
         context_layer = inner_attention_func()
         return context_layer
 
@@ -511,9 +512,9 @@ class BertModel(object):
 
             output_weights = tf.get_variable(
                 name="output_weights",
-                shape=[self.bert_config.hidden_size, 2],
+                shape=[2, self.bert_config.hidden_size],
                 dtype=dtype,
-                initializer=tf.truncated_normal_initializer(self.bert_config.initializer_range))
+                initializer=tf.truncated_normal_initializer(stddev=0.02))
 
             output_bias = tf.get_variable(
                 name="output_bias",
@@ -524,7 +525,7 @@ class BertModel(object):
             final_hidden_matrix = tf.reshape(input_tensor,
                                              [batch_size * seq_length, hidden_size])
 
-            logits = tf.matmul(final_hidden_matrix, output_weights)
+            logits = tf.matmul(final_hidden_matrix, output_weights, transpose_b=True)
             logits = tf.nn.bias_add(logits, output_bias)
 
             logits = tf.reshape(logits, [batch_size, seq_length, 2])
@@ -626,14 +627,17 @@ class BertModel(object):
             numerator = tf.reduce_sum(label_weights * per_loss)
             denominator = tf.reduce_sum(label_weights) + 1e-5
             mlm_loss = numerator / denominator
-
             if self.bert_config.compute_acc:
                 # Calculate `mlm_acc`
-                mlm_acc = tf.reduce_mean(tf.cast(tf.equal(
-                    tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32),
-                    label_ids), dtype=tf.float32))
+                results = tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32)
+                predictions = tf.cast(tf.equal(results, label_ids), dtype=tf.float16)
+                predictions = tf.cast(predictions * label_weights, dtype=tf.float32)
+
+                mlm_acc = tf.reduce_sum(predictions)
+                total_attempted = tf.cast(tf.reduce_sum(label_weights), dtype=tf.float32)
+                mlm_acc = mlm_acc / total_attempted
             else:
-                mlm_acc = tf.constant(-1)
+                mlm_acc = tf.get_variable('mlm_acc', initializer = -1.0, trainable = False, dtype = tf.float32)
 
         # Calculate NSP loss
         with tf.variable_scope("cls/seq_relationship"):
@@ -651,9 +655,12 @@ class BertModel(object):
                     tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32),
                     next_sentence_labels), dtype=tf.float32))
             else:
-                nsp_acc = tf.constant(-1)
+                nsp_acc = tf.get_variable('nsp_acc', initializer = -1.0, trainable = False, dtype = tf.float32)
 
-        return {"mlm_loss": mlm_loss, "nsp_loss": nsp_loss,
+        outfeed_mlm_loss = tf.cast(mlm_loss, dtype = tf.float32)
+        outfeed_nsp_loss = tf.cast(nsp_loss, dtype = tf.float32)
+
+        return {"mlm_loss": outfeed_mlm_loss, "nsp_loss": outfeed_nsp_loss,
                 "mlm_acc": mlm_acc, "nsp_acc": nsp_acc}
 
     def get_loc_logic_output_layer(self,
@@ -661,6 +668,7 @@ class BertModel(object):
                                    end_positions,
                                    input_tensor,
                                    ):
+        # This is the loss and accuracy for SQuAD
         dtype_loss = tf.float32
         start_logits, end_logits = self.squad_head(
             input_tensor, dtype_loss)
@@ -669,18 +677,11 @@ class BertModel(object):
             return {'start_logits': start_logits, 'end_logits': end_logits}
 
         def compute_loss(logits, positions):
-            # force to 32
-            logits_new = tf.cast(logits, dtype=dtype_loss)
-            one_hot_positions = tf.one_hot(
-                positions, depth=logits.shape[-1], dtype=dtype_loss)
-            # log softmax
-            dims = logits_new.shape.as_list()
-            soft_probs = tf.nn.softmax(logits_new, axis=-1)
-            epsilon = tf.constant(1e-7, shape=[dims[1]], dtype=dtype_loss)
-            log_probs = tf.math.log(tf.nn.bias_add(soft_probs, epsilon))
-            loss = -tf.reduce_mean(
-                tf.reduce_sum(one_hot_positions * log_probs, axis=-1))
-            # force to origin type
+            seq_len = logits.shape[1]
+            logits_fp32 = tf.cast(logits, dtype=dtype_loss)
+            one_hot_positions = tf.one_hot(positions, depth=seq_len, dtype=tf.float32)
+            log_probs = tf.nn.log_softmax(logits_fp32, axis=-1)
+            loss = -tf.reduce_mean(tf.reduce_sum(one_hot_positions * log_probs, axis=-1))
             loss = tf.cast(loss, dtype=logits.dtype)
             return loss
 
@@ -690,74 +691,6 @@ class BertModel(object):
         total_loss = (start_loss + end_loss) / 2.0
 
         return {'total_loss': total_loss}
-
-    def build_model(self, input_ids, input_mask, segment_ids, masked_lm_positions):
-        # TODO: Add `task` to configurate what model to build.
-        # TODO: build model for squad
-        with tf.variable_scope("bert"):
-            # Embedding layer
-            with tf.variable_scope("embeddings"):
-                word_embeddings = self.embedding(
-                    input_ids, self.bert_config.vocab_size, name="word_embeddings", num_splits=1)
-                _batch_size, _seq_len = word_embeddings.shape[:2]
-                dummy_pos_index = tf.reshape(
-                    tf.tile(tf.range(_seq_len), [_batch_size]), [-1, _seq_len])
-                position_embeddings = self.embedding(
-                    dummy_pos_index, self.bert_config.max_position_embeddings, name="position_embeddings")
-                seg_onehot = tf.one_hot(segment_ids,
-                                        depth=self.bert_config.type_vocab_size,
-                                        dtype=self.bert_config.dtype)
-                seg_weights = tf.get_variable(dtype=self.bert_config.dtype,
-                                              name="token_type_embeddings",
-                                              shape=[self.bert_config.type_vocab_size,
-                                                     self.bert_config.hidden_size],
-                                              initializer=create_initializer(
-                                                  self.bert_config.initializer_range),
-                                              trainable=True)
-                segment_embeddings = tf.matmul(seg_onehot, seg_weights)
-                full_embeddings = tf.add(word_embeddings, position_embeddings)
-                full_embeddings = tf.add(full_embeddings, segment_embeddings)
-                embedding_output = layer_norm_and_dropout(
-                    full_embeddings, self.bert_config.hidden_dropout_prob)
-
-            # Encoder layer
-            attention_mask = create_attention_mask_from_input_mask(
-                input_ids, input_mask, self.bert_config.dtype)
-            with tf.variable_scope("encoder"):
-                for layer_idx in range(self.bert_config.num_hidden_layers):
-                    with tf.variable_scope("layer_%d" % layer_idx):
-                        with tf.variable_scope("attention"):
-                            attention_heads = []
-                            with tf.variable_scope("self"):
-                                attention_head = self.self_attention(
-                                    embedding_output, mask=attention_mask)
-                                attention_heads.append(attention_head)
-
-                            attention_output = None
-                            if len(attention_heads) == 1:
-                                attention_output = attention_heads[0]
-                            else:
-                                # In the case where we have other sequences, we just concatenate
-                                # them to the self-attention head before the projection.
-                                attention_output = tf.concat(
-                                    attention_heads, axis=-1)
-
-                            # Run a linear projection of `hidden_size` then add a residual
-                            # with `layer_input`.
-                            attention_output = self.attention_projection(
-                                embedding_output, attention_output)
-                        layer_output = self.feed_forward(attention_output)
-                encoder_output = reshape_from_matrix(
-                    layer_output, embedding_output.shape)
-            # Pretrain head
-            pooled_output = self.pooler(encoder_output)
-            masked_tokens_tensor = self.lm_projection(
-                encoder_output, masked_lm_positions)
-        mlm_logits = self.mlm_head(masked_tokens_tensor).values[0]
-        nsp_logits = self.nsp_head(pooled_output)
-        # SQuAD head
-        start_logits, end_logits = self.squad_head(encoder_output)
-        return mlm_logits, nsp_logits, (start_logits, end_logits)
 
 
 def gather_indexes(sequence_tensor, positions):
@@ -881,7 +814,7 @@ def dropout(input_tensor, dropout_prob=None):
     return output
 
 
-def layer_norm(input_tensor, name='GroupNorm'):
+def layer_norm(input_tensor, name='LayerNorm'):
     """Run layer normalization on the last dimension of the tensor."""
 
     x_reshaped = tf.reshape(input_tensor, (-1, input_tensor.shape[-1]))
@@ -891,7 +824,7 @@ def layer_norm(input_tensor, name='GroupNorm'):
     return tf.reshape(y, input_tensor.shape)
 
 
-def layer_norm_and_dropout(input_tensor, dropout_prob, name=None):
+def layer_norm_and_dropout(input_tensor, dropout_prob, name="LayerNorm"):
     """Runs layer normalization followed by dropout."""
     output_tensor = layer_norm(input_tensor, name)
     output_tensor = dropout(output_tensor, dropout_prob)
@@ -1062,12 +995,9 @@ def attention_static_remasking(mask_padding_index, seq_length,
 def dropout_residual_add_layer_norm(input_tensor,
                                     residual_tensor,
                                     dropout_prob):
-    vs_scope = tf.get_variable_scope()
-
     @ipu.outlined_function
     def inner_func():
-        with tf.variable_scope(vs_scope.name):
-            output = residual_tensor + dropout(input_tensor, dropout_prob)
+        output = residual_tensor + dropout(input_tensor, dropout_prob)
         output = layer_norm(output)
         return output
     return inner_func()
@@ -1078,14 +1008,11 @@ def dense_layer(input_tensor,
                 kernel_initializer,
                 activation=None,
                 use_bias=True):
-    vs_scope = tf.get_variable_scope()
-
     @ipu.outlined_function
     def inner_func():
-        with tf.variable_scope(vs_scope.name):
-            return tf.layers.dense(input_tensor,
-                                   num_units,
-                                   use_bias=use_bias,
-                                   activation=activation,
-                                   kernel_initializer=kernel_initializer)
+        return tf.layers.dense(input_tensor,
+                               num_units,
+                               use_bias=use_bias,
+                               activation=activation,
+                               kernel_initializer=kernel_initializer)
     return inner_func()

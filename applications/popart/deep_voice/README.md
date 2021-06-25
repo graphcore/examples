@@ -31,17 +31,15 @@ virtualenv venv -p python3.6
 source venv/bin/activate
 ```
 
-3.  Install required packages like torchaudio and librosa
+3.  Install the required pip packages:
 
 ```
 pip install -r requirements.txt
 ```
 
-You may need to install the `sndfile` library:
-
-On Ubuntu:
+Install the required apt packages. On Ubuntu:
 ```
-sudo apt-get install libsndfile1
+sudo apt install $(< required_apt_packages.txt)
 ```
 
 4.  Dataset: Currently, we use the VCTK dataset which is a multi-speaker dataset. For more details see:

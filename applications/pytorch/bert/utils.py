@@ -12,14 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import sys
 import yaml
 import argparse
+import torch
+import popdist
+import popdist.poptorch
+import horovod.torch as hvd
 
 import logging
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-config_file = "./configs.yml"
+config_file = os.path.join(os.path.dirname(__file__), "configs.yml")
 
 
 def cycle(iterator):
@@ -39,6 +44,17 @@ def str_to_bool(value):
     elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
         return True
     raise argparse.ArgumentTypeError(f'{value} is not a valid boolean value')
+
+
+def init_popdist(args):
+    hvd.init()
+    args.use_popdist = True
+    if popdist.getNumTotalReplicas() != args.replication_factor:
+        print(f"The number of replicas is overridden by PopRun. "
+              f"The new value is {popdist.getNumTotalReplicas()}.")
+    args.replication_factor = int(popdist.getNumLocalReplicas())
+    args.popdist_rank = popdist.getInstanceIndex()
+    args.popdist_size = popdist.getNumInstances()
 
 
 def parse_bert_args(args=None):
@@ -73,6 +89,10 @@ def parse_bert_args(args=None):
                         "The added stash + code could be greater than the reduction in temporary memory.",)
     parser.add_argument("--enable-half-partials", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Enable half partials for matmuls and convolutions globally")
+    parser.add_argument("--optimizer-state-offchip", type=str_to_bool, nargs="?", const=True, default=True,
+                        help="Set the tensor storage location for optimizer state to be offchip.")
+    parser.add_argument("--replicated-tensor-sharding", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Enable replicated tensor sharding of optimizer state")
     parser.add_argument("--ipus-per-replica", type=int, help="Number of IPUs required by each replica")
     parser.add_argument("--layers-per-ipu", type=int, nargs="+",
                         help="Number of encoders placed on each IPU. Can be a single number, for an equal number encoder layers per IPU.\
@@ -85,6 +105,7 @@ def parse_bert_args(args=None):
                         help="Enable asynchronous mode in the DataLoader")
     parser.add_argument("--file-buffer-size", type=int, help="Number of files to load into the Dataset internal buffer for shuffling.")
     parser.add_argument("--random-seed", type=int, help="Seed for RNG")
+    parser.add_argument("--num-epochs", type=int, help="SQuAD only - number of epochs to train for")
 
     # Optimizer
     parser.add_argument("--optimizer", type=str, choices=['AdamW', 'LAMB', 'LAMBNoBiasCorrection'], help="optimizer to use for the training")
@@ -94,6 +115,12 @@ def parse_bert_args(args=None):
     parser.add_argument("--lr-warmup", type=float, help="Proportion of lr-schedule spent in warm-up. Number in range [0.0, 1.0]")
     parser.add_argument("--loss-scaling", type=float, help="Loss scaling factor (recommend using powers of 2)")
     parser.add_argument("--weight-decay", type=float, help="Set the weight decay")
+    parser.add_argument("--enable-half-first-order-momentum", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Use float16 for the first order momentum in the optimizer.")
+    parser.add_argument("--squad-do-training", type=str_to_bool, nargs="?", const=True, default=True,
+                        help="Do SQuAD training (run_squad only)")
+    parser.add_argument("--squad-do-validation", type=str_to_bool, nargs="?", const=True, default=True,
+                        help="Do SQuAD validation (run_squad only)")
 
     # Model
     parser.add_argument("--sequence-length", type=int, help="The max sequence length")
@@ -165,6 +192,13 @@ def parse_bert_args(args=None):
     parser.set_defaults(**yaml_args)
     args = parser.parse_args(remaining_args)
 
+    # Initialise PopDist
+    if popdist.isPopdistEnvSet():
+        init_popdist(args)
+        hvd.broadcast(torch.Tensor([args.random_seed]), root_rank=0)
+    else:
+        args.use_popdist = False
+
     # Expand layers_per_ipu input into list representation
     if isinstance(args.layers_per_ipu, int):
         args.layers_per_ipu = [args.layers_per_ipu]
@@ -192,8 +226,23 @@ def parse_bert_args(args=None):
     args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.batch_size
     args.samples_per_step = args.global_batch_size * args.batches_per_step
     args.intermediate_size = args.hidden_size * 4
+
     return args
 
 
 def logger(msg):
-    logging.info(msg)
+    if not popdist.isPopdistEnvSet() or popdist.getInstanceIndex() == 0:
+        logging.info(msg)
+
+
+def sync_metrics(outputs, factor=1, average=True):
+    if popdist.isPopdistEnvSet():
+        if isinstance(outputs, float):
+            return float(hvd.allreduce(torch.Tensor([outputs]), average=average).item())
+        else:
+            return [hvd.allreduce(output.div(factor), average=average).mean().item() for output in outputs]
+    else:
+        if isinstance(outputs, float):
+            return outputs
+        else:
+            return [output.div(factor).mean().item() for output in outputs]

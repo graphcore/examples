@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import tensorflow.compat.v1 as tf
+from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python import ipu
 from functools import partial
 import numpy as np
@@ -27,9 +28,9 @@ def parse_args():
 
 
 def create_ipu_config():
-    cfg = ipu.utils.create_ipu_config()
-    cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    ipu.utils.configure_ipu_system(cfg)
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 1
+    cfg.configure_ipu_system()
 
 
 def create_dataset(x, y, batchsize):

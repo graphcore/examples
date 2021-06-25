@@ -33,6 +33,7 @@ from scipy.stats import truncnorm
 
 import popart
 from phased_execution.scope_manager import ScopeProvider
+from utils import packed_bert_utils
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,18 @@ class BertConfig(NamedTuple):
     def qkv_length(self):
         return self.hidden_size / self.attention_heads
 
+    @property
+    def max_lm_predictions(self):
+        # When using the packed sequence data format, the number of mask_tokens is
+        # increased by the number of sequences per pack.
+        if not self.use_packed_sequence_format:
+            return self.mask_tokens
+        else:
+            return self.mask_tokens + self.max_sequences_per_pack
+
+    use_packed_sequence_format: bool = False
+    max_sequences_per_pack: int = 1
+
     # In PRETRAINING this sets how many steps to serialise both the
     # embedding and projection
     embedding_serialization_vocab_steps: int = 1
@@ -162,7 +175,10 @@ class BertConfig(NamedTuple):
     num_io_tiles: int = 0
     phased_execution_type: str = "SINGLE"
 
+    # Return the start and end logits as a single tensor to be sliced on the host.
     squad_single_output: bool = True
+    # Execute the squad task head on IPU0. If False, execute on the final encoder IPU/stage.
+    squad_wrap_final_layer: bool = True
 
 
 class DeviceScope(object):
@@ -329,7 +345,7 @@ class Bert(Model):
             self.final_loss_scope = self.mlm_scope
         if self.config.task == "SQUAD":
             ipu = self.embedding_scope.virtualGraph
-            if self.config.inference:
+            if not self.config.squad_wrap_final_layer:
                 pipeline_stage -= 1
                 ipu = pipeline_stage
             self.squad_scope = self.device_scope(
@@ -751,6 +767,9 @@ class Bert(Model):
             masks[1] is the index that masking starts in the rest of the sequence
         Otherwise
             masks[0] is the index that masking starts in the rest of the sequence
+        When use_packed_sequence_format is turned on:
+            model.input["input_mask"] is used to create the block-diagonal mask which
+            prevents cross-contamination between sequences in a pack
         Example:
             Task: PRETRAINING
             masks: [2, 5]
@@ -776,18 +795,32 @@ class Bert(Model):
                                        "Mask",
                                        additional_scopes=additional_scopes)
         with mask_scope:
-            base_value = np.arange(self.config.sequence_length)
-            base = self.constant_tensor(base_value, np.uint32, "mask_sequence")
-            if self.config.task == "PRETRAINING":
-                # Mask tokens mask
-                mmask = self.builder.aiOnnx.less([base, masks[0]])
-                # No constexpr for greater. Create as const instead
-                _mask = self.constant_tensor(np.greater_equal(
-                    base_value, self.config.mask_tokens), np.bool)
-                mmask = self.builder.aiOnnx.logical_or([mmask, _mask])
-                # Sequence mask
-                smask = self.builder.aiOnnx.less([base, masks[1]])
-                final_mask = self.builder.aiOnnx.logical_and([mmask, smask])
+            if not self.config.use_packed_sequence_format:
+                base_value = np.arange(self.config.sequence_length)
+                base = self.constant_tensor(base_value, np.uint32, "mask_sequence")
+                if self.config.task == "PRETRAINING":
+                    # Mask tokens mask
+                    mmask = self.builder.aiOnnx.less([base, masks[0]])
+                    # No constexpr for greater. Create as const instead
+                    _mask = self.constant_tensor(np.greater_equal(
+                        base_value, self.config.max_lm_predictions), np.bool)
+                    mmask = self.builder.aiOnnx.logical_or([mmask, _mask])
+                    # Sequence mask
+                    smask = self.builder.aiOnnx.less([base, masks[1]])
+                    final_mask = self.builder.aiOnnx.logical_and([mmask, smask])
+                else:
+                    final_mask = self.builder.aiOnnx.less([base, masks[0]])
+
+                final_mask = self.builder.aiOnnx.cast(
+                    [final_mask], self.config.popart_dtype)
+                final_mask = self.builder.aiOnnx.sub(
+                    [final_mask, self.constant_tensor(1.0, self.config.dtype)])
+                final_mask = self.builder.aiOnnx.mul(
+                    [final_mask, self.constant_tensor(1000.0, self.config.dtype)])
+                final_mask = self.builder.reshape_const(
+                    self.builder.aiOnnx,
+                    [final_mask],
+                    [self.config.micro_batch_size, 1, 1, self.config.sequence_length])
             else:
                 final_mask = self.builder.aiOnnx.less([base, masks[0]])
             final_mask = self.builder.aiOnnx.cast(
@@ -900,7 +933,7 @@ class Bert(Model):
                 num_outputs=3,
                 axis=1,
                 split=[self.config.hidden_size]*3,
-                debugPrefix="QKV_Split")
+                debugContext="QKV_Split")
 
         def extract_heads(tensor, transpose=False):
             tensor = self.builder.reshape_const(
@@ -943,11 +976,16 @@ class Bert(Model):
         x = self.builder.reshape_const(self.builder.aiOnnx, [input_x], [
                                        self.config.micro_batch_size, self.config.sequence_length, self.config.hidden_size])
 
-        x = self.builder.aiOnnxOpset9.slice([x], axes=[1], starts=[
-            0], ends=[self.config.mask_tokens])
+        if self.config.use_packed_sequence_format:
+            # MLM tokens can be at arbitrary positions in the sequence
+            x = packed_bert_utils.mlm_projection_gather_indexes(self, x)
 
-        x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
-                                       self.config.micro_batch_size * self.config.mask_tokens, self.config.hidden_size])
+        else:
+            # MLM tokens have been pre-arranged to the front of the sequence
+            x = self.builder.aiOnnxOpset9.slice([x], axes=[1], starts=[
+                0], ends=[self.config.max_lm_predictions])
+            x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
+                                        self.config.micro_batch_size * self.config.max_lm_predictions, self.config.hidden_size])
 
         weight = self.embedding_dict
 
@@ -967,7 +1005,7 @@ class Bert(Model):
             x = self.builder.aiOnnx.add([x, bias])
 
         x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
-                                       self.config.micro_batch_size, self.config.mask_tokens, self.config.vocab_length])
+                                       self.config.micro_batch_size, self.config.max_lm_predictions, self.config.vocab_length])
         return x
 
     def squad_projection(self, input_x):
@@ -989,10 +1027,10 @@ class Bert(Model):
 
         start_logits = self.builder.reshape_const(
             self.builder.aiOnnx,
-            [start_logits], [self.config.micro_batch_size, self.config.sequence_length], debugPrefix="answer_start")
+            [start_logits], [self.config.micro_batch_size, self.config.sequence_length], debugContext="answer_start")
         end_logits = self.builder.reshape_const(
             self.builder.aiOnnx,
-            [end_logits], [self.config.micro_batch_size, self.config.sequence_length], debugPrefix="answer_end")
+            [end_logits], [self.config.micro_batch_size, self.config.sequence_length], debugContext="answer_end")
 
         return start_logits, end_logits
 
@@ -1001,13 +1039,18 @@ class Bert(Model):
         Take the [CLS] token as a sentence embedding (assuming it's already been
         fine-tuned), then run a FC layer with tanh activation
         """
-        pooler_input = self.builder.aiOnnxOpset9.slice(
-            [pooler_input], axes=[1], starts=[self.config.mask_tokens], ends=[self.config.mask_tokens + 1]
-        )
+        if self.config.use_packed_sequence_format:
+            # The [CLS] tokens can occur anywhere in the sequence
+            pooler_input = packed_bert_utils.pooler_gather_indexes(self, pooler_input)
 
-        # This reshape is doing the job of a squeeze, but allows for in-place operation.
-        pooler_input = self.builder.reshape_const(self.builder.aiOnnx, [pooler_input], [
-            self.config.micro_batch_size, self.config.hidden_size])
+        else:
+            # The [CLS] token occurs at the start of the token
+            pooler_input = self.builder.aiOnnxOpset9.slice(
+                [pooler_input], axes=[1], starts=[self.config.max_lm_predictions], ends=[self.config.max_lm_predictions + 1]
+            )
+            # This reshape is doing the job of a squeeze, but allows for in-place operation.
+            pooler_input = self.builder.reshape_const(self.builder.aiOnnx, [pooler_input], [
+                self.config.micro_batch_size, self.config.hidden_size])
 
         weight = self.normal_init_tensor(
             self.config.dtype,
@@ -1019,7 +1062,8 @@ class Bert(Model):
         bias = self.constant_init_tensor(
             self.config.dtype, (self.config.hidden_size,), 0, "PoolB"
         )
-        x = self.builder.aiOnnx.gemm([pooler_input, weight, bias])
+        x = self.builder.aiOnnx.matmul([pooler_input, weight])
+        x = self.builder.aiOnnx.add([x, bias])
 
         return self.builder.aiOnnx.tanh([x])
 
@@ -1034,7 +1078,8 @@ class Bert(Model):
         )
         cls_bias = self.constant_init_tensor(
             self.config.dtype, (2,), 0, "NspB")
-        x = self.builder.aiOnnx.gemm([x, cls_weight, cls_bias])
+        x = self.builder.aiOnnx.matmul([x, cls_weight])
+        x = self.builder.aiOnnx.add([x, cls_bias])
         return x
 
     def lm_prediction_head(self, input_x):
@@ -1048,7 +1093,8 @@ class Bert(Model):
         dense_bias = self.constant_init_tensor(
             self.config.dtype, (self.config.hidden_size,), 0, "LMPredictionB")
 
-        x = self.builder.aiOnnx.gemm([input_x, dense_weight, dense_bias])
+        x = self.builder.aiOnnx.matmul([input_x, dense_weight])
+        x = self.builder.aiOnnx.add([x, dense_bias])
 
         x = self.intermediate_activation_function(x)
         x = self.norm(x)

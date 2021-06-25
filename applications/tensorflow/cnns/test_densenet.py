@@ -12,6 +12,7 @@ from tensorflow.python.ipu import utils
 from tensorflow.python.keras.applications.densenet import preprocess_input, \
     decode_predictions
 from tensorflow.python.keras.preprocessing import image
+from tensorflow.python.ipu.config import IPUConfig
 
 # Set up logging
 logging.basicConfig(format='%(asctime)s %(module)s - %(funcName)s: %(message)s',
@@ -41,9 +42,9 @@ class TestDensenet(unittest.TestCase):
                                                name="image_input")
 
         # Set compile and device options
-        opts = utils.create_ipu_config(profiling=False, use_poplar_text_report=False)
-        utils.auto_select_ipus(opts, [1])
-        utils.configure_ipu_system(opts)
+        opts = IPUConfig()
+        opts.auto_select_ipus = [1]
+        opts.configure_ipu_system()
 
         # Construct Densenet model
         cls.densenet_model = DenseNet(blocks=densenet_121_blocks, num_classes=cls.num_classes,

@@ -38,6 +38,6 @@ class TestiCifar10Restoring(SubProcessChecker):
         cmd = "python3 restore.py --restore-path " + self.logdir
         self.run_command(cmd,
                          working_path,
-                         ["Saved checkpoint to",
+                         ["Saved initial checkpoint to",
                           "ckpt",
                           "Restoring training from latest checkpoint:"])

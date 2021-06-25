@@ -20,6 +20,7 @@ from tensorflow.python.ipu import (
     pipelining_ops)
 from tensorflow.python.ipu.ipu_infeed_queue import IPUInfeedQueue
 from tensorflow.python.ipu.ipu_outfeed_queue import IPUOutfeedQueue
+from tensorflow.python.ipu.config import IPUConfig
 
 import tf_utils
 from tf_utils import build_optimizer
@@ -524,27 +525,27 @@ def run_language_model(opts):
         k += 1
     num_ipus = 2**k
     logger.info(f"Need {opts.num_shards} IPUs, requesting {num_ipus}")
-    config = utils.create_ipu_config()
+    config = IPUConfig()
 
     if opts.compile_only:
         if opts.compile_only_ipu_version is None:
             raise AttributeError(
                 "Must provide --compile-only-ipu-version if --compile-only is set.")
 
-        config = utils.set_ipu_connection_type(
-            config,
-            utils.DeviceConnectionType.NEVER,
-            ipu_version=opts.compile_only_ipu_version,
-            enable_remote_buffers=True)
+        config.device_connection.version = opts.compile_only_ipu_version
+        config.device_connection.enable_remote_buffers = True
+        config.device_connection.type = utils.DeviceConnectionType.NEVER
 
-    config = utils.auto_select_ipus(config, num_ipus)
-    config = utils.set_recomputation_options(config, allow_recompute=opts.recompute)
+    config.auto_select_ipus = num_ipus
+    config.allow_recompute = opts.recompute
     # Enable stochastic rounding
-    config = utils.set_floating_point_behaviour_options(config, inv=False,
-                                                        div0=False, oflo=False,
-                                                        esr=True, nanoo=False)
+    config.floating_point_behaviour.inv = False
+    config.floating_point_behaviour.div0 = False
+    config.floating_point_behaviour.oflo = False
+    config.floating_point_behaviour.esr = True
+    config.floating_point_behaviour.nanoo = False
     config = sparse.set_system_config(config, custom_op_debug_printing=opts.debug_dense_grad)
-    utils.configure_ipu_system(config)
+    config.configure_ipu_system()
 
     transformer = DynsparseTransformer(opts)
     if opts.mode in ["all", "train"]:

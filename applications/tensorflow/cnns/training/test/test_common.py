@@ -4,6 +4,7 @@ import os
 from urllib import request
 import tarfile
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -49,26 +50,53 @@ cifar10_data_dir = download_cifar()
 
 
 def run_train(**kwargs):
+    kwargs['--on-demand'] = ''
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('..')
     cmd = ['python3', 'train.py']
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    return subprocess.check_output(cmd).decode('utf-8')
+    try:
+        return subprocess.check_output(cmd).decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        print(f"command: {e.cmd}", file=sys.stderr)
+        if e.stdout is not None:
+            print(f"stdout:\n{e.stdout.decode()}\n", file=sys.stderr)
+        if e.stderr is not None:
+            print(f"stderr:\n{e.stderr.decode()}\n", file=sys.stderr)
+        raise
 
 
 def run_restore(mypath, **kwargs):
+    kwargs['--on-demand'] = ''
     cmd = ['python3', 'restore.py']
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    return subprocess.check_output(cmd, cwd=mypath).decode('utf-8')
+    try:
+        return subprocess.check_output(cmd, cwd=mypath).decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        print(f"command: {e.cmd}", file=sys.stderr)
+        if e.stdout is not None:
+            print(f"stdout:\n{e.stdout.decode()}\n", file=sys.stderr)
+        if e.stderr is not None:
+            print(f"stderr:\n{e.stderr.decode()}\n", file=sys.stderr)
+        raise
 
 
 def run_validation(mypath, **kwargs):
+    kwargs['--on-demand'] = ''
     cmd = ['python3', 'validation.py']
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    return subprocess.check_output(cmd, cwd=mypath).decode('utf-8')
+    try:
+        return subprocess.check_output(cmd, cwd=mypath).decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        print(f"command: {e.cmd}", file=sys.stderr)
+        if e.stdout is not None:
+            print(f"stdout:\n{e.stdout.decode()}\n", file=sys.stderr)
+        if e.stderr is not None:
+            print(f"stderr:\n{e.stderr.decode()}\n", file=sys.stderr)
+        raise
 
 
 def parse_csv(filepath):

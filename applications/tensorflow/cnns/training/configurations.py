@@ -14,16 +14,18 @@
 
 import yaml
 import argparse
+from pathlib import Path
 
 
-
-def add_arguments(parser, config_filename):
-    configs = get_available_configs(config_filename)
-    parser.add_argument('--config', choices=configs.keys(), help="Select from avalible configurations")
+def add_arguments(parser):
+    parser.add_argument('--config', type=str, help="Select from available configurations")
+    parser.add_argument('--config-path', type=str, default=str(Path(Path(__file__).parent, Path("configs.yml"))),
+                        help='path to the configuration file')
     return parser
 
 
 def get_available_configs(config_filename):
+    config_filename = Path(config_filename)
     with config_filename.open() as config_file:
         configs = yaml.full_load(config_file)
     return configs
@@ -35,10 +37,12 @@ class YAMLNamespace(argparse.Namespace):
             setattr(self, key, value)
 
 
-def parse_config(args, parser, config_filename, known_args_only=False):
+def parse_config(args, parser, known_args_only=False):
     if args.config is not None:
         # Load the configurations from the YAML file and update command line arguments
-        configs = get_available_configs(config_filename)
+        configs = get_available_configs(args.config_path)
+        if args.config not in configs:
+            raise ValueError(f'unknown config {args.config} in config file. Available configs are {list(configs.keys())}.')
         loaded_config = YAMLNamespace(configs[args.config])
         if known_args_only:
             config_args, _ = parser.parse_known_args(namespace=loaded_config)

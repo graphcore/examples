@@ -17,16 +17,16 @@ import poptorch
 import pytest
 import json
 from transformers import BertConfig
-from bert_model import PipelinedBertWithLoss
+from modeling import PipelinedBertForPretraining
 from utils import parse_bert_args
-from bert_ipu import get_options
-from bert_optimization import get_optimizer
-from bert_data import get_generated_datum
+from ipu_options import get_options
+from optimization import get_optimizer
+from pretraining_data import get_generated_datum
 
 
-@pytest.mark.category(1)
-@pytest.mark.ipus(4)
-def test_checkpoint_in_ir():
+@pytest.mark.category1
+@pytest.mark.ipus(2)
+def test_recompute_checkpoint_in_ir():
     import warnings
     warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
@@ -45,7 +45,7 @@ def test_checkpoint_in_ir():
 
     # Execution parameters
     opts = get_options(config)
-    model = PipelinedBertWithLoss(config).half().train()
+    model = PipelinedBertForPretraining(config).half().train()
     optimizer = get_optimizer(config, model)
     poptorch_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
 
@@ -65,9 +65,9 @@ def test_checkpoint_in_ir():
                           "should be stashed")
 
 
-@pytest.mark.category(1)
-@pytest.mark.ipus(4)
-def test_checkpoint_not_in_ir():
+@pytest.mark.category1
+@pytest.mark.ipus(2)
+def test_recompute_checkpoint_not_in_ir():
     import warnings
     warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
@@ -86,7 +86,7 @@ def test_checkpoint_not_in_ir():
 
     # Execution parameters
     opts = get_options(config)
-    model = PipelinedBertWithLoss(config).half().train()
+    model = PipelinedBertForPretraining(config).half().train()
     optimizer = get_optimizer(config, model)
     poptorch_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
 

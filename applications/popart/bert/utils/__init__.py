@@ -188,7 +188,9 @@ def parse_bert_args(args_string=None):
         "split_transformer": "Place attention and feedforward layers in separate phased_execution scope.",
         "batch_serialize": "Factor by which a micro-batch is serialized, only supported in phased_execution mode.",
         "layers_per_phase": "Number of encoder layers per phased execution phase. ",
-        "num_io_tiles": "The number of tiles on each IPU dedicated to doing collective communication ops with the replicated weights. Only supported in phased_execution mode."
+        "num_io_tiles": "The number of tiles on each IPU dedicated to doing collective communication ops with the replicated weights. Only supported in phased_execution mode.",
+        "use_packed_sequence_format": "Set to true when using a packed-sequence dataset (pretraining only)",
+        "max_sequences_per_pack": "When using the packed_sequence_format, this specifies the maximum number of sequences per pack to expect"
     })
 
     group = parser.add_argument_group("SQuAD Config")
@@ -202,6 +204,8 @@ def parse_bert_args(args_string=None):
                        help="Path to SQuAD evaulate-v1.1.py script")
     group.add_argument("--squad-lr-scale", type=float, default=1.0,
                        help="Scale the learning rate of the SQuAD layers.")
+    group.add_argument("--disable-attention-dropout-bwd", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Enable DisableAttnDropoutBwdPattern pattern")
 
     group = parser.add_argument_group("Batch Config")
     group.add_argument("--global-batch-size", type=int,
@@ -237,6 +241,8 @@ def parse_bert_args(args_string=None):
                        help="Set the Adam/Lamb beta2 value")
     group.add_argument("--max-weight-norm", type=float, default=None,
                        help="Set the max value for R1 (weight norm) in the Lamb optimizer. Default is no clipping")
+    group.add_argument("--use-half-optimizer-state", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Set accl1 datatype in Adam based optimizers to FLOAT16")
     group.add_argument("--epochs-inference", type=int, default=1,
                        help="Number of epochs to run inference for")
     group.add_argument("--stochastic-rounding", type=str_to_bool, nargs="?", const=True, default=False,
@@ -301,7 +307,7 @@ def parse_bert_args(args_string=None):
                        help="Path to .onnx file created by this application to initialise the model.")
 
     group = parser.add_argument_group("Data Config")
-    group.add_argument("--input-files", type=str, nargs="*",
+    group.add_argument("--input-files", type=str, nargs="*", default = [],
                        help="Files to load data from. "
                             "For Pretraining: Binary files created by bert_data/create_pretraining_data.py. "
                             "For SQuAD: Path to train-v1.1.json")
@@ -429,6 +435,8 @@ def parse_bert_args(args_string=None):
                        help="Don't save the model. Useful for testing.")
     group.add_argument("--checkpoint-dir", type=str, default="ckpts",
                        help="Path to directory to save model checkpoints.")
+    group.add_argument("--save-initializers-externally", type=str_to_bool, nargs="?", const=True, default=False,
+                       help="Save weight and optimizer state initializers external to the model.onnx file.")
     group.add_argument("--wandb", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Enable logging to Weights and Biases.")
     group.add_argument("--log-level", type=str, default='INFO',
@@ -514,7 +522,7 @@ def check_training_duration(args):
 
 
 def global_batch_size(args):
-    return args.micro_batch_size * args.replication_factor * args.gradient_accumulation_factor
+    return args.micro_batch_size * args.replication_factor * args.gradient_accumulation_factor * args.popdist_size
 
 
 def set_batch_arguments(args):
@@ -531,7 +539,7 @@ def set_batch_arguments(args):
                                f"    gradient accumulation factor: {args.gradient_accumulation_factor}\n"
                                f"    replication factor: {args.replication_factor}")
 
-        denom = args.micro_batch_size * args.replication_factor
+        denom = args.micro_batch_size * args.replication_factor * args.popdist_size
         if args.global_batch_size % denom != 0:
             raise RuntimeError("Unable to set gradient accumulation to match the global batch size")
 
@@ -583,13 +591,14 @@ def get_validation_args(args):
         inference=True,
         tf_checkpoint=None,
         gradient_accumulation_factor=1,
-        engine_cache=None,
         use_popdist=False
     )
     if not args.no_training:
         validation_kwargs["onnx_checkpoint"] = os.path.join(args.checkpoint_dir, "model.onnx")
     if args.validation_config is not None:
         validation_kwargs.update(**args.validation_config)
+    if args.engine_cache:
+        validation_kwargs["variable_weights_inference"] = True
 
     args = vars(args)
     args.update(**validation_kwargs)

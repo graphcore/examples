@@ -1,6 +1,7 @@
 ckpts
 !*.json
 *.so
+*.lock
 *.gp
 __*
 !__*.py

@@ -14,8 +14,6 @@ custom_ops.so: custom_ops/plugin_version custom_ops/*.cpp custom_ops/workarounds
 		custom_ops/embedding_gather.cpp \
 		custom_ops/tied_gather.cpp \
 		custom_ops/tied_gather_pattern.cpp \
-		custom_ops/outline_dropout_pattern.cpp \
-		custom_ops/seed_modify.cpp \
 		custom_ops/lamb_serialised_weight_pattern.cpp \
 		custom_ops/workarounds/prevent_const_expr_folding_op.cpp \
 		custom_ops/workarounds/accumulate_priority_pattern.cpp \

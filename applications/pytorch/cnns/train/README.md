@@ -29,40 +29,32 @@ The ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 100
 
 3) Run the training:
 
-```bash
+```console
        python3 train.py --data imagenet --imagenet-data-path <path-to/imagenet>
 ```
 
+#### Supported ImageNet formats:
+* Raw ImageNet: without any modifications
+* WebDataset(recommended): you can use the given script to generate it (see datasets folder).
+* TFRecord format, to generate see the TensorFlow applications
+
+
 ### Training examples
 
+NOTE: It is suggested to generate the webdataset format of the ImageNet dataset to avoid host side bottlenecks.
 The following training configurations using 16 IPUs.
 
-#### ImageNet - ResNet-50
+#### ImageNet
 
-MK1 IPUs:
+|IPU configuration|Model  | Config name| Note |
+|-------|----------|---------|---------|
+|Mk2 POD16|ResNet50| `resnet50_mk2_pipelined`| 4 pipipeline stages, 4 replicas |
+|Mk2 POD16|ResNet50| `resnet50-16ipu-mk2-recompute`| single ipu, 16 replicas |
+|Mk2 POD16|EfficientNet-B0| `efficientnet-b0-16ipu-mk2`|4 pipipeline stages, 4 replicas |
 
-```bash
-python3 train.py --config resnet50-16ipu-mk1 --imagenet-data-path <path-to/imagenet>
-```
 
-MK2 IPUs:
-
-```bash
-python3 train.py --config resnet50-16ipu-mk2 --imagenet-data-path <path-to/imagenet>
-```
-
-#### ImageNet - EfficientNet-B0
-
-MK1 IPUs:
-
-```bash
-python3 train.py --config efficientnet-b0-16ipu-mk1 --imagenet-data-path <path-to/imagenet>
-```
-
-MK2 IPUs:
-
-```bash
-python3 train.py --config efficientnet-b0-16ipu-mk2 --imagenet-data-path <path-to/imagenet>
+```console
+python3 train.py --config <config name> --imagenet-data-path <path-to/imagenet>
 ```
 
 ## Options
@@ -107,13 +99,19 @@ The program has a few command line options:
 
 `--full-precision-norm`         Calculate the norm layers in full precision.
 
-`--no-validation`               Skip validation
+`--enable-fast-groupnorm`       There are two implementations of the group norm layer. If the fast implementation enabled, it couldn't load checkpoints, which didn't train with this flag. The default implementation can use any checkpoint.
+
+`--disable-stable-batchnorm`    There are two implementations of the batch norm layer. The default version is numerically more stable. The less stable is faster.
+
+`--validation-mode`             The model validation mode. Possible values are `none` (no validation) `during` (validate after every n epochs) and `after` (validate after the training).
+
+`--validation-frequency`        How many training epochs to run between validation steps.
 
 `--disable-metrics`             Do not calculate metrics during training, useful to measure peak throughput
 
 `--enable-recompute`            Enable the recomputation of network activations during backward pass instead of caching them during forward pass. This option turns on the recomputation for single-stage models. If the model is multi-stage (pipelined) the recomputation is always enabled.
 
-`--recompute-checkpoints`       List of recomputation checkpoint rules: [conv:store convolution activations|norm: store normlayer activations]
+`--recompute-checkpoints`       List of recomputation checkpoints. List of regex rules for the layer names. (Example: Select convolutional layers: `.*conv.*`)
 
 `--offload-optimizer`           Store the optimizer status off-chip
 
@@ -127,9 +125,11 @@ The program has a few command line options:
 
 `--checkpoint-path`             The checkpoint folder. In the given folder a checkpoint is created after every epoch
 
-`--optimizer`                   Define the optimizer: `sgd`, `adamw`, `rmsprop`
+`--optimizer`                   Define the optimizer: `sgd`, `sgd_combined`, `adamw`, `rmsprop`, `rmsprop_tf`
 
 `--momentum`                    Momentum factor
+
+`--optimizer-eps`               Small constant added to the updater term denominator for numerical stability.
 
 `--loss-scaling`                Loss scaling factor. This value is reached by the end of the training.
 
@@ -161,25 +161,37 @@ The program has a few command line options:
 
 `--profile`                     Generate PopVision Graph Analyser report
 
-`--loss-velocity-scaling-ratio` Only for SGD optimizer: Loss Velocity / Velocity scaling ratio. In case of large number of replicas >1.0 can increase numerical stability
+`--loss-velocity-scaling-ratio` Only for sgd_combined optimizer: Loss Velocity / Velocity scaling ratio. In case of large number of replicas >1.0 can increase numerical stability
+
+`--use-bbox-info`               Images may contain bounding box information for the target object. If this flag is set, during the augmentation process make sure the augmented image overlaps with the target object.
+
+`--eight-bit-io`                Image transfer from host to IPU in 8-bit format, requires normalisation on the IPU
+
+`--normalization-location`      Location of the data normalization. Options: `host`, `ipu`, `none`
+
+`--dataloader-rebatch-size`     Batch size of the dataloader worker. The final batch is created from the smaller batches. Lower value results in less host-side memory. A higher value can reduce the overhead of rebatching. This setting can be useful for reducing memory pressure with a large global batch size.
+
+`--iterations`                  Number of program iterations for generated and synthetic data. This helps to modify the length of these datasets.
+
+`--model-cache-path`            If path is given the compiled model is cached to the provided folder.
 
 ### How to use the checkpoints
 
 A given checkpoint file can be used to restore the training and continue from there, with the following command:
 
-```bash
+```console
        python3 restore.py --checkpoint-path <File path>
 ```
 
 Validation is also possible with the following command:
 
-```bash
+```console
        python3 validate.py --checkpoint-path <path>
 ```
 
 Weight average is available with the following command:
 
-```bash
+```console
        python3 weight_avg.py --checkpoint-path <path>
 ```
 
@@ -190,4 +202,21 @@ If the path is a folder, then the validation accuracy is calculated for every si
 
 ```
 poprun --num-instances=<number of instances> --numa-aware=yes --num-replicas=<Total number of repicas> ...
+```
+
+### Reference distributed settings
+
+These settings use poprun, to provide the maximal throughput.
+The following scripts support the previously defined arguments too.
+
+ResNet50 POD16 reference
+
+```
+./rn50_pod16.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet> 
+```
+
+ResNet50 POD64 reference
+
+```
+./rn50_pod64.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet> 
 ```

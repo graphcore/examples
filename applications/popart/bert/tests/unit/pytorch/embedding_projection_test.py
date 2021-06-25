@@ -185,7 +185,7 @@ def test_embedding_projection_bwd(custom_ops):
         x = popart_model.lm_prediction_head(x)
     output = popart_model.projection(x)
     l1 = builder.aiGraphcore.l1loss(
-        [output], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
+        [output], l1_lambda, debugContext="l1LossVal", reduction=popart.ReductionType.Sum)
 
     proto = builder.getModelProto()
 

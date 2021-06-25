@@ -35,7 +35,8 @@ def Model(opts, training, image):
 def staged_model(opts):
     splits = opts['pipeline_splits']
     x = ResNet(opts, True)
-    if splits is None or len(splits) != opts['shards'] - 1:
+    if splits is None or (
+            len(splits) != opts['shards'] - 1 and opts['shards'] > 1):
         possible_splits = [
             s.keywords['name'] for s in x._build_function_list()
             if 'relu' in s.keywords['name']

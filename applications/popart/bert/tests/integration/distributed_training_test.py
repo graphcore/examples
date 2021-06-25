@@ -15,31 +15,33 @@
 import pytest
 import sys
 from pathlib import Path
+from tests.utils import bert_root_dir
 from examples_tests.test_util import SubProcessChecker
 
-bert_path = str(Path(__file__).parent.parent.parent)
+bert_root_dir()
 
 
 
 class TestBuildAndRun(SubProcessChecker):
 
     def _get_bert_command(self, extra_args=None):
-        base_cmd = ("poprun --num-replicas 2 --ipus-per-replica 2 --num-instances 2 --only-output-from-instance 0 "
+        base_cmd = ("poprun --num-replicas 2 --ipus-per-replica 2 --num-instances 2 --only-output-from-instance 0 --mpi-global-args='--allow-run-as-root' "
                     "python bert.py --config configs/mk2/pretrain_large_128.json "
-                    " --micro-batch-size 1 --gradient-accumulation-factor 16 --replication-factor 1 --generated-data --epochs 1"
-                    " --encoder-start-ipu 1 --layers-per-ipu 1 --num-layers 1 --batches-per-step 1 --no-model-save --steps-per-log 1 "
+                    " --global-batch-size 32 --micro-batch-size 1 --gradient-accumulation-factor 16 --replication-factor 1 --generated-data --epochs 1"
+                    " --replicated-tensor-sharding false --encoder-start-ipu 1 --layers-per-ipu 1 --num-layers 1 --batches-per-step 1 --no-model-save --steps-per-log 1 "
                     " --no-validation --max-copy-merge-size 32000 --hidden-size 128 --vocab-length 9728 --embedding-serial 4")
+        print(base_cmd)
         if extra_args is not None and len(extra_args) > 0:
             base_cmd += " " + " ".join(extra_args)
         return base_cmd
 
     def setUp(self):
-        self.run_command("make", bert_path, [])
+        self.run_command("make", bert_root_dir(), [])
 
     @pytest.mark.ipus(4)
     @pytest.mark.category2
     def test_poprun_complete(self):
         cmd = self._get_bert_command()
         self.run_command(cmd,
-                         bert_path,
+                         bert_root_dir(),
                          ["Compiling Training Graph", "Compiled.", "Training Started", "Training Finished"])

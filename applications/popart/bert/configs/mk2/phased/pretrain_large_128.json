@@ -1,7 +1,7 @@
 {
     "task": "PRETRAINING",
     "num_layers": 24,
-    "layers_per_phase": 3,
+    "layers_per_phase": 2,
     "hidden_size": 1024,
     "attention_heads": 16,
     "sequence_length": 128,

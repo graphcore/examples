@@ -53,6 +53,8 @@ class BaseOptimizerFactory():
         self._options_created = False
         self._non_const_options = set()
 
+        self.accl1_type = popart.DataType.FLOAT16 if args.use_half_optimizer_state else popart.DataType.FLOAT
+
         self.iteration = iteration
 
         self.tensors = tensors if tensors is not None else {}
@@ -105,16 +107,25 @@ class BaseOptimizerFactory():
         if self.opt_type == "SGD":
             optimizer = popart.SGD(self.optimizer_options)
         elif self.opt_type == "ADAM":
-            optimizer = popart.Adam(self.optimizer_options)
+            optimizer = popart.Adam(self.optimizer_options,
+                                    accl1_type=self.accl1_type,
+                                    scaled_optimizer_state=self.accl1_type == popart.DataType.FLOAT16)
         elif self.opt_type == "ADAM_NO_BIAS":
             optimizer = popart.Adam(self.optimizer_options,
-                                    mode=popart.AdamMode.AdamNoBias)
+                                    mode=popart.AdamMode.AdamNoBias,
+                                    accl1_type=self.accl1_type,
+                                    scaled_optimizer_state=self.accl1_type == popart.DataType.FLOAT16)
         elif self.opt_type == "LAMB":
             optimizer = popart.Adam(self.optimizer_options,
-                                    mode=popart.AdamMode.Lamb)
+                                    mode=popart.AdamMode.Lamb,
+                                    accl1_type=self.accl1_type,
+                                    scaled_optimizer_state=self.accl1_type == popart.DataType.FLOAT16)
         elif self.opt_type == "LAMB_NO_BIAS":
             optimizer = popart.Adam(self.optimizer_options,
-                                    mode=popart.AdamMode.LambNoBias)
+                                    mode=popart.AdamMode.LambNoBias,
+                                    accl1_type=self.accl1_type,
+                                    scaled_optimizer_state=self.accl1_type == popart.DataType.FLOAT16)
+
 
         weight_decay_tensor_list = []
 

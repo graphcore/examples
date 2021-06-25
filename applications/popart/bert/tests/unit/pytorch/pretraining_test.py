@@ -151,10 +151,10 @@ def test_pretraining_bwd(custom_ops, mode, replication_factor, replicated_tensor
         if mode == ExecutionMode.PHASED:
             with popart_model.scope_provider(popart_model.builder, popart_model.mlm_scope):
                 loss = popart_model.builder.aiGraphcore.l1loss([logits[0]],
-                                                               l1_lambda, debugPrefix="l1LossVal",
+                                                               l1_lambda, debugContext="l1LossVal",
                                                                reduction=popart.ReductionType.Sum)
         else:
-            loss = popart_model.builder.aiGraphcore.l1loss([logits[0]], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
+            loss = popart_model.builder.aiGraphcore.l1loss([logits[0]], l1_lambda, debugContext="l1LossVal", reduction=popart.ReductionType.Sum)
             popart_model.builder.virtualGraph(loss, popart_model.mlm_scope.virtualGraph)
         return loss
 

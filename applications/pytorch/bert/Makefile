@@ -12,10 +12,7 @@ custom_ops.so: custom_ops/plugin_version custom_ops/*.cpp custom_ops/workarounds
 		custom_ops/sparse_accumulate_pattern.cpp \
 		custom_ops/tied_gather.cpp \
 		custom_ops/tied_gather_pattern.cpp \
-		custom_ops/outline_dropout_pattern.cpp \
-		custom_ops/seed_modify.cpp \
 		custom_ops/lamb_serialised_weight_pattern.cpp \
-		custom_ops/one_hot.cpp \
 		custom_ops/workarounds/accumulate_priority_pattern.cpp \
 		custom_ops/workarounds/stash_layout_pattern.cpp \
 		-shared -lpopart -lpoplar -lpoplin -lpopnn -lpopops -lpoputil -lpoprand \

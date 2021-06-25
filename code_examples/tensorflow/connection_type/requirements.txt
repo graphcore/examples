@@ -1,3 +1,0 @@
-pytest==5.4.1
-pytest-pythonpath==0.7.3
-more_itertools==8.2.0

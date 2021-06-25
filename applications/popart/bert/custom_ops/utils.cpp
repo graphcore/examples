@@ -50,9 +50,8 @@ static T *search_producers_for(popart::Tensor *t, int max_depth=-1) {
             producer_index = popart::AdamUpdaterOp::getAccl1InIndex();
         } else if (op->isConvertibleTo<popart::AdamVarUpdateOp>()) {
             producer_index = popart::AdamVarUpdateOp::getUpdaterInIndex();
-        } else if (op->isConvertibleTo<popart::AccumulateOp>()) {
-            // Accumulates for M/V in Adam-based optimizers
-            producer_index = popart::AccumulateOp::getUpdaterInIndex();
+        } else if (op->isConvertibleTo<popart::AccumulateBaseOp>()) {
+            producer_index = popart::AccumulateBaseOp::getUpdaterInIndex();
         } else if (op->isConvertibleTo<popart::DropoutGradOp>()) {
             producer_index = popart::DropoutGradOp::getGradInIndex();
         } else if (op->isConvertibleTo<popart::MulOp>()) {
@@ -100,7 +99,7 @@ template <class T, popart::ExecutionContext Ctx = popart::ExecutionContext::Norm
 static T *search_consumers_for(popart::Tensor *w, std::queue<popart::Tensor *> &q) {
     for (auto consumer : w->consumers.getOps()) {
         if (consumer->isConvertibleTo<T>() && consumer->settings.executionContext == Ctx) {
-            return reinterpret_cast<T *>(consumer);
+            return dynamic_cast<T *>(consumer);
         }
 
         // TODO: Have whitelist of traversable ops.
@@ -140,8 +139,7 @@ static void find_all_consumers(popart::Tensor *w,std::queue<popart::Tensor *> &q
     for (auto consumer : w->consumers.getOps()) {
         if (std::find(result.begin(), result.end(), consumer) == result.end()) {
             if (consumer->isConvertibleTo<T>() && consumer->settings.executionContext == Ctx) {
-                T *op = reinterpret_cast<T *>(consumer);
-                result.push_back(op);
+                result.push_back(dynamic_cast<T *>(consumer));
             }
             if (consumer->isConvertibleTo<popart::MatMulOp>()) {
                 q.push(consumer->output->tensor(popart::MatMulOp::getOutIndex()));

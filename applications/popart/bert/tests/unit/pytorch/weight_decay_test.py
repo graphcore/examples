@@ -54,6 +54,7 @@ class MockArgs:
         self.execution_mode = "DEFAULT"
         self.squad_lr_scale = None
         self.continuous_pipeline_optimizer_scaling = False
+        self.use_half_optimizer_state = False
 
 
 class BertFCN(nn.Module):
@@ -151,7 +152,7 @@ def popart_result_and_model(popart_config, weight_decay=0.0, lr=0.0, l1_lambda=0
 
     output = popart_model.feed_forward(input_tensor)
 
-    l1 = builder.aiGraphcore.l1loss([output], l1_lambda, debugPrefix="l1LossVal", reduction=popart.ReductionType.Sum)
+    l1 = builder.aiGraphcore.l1loss([output], l1_lambda, debugContext="l1LossVal", reduction=popart.ReductionType.Sum)
     proto = builder.getModelProto()
 
     iteration = MockIteration()

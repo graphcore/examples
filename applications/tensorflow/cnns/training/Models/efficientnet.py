@@ -20,8 +20,10 @@ import math
 from six.moves import xrange
 import string
 from tensorflow.python.ipu import normalization_ops
+from tensorflow.python.ipu import nn_ops
 from tensorflow.python.keras import layers
 from .batch_norm import batch_norm
+from .proxy_norm import proxynorm_activation
 
 
 BlockArgs = collections.namedtuple('BlockArgs', [
@@ -120,14 +122,22 @@ def conv2d_basic(x, ksize, stride, filters_out, bias=False, groups=None, group_d
         return x
 
 
-def norm(x, is_training=True, norm_type=None, epsilon=1e-6, groups=None):
+def norm(x, is_training=True, norm_type=None, center=True, scale=True,
+         epsilon=1e-6, groups=None):
+    if norm_type == 'layer':
+        norm_type = 'group'
+        groups = 1
+
     if norm_type == 'batch':
-        x = batch_norm(x, center=True, scale=True, training=is_training,
+        x = batch_norm(x, center=center, scale=scale, training=is_training,
                        trainable=True, epsilon=epsilon)
     elif norm_type == 'group':
-        x = normalization_ops.group_norm(x, groups=min(int(x.get_shape()[3]), groups), epsilon=epsilon)
+        x = normalization_ops.group_norm(x, center=center, scale=scale,
+                                         groups=min(int(x.get_shape()[3]), groups),
+                                         epsilon=epsilon)
     else:
         raise ValueError("{} not a valid norm_type".format(norm_type))
+
     return x
 
 
@@ -179,6 +189,7 @@ def mb_conv_block_funs(
                   survival_prob=1.0,
                   is_training=True,
                   id_skip=False,
+                  proxy_norm=False,
                   activation=None,
                   conv=conv2d_basic,
                   norm=None,
@@ -194,62 +205,54 @@ def mb_conv_block_funs(
             x = conv(input, 1, 1, intermediate_filters)
             x = norm(x)
             x = activation(x)
-        if id_skip:
-            return x, input
-        else:
             return x
 
-    def mb_conv_b(inputs, name=name + "/b"):
-        if type(inputs) is not tuple:
-            inputs = [inputs, inputs]
+    def mb_conv_b(input, has_se=True, name=name + "/b"):
         with tf.variable_scope(name):
             # Depthwise Convolution
-            x = depthwise_conv(inputs[0], kernel_size, stride, filters_out=intermediate_filters)
+            x = depthwise_conv(input, kernel_size, stride, filters_out=intermediate_filters)
             x = norm(x)
-            x = activation(x)
-        if id_skip:
-            return x, inputs[1]
-        else:
-            return x
-
-
-    def mb_conv_SE(inputs, name=name + "/SE"):
-        if type(inputs) is not tuple:
-            inputs = [inputs, inputs]
-        with tf.variable_scope(name):
-            num_reduced_filters = max(1, int(in_filters * se_ratio))
-            se_tensor = tf.reduce_mean(inputs[0], reduction_indices=[1, 2], keep_dims=True)
-            with tf.variable_scope("1"):
-                se_tensor = conv(se_tensor, 1, 1, num_reduced_filters, bias=True)
-            se_tensor = activation(se_tensor)
-            with tf.variable_scope("2"):
-                se_tensor = conv(se_tensor, 1, 1, intermediate_filters, bias=True)
-            se_tensor = tf.math.sigmoid(se_tensor)
-            x = tf.math.multiply(inputs[0], se_tensor)
-            if id_skip:
-                return x, inputs[1]
+            if proxy_norm:
+                x, inv_proxy_std = activation(x, delay_scale=True)  # delay proxy scaling for efficiency
             else:
-                return x
+                x = activation(x)
 
-    def mb_conv_c(inputs, name=name + "/c"):
-        if type(inputs) is not tuple:
-            inputs = [inputs, inputs]
-        with tf.variable_scope(name):
-            x = conv(inputs[0], 1, 1, out_filters)
-            x = norm(x)
-        if id_skip:
-            if survival_prob > 0 and survival_prob < 1:
-                x = drop_connect(x, is_training, survival_prob)
-            x = tf.math.add(x, inputs[1])
+        if has_se:
+            with tf.variable_scope(name[:-1] + "SE"):
+                num_reduced_filters = max(1, int(in_filters * se_ratio))
+                se_tensor = tf.reduce_mean(x, reduction_indices=[1, 2], keep_dims=True)
+                with tf.variable_scope("1"):
+                    se_tensor = conv(se_tensor, 1, 1, num_reduced_filters, bias=True)
+                if proxy_norm:
+                    se_tensor = activation(se_tensor, proxy_norm=False)
+                else:
+                    se_tensor = activation(se_tensor)
+                with tf.variable_scope("2"):
+                    se_tensor = conv(se_tensor, 1, 1, intermediate_filters, bias=True)
+                se_tensor = tf.math.sigmoid(se_tensor)
+                if proxy_norm:
+                    se_tensor = se_tensor * inv_proxy_std  # do proxy scaling here for efficiency
+                x = tf.math.multiply(x, se_tensor)
+
         return x
 
-    def full_block(x, name=name):
+    def mb_conv_c(input, name=name + "/c"):
+        with tf.variable_scope(name):
+            x = conv(input, 1, 1, out_filters)
+            # we cannot use proxy norm here as this is not followed by an activation
+            # we find that disabling the shift parameter is a good alternative to reducing the denormalisation
+            x = norm(x, scale=True)
+        return x
+
+    def full_block(x_in, name=name):
+        x = x_in
         if expand_ratio != 1:
             x = mb_conv_a(x)
-        x = mb_conv_b(x)
-        if has_se:
-            x = mb_conv_SE(x)
+        x = mb_conv_b(x, has_se=has_se)
         x = mb_conv_c(x)
+        if survival_prob > 0 and survival_prob < 1:
+            x = drop_connect(x, is_training, survival_prob)
+        x = tf.math.add(x, x_in)
         return x
 
     """Mobile Inverted Residual Bottleneck."""
@@ -260,9 +263,7 @@ def mb_conv_block_funs(
     else:
         if expand_ratio != 1:
             fn_list += [partial(mb_conv_a, name=name)]
-        fn_list += [partial(mb_conv_b, name=name + "/b")]
-        if has_se:
-            fn_list += [partial(mb_conv_SE, name=name + "/SE")]
+        fn_list += [partial(mb_conv_b, has_se=has_se, name=name + "/b")]
         fn_list += [partial(mb_conv_c, name=name + "/c")]
 
     return fn_list
@@ -300,7 +301,7 @@ class EfficientNet(ModelBase):
         # blocks_args: A list of BlockArgs to construct block modules.
         self.blocks_args = get_default_block_args(expand_ratio=opts['expand_ratio'],
                                                   se_ratio=0 if opts['no_se'] else 0.25,
-                                                  cifar = self.model_size == 'cifar')
+                                                  cifar=self.model_size == 'CIFAR')
         # require explicit definition of depth-divisor (default=8)
         self.depth_divisor = opts['depth_divisor']
 
@@ -308,7 +309,19 @@ class EfficientNet(ModelBase):
         if opts["use_relu"]:
             self.activation = tf.nn.relu
         else:
-            self.activation = tf.nn.swish
+            try:
+                self.activation = nn_ops.swish
+            except AttributeError:
+                self.activation = tf.nn.swish
+                print("IPU nn_ops.swish operation not found. Falling back to tf.nn.swish .")
+
+        self.proxy_norm = opts['proxy_norm']
+
+        if self.proxy_norm:
+            self.activation = partial(proxynorm_activation,
+                                      activation=self.activation,
+                                      proxy_epsilon=opts['proxy_epsilon'],
+                                      proxy_recompute=opts['proxy_recompute'])
 
         # Standard building block layers
         self.top_width = round_filters(opts['top_width'], self.width_coefficient, self.depth_divisor)
@@ -318,10 +331,10 @@ class EfficientNet(ModelBase):
                             kernel_initializer=tf.variance_scaling_initializer(scale=2, mode='fan_out'))
 
         # Depthwise separable
-        self.dw_conv = partial(conv2d_basic,
-                               bias=False,
-                               kernel_initializer=tf.variance_scaling_initializer(scale=2, mode='fan_in'),
-                               group_dim=opts['group_dim'])
+        self.group_conv = partial(conv2d_basic,
+                                  bias=False,
+                                  kernel_initializer=tf.variance_scaling_initializer(scale=2, mode='fan_in'),
+                                  group_dim=opts['group_dim'])
 
         # Fully-connected
         self.fc = fc
@@ -330,14 +343,16 @@ class EfficientNet(ModelBase):
                             is_training=is_training,
                             norm_type=opts['norm_type'],
                             groups=opts["groups"],
-                            epsilon=opts["norm_epsilon"]
-                            )
+                            epsilon=opts["norm_epsilon"],
+                            center=not self.proxy_norm,
+                            scale=not self.proxy_norm)
         # Apply changed layers to block functions
         self.mb_conv_block_fns = partial(mb_conv_block_funs,
                                          conv=self.conv,
                                          norm=self.norm,
-                                         depthwise_conv=self.dw_conv,
-                                         activation=self.activation)
+                                         depthwise_conv=self.group_conv,
+                                         activation=self.activation,
+                                         proxy_norm=self.proxy_norm)
 
     def block0(self, x, stride=2, name="block0"):
         with tf.variable_scope(name, use_resource=True):
@@ -351,7 +366,10 @@ class EfficientNet(ModelBase):
             if self.top_width > 0:
                 x = self.conv(x, 1, 1, self.top_width, bias=False)
                 x = self.norm(x)
-                x = self.activation(x)
+                if self.proxy_norm:
+                    x = self.activation(x, delay_scale=True)[0]
+                else:
+                    x = self.activation(x)
             x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
             if self.dropout_rate > 0:
                 x = tf.layers.Dropout(self.dropout_rate, name='top_dropout')(x, training=self.is_training)
@@ -360,7 +378,7 @@ class EfficientNet(ModelBase):
 
     def _build_function_list(self):
         fn_list = []
-        fn_list.append(partial(self.block0, stride=1 if self.model_size == 'cifar' else 2,
+        fn_list.append(partial(self.block0, stride=1 if self.model_size == 'CIFAR' else 2,
                                name="block0"))
 
         # Build blocks
@@ -411,7 +429,8 @@ def Model(opts, training, image):
 def staged_model(opts):
     splits = opts['pipeline_splits']
     x = EfficientNet(opts, True)
-    if splits is None or len(splits) != opts['shards'] - 1:
+    if splits is None or (
+            len(splits) != opts['shards'] - 1 and opts['shards'] > 1):
         possible_splits = [
             s.keywords['name'] for s in x._build_function_list()
         ]
@@ -448,7 +467,6 @@ def add_arguments(parser):
                        help='Expansion ratio')
     group.add_argument('--group-dim', type=int, default=1,
                        help='Dimension of group convs (default=1 i.e. depthwise convs)')
-
     group.add_argument('--BN-decay', type=float, default=0.97,
                        help="Decay (or momentum) used for the BN weighted mean and variance.")
     group.add_argument("--batch-norm", action="store_true",
@@ -459,6 +477,15 @@ def add_arguments(parser):
                        help="Number of groups for group norm")
     group.add_argument('--norm-epsilon', type=float, default=1e-3,
                        help="Epsilon used for normalization")
+
+    group.add_argument('--proxy-norm', action='store_true', default=False,
+                       help="Use proxy norm")
+    group.add_argument('--proxy-epsilon', type=float, default=0.03,
+                       help="Numerical stability constant for proxy scaling")
+    group.add_argument('--no-proxy-recompute', action='store_false', dest='proxy_recompute',
+                       help="Dont recompute cheap proxy norm ops")
+    group.set_defaults(proxy_recompute=True)
+
     group.add_argument('--width-coefficient', type=float,
                        help='Override width coefficient')
     group.add_argument('--depth-coefficient', type=float,
@@ -488,7 +515,8 @@ def set_defaults(opts):
                 opts['base_learning_rate'] = -10.0
             elif opts['optimiser'] == 'RMSprop':
                 opts['base_learning_rate'] = -14.0
-                opts['rmsprop_base_decay_exp'] = -14.0
+        if opts['optimiser'] == 'RMSprop' and opts['rmsprop_base_decay_exp'] is None:
+            opts['rmsprop_base_decay_exp'] = -14.0
         if not opts.get('epochs') and not opts.get('iterations'):
             opts['epochs'] = 350.0
         if opts.get('lr_schedule') == 'stepped':
@@ -512,7 +540,7 @@ def set_defaults(opts):
             opts['stable_norm'] = True
 
         # exclude beta and gamma from weight decay calculation
-        opts["wd_exclude"] = ['beta', 'gamma']
+        opts["wd_exclude"] = ['beta', 'gamma', 'proxy', 'moving_']
     elif 'cifar' in opts['dataset']:
         if not opts.get("model_size"):
             opts['model_size'] = 'cifar'

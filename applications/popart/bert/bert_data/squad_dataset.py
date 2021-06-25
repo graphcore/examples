@@ -282,6 +282,7 @@ class SquadDataSet(DataSet):
             if epoch is not None:
                 status_string = f"Epoch: {epoch:3}{args.epochs - 1} | " + status_string
             logger.info(status_string)
+            return evaluation
 
 
 def get_bert_dataset(args,

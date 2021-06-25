@@ -7,3 +7,4 @@ tqdm==4.46.1
 six==1.15.0
 pytest==5.4.1
 pytest-pythonpath==0.7.3 
+torch==1.7.1

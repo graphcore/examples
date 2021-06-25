@@ -272,7 +272,7 @@ def test_attention_bwd(mode, momentum, micro_batch_size, batch_serialisation_fac
             l1 = popart_model.builder.aiGraphcore.l1loss(
                 [output],
                 l1_lambda,
-                debugPrefix="l1LossVal",
+                debugContext="l1LossVal",
                 reduction=popart.ReductionType.Sum)
     else:
         user_options = {}

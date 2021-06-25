@@ -11,6 +11,7 @@ import tensorflow.compat.v1 as tf
 from tensorflow.python.ipu import utils, ipu_compiler, scopes, loops
 from tensorflow.python.ipu.ipu_infeed_queue import IPUInfeedQueue
 from tensorflow.python.ipu.ipu_outfeed_queue import IPUOutfeedQueue
+from tensorflow.python.ipu.config import IPUConfig
 
 from sparse_mnist import build_optimizer
 os.sys.path.append("../")  # dynamic_sparsity
@@ -222,8 +223,9 @@ def run_training(opts, transformer, x_train, y_train):
                 png_outfeed_dequeue = png_outfeed.dequeue()
 
     # Setup and acquire an IPU device:
-    config = utils.auto_select_ipus(utils.create_ipu_config(), opts.num_shards)
-    utils.configure_ipu_system(config)
+    config = IPUConfig()
+    config.auto_select_ipus = opts.num_shards
+    config.configure_ipu_system()
 
     logpath = os.path.join(opts.train_checkpoint_path, "train")
     summary_writer = tf.summary.FileWriter(logpath)
@@ -307,8 +309,9 @@ def run_testing(opts, transformer, x_test, y_test):
                 test_outfeed_dequeue = test_outfeed.dequeue()
 
     # Setup and acquire an IPU device:
-    config = utils.auto_select_ipus(utils.create_ipu_config(), 1)
-    utils.configure_ipu_system(config)
+    config = IPUConfig()
+    config.auto_select_ipus = opts.num_shards
+    config.configure_ipu_system()
 
     logpath = os.path.join(opts.train_checkpoint_path, "test")
     checkpoint = tf.train.latest_checkpoint(opts.train_checkpoint_path)

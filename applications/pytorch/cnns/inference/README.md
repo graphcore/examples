@@ -27,7 +27,7 @@ To reproduce the published Mk2 throughput benchmarks, please follow the setup in
 
 2) Download the images using `get_images.sh`. The download script should be run from within the data directory:
     
-```bash
+```console
 cd ../datasets/
 ./get_images.sh
 cd ../inference/
@@ -37,7 +37,7 @@ cd ../inference/
 
 3) Run the graph.
 
-```bash
+```console
 python3 run_benchmark.py --data real --replicas 1  --batch-size 1 --model resnet18 --device-iteration 1
 ```
 
@@ -73,11 +73,19 @@ The program has a few command-line options:
 
 `--full-precision-norm`         Calculate the norm layers in full precision.
 
+`--enable-fast-groupnorm`       There are two implementations of the group norm layer. If the fast implementation enabled, it couldn't load checkpoints, which didn't train with this flag. The default implementation can use any checkpoint.
+
 `--efficientnet-expand-ratio`   Expand ratio of the blocks in EfficientNet.
 
 `--efficientnet-group-dim`      Group dimensionality of depthwise convolution in EfficientNet.
 
 `--profile`                     Generate PopVision Graph Analyser report
+
+`--eight-bit-io`                Image transfer from host to IPU in 8-bit format, requires normalisation on the IPU
+
+`--normalization-location`      Location of the data normalization. Options: `host`, `ipu`, `none`
+
+`--model-cache-path`            If path is given the compiled model is cached to the provided folder.
 
 ### Model configurations
 

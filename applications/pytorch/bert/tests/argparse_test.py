@@ -14,7 +14,7 @@
 
 import pytest
 from transformers import BertConfig
-from bert_model import _get_layer_ipu
+from modeling import _get_layer_ipu
 from utils import parse_bert_args
 
 

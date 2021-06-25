@@ -24,6 +24,7 @@ from tensorflow.python.ipu import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu.ops.rnn_ops import PopnnDynamicGRU
+from tensorflow.python.ipu.config import IPUConfig
 
 
 @pytest.mark.category1
@@ -51,9 +52,9 @@ class TestDIENGRU(unittest.TestCase):
         seq_len_value = np.array([1, 2, 2], np.int32)
         inputs = tf.placeholder(shape=[bs, seqLen, self.HIDDEN_SIZE], dtype = self.model_dtype)
         seq_len = tf.placeholder(shape=[bs], dtype=tf.int32)
-        cfg = utils.create_ipu_config(profiling=False, profile_execution=False)
-        cfg = utils.auto_select_ipus(cfg, 1)
-        utils.configure_ipu_system(cfg)
+        cfg = IPUConfig()
+        cfg.auto_select_ipus = 1
+        cfg.configure_ipu_system()
         utils.move_variable_initialization_to_cpu()
         with ops.device("/device:IPU:0"):
             train_ipu = ipu_compiler.compile(self.gru_model, inputs=[inputs, seq_len])

@@ -18,6 +18,7 @@ from . import augmentations
 from . import imagenet_preprocessing
 from functools import partial
 from math import ceil
+import relative_timer
 
 DATASET_CONSTANTS = {
     'imagenet': {
@@ -61,16 +62,24 @@ DATASET_CONSTANTS = {
  }
 
 
+def reconfigure_dataset_constants(opts):
+    if opts['dataset'] == 'imagenet' and opts['dataset_percentage_to_use'] < 100:
+        DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] = opts['dataset_percentage_to_use'] * DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] // 100
+        num_train_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TRAIN']) * opts['dataset_percentage_to_use'] // 100
+        num_test_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TEST']) * opts['dataset_percentage_to_use'] // 100
+        DATASET_CONSTANTS['imagenet']['FILENAMES'] = {
+            'TRAIN': ['train-%05d-of-01024' % i for i in range(num_train_files)],
+            'TEST': ['validation-%05d-of-00128' % i for i in range(num_test_files)]
+        }
+    return DATASET_CONSTANTS
+
+
 def data(opts, is_training=True):
+    reconfigure_dataset_constants(opts)
     from .imagenet_dataset import ImageNetData
     batch_size = opts["batch_size"]
-    if opts["eight_bit_io"]:
-        datatype = tf.uint8
-        print("Using 8-bit IO between the IPU and host")
-    else:
-        dtypes = opts["precision"].split('.')
-        datatype = tf.float16 if dtypes[0] == '16' else tf.float32
-        print(f"Using {dtypes[0]}-bit IO between the IPU and host")
+    dtypes = opts["precision"].split('.')
+    datatype = tf.float16 if dtypes[0] == '16' else tf.float32
 
     if opts['train_with_valid_preprocessing'] and is_training:
         training_preprocessing = False
@@ -97,7 +106,7 @@ def data(opts, is_training=True):
 
         is_distributed = opts['distributed_worker_count'] > 1
 
-        cycle_length = 1 if opts['seed_specified'] else 4
+        cycle_length = 1 if opts['seed_specified'] and opts['pipeline_num_parallel'] == 1 else 4
         if opts["dataset"] == 'imagenet':
             if not opts['standard_imagenet'] and not is_distributed:
                 dataset = ImageNetData(opts, filenames=filenames).get_dataset(batch_size=batch_size,
@@ -109,7 +118,20 @@ def data(opts, is_training=True):
                                                   batch_size=batch_size, alpha=opts['mixup_alpha']))
                     dataset = dataset.map(augmentations.mixup_image) if opts['hostside_image_mixing'] else dataset
                 if is_training and opts['cutmix_lambda'] < 1. and opts['hostside_image_mixing']:
-                    dataset = dataset.map(partial(augmentations.cutmix, cutmix_lambda=opts['cutmix_lambda']))
+                    dataset = dataset.map(partial(
+                        augmentations.cutmix, cutmix_lambda=opts['cutmix_lambda'],
+                        cutmix_version=opts['cutmix_version']))
+
+                if opts['eight_bit_io']:
+                    print("Using 8-bit IO between the IPU and host")
+                    # mapping the casting -> UINT8 onto the data dictionary
+                    dataset = dataset.map(convert_image_8bit)
+                else:
+                    print(f"Using {dtypes[0]}-bit IO between the IPU and host")
+
+                if opts['latency']:
+                    print(f'Timer start {relative_timer.get_start()}')
+                    dataset = dataset.map(add_timestamp)
 
                 return dataset
             else:
@@ -121,12 +143,28 @@ def data(opts, is_training=True):
                 if is_distributed:
                     # Shuffle after sharding
                     dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
-                    dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
-                    dataset = dataset.shuffle(ceil(len(filenames) / opts['distributed_worker_count']), seed=opts['seed'])
+                    if is_training:
+                        dataset = dataset.shard(
+                            num_shards=opts['distributed_worker_count'],
+                            index=opts['distributed_worker_index'])
+                        dataset = dataset.shuffle(
+                            ceil(len(filenames) / opts['distributed_worker_count']),
+                            seed=opts['seed'])
                 else:
                     dataset = tf.data.Dataset.list_files(filenames, shuffle=is_training, seed=opts['seed'])
-                dataset = dataset.interleave(dataset_fn, cycle_length=cycle_length,
-                                             block_length=cycle_length, num_parallel_calls=cycle_length)
+                if not is_training:
+                    cycle_length = 1
+                    block_length = opts['total_replicas']
+                else:
+                    block_length = cycle_length
+
+                dataset = dataset.interleave(
+                    dataset_fn, cycle_length=cycle_length,
+                    block_length=block_length, num_parallel_calls=cycle_length)
+                if not is_training and is_distributed:
+                    # Shard the data and not the files for even sample distribution.
+                    dataset = dataset.shard(num_shards=opts['distributed_worker_count'],
+                                            index=opts['distributed_worker_index'])
         elif 'cifar' in opts["dataset"]:
             preprocess_fn = partial(cifar_preprocess, is_training=training_preprocessing, dtype=datatype,
                                     dataset=opts['dataset'], seed=opts['seed'])
@@ -148,17 +186,19 @@ def data(opts, is_training=True):
                 dataset = dataset.cache()
         dataset = dataset.repeat()
 
-        # We can't get repeatable results with parallel calls
-        if opts['seed_specified']:
+        if opts['seed_specified'] and opts['pipeline_num_parallel'] > 1:
             print("****\n\n"
-                  "  Removing parallel pipelining for reproducibility as seed is specified.\n"
-                  "  This will adversely affect performance.\n\n****")
-        parallel_calls = 1 if opts['seed_specified'] else opts['pipeline_num_parallel']
+                  "  Seed is specified. Data pipeline is non-deterministic.\n"
+                  "  Set --pipeline-num-parallel 1 and --standard-imagenet"
+                  "  to make it deterministic.\n"
+                  "  However, this will adversely affect performance.\n\n****")
+
+        parallel_calls = opts['pipeline_num_parallel']
 
         dataset = dataset.apply(
             tf.data.experimental.map_and_batch(
                 preprocess_fn,
-                batch_size=parallel_calls,
+                batch_size=batch_size,
                 num_parallel_calls=parallel_calls,
                 drop_remainder=True
             )
@@ -166,17 +206,40 @@ def data(opts, is_training=True):
 
         if is_training and opts['mixup_alpha'] > 0:
             # always assign the mixup coefficients on the host
-            dataset = dataset.map(partial(augmentations.assign_mixup_coefficients, batch_size=parallel_calls,
+            dataset = dataset.map(partial(augmentations.assign_mixup_coefficients, batch_size=batch_size,
                                           alpha=opts['mixup_alpha']))
             if opts['hostside_image_mixing']:
                 dataset = dataset.map(augmentations.mixup_image, num_parallel_calls=parallel_calls)
 
         if is_training and opts['cutmix_lambda'] < 1. and opts['hostside_image_mixing']:
-            dataset = dataset.map(partial(augmentations.cutmix, cutmix_lambda=opts['cutmix_lambda']))
+            dataset = dataset.map(partial(augmentations.cutmix, cutmix_lambda=opts['cutmix_lambda'],
+                                          cutmix_version=opts['cutmix_version']))
 
-        dataset = dataset.unbatch().batch(batch_size, drop_remainder=True)
+        if opts['eight_bit_io']:
+            print("Using 8-bit IO between the IPU and host")
+            # mapping the casting -> UINT8 onto the data dictionary
+            dataset = dataset.map(convert_image_8bit)
+        else:
+            print(f"Using {dtypes[0]}-bit IO between the IPU and host")
+
+    if opts['latency']:
+        print(f'Timer start {relative_timer.get_start()}')
+        dataset = dataset.map(add_timestamp)
+
     dataset = dataset.prefetch(16)
+
     return dataset
+
+
+def convert_image_8bit(data_dict):
+    data_dict['image'] = tf.cast(data_dict['image'], tf.uint8)
+    return data_dict
+
+
+def add_timestamp(data_dict):
+    data_dict['timestamp'] = tf.cast(tf.timestamp() - relative_timer.get_start(),
+                                     tf.float32)
+    return data_dict
 
 
 def generated_dataset(opts):
@@ -196,8 +259,12 @@ def generated_dataset(opts):
         mean=127,
         stddev=60,
         name='generated_inputs')
-    if opts["eight_bit_io"]:
+
+    if opts['eight_bit_io']:
+        print("Using 8-bit IO between the IPU and host")
         images = tf.cast(images, tf.uint8)
+    else:
+        print(f"Using {dtypes[0]}-bit IO between the IPU and host")
 
     labels = tf.random_uniform(
         [],
@@ -286,8 +353,8 @@ def add_arguments(parser):
     group.add_argument('--no-dataset-cache', action="store_true",
                        help="Don't cache dataset to host RAM")
     group.add_argument('--normalise-input', action="store_true",
-                       help='''Normalise inputs to zero mean and unit variance.
-                           Default approach just translates [0, 255] image to zero mean. (ImageNet only)''')
+                       help="Normalise inputs to zero mean and unit variance."
+                            "Default approach just translates [0, 255] image to zero mean. (ImageNet only)")
     group.add_argument('--image-size', type=int,
                        help="Size of image (ImageNet only)")
     group.add_argument('--train-with-valid-preprocessing', action="store_true",
@@ -298,18 +365,31 @@ def add_arguments(parser):
                        help='Use the standard ImageNet preprocessing pipeline.')
     group.add_argument('--mixup-alpha', type=float, default=0., help="alpha coefficient for mixup")
     group.add_argument('--cutmix-lambda', type=float, default=1.,
-                       help="lambda coefficient for cutmix -- makes a training image with approximately cutmix_lambda "
+                       help="Lambda coefficient for cutmix -- makes a training image with approximately cutmix_lambda "
                             "proportion of the preprocessed image, and (1 - cutmix_lambda) of another preprocessed "
                             "image. Default=1., which means no cutmix is applied")
+    group.add_argument('--cutmix-version', type=int, choices=(1, 2), default=1,
+                       help="Version of cutmix to use.")
     group.add_argument('--hostside-image-mixing', action='store_true',
                        help="do mixup/cutmix on the CPU host, not the accelerator")
     group.add_argument('--eight-bit-io', action='store_true',
-                       help='Image transfer from host to IPU in 8-bit format, requires normalisation on the IPU')
+                       help="Image transfer from host to IPU in 8-bit format, requires normalisation on the IPU")
+    group.add_argument('--dataset-percentage-to-use', type=int, default=100, choices=range(1, 101),
+                       help="Use only a specified percentage of the full dataset for training")
+    group.add_argument('--fused-preprocessing', action='store_true',
+                       help="Use memory-optimized fused operations on the device to perform imagenet preprocessing.")
+
 
     return parser
 
 
 def set_defaults(opts):
+    if opts['fused_preprocessing'] and opts['dataset'] != 'imagenet':
+        print('Fused preprocessing is only available for imagenet dataset. Disabling fused preprocessing')
+        opts['fused_preprocessing'] = False
+    if opts['fused_preprocessing'] and opts['hostside_norm']:
+        print('Fused preprocessing requires IPU-side normalisation, setting to IPU-side normalisation')
+        opts['hostside_norm'] = False
     if opts['hostside_norm'] and opts['eight_bit_io']:
         print("8-bit IO requires IPU-side normalisation, setting to IPU-side normalisation")
         opts['hostside_norm'] = False
@@ -361,6 +441,10 @@ def set_defaults(opts):
                                                                                      os.path.join(default_dir,
                                                                                                   first_training_file)))
             opts['data_dir'] = data_dir
+
+    if opts['synthetic_data'] and opts['latency']:
+        print('latency calculation is incompatible with synthetic data mode. Disabling latency.')
+        opts['latency'] = False
 
     opts['summary_str'] += "{}\n".format(opts['dataset'])
 

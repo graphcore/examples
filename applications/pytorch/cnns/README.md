@@ -22,21 +22,29 @@ The following models are supported:
 * `datasets` Contains the dataset handling code, shared between inference and training. Also contains dataset converter, which converts imagenet data to webdataset format.
 * `README.md` This file.
 * `requirements.txt` Required Python packages.
+* `conftest.py` Test helper functions.
+* `required_apt_packages.txt` Required system packages.
+* `MAKEFILE` Commands to install dependencies
 
 ### Installation instructions
 
 1. Prepare the PopTorch environment. Install the Poplar SDK following the
    Getting Started guide for your IPU system. Make sure to source the
    `enable.sh` scripts for Poplar and PopART and activate a Python virtualenv with PopTorch installed.
-   
-2. Install dependencies and download sample images for inference.
-   Install system package dependencies: `sudo apt-get install libjpeg-turbo8-dev libffi-dev`
 
-   Then install pip & data dependencies using the provided makefile:
+2. Install the apt dependencies for Ubuntu 18.04 (requires admin privileges):
+
+```console
+sudo apt install $(< required_apt_packages.txt)
+```
+
+3. Install the pip dependencies and download sample images for inference. These installations are handled by running the provided makefile:
+
+   ```console
+   make
    ```
-   $ make
-   ```
-The MakeFile includes four options.
+
+The MakeFile includes four options:
 
 1. `make get_data` which downloads a set of sample images for inference (data/get_data.sh)
 2. `make install` which installs dependencies/requirements
@@ -45,9 +53,8 @@ The MakeFile includes four options.
 
 The commands executed by make install are:
 
-```
+```console
 	pip install -r requirements.txt
-	pip install --force-reinstall --no-binary :all: horovod==0.21.0 
 	pip uninstall pillow -y
 	CC="cc -mavx2" pip install --no-cache-dir -U --force-reinstall pillow-simd
 ```
@@ -55,6 +62,14 @@ The commands executed by make install are:
 Note: pretrained models are used for inference. The weights are downloaded from the following places:
 * The official PyTorch model storage
 * [EfficientNet PyTorch](https://github.com/lukemelas/EfficientNet-PyTorch) package's GitHub repository
+
+### Running the tests
+
+After following installation instructions run:
+
+```console
+pytest
+```
 
 ### License
 

@@ -33,17 +33,17 @@
    "optimizer": "lamb",
    "weight_decay_rate": 0.01,
    "global_batch_size": 65000,
-   "parallell_io_threads": 16,
+   "parallel_io_threads": 16,
    "pipeline_schedule": "Grouped",
    "replicas": 1,
    "precision": "16",
    "seed": 1234,
    "no_outlining": false,
    "stochastic_rounding": true,
-   "xla_recompute": true,
+   "enable_recomputation": true,
    "fp_exceptions": false,
    "matmul_serialize_factor": 5,
-   "steps_per_tensorboard": 10000,
+   "steps_per_tensorboard": -1,
    "steps_per_ckpts": 100,
    "steps_per_logs": 1,
    "duplicate_factor":5,
@@ -56,5 +56,5 @@
    "restore_dir": "",
    "save_path": "checkpoint/phase1/",
    "static_mask": true,
-   "train_file": "data/tf_wikipedia/tokenised_128_dup5/*.tfrecord"
+   "train_file": "data/tf_wikipedia/tokenised_128_dup5_mask20/*.tfrecord"
 }

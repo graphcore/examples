@@ -7,6 +7,7 @@ import inspect
 import os
 import re
 import sys
+import configparser
 
 C_FILE_EXTS = ['c', 'cpp', 'C', 'cxx', 'c++', 'h', 'hpp']
 
@@ -32,6 +33,10 @@ def check_file(path, language, amend):
     empty_file = False
     with open(path, "r") as f:
         first_line = f.readline()
+        # if the first line is encoding, then read the second line
+        if first_line.startswith("{} coding=utf-8".format(comment)):
+            first_line = f.readline()
+
         if first_line == '':
             empty_file = True
 
@@ -39,7 +44,7 @@ def check_file(path, language, amend):
             first_line_index += 1
             first_line = f.readline()
 
-        regexp = r"{} Copyright \(c\) \d+ Graphcore Ltd. All rights reserved.".format(comment)
+        regexp = r"{} Copyright \(c\) \d+ Graphcore Ltd. All (r|R)ights (r|R)eserved.".format(comment)
 
         if re.match(regexp, first_line):
             found_copyright = True
@@ -61,10 +66,24 @@ def check_file(path, language, amend):
     return True
 
 
+def read_git_submodule_paths():
+    try:
+        config = configparser.ConfigParser()
+        config.read('.gitmodules')
+        module_paths = [config[k]['path'] for k in config.sections()]
+        print(f"Git submodule paths: {module_paths}")
+        return module_paths
+    except:
+        print(f"No Git submodules found.")
+        return []
+
+
 def test_copyrights(amend=False):
     """A test to ensure that every source file has the correct Copyright"""
     cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
     root_path = os.path.abspath(os.path.join(cwd, "..", "..", ".."))
+
+    git_module_paths = read_git_submodule_paths()
 
     bad_files = []
     excluded = [os.path.join(root_path, p) for p in EXCLUDED]
@@ -73,6 +92,15 @@ def test_copyrights(amend=False):
             file_path = os.path.join(path, file_name)
 
             if file_path in excluded:
+                continue
+
+            # CMake builds generate .c and .cpp files
+            # so we need to exclude all those:
+            if '/CMakeFiles/' in file_path:
+                continue
+
+            # Also exclude git submodules from copyright checks:
+            if any(path in file_path for path in git_module_paths):
                 continue
 
             if file_name.endswith('.py'):
@@ -88,8 +116,7 @@ def test_copyrights(amend=False):
                          "copyright notices:\n\n")
         for f in bad_files:
             sys.stderr.write("    {}\n".format(f))
-
-    assert(len(bad_files) == 0)
+        raise RuntimeError(f"{len(bad_files)} files do not have copyright notices: {bad_files}")
 
 
 if __name__ == "__main__":

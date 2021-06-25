@@ -51,6 +51,7 @@ from tensorflow.keras.preprocessing import image
 
 # IPU imports
 from tensorflow.python import ipu
+from tensorflow.python.ipu.config import IPUConfig
 
 # Weight loading dictionary
 from trained_weights.LoadWeights import hdf5_key_list
@@ -65,10 +66,6 @@ RANDOM_WEIGHTS = True
 if not RANDOM_WEIGHTS:
     trained_weight_path = os.getcwd()+'/trained_weights/VGG_VOC0712_SSD_300x300_iter_120000.h5'
 
-# Reporting flag and directory for profiling information
-# install the gc-profile wheel before setting this option to True
-REPORT = False
-REPORT_DIR = "ssd_model_reports"
 
 # Save output flag
 # Download trained weights to see the detections in the output image
@@ -508,11 +505,10 @@ for var in tf.trainable_variables():
     param_setters[var.name] = (tf.assign(var, placeholder), placeholder)
 
 # Setup IPU configuration and build session
-cfg = ipu.utils.create_ipu_config(profiling=REPORT,
-                                  report_directory=REPORT_DIR)
-cfg = ipu.utils.auto_select_ipus(cfg, num_ipus=NUM_IPUS)
-cfg = ipu.utils.set_convolution_options(cfg, convolution_options={"availableMemoryProportion": "0.4"})
-ipu.utils.configure_ipu_system(cfg)
+cfg = IPUConfig()
+cfg.auto_select_ipus = NUM_IPUS
+cfg.convolutions.poplar_options = {'availableMemoryProportion': '0.4'}
+cfg.configure_ipu_system()
 ipu.utils.move_variable_initialization_to_cpu()
 outfeed = outfeed_queue.dequeue()
 

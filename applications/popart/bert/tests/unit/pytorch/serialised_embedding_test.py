@@ -115,7 +115,7 @@ def popart_result_and_model(config, mode, weight_transposed, is_bwd=False):
         Tuple: Gathered numpy data, outputs from model, proto, post_proto
     """
 
-    scope_provider = ScopeProvider()
+    scope_provider = ScopeProvider("SINGLE")
     user_options = {}
     if mode == ExecutionMode.PHASED:
         builder = popart.Builder()
@@ -157,12 +157,12 @@ def popart_result_and_model(config, mode, weight_transposed, is_bwd=False):
             with popart_model.scope_provider(popart_model.builder, loss_scope):
                 l1_loss = popart_model.builder.aiGraphcore.l1loss([output],
                                                                   l1_lambda,
-                                                                  debugPrefix="l1LossVal",
+                                                                  debugContext="l1LossVal",
                                                                   reduction=popart.ReductionType.Sum)
         else:
             l1_loss = popart_model.builder.aiGraphcore.l1loss([output],
                                                               l1_lambda,
-                                                              debugPrefix="l1LossVal",
+                                                              debugContext="l1LossVal",
                                                               reduction=popart.ReductionType.Sum)
         proto = builder.getModelProto()
         optimizer = popart.ConstSGD(0.01)

@@ -14,8 +14,7 @@ echo $file_path
 
 wget 'ftp://ftpmirror.your.org/pub/wikimedia/dumps/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2' -O "${file_path}"
 
-#Extract if to a standard xml that will be parsed in the followings
-
+# Unzip
 cd ${folder_path}
 
 echo "Unzipping the compressed dump"

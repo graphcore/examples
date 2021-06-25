@@ -16,6 +16,7 @@ import math
 import os
 import json
 import tempfile
+from pathlib import Path
 import pytest
 from _pytest.mark.structures import ParameterSet
 import numpy as np
@@ -31,6 +32,10 @@ from onnx import numpy_helper
 
 import torch
 import torch.nn as nn
+
+
+def bert_root_dir():
+    return Path(__file__).parent.parent.resolve()
 
 
 def make_tuple(something: Any) -> Tuple:
@@ -129,11 +134,11 @@ def run_py(proto: onnx.ModelProto,
         options.enableReplicatedGraphs = True
         options.replicatedGraphCount = replication_factor
     if execution_mode == 'PHASED':
+        options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
         options.enableOutlining = True
         options.outlineThreshold = -np.inf
         options.enableOutliningCopyCostPruning = False
         options.autoRecomputation = popart.RecomputationType.Standard
-        options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
         options.explicitRecomputation = True
         options.aliasZeroCopy = True
         options.batchSerializationSettings.factor = user_options["batchSerializationFactor"]
@@ -141,10 +146,12 @@ def run_py(proto: onnx.ModelProto,
         ipus = 1
         options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
         options.outlineSequenceBreakCost = 100000.0
+        options.batchSerializationSettings.transformContext = popart.BatchSerializationTransformContext.Bwd
         options.batchSerializationSettings.concatOnVirtualGraphChange = False
         options.batchSerializationSettings.concatOnExecutionPhaseChange = False
         options.batchSerializationSettings.concatOnPipelineStageChange = False
         options.batchSerializationSettings.batchSchedule = popart.BatchSerializationBatchSchedule.OverlapOnCompute
+        options.batchSerializationSettings.method = popart.BatchSerializationMethod.Loop
         options.autoRecomputation = popart.RecomputationType.Standard
 
         varLocation = popart.TensorLocation()
@@ -159,7 +166,6 @@ def run_py(proto: onnx.ModelProto,
         options.executionPhaseSettings.weightIOSchedule = popart.ExecutionPhaseIOSchedule.Preload
         options.executionPhaseSettings.schedule = popart.ExecutionPhaseSchedule.Batch
     else:
-        options.enableGroupedMatmuls = False
         options.enableStochasticRounding = False
         options.constantWeights = True
         options.outlineThreshold = 10.0

@@ -108,7 +108,7 @@ class Add(Block):
     def forward(self, x: List[str]):
         return reduce(
             lambda a, b: self.builder.aiOnnx.add([a, b],
-                                                 debugPrefix=self.scope.name),
+                                                 debugContext=self.scope.name),
             x)
 
 

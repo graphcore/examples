@@ -102,7 +102,7 @@ template <class T, popart::ExecutionContext Ctx = popart::ExecutionContext::Norm
 static T *search_consumers_for(popart::Tensor *w, std::queue<popart::Tensor *> &q) {
     for (auto consumer : w->consumers.getOps()) {
         if (consumer->isConvertibleTo<T>() && consumer->settings.executionContext == Ctx) {
-            return reinterpret_cast<T *>(consumer);
+            return dynamic_cast<T *>(consumer);
         }
 
         if (consumer->isConvertibleTo<popart::DropoutGradOp>()) {
@@ -140,8 +140,7 @@ static void find_all_consumers(popart::Tensor *w,std::queue<popart::Tensor *> &q
     for (auto consumer : w->consumers.getOps()) {
         if (std::find(result.begin(), result.end(), consumer) == result.end()) {
             if (consumer->isConvertibleTo<T>() && consumer->settings.executionContext == Ctx) {
-                T *op = reinterpret_cast<T *>(consumer);
-                result.push_back(op);
+                result.push_back(dynamic_cast<T *>(consumer));
             }
             if (consumer->isConvertibleTo<popart::MatMulOp>()) {
                 q.push(consumer->output->tensor(popart::MatMulOp::getOutIndex()));

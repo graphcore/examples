@@ -6,6 +6,7 @@ from functools import partial
 import tensorflow.compat.v1 as tf
 from tensorflow.python.ipu import utils, ipu_compiler, scopes, loops, ipu_infeed_queue, ipu_outfeed_queue
 from tensorflow.python.ipu import rand_ops, pipelining_ops
+from tensorflow.python.ipu.config import IPUConfig
 import argparse
 import json
 import time
@@ -633,12 +634,14 @@ def run_mnist(opts):
 
     # Setup and acquire an IPU device:
     utils.move_variable_initialization_to_cpu()
-    config = utils.create_ipu_config()
-    config = utils.auto_select_ipus(config, 1)
-    config = utils.set_floating_point_behaviour_options(config, inv=False,
-                                                        div0=False, oflo=False,
-                                                        esr=True, nanoo=False)
-    utils.configure_ipu_system(config)
+    config = IPUConfig()
+    config.auto_select_ipus = 1
+    config.floating_point_behaviour.inv = False
+    config.floating_point_behaviour.div0 = False
+    config.floating_point_behaviour.oflo = False
+    config.floating_point_behaviour.esr = True
+    config.floating_point_behaviour.nanoo = False
+    config.configure_ipu_system()
 
     # These allow us to retrieve the results of IPU feeds:
     dequeue_test_outfeed = outfeed_test_queue.dequeue()

@@ -11,9 +11,9 @@ import tensorflow.compat.v1 as tf
 from ipu_sparse_ops import host_utils
 from logging import getLogger
 from tensorflow.python import ipu
-from tensorflow.python.ipu.utils import (
+from tensorflow.python.ipu.config import (
     DeviceConnectionType,
-    IpuOptions
+    IPUConfig
 )
 from typing import (
     Callable,
@@ -28,6 +28,8 @@ tf.disable_eager_execution()
 tf.disable_v2_behavior()
 
 logger = getLogger(os.path.basename(__file__))
+
+host_utils.initialize_device_manager()
 
 
 def get_lib_path(lib_name):
@@ -140,7 +142,7 @@ class _SystemConfig(NamedTuple):
 _GLOBAL_SYSTEM_CONFIG = _SystemConfig()
 
 
-def set_system_config(opts: IpuOptions, custom_op_debug_printing=False):
+def set_system_config(opts: IPUConfig, custom_op_debug_printing=False):
     """Set the underlying device configuration from the TF IPU config.
     Returns the config unmodified.
 
@@ -149,11 +151,20 @@ def set_system_config(opts: IpuOptions, custom_op_debug_printing=False):
     """
     global _GLOBAL_SYSTEM_CONFIG
 
+    ipu_version_int = {
+        '': 0,
+        'ipu1': 1,
+        'ipu2': 2
+    }.get(opts.device_connection.version, None)
+
+    if ipu_version_int is None:
+        raise ValueError(f'Unrecognised device_connection.version: \'{opts.device_connection.version}\'')
+
     _GLOBAL_SYSTEM_CONFIG = _SystemConfig(
         ipu_version=(
             0
-            if opts.device_connection_type != DeviceConnectionType.NEVER.value else
-            opts.ipu_version),
+            if opts.device_connection.type is not DeviceConnectionType.NEVER else
+            ipu_version_int),
         custom_op_debug=custom_op_debug_printing
     )
 
@@ -814,7 +825,7 @@ def disjoint_random_indices(spec: MatmulSpec, size_a: int, size_b: int, indices_
     return indices_a, indices_b
 
 
-def gen_sparse_rand_orthog_mat(dimension, sparse_density, block_size):
+def gen_sparse_rand_orthog_mat(dimension, sparse_density, block_size, rng):
     if block_size != 1:
         raise ValueError(f"Block-size {block_size} is not supported.")
     N = dimension
@@ -826,12 +837,14 @@ def gen_sparse_rand_orthog_mat(dimension, sparse_density, block_size):
     #  loop and generate the random, orthogonal matrices and use them
     #  to construct the overall random, orthogonal matrix we wish to return
     #  until the maximum desired density is reached
+    logger.info(f"begin creating sparse random orthogonal matrix with {max_nonzero} non-zeros.")
     while Q_nonZero < max_nonzero:
         # sample a random angle
-        theta = random.random()*2*math.pi
+        rand_u = rng.uniform(0, 1)
+        theta = rand_u * 2 * math.pi
 
         # sample a random pair of indices
-        index = random.sample(range(N), 2)
+        index = rng.choice(N, size=2, replace=False)
         index.sort()
 
         i, j = index
@@ -848,6 +861,7 @@ def gen_sparse_rand_orthog_mat(dimension, sparse_density, block_size):
 
         Q[np.isclose(Q, np.zeros(shape=(dimension, dimension)))] = 0
         Q_nonZero = np.count_nonzero(Q)
+    logger.info(f"Done creating sparse random orthogonal matrix.")
 
     # Confirm algorithm has produced an orthogonal matrix
     QTQ = Q.T @ Q

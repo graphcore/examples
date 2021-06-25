@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import time
+from tensorflow.python.ipu.config import IPUConfig
 import tqdm
 import json
 import logging
@@ -152,9 +153,9 @@ if __name__ == "__main__":
             process_benchmark_results(test_results, opts)
 
     # Set config
-    config = utils.create_ipu_config()
-    config = utils.auto_select_ipus(config, 1)
-    utils.configure_ipu_system(config)
+    config = IPUConfig()
+    config.auto_select_ipus = 1
+    config.configure_ipu_system()
 
     # Now run on device
     make_and_run_on_device_benchmark(opts, train=True)

@@ -89,4 +89,4 @@ public:
 };
 
 
-static popart::PatternCreator<DisableAttnDropoutBwdPattern> disableAttnDropoutBwdPatternCreator("DisableAttnDropoutBwdPattern", true);
+static popart::PatternCreator<DisableAttnDropoutBwdPattern> disableAttnDropoutBwdPatternCreator("DisableAttnDropoutBwdPattern", false);

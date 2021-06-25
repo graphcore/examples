@@ -116,8 +116,8 @@ class Attention(Block):
         self.mask = mask
         self.prefetch_masks = prefetch_masks
         if prefetch_masks:
-            additional_scopes = [self.builder.recomputeOutput(popart.RecomputeType.Checkpoint),
-                                 self.builder.outputTensorLocation(popart.TensorLocation(popart.TensorStorage.OnChip))]
+            # Mask on chip would cause OOM for batch size 1024, choose off chip instead
+            additional_scopes = [self.builder.recomputeOutput(popart.RecomputeType.Checkpoint)]
             self.mask_execution_phase = scope_provider.get_scope('Mask', 'prev').execution_phase % 2
             self.mask_scope = scope_provider.get_scope('Mask',
                                                        self.mask_execution_phase,
@@ -205,7 +205,7 @@ class Attention(Block):
                                                   num_outputs=3,
                                                   axis=1,
                                                   split=[self.hidden_size] * 3,
-                                                  debugPrefix="QKV_Split")
+                                                  debugContext="QKV_Split")
 
         def extract_heads(tensor, transpose=False):
             comb_shape = [
@@ -279,9 +279,7 @@ class Attention(Block):
                 kt = self.__qkv_mul_subgraph(input_x, k, k_bias)
                 vt = self.__qkv_mul_subgraph(input_x, v, v_bias)
             else:
-                q, k, v, projection_weight = [
-                                            param.popart_tensor for param in self.params
-                                            ]
+                q, k, v, projection_weight = [param.popart_tensor for param in self.params]
                 qt = self.__qkv_mul_subgraph(input_x, q)
                 kt = self.__qkv_mul_subgraph(input_x, k)
                 vt = self.__qkv_mul_subgraph(input_x, v)
@@ -536,17 +534,17 @@ class SquadProjection(Block):
         x = self.classifier(x_in)
 
         start_logits = self.builder.aiOnnxOpset9.slice(
-            [x], axes=[1], starts=[0], ends=[1], debugPrefix='slice_ans_start')
+            [x], axes=[1], starts=[0], ends=[1], debugContext='slice_ans_start')
         end_logits = self.builder.aiOnnxOpset9.slice(
-            [x], axes=[1], starts=[1], ends=[2], debugPrefix='slice_ans_end')
+            [x], axes=[1], starts=[1], ends=[2], debugContext='slice_ans_end')
 
         start_logits = self.builder.reshape_const(
             self.builder.aiOnnx, [start_logits],
             [self.micro_batch_size, self.sequence_length],
-            debugPrefix="answer_start")
+            debugContext="answer_start")
         end_logits = self.builder.reshape_const(
             self.builder.aiOnnx, [end_logits],
             [self.micro_batch_size, self.sequence_length],
-            debugPrefix="answer_end")
+            debugContext="answer_end")
 
         return start_logits, end_logits

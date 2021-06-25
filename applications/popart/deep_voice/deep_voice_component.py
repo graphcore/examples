@@ -189,6 +189,7 @@ class Component(object):
             if attention_dropout_rate > 0.0:
                 attention_scores = self.builder.aiOnnx.dropout([attention_scores], 1, attention_dropout_rate)[0]
             attention_scores = self.builder.aiOnnx.transpose([attention_scores], perm=[0, 2, 1])  # Tk X Tq
+            self.builder.setInplacePreferences(attention_scores, {"TransposeInplace": 1000.0})
 
             # getting weighted average of value vectors to get context vectors
             context_vectors = self.builder.aiOnnx.matmul([Q_v, attention_scores])  # v X Tq

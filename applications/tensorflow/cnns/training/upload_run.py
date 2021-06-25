@@ -21,12 +21,12 @@ import json
 import pandas as pd
 import wandb
 import os
-import math
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--base-folder', required=True)
     parser.add_argument('--name', required=True)
+    parser.add_argument('--project', default="large-scale-cnn")
 
     args = parser.parse_args()
 
@@ -39,11 +39,13 @@ if __name__ == "__main__":
         print("no arguments.json found")
         data = {"params": "empty"}
 
-    wandb.init(entity="sw-apps", project="large-scale-cnn", name=args.name, config=data)
+    wandb.init(
+        entity="sw-apps", project=args.project, name=args.name, config=data)
 
     training_filename = os.path.join(args.base_folder, 'training.csv')
     df1 = pd.read_csv(training_filename, index_col='iteration')
-    df1.drop(['step', 'it_time', 'train_acc_batch', 'loss_batch'], axis=1, inplace=True)
+    df1.drop(['step', 'it_time', 'train_acc_batch', 'loss_batch'],
+             axis=1, inplace=True)
     rename_columns = {'img_per_sec': 'train_img_per_sec',
                       'lr': 'learning_rate',
                       'train_acc_avg': 'train_accuracy'}
@@ -51,7 +53,8 @@ if __name__ == "__main__":
     validation_filename = os.path.join(args.base_folder, 'validation.csv')
     if os.path.exists(validation_filename):
         df2 = pd.read_csv(validation_filename, index_col='iteration')
-        df2.drop(['img_per_sec', 'latency', 'val_time', 'epoch', 'name', 'val_size'], axis=1, inplace=True)
+        df2.drop(['img_per_sec', 'val_time', 'epoch', 'name', 'val_size'],
+                 axis=1, inplace=True)
 
         df = pd.concat([df1, df2], axis=1, join='inner')
         rename_columns['val_acc'] = 'validation_accuracy'
@@ -63,5 +66,9 @@ if __name__ == "__main__":
     print(df.head())
 
     for index, row in df.iterrows():
-        results = {column_name: column_value for column_name, column_value in row.iteritems()}
+        results = {column_name: column_value
+                   for column_name, column_value in row.iteritems()}
         wandb.log(results, step=int(round(index)))
+
+    wandb.save(os.path.join(args.base_folder, "log.txt"))
+    wandb.save(os.path.join(args.base_folder, "result*.txt"))

@@ -31,6 +31,7 @@ from tensorflow.python.ipu.scopes import ipu_scope
 from tensorflow.python.ipu import loops
 from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import ipu_outfeed_queue
+from tensorflow.python.ipu.config import IPUConfig
 from collections import namedtuple
 import logging
 import set_path
@@ -100,12 +101,11 @@ def generic_infer_graph(opts, is_training):
         init = tf.compat.v1.global_variables_initializer()
     if opts['use_ipu_model']:
         os.environ["TF_POPLAR_FLAGS"] = "--use_ipu_model"
-    ipu_options = utils.create_ipu_config()
-    ipu_options = utils.set_optimization_options(ipu_options,
-                                                 combine_embedding_lookups=True)
-    ipu_options = utils.set_recomputation_options(ipu_options, allow_recompute=True)
-    ipu_options = utils.auto_select_ipus(ipu_options, [opts['replicas']])
-    utils.configure_ipu_system(ipu_options)
+    ipu_options = IPUConfig()
+    ipu_options.optimizations.combine_embedding_lookups = True
+    ipu_options.allow_recompute = True
+    ipu_options.auto_select_ipus = [opts['replicas']]
+    ipu_options.configure_ipu_system()
     if seed is not None:
         utils.reset_ipu_seed(seed)
 

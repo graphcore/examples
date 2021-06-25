@@ -16,19 +16,23 @@ import pytest
 import re
 import subprocess
 import numpy as np
+from pathlib import Path
 from tempfile import TemporaryDirectory
+
+
+bert_root_dir = Path(__file__).parent.parent.resolve()
 
 
 def run_bert_cmdline(cmdline_args):
     with TemporaryDirectory() as tempdir:
         cmdline_args["--wandb"] = "false"
-        cmd = ["python3", "bert.py"]
+        cmd = ["python3", "run_pretraining.py"]
         cmd.extend([
             str(item) for sublist in cmdline_args.items()
             for item in sublist
             if item != ""
         ])
-        out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=bert_root_dir)
         return out.stdout.decode("utf-8"), out.stderr.decode("utf-8")
 
 
@@ -80,7 +84,7 @@ def accuracy_reached_threshold(accs, threshold):
 @pytest.mark.category1
 @pytest.mark.ipus(8)
 @pytest.mark.parametrize("replication", [1, 2])
-@pytest.mark.parametrize("pred_head_transform, embedding_serialization", [(False, 5), (True, 1)])
+@pytest.mark.parametrize("pred_head_transform, embedding_serialization", [(False, 3), (True, 1)])
 def test_loss_down_accuracy_up(embedding_serialization, pred_head_transform, replication):
     """
     Test that for a 3 layer toy model the loss is trending downwards and the
@@ -97,7 +101,7 @@ def test_loss_down_accuracy_up(embedding_serialization, pred_head_transform, rep
     losses, accs = parse_result_for_loss_accuracy(stderr)
     loss_going_down(losses)
     accuracy_going_up(accs)
-    accuracy_reached_threshold(accs, 0.95)
+    accuracy_reached_threshold(accs, 0.9)
 
 
 @pytest.mark.category3

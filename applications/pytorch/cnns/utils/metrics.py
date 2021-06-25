@@ -76,4 +76,7 @@ class Metrics:
 def sync_metrics(value, average=True):
     tensor = torch.Tensor([value])
     avg_value = hvd.allreduce(tensor, average=average)
-    return float(avg_value.item())
+    if isinstance(value, list):
+        return avg_value[0].tolist()
+    else:
+        return float(avg_value.item())

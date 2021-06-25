@@ -1,16 +1,15 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import argparse
 import random
+from pathlib import Path
 import torch
-import logging
-import popdist
-import popdist.poptorch
 import horovod.torch as hvd
 import sys
 import weight_avg
 sys.path.append('..')
 import models
 import utils
+import logging
 
 
 def generate_random_seed(distributed=False):
@@ -22,16 +21,6 @@ def generate_random_seed(distributed=False):
     return seed
 
 
-def init_popdist(args):
-    hvd.init()
-    args.use_popdist = True
-    if popdist.getNumTotalReplicas() != args.replicas:
-        logging.warn(f"The number of replicas is overridden by poprun. The new value is {popdist.getNumTotalReplicas()}.")
-    args.replicas = int(popdist.getNumLocalReplicas())
-    args.popdist_rank = popdist.getInstanceIndex()
-    args.popdist_size = popdist.getNumInstances()
-
-
 def parse_arguments():
     common_parser = utils.get_common_parser()
     parser = argparse.ArgumentParser(description='CNN training in PopTorch', parents=[common_parser])
@@ -40,7 +29,9 @@ def parse_arguments():
     parser.add_argument('--imagenet-data-path', type=str, default="/localdata/datasets/imagenet-raw-data", help="Path of the raw imagenet data")
     parser.add_argument('--gradient-accumulation', type=int, default=1, help="Number of batches to accumulate before a gradient update")
     parser.add_argument('--lr', type=float, default=0.01, help="Initial learning rate")
-    parser.add_argument('--weight-decay', type=float, default= 0.0001, help="L2 parameter penalty")
+    parser.add_argument('--weight-decay', type=float, default=0.0001, help="L2 parameter penalty")
+    parser.add_argument('--optimizer', choices=['sgd', 'sgd_combined', 'adamw', 'rmsprop', 'rmsprop_tf'], default='sgd', help="Define the optimizer")
+    parser.add_argument('--optimizer-eps', type=float, default=1e-8, help="Small constant added to the updater term denominator for numerical stability.")
     parser.add_argument('--momentum', type=float, default=0.0, help="Momentum factor")
     parser.add_argument('--rmsprop-decay', type=float, default=0.99, help="RMSprop smoothing constant")
     parser.add_argument('--epoch', type=int, default=10, help="Number of training epochs")
@@ -48,11 +39,14 @@ def parse_arguments():
     parser.add_argument('--validation-mode', choices=['none', 'during', 'after'], default="after", help='The model validation mode. none=no validation; during=validate after every epoch; after=validate after the training')
     parser.add_argument('--disable-metrics', action='store_true', help='Do not calculate metrics during training, useful to measure peak throughput')
     parser.add_argument('--wandb', action='store_true', help="Add Weights & Biases logging")
+    parser.add_argument('--wandb-weight-histogram', action='store_true', help="Log the weight histogram with Weights & Biases")
     parser.add_argument('--seed', type=int, help="Set the random seed")
     parser.add_argument('--enable-recompute', action='store_true', help='Enable the recomputation of network activations during backward pass instead '
                         'of caching them during forward pass. This option turns on the recomputation for single-stage models. If the model is multi '
                         'stage (pipelined) the recomputation is always enabled.')
-    parser.add_argument('--recompute-checkpoints', type=str, nargs='+', default=[], help='List of recomputation checkpoint rules: [conv:store convolution activations|norm: store normlayer activations]')
+    parser.add_argument('--recompute-checkpoints', type=str, nargs='+', default=[], help='List of recomputation checkpoints. List of regex rules for the layer names must be provided. (Example: Select convolutional layers: .*conv.*)')
+    parser.add_argument('--disable-stable-batchnorm', action='store_true', help="There are two implementations of the batch norm layer. "
+                        "The default version is numerically more stable. The less stable is faster.")
     parser.add_argument('--offload-optimizer', action='store_true', help='Offload the optimizer from the IPU memory')
     parser.add_argument('--available-memory-proportion', type=float, default=[], nargs='+',
                         help='Proportion of memory which is available for convolutions. Use a value of less than 0.6')
@@ -65,26 +59,23 @@ def parse_arguments():
     parser.add_argument('--lr-epoch-decay', type=int, nargs='+', default=[], help="List of epoch, when lr drops")
     parser.add_argument('--warmup-epoch', type=int, default=0, help="Number of learning rate warmup epochs")
     parser.add_argument('--lr-scheduler-freq', type=float, default=0, help="Number of lr scheduler updates per epoch (0 to disable and update every iteration)")
-    parser.add_argument('--optimizer', choices=['sgd', 'adamw', 'rmsprop'], default='sgd', help="Define the optimizer")
     # half precision training params
     parser.add_argument('--loss-scaling', type=float, default=1.0, help="Loss scaling factor. This value is reached by the end of the training.")
-    parser.add_argument('--loss-velocity-scaling-ratio', type=float, default=1.0, help="Only for SGD optimizer: Loss Velocity / Velocity scaling ratio. In case of large number of replicas >1.0 can increase numerical stability")
+    parser.add_argument('--loss-velocity-scaling-ratio', type=float, default=1.0, help="Only for sgd_combined optimizer: Loss Velocity / Velocity scaling ratio. In case of large number of replicas >1.0 can increase numerical stability")
     parser.add_argument('--initial-loss-scaling', type=float, help="Initial loss scaling factor. The loss scaling interpolates between this and loss-scaling value."
                         "Example: 100 epoch, initial loss scaling 16, loss scaling 128: Epoch 1-25 ls=16;Epoch 26-50 ls=32;Epoch 51-75 ls=64;Epoch 76-100 ls=128")
     parser.add_argument('--enable-stochastic-rounding', action="store_true", help="Enable Stochastic Rounding")
     parser.add_argument('--enable-fp-exceptions', action="store_true", help="Enable Floating Point Exceptions")
+    parser.add_argument('--webdataset-percentage-to-use', type=int, default=100, choices=range(1, 101), help="Percentage of dataset to be used for traini")
+    parser.add_argument('--use-bbox-info', action='store_true', help='Use bbox information for training: reject the augmenetation, which does not overlap with the object.')
     # weight averaging params
     weight_avg.add_parser_arguments(parser)
 
-    opts = utils.parse_with_config(parser, "configs.yml")
+    opts = utils.parse_with_config(parser, Path(__file__).parent.absolute().joinpath("configs.yml"))
     if opts.initial_loss_scaling is None:
         opts.initial_loss_scaling = opts.loss_scaling
 
-    # Initialise popdist
-    if popdist.isPopdistEnvSet():
-        init_popdist(opts)
-    else:
-        opts.use_popdist = False
+    utils.handle_distributed_settings(opts)
 
     if opts.seed is None:
         opts.seed = generate_random_seed(opts.use_popdist)
@@ -113,6 +104,13 @@ def parse_arguments():
         logging.info("Recomputation is always enabled when using pipelining.")
 
     if not opts.enable_recompute and len(opts.recompute_checkpoints) > 0:
-        logging.warning("Recomputation is not enabled, whlile recomputation checkpoints are provided.")
+        logging.warning("Recomputation is not enabled, while recomputation checkpoints are provided.")
+
+    if opts.eight_bit_io and opts.normalization_location == 'host':
+        logging.warning("for eight-bit input, please use IPU-side normalisation, setting normalisation to IPU")
+        opts.normalization_location = 'ipu'
+
+    if opts.wandb_weight_histogram:
+        assert opts.wandb, "Need to enable W&B with --wandb to log the histogram of the weights"
 
     return opts

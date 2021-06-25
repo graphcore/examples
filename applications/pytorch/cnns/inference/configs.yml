@@ -1,10 +1,11 @@
 common: &common
-  normlayer: batch
   precision: "16.16"
   replicas: 1
   device_iterations: 128
   half_partial: true
   norm_type: batch
+  eight_bit_io: true
+  normalization_location: ipu
 
 
 resnet50-mk1:

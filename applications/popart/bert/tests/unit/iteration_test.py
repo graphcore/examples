@@ -38,6 +38,12 @@ class MockArgs(NamedTuple):
     task: str = "SQUAD"
     squad_lr_scale: int = 1
     use_popdist: bool = False
+    popdist_size: int = 1
+    use_packed_sequence_format: bool = False
+
+    @property
+    def global_batch_size(self):
+        return self.micro_batch_size * self.gradient_accumulation_factor * self.replication_factor
 
 
 class MockWriter():
@@ -91,7 +97,8 @@ def test_iteration_stats(task, epochs, seed, exponent_loss, exponent_acc):
     def generate_step_result(step_num):
         duration = random.random()
         hw_cycles = random.randint(1000, 2000)
-        return duration, hw_cycles, step_losses[step_num], step_accuracies[step_num]
+        data = {"input_mask": None}
+        return duration, hw_cycles, data, step_losses[step_num], step_accuracies[step_num]
 
     def mock_stats_fn(loss, accuracy):
         return loss, accuracy

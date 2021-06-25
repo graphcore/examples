@@ -267,7 +267,7 @@ def test_embedding_bwd(custom_ops, mode, momentum, micro_batch_size, batch_seria
             l1 = popart_model.builder.aiGraphcore.l1loss(
                 [output],
                 l1_lambda,
-                debugPrefix="l1LossVal",
+                debugContext="l1LossVal",
                 reduction=popart.ReductionType.Sum)
     else:
         user_options = {"enableStochasticRounding": True}
@@ -276,7 +276,7 @@ def test_embedding_bwd(custom_ops, mode, momentum, micro_batch_size, batch_seria
         l1 = popart_model.builder.aiGraphcore.l1loss(
             [output],
             l1_lambda,
-            debugPrefix="l1LossVal",
+            debugContext="l1LossVal",
             reduction=popart.ReductionType.Sum)
 
     num_reps = 5

@@ -9,7 +9,7 @@ The training examples given below use models implemented in TensorFlow, optimise
 
 ## Benchmarking
 
-To reproduce the published Mk2 throughput benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md) 
+To reproduce the published Mk2 throughput benchmarks, please follow the setup instructions in this README, and then follow the instructions in [README_Benchmarks.md](README_Benchmarks.md)
 
 ## Graphcore ResNet-50 and EfficientNet models
 
@@ -23,7 +23,7 @@ uses loss scaling to maintain accuracy at low precision, and has techniques such
 smoothing to improve final verification accuracy. Both model and data parallelism can be used to scale training
 efficiently over many IPUs.
 
-ResNeXt and SqueezeNet models are also available.
+A ResNeXt model is also available.
 
 ## Quick start guide
 
@@ -54,7 +54,7 @@ CIFAR-100 dataset is available here https://www.cs.toronto.edu/~kriz/cifar-100-b
 | `ipu_utils.py`      | IPU specific utilities |
 | `log.py`            | Module containing functions for logging results |
 | `Datasets/`         | Code for using different datasets. Currently CIFAR-10, CIFAR-100 and ImageNet are supported |
-| `Models/`           | Code for neural networks<br/>- `resnet.py`: Definition for ResNet model.<br/>- `resnext.py`: Definition for ResNeXt model.<br/>- `squeezenet.py`: Definition for SqueezeNet model.<br/>- `efficientnet.py`: Definition for EfficientNet models.
+| `Models/`           | Code for neural networks<br/>- `resnet.py`: Definition for ResNet model.<br/>- `resnext.py`: Definition for ResNeXt model.<br/>- `efficientnet.py`: Definition for EfficientNet models.
 | `LR_Schedules/`     | Different LR schedules<br/> - `stepped.py`: A stepped learning rate schedule with optional warmup<br/>- `cosine.py`: A cosine learning rate schedule with optional warmup <br/>- `exponential.py`: An exponential learning rate schedule with optional warmup <br/>- `polynomial_decay_lr.py`: A polynomial learning rate schedule with optional warmup
 | `requirements.txt`  | Required packages for the tests |
 | `weight_avg.py`     | Code for performing weight averaging of multiple checkpoints. |
@@ -62,119 +62,6 @@ CIFAR-100 dataset is available here https://www.cs.toronto.edu/~kriz/cifar-100-b
 | `configs.yml`       | File where configurations are defined. |
 | `test/`             | Test files - run using `python3 -m pytest` after installing the required packages. |
 
-
-## Training examples
-
-The default values for each of the supported data sets should give good results. See below for details on how best to
-use the `--data-dir` and `--dataset` options.
-
-If you set a `DATA_DIR` environment variable (`export DATA_DIR=path/to/data`) then that will be used by default if
-`--data-dir` is omitted.
-
-Note also that the `--generated-data` option can be set which will transfer randomised instead of real data.
-
-
-### ImageNet - ResNet-50
-
-In this application you can find support for the ResNet family of neural networks of a number of model sizes, including
-ResNet50.
-
-This model fits on a single MK2 IPU with a batch size of up to 8:
-
-    python train.py --model resnet --model-size 50 --dataset imagenet --data-dir .../imagenet-data/ --batch-size 8
-
-Training over many IPUs can use both model and data parallelism. An example using 8 IPUs with four replicas of a
-two stage pipeline model is:
-
-    python train.py --dataset imagenet --data-dir .../imagenet-data --model-size 50 --batch-size 2 --shards 2 \
-    --pipeline --gradient-accumulation-count 128 --pipeline-splits b3/0/relu --pipeline-schedule Grouped \
-    --available-memory-proportion 0.4 --xla-recompute --replicas 4
-
-Note that some combinations of options might not work. For example, it will not be possible to add replication for
-a model that is a tight fit on a single IPU because replication introduces additional control code and buffers for
-copying updated gradients between replicas.
-
-There are a number of options that will help achieve a higher accuracy, many of which are detailed below. For example,
-the following configuration trains ResNet50 using 16 Mk2 IPUs. Each IPU runs a single data-parallel replica of the
-model with a micro-batch size of 8. We use a gradient accumulation count of 8, and 16 replicas in total for a
-global batch size of 1024 (8 * 8 * 16). Activations for the forwards pass are re-calculated during the backwards pass. Partials
-saved to tile memory within the convolutions are set to half-precision to maximise throughput on the IPU.
-This example uses the SGD-M optimizer with group normalisation, cosine learning rate and label smoothing to train to >75.90%
-validation accuracy in 65 epochs.
-
-    python train.py --model resnet --model-size 50 --dataset imagenet --data-dir .../imagenet-data/ \
-    --replicas 16 --batch-size 8 --gradient-accumulation-count 8 --epochs 65 \
-    --xla-recompute --optimiser momentum --momentum 0.90 --ckpts-per-epoch 1 \
-    --internal-exchange-optimisation-target balanced --normalise-input --stable-norm \
-    --enable-half-partials --lr-schedule cosine --label-smoothing 0.1 --eight-bit-io
-
-
-On MK1 IPUs, the model will fit on a single IPU with a batch size of 1.
-
-    python train.py --dataset imagenet --data-dir .../imagenet-data --model-size 50 --batch-size 1 --available-memory-proportion 0.1
-
-The following configuration achieves >75.9% accuracy for 16 MK1 IPUs. The MK1 IPU has less on-chip memory so the ResNet50 model
-is pipelined over 4 IPUs and the available memory proportion option is set to adjust how much memory is used for convolutions
-and matrix multiplications. Each IPU executes its corresponding pipeline stage with a micro-batch size of 4. We use a gradient accumulation
-count of 64, and 4 replicas in total for a global batch size of 1024 (4 * 64 * 4). Activations for the forwards pass are re-calculated
-during the backwards pass. Partials saved to tile memory within the convolutions are set to half-precision to maximise throughput on
-the IPU. This example uses the SGD-M optimizer with group normalisation, cosine learning rate and label smoothing to train to >75.90%
-validation accuracy in 65 epochs.
-
-    python train.py --model resnet --model-size 50 --dataset imagenet --data-dir .../imagenet-data \
-    --shards 4 --replicas 4 --batch-size 4 --gradient-accumulation-count 64 --epochs 65 \
-    --pipeline --pipeline-splits b1/2/relu b2/3/relu b3/5/relu --pipeline-schedule Grouped \
-    --xla-recompute --optimiser momentum --momentum 0.90 --ckpts-per-epoch 1 \
-    --max-cross-replica-buffer-size 100000000 --available-memory-proportion 0.6 0.6 0.6 0.6 0.6 0.6 0.16 0.2 \
-    --internal-exchange-optimisation-target balanced --normalise-input --stable-norm \
-    --enable-half-partials --lr-schedule cosine --label-smoothing 0.1 --eight-bit-io
-
-
-### ImageNet - ResNeXt
-
-ResNeXt is a variant of ResNet that adds multiple paths to the ResBlocks.
-
-The following configuration will train a ResNeXt-101 model to 78.8% validation accuracy in 120 epochs on 16 Mk2 IPUs (the number of epochs has not been tuned):
-   
-    python train.py --model resnext --model-size 101 --dataset imagenet --data-dir .../imagenet-data \
-    --shards 2 --replicas 8 --batch-size 6 --gradient-accumulation-count 16 --epoch 120 \
-    --pipeline  --pipeline-splits b3/3/relu --pipeline-schedule Grouped \
-    --xla-recompute --optimiser momentum --momentum 0.9 --ckpts-per-epoch 1 \
-    --internal-exchange-optimisation-target balanced --disable-variable-offloading \
-    --normalise-input --stable-norm --base-learning-rate -11 --no-validation \
-    --enable-half-partials --lr-schedule cosine --label-smoothing 0.1 --eight-bit-io
-
-
-### ImageNet - EfficientNet
-
-We recommend that you split the model across 2 or 4 IPUs for the best throughput. For example this will
-achieve good B0 model convergence pipelined over 4 IPUs, with the RMSprop optimiser and 32 bit precision
-for weight updates:
-
-    python train.py --model efficientnet --model-size B0 --data-dir .../imagenet-data --shards 4 \
-    --batch-size 4 --pipeline --gradient-accumulation-count 128 --pipeline-splits block2b block4a block6a --xla-recompute \
-    --pipeline-schedule Grouped --optimiser RMSprop --precision 16.32
-
-Note that larger models (B1, B2, etc.) will automatically increase the image size used. You can
-override this behaviour with the `--image-size` option if needed.
-
-Changing the dimension of the group convolutions can make the model more efficient on the IPU. To keep the
-number of parameters approximately the same, you can reduce the expansion ratio. For example a modified
-EfficientNet-B0 model, with a similar number of trainable parameters can be trained using:
-
-    python train.py --model efficientnet --model-size B0 --data-dir .../imagenet-data --batch-size 8 \
-    --shards 4 --pipeline --gradient-accumulation-count 64 --pipeline-splits block2a/SE block4a block5c --xla-recompute \
-    --pipeline-schedule Grouped --optimiser RMSprop --precision 16.32 --group-dim 16 --expand-ratio 4 --groups 4
-
-This should give a similar validation accuracy as the standard model but with improved training throughput.
-
-### ImageNet - EfficientNet - Inference
-
-The training harness can also be used to demonstrate inference performance using the `validation.py` script.
-For example, to check inference for EfficientNet use:
-
-    python validation.py --model efficientnet --model-size B0 --dataset imagenet --batch-size 8 \
-    --generated-data --repeat 10 --batch-norm
 
 ## Configurations
 
@@ -190,16 +77,11 @@ change the number of training epochs of a configuration with:
 
     python3 train.py --config my_config --epochs 50
 
-We provide reference configurations for the models described above.
+We provide reference configurations for the models described below.
 
-# Distributed training
+## PopDist and PopRun - distributed training on IPU-PODs
 
-The following section explains how you can train models at scale using distributed training.
-
-
-# PopDist and PopRun - distributed training on IPU-PODs
-
-To get the most performance from our IPU-PODs, this application example now supports PopDist, Graphcore Poplar 
+To get the most performance from our IPU-PODs, this application example now supports PopDist, Graphcore Poplar
 distributed configuration library. For more information about PopDist and PopRun, see the [User Guide](https://docs.graphcore.ai/projects/poprun-user-guide/).
 Beyond the benefit of enabling scaling an ML workload to an IPU-POD128 and above, the CNN application benefits from distributed
 training even on an IPU-POD16 or IPU-POD64, since the additional launched instances increase the number of input data feeds,
@@ -227,7 +109,7 @@ process, therefore we need to pass the option `--no-validation`. Then, after tra
 When running pipelined models, such as the ResNet50 Batch Norm 16 IPU configuration, where each model is pipelined across 4 IPUs
 during training, you need to change the distributed training command line accordingly:
 
-    poprun -v --numa-aware 1 --num-instances 4 --num-replicas 4 --ipus-per-replica --mpi-local-args="--tag-output" \
+    poprun -v --numa-aware 1 --num-instances 4 --num-replicas 4 --ipus-per-replica 4 --mpi-local-args="--tag-output" \
     python3 train.py --config mk2_resnet50_bn_16ipus --data-dir your_dataset_path --no-validation
 
 Note that we reduced the number of instances from 8 to 4 since we are only running 4 replicas.
@@ -246,83 +128,157 @@ available the user needs to make sure that independent copies of the Poplar SDK,
 across the filesystems of the different hosts.
 
 After the setup mentioned above is in place, the Poplar SDK only needs to be enabled on the host the user is connected to. The command line is then
-extended with system information to make sure the other hosts execute the program with a similar development environment (here we assume that `$WORKSPACE` has been set appropriately):
+extended with system information to make sure the other hosts execute the program with a similar development environment. We assume that `$WORKSPACE` has been set appropriately. Replace with IP addresses as appropriate for the target hardware. '--mca btl_tcp_if_include xxx.xxx.xxx.0/xx' sets the default route for traffic between Poplar hosts. It should be configured for a network to which all Poplar hosts have access, and for which the interfaces only have a single IP address. Replace 'pod64_partition_name' with the name of your POD64 partition.
 
-    poprun -v --host 10.1.3.101,10.1.3.102,10.1.3.103,10.1.3.104 --numa-aware=yes --vipu-server-host=10.1.3.101 --vipu-partition=p64 \
-    --reset-partition=no --update-partition=no --mpi-global-args="--tag-output --mca btl_tcp_if_include 10.1.3.0/24" \
-    --mpi-local-args="-x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x TF_CPP_VMODULE=poplar_compiler=1 -x IPUOF_VIPU_API_TIMEOUT=300 \
-    -x TF_POPLAR_FLAGS=--executable_cache_path=$WORKSPACE/exec_cache" --num-replicas=16 --num-instances=16 \
-    --ipus-per-replica 4 python3 $WORKSPACE/examples/applications/tensorflow/cnns/training/train.py --config mk2_resnet50_bn_64ipus \
-    --no-validation --data-dir your_dataset_path
+    poprun -v --host xxx.xxx.xxx.1,xxx.xxx.xxx.2,xxx.xxx.xxx.3,xxx.xxx.xxx.4 --numa-aware=yes --vipu-server-host=xxx.xxx.xxx.xxx \ --vipu-partition=pod64_partition_name --reset-partition=yes --update-partition=no --mpi-global-args="--tag-output \
+    --mca btl_tcp_if_include xxx.xxx.xxx.0/24" --mpi-local-args="-x LD_LIBRARY_PATH -x PATH -x PYTHONPATH \
+    -x TF_CPP_VMODULE=poplar_compiler=1 -x IPUOF_VIPU_API_TIMEOUT=300 -x TF_POPLAR_FLAGS=--executable_cache_path=$WORKSPACE/exec_cache" \ --num-replicas=16 --num-instances=16 --ipus-per-replica 4 python3 $WORKSPACE/examples/applications/tensorflow/cnns/training/train.py --config mk2_resnet50_bn_64ipus --no-validation --data-dir your_dataset_path
 
-Note that configuration `resnet50_bn_64_ipu` just changes the number of accumulated gradients in order to maintain the same global batch size while 
+Note that configuration `resnet50_bn_64_ipu` just changes the number of accumulated gradients in order to maintain the same global batch size while
 using more IPUs.
 After training is complete, you can execute validation by adapting the instruction to run each model on 1 IPU, similarly to what was done above:
 
-    poprun -v --host 10.1.3.101,10.1.3.102,10.1.3.103,10.1.3.104 --numa-aware=yes --vipu-server-host=10.1.3.101 --vipu-partition=p64 \
-    --reset-partition=no --update-partition=no --mpi-global-args="--tag-output --mca btl_tcp_if_include 10.1.3.0/24" \
-    --mpi-local-args="-x LD_LIBRARY_PATH -x PYTHONPATH -x TF_CPP_VMODULE=poplar_compiler=1 -x IPUOF_VIPU_API_TIMEOUT=300 \
+    poprun -v --host xxx.xxx.xxx.1,xxx.xxx.xxx.2,xxx.xxx.xxx.3,xxx.xxx.xxx.4 --numa-aware=yes --vipu-server-host=xxx.xxx.xxx.xxx \ --vipu-partition=pod64_partition_name --reset-partition=yes --update-partition=no --mpi-global-args="--tag-output \
+    --mca btl_tcp_if_include xxx.xxx.xxx.0/24" --mpi-local-args="-x LD_LIBRARY_PATH -x PYTHONPATH \
+    -x TF_CPP_VMODULE=poplar_compiler=1 -x IPUOF_VIPU_API_TIMEOUT=300 \
     -x TF_POPLAR_FLAGS=--executable_cache_path=$WORKSPACE/exec_cache" --num-replicas=64 --num-instances=32 \
-    --ipus-per-replica 1 python3 $WORKSPACE/examples/applications/tensorflow/cnns/training/train.py --config mk2_resnet50_bn_64ipus \
-    --shards 1 --data-dir your_dataset_path --restore-path generated_checkpoints_dir_path
+    --ipus-per-replica 1 python3 $WORKSPACE/examples/applications/tensorflow/cnns/training/validation.py \
+    --config mk2_resnet50_bn_64ipus --shards 1 --data-dir your_dataset_path --restore-path generated_checkpoints_dir_path
 
 You can also scale your workload to multiple IPU-POD64s. To do so, the same assumptions are made regarding the identical filesystem structure across
 the different host servers. As an example, to train a ResNet50 using an IPU-POD128 (which consists of two IPU-POD64s), using all 128 IPUs and 8 host servers
 you can use the following instruction:
 
-
-    POPLAR_ENGINE_OPTIONS='{"target.gatewayMode": "true", "target.syncReplicasIndependently": "true", "target.hostSyncTimeout": "900", \
-     "target.maxStreamCallbackThreadsPerNumaNode": "auto"}' poprun -v --host \
-      10.10.19.150,10.10.19.151,10.10.19.152,10.10.19.153,10.10.20.150,10.10.20.151,10.10.20.152,10.10.20.153 \
-      --numa-aware=yes --vipu-server-host=10.3.19.150 --vipu-server-timeout=300 --vipu-partition=gcl128 --vipu-cluster=gcl --reset-partition=no \
-      --update-partition=no --num-ilds=2 --mpi-global-args="--tag-output --allow-run-as-root --mca oob_tcp_if_include 10.10.0.0/16 \ 
-      --mca btl_tcp_if_include 10.10.0.0/16" --mpi-local-args="-x LD_LIBRARY_PATH -x TF_CPP_VMODULE=poplar_compiler=1 -x PATH -x PYTHONPATH \ 
-      -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_ENGINE_OPTIONS" --ipus-per-replica 4 --num-replicas=32 --num-instances=32 \
-      python3 --config mk2_resnet50_bn_128ipus --no-validation --data-dir your_dataset_path
+    POPLAR_ENGINE_OPTIONS='{"target.hostSyncTimeout": "900"}' poprun -v --host \
+    xxx.xxx.1.1,xxx.xxx.1.2,xxx.xxx.1.3,xxx.xxx.1.4, xxx.xxx.2.1,xxx.xxx.2.2,xxx.xxx.2.3,xxx.xxx.2.4 \
+    --numa-aware=yes --vipu-server-host=xxx.xxx.xxx.xxx --vipu-server-timeout=300 --vipu-partition=pod128_partition_name \
+    --vipu-cluster=pod128_cluster_name --reset-partition=yes --update-partition=no --num-ilds=2 --mpi-global-args="--tag-output \
+    --allow-run-as-root --mca oob_tcp_if_include xxx.xxx.0.0/16 --mca btl_tcp_if_include xxx.xxx.0.0/16" \
+    --mpi-local-args="-x LD_LIBRARY_PATH -x TF_CPP_VMODULE=poplar_compiler=1 -x PATH -x PYTHONPATH \
+    -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_ENGINE_OPTIONS" --ipus-per-replica 4 --num-replicas=32 --num-instances=32 \
+    python3 --config mk2_resnet50_bn_128ipus --no-validation --data-dir your_dataset_path
 
 Note that the configuration `mk2_resnet50_bn_128ipus` only changes the number of replicas and gradient accumulation count to maintain the
 same global batch size.
 
+## Convergence Optimized configurations
 
-# Distributed training for IPU Servers equipped with C2 cards
+### ImageNet - ResNet-50
 
-Please note that this section is presented here for legacy reasons, for users of systems with equipped with C2 cards.
-If you are using an IPU-POD, and are looking to distribute your workloads, please refer to the section above.
+The following configuration trains ResNet50 using 16 Mk2 IPUs. Each IPU runs a single data-parallel replica of the
+model with a micro-batch size of 20. We use a gradient accumulation count of 6, and 16 replicas in total for a
+global batch size of 1920 (20 * 6 * 16). Activations for the forwards pass are re-calculated during the backwards pass. Partials
+saved to tile memory within the convolutions are set to half-precision to maximise throughput on the IPU. Batch norm statistics
+computed for each batch of samples are distributed across groups of 2 IPUs to improve numerical stability and convergence,
+This example uses the SGD-M optimizer, cosine learning rate and label smoothing to train to >75.90% validation accuracy in 45 epochs.
+The example uses PopDist with 8 instances to maximize throughput.
 
-Training can also be distributed over multiple machines ("workers"). To do this, pass the argument
-`--distributed` and set the environment variable `TF_CONFIG` with information about the distributed cluster.
-The gradients are streamed to the host of each worker, then averaged across the workers over the network, and
-finally streamed back to the IPUs where the weight updates are performed. To ensure that the workers perform
-identical weight updates, you should turn off stochastic rounding. Distributed training gives a total batch
-size of `num_workers * num_replicas * gradient_accumulation_count * batch_size`.
+    POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false"}' poprun -vv --mpi-global-args='--tag-output --allow-run-as-root' \
+    --mpi-local-args='-x POPLAR_ENGINE_OPTIONS' --ipus-per-replica 1 --numa-aware 1 \
+    --num-instances 8 --num-replicas 16 python train.py --config mk2_resnet50_mlperf_pod16_bs20 --epochs-per-sync 20 \
+    --data-dir your_dataset_path --no-validation
 
-For example, to distribute the training over two machines, with hostnames worker0 and worker1, run this on worker0:
+After training is complete, you can validate the previously saved checkpoints. As above, each IPU runs one replica of the model and 
+the model is replicated over the 16 IPUs. To make sure there are no validation samples discarded when sharding the validation dataset across 8 instances, a batch size of 25 is used.
 
-    export TF_CONFIG='{"cluster":{"worker":["worker0:3636","worker1:3636"]},"task":{"type":"worker","index":0}}'
-    python train.py --dataset imagenet --data-dir .../imagenet-data --model-size 50 --batch-size 4 \
-    --batches-per-step 1 --shards 4 --pipeline --gradient-accumulation-count 64 --pipeline-splits b1/2/relu b2/3/relu b3/5/relu \
-    --xla-recompute --replicas 4 --distributed --no-stochastic-rounding --base-learning-rate -11
+    POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false"}' poprun -vv --mpi-global-args='--tag-output --allow-run-as-root' \
+    --mpi-local-args='-x POPLAR_ENGINE_OPTIONS' --ipus-per-replica 1 --numa-aware 1 \
+    --num-instances 8 --num-replicas 16 python validation.py --config mk2_resnet50_mlperf_pod16_bs20 --no-stochastic-rounding \
+    --batch-size 25 --available-memory-proportion 0.6 --data-dir your_dataset_path --restore-path generated_checkpoints_dir_path
 
-Run exactly the same commands on worker1, with the exception of changing the worker index in `TF_CONFIG` from 0 to 1:
+For POD64 systems, a similar configuration is used. Again each IPU runs a single replica of the model with a micro-batch size of 20. To maintain a similar total batch size we use a gradient accumulation count of 2 and 64 replicas for a total batch size of 2560. We also use 32 instances to maximize throughput. The optimiser, partials, activations recomputation and distributed batch norm setting are the same as for POD16 systems.
 
-    export TF_CONFIG='{"cluster":{"worker":["worker0:3636","worker1:3636"]},"task":{"type":"worker","index":1}}'
+    POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false"}' POPLAR_TARGET_OPTIONS='{"gatewayMode":"false"}' \
+    poprun -vv --host xxx.xxx.1.1,xxx.xxx.1.2,xxx.xxx.1.3,xxx.xxx.1.4, xxx.xxx.2.1,xxx.xxx.2.2,xxx.xxx.2.3,xxx.xxx.2.4 \
+    --mpi-global-args='--tag-output --allow-run-as-root --mca oob_tcp_if_include 10.1.0.0/16 \
+    --mca btl_tcp_if_include xxx.xxx.0.0/16' --mpi-local-args=' -x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH' \
+    -x PYTHONPATH -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=WARN -x POPLAR_ENGINE_OPTIONS \
+    --update-partition=no --reset-partition=yes --vipu-server-timeout 300 --ipus-per-replica 1 --numa-aware 1 \
+    --only-output-from-instance 0 --vipu-server-host xxx.xxx.xxx.xxx --vipu-partition=pod64_partition_name \
+    --num-instances 32 --num-replicas 64 python train.py --config mk2_resnet50_mlperf_pod64_bs20 --epochs-per-sync 20 \
+    --data-dir your_dataset_path --no-validation
 
-Alternatively, the `mpirun` program can be used to start the training over the cluster, and the worker index will
-be picked up from the `OMPI_COMM_WORLD_RANK` environment variable:
+To run validation without discarding samples when distributing data across batches and instances, the above validation instruction for the POD16 is used.
 
-    mpirun --tag-output -H worker0,worker1 -bind-to none -map-by slot -x LD_LIBRARY_PATH -x PATH \
-    -x TF_CONFIG='{"cluster":{"worker":["worker0:3636","worker1:3636"]},"task":{"type":"worker"}}' \
-    python train.py [...]
 
-Note: Depending on the size of the model, you might have to limit stream copy merging to avoid overflowing the host
-exchange outbound page table by setting, for example, `export POPLAR_ENGINE_OPTIONS='{"opt.maxCopyMergeSize": 8388608}'`.
+The following configuration achieves >75.9% accuracy for 16 MK1 IPUs. The MK1 IPU has less on-chip memory so the ResNet50 model
+is pipelined over 4 IPUs and the available memory proportion option is set to adjust how much memory is used for convolutions
+and matrix multiplications. Each IPU executes its corresponding pipeline stage with a micro-batch size of 4. We use a gradient accumulation
+count of 64, and 4 replicas in total for a global batch size of 1024 (4 * 64 * 4). Activations for the forwards pass are re-calculated
+during the backwards pass. Partials saved to tile memory within the convolutions are set to half-precision to maximise throughput on
+the IPU. This example uses the SGD-M optimizer with group normalisation, cosine learning rate and label smoothing to train to >75.90%
+validation accuracy in 65 epochs.
+
+    python train.py --model resnet --model-size 50 --dataset imagenet --data-dir .../imagenet-data \
+    --shards 4 --replicas 4 --batch-size 4 --gradient-accumulation-count 64 --epochs 65 \
+    --pipeline --pipeline-splits b1/2/relu b2/3/relu b3/5/relu --pipeline-schedule Grouped \
+    --enable-recomputation --optimiser momentum --momentum 0.90 --ckpts-per-epoch 1 \
+    --max-cross-replica-buffer-size 100000000 --available-memory-proportion 0.6 0.6 0.6 0.6 0.6 0.6 0.16 0.2 \
+    --internal-exchange-optimisation-target balanced --normalise-input --stable-norm \
+    --enable-half-partials --lr-schedule cosine --label-smoothing 0.1 --eight-bit-io
+
+
+
+### ImageNet - ResNeXt
+
+ResNeXt is a variant of ResNet that adds multiple paths to the Residual Blocks.
+
+The following configuration will train a ResNeXt-101 model to 78.8% validation accuracy in 120 epochs on 16 Mk2 IPUs. The model is pipelined over 2 IPUs with a micro batch size 6. We use a gradient accumulation count of 16 and 8 replicas for a global batch of 2048 (6 * 16 * 8).
+
+    poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --num-replicas 8 --ipus-per-replica 2 \
+    --num-instances 8 python3 train.py --config mk2_resnext101_16ipus --data-dir your_dataset_path --no-validation
+
+As above, you can run validation after training:
+
+    poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --num-replicas 16 --ipus-per-replica 1 \
+    --num-instances 16 python3 validation.py --config mk2_resnext101_16ipus --shards 1 --data-dir your_dataset_path \
+    --restore-path generated_checkpoints_dir_path
+
+### ImageNet - EfficientNet
+
+The following configuration trains EfficientNet-B4 to ~82% using 16 Mk2 IPUs. Each model is pipelined across 4 IPUs with a micro-batch size of 3. We use a gradient accumulation count of 64, and 4 replicas in total for a global batch size of 768 (3 * 64 * 4). 
+
+    poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --num-replicas 4 --num-instances 4 --ipus-per-replica 4 \ python3 train.py --config mk2_efficientnet_b4_g1_16ipus --data-dir your_dataset_path --no-validation
+
+As above, you can run validation after training:
+
+    poprun -v --numa-aware 1 --num-instances 8 --num-replicas 16 --ipus-per-replica 1 --mpi-local-args="--tag-output" \
+    python3 validation.py --config mk2_efficientnet_b4_g1_16ipus --shards 1 --data-dir your_dataset_dir_path  \
+    --restore-path generated_checkpoints_dir_path
+
+Changing the dimension of the group convolutions can make the model more efficient on the IPU. To keep the
+number of parameters approximately the same, you can reduce the expansion ratio. For example a modified
+EfficientNet-B4 model, with a similar number of trainable parameters can be trained using:
+
+    poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --num-replicas 4 --num-instances 4 --ipus-per-replica 4 \ python3 train.py --config mk2_efficientnet_b4_g16_16ipus --data-dir your_dataset_path --no-validation
+
+This should give a similar validation accuracy as the standard model but with improved training throughput.
+
+### ImageNet - EfficientNet - Inference
+
+The training harness can also be used to demonstrate inference performance using the `validation.py` script.
+For example, to check inference for EfficientNet use:
+
+    python validation.py --model efficientnet --model-size B0 --dataset imagenet --batch-size 8 \
+    --generated-data --repeat 10 --batch-norm
+
+
+# View the results in Weights & Biases
+Weights and Biases is a tool that helps you tracking different metrics of your machine learning job, for example the loss and accuracy but also the memory utilisation. For more information please see https://www.wandb.com/.
+Installing the `requirements.txt` file will install a version of wandb.
+You can login to wandb as you prefer and then simply activate it using the flag --wandb, eg.
+```shell
+python train.py --config mk2_resnet8_test --wandb
+```
+
+Near the start of the run you will see a link to your run appearing in your terminal.
 
 
 # Training Options
 
 Use `--help` to show all available options.
 
-`--model`: By default this is set to `resnet` but other examples such as `efficientnet`, `squeezenet` and `resnext`
+`--model`: By default this is set to `resnet` but other examples such as `efficientnet` and `resnext`
 are available in the `Models/` directory. Consult the source code for these models to find the corresponding default options.
 
 ## ResNet model options
@@ -334,6 +290,8 @@ ranges.
 `--batch-norm` : Batch normalisation is recommended for medium and larger batch sizes that will typically be used
 training with Cifar data on the IPU (and is the default for Cifar).
 For ImageNet data smaller batch sizes are usually used and group normalisation is recommended (and is the default for ImageNet).
+For a distributed batch norm across multiple replicas, 
+the `--BN-span` option can be used to specify the number of replicas.
 
 `--group-norm` : Group normalisation can be used for small batch sizes (including 1) when batch normalisation would be
 unsuitable. Use the `--groups` option to specify the number of groups used (default 32).
@@ -397,10 +355,25 @@ They will be ignored when using pipelining which uses `--pipeline-splits` instea
 
 `--pipeline` : When a model is run over multiple IPUs (see `--shards`) pipelining the data flow can improve
 throughput by utilising more than one IPU at a time. The splitting points for the pipelined model must
-be specified, with one less split than the number of IPUs used. Use `--pipeline-splits` to specifiy the splits -
+be specified, with one less split than the number of IPUs used. Use `--pipeline-splits` to specify the splits -
 if omitted then the list of available splits will be output. The splits should be chosen to balance
 the memory use across the IPUs. The weights will be updated after each pipeline stage is executed
 the number of times specified by the `--gradient-accumulation-count` option.
+It is also possible to pipeline the model on a single IPU in order to make use of recomputation.
+You can use `--pipeline --shards 1 --pipeline-schedule Sequential --enable-recompute` 
+and the respective `--pipeline-splits`
+to define the recomputation points.
+
+`--pipeline-schedule`: There are three options. 
+In the `Grouped` configuration (default), forward passes are grouped together
+and the backward passes are grouped together.
+This makes the pipeline more balanced, especially when the forward passes have similar processing duration
+and the backward passes. 
+Otherwise, the pipeline has to wait for the slowest processing step. 
+In the `Interleaved` scheme, backward and forward passes are interleaved. 
+The `Sequential` option is mainly used for debugging 
+but is required when pipelining a model on a single IPU (in order to make use of recomputation).
+It distributes the processing over multiple IPUs but processes samples sequentially, one after the other. 
 
 `--precision` : Specifies the data types to use for calculations. The default, `16.16` uses half-precision
 floating-point arithmetic throughout. This lowers the required memory which allows larger models to train, or larger
@@ -457,17 +430,13 @@ Multiple values may be specified when using pipelining. In this case two values 
 `--valid-batch-size` : The batch size to use for validation.
 
 Note that the `validation.py` script can be run to validate previously generated checkpoints. Use the `--restore-path`
-option to point to the checkpoints and set up the model the same way as in training. See also the `--max-ckpts-to-keep`
-option when training.
+option to point to the checkpoints and set up the model the same way as in training.
 
 
 ## Other options
 
 `--generated-data` : Uses a generated random dataset filled with random data. If running with this option turned on is
 significantly faster than running with real data then the training speed is likely CPU bound.
-
-`--max-ckpts-to-keep` : The maximum number of checkpoints to keep when training. Defaults to 1, except when the
-validation mode is set to `end`.
 
 `--replicas` : The number of replicas of the graph to use. Using `N` replicas increases the batch size by a factor of
 `N` (as well as the number of IPUs used for training)
@@ -488,6 +457,8 @@ chance of gradients becoming zero in half precision. The default value should be
 
 `--seed` : Setting an integer as a seed will make training runs reproducible. Note that this limits the
 pre-processing pipeline on the CPU to a single thread which will significantly increase the training time.
+If using ImageNet then you should also set the `--standard-imagenet` option when setting a seed in order to
+have a reproducible data pipeline.
 
 `--standard-imagenet` : By default the ImageNet preprocessing pipeline uses optimisations to split the dataset in
 order to maximise CPU throughput. This option allow you to revert to the standard ImageNet preprocessing pipeline.
@@ -502,7 +473,3 @@ training runs are happening on a single host machine.
 Training can be resumed from a checkpoint using the `restore.py` script. You must supply the `--restore-path` option
 with a valid checkpoint.
 
-
-# Profiling
-
-You can generate profiling information that can be used with the PopVision Graph Analyser tool. See `--gc-profile`, above.

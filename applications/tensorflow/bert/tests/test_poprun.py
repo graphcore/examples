@@ -39,7 +39,7 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("config", filenames, ids=filenames)
 
 
-@pytest.mark.ipus(16)
+@pytest.mark.ipus(2)
 @pytest.mark.requires_remote_buffers
 class TestBuild(object):
     """Test the build for each config in the directory."""
@@ -47,7 +47,7 @@ class TestBuild(object):
     def test_build(self, config):
         out = run_popdist_train(**{
                                     '--config': config,
-                                    '--replicas': 16,
+                                    '--replicas': 2,
                                     '--num-train-steps': 10,
                                     '--generated-data': ''
                                     }

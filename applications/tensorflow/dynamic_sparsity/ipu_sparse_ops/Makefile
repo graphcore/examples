@@ -1,7 +1,7 @@
 CC = g++ -std=c++17 -O2 -Werror
 
-PYINC := $(shell python -m pybind11 --includes)
-PYSO := $(shell python-config --extension-suffix)
+PYINC := $(shell python3 -m pybind11 --includes)
+PYSO := $(shell python3-config --extension-suffix)
 POPLAR_LIBS = -lpoplar -lpoputil -lpopops -lpoplin -lpopsparse -lpopnn
 OBJECTS = utils.o
 STATIC_BLOCK_SPARSE_DIR = ../../../../code_examples/tensorflow/block_sparse/custom_ops

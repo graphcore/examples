@@ -41,30 +41,33 @@ def output_stats(args, anchors, losses, accuracies):
 
 class Iteration:
     def __init__(self, args, steps_per_epoch, writer, recording_steps=None):
-        self.training = not args.inference
         self.epoch = args.continue_training_from_epoch
         self.count = self.epoch * steps_per_epoch
-        if args.epochs is None and self.training:
+        self.micro_batch_size = args.micro_batch_size
+        self.batches_per_step = args.batches_per_step
+        self.gradient_accumulation_factor = args.gradient_accumulation_factor
+        self.replication_factor = args.replication_factor
+        self.training = not args.inference
+        self.epochs = args.epochs if self.training else args.epochs_inference
+        self.training_steps = args.training_steps
+        if self.epochs is None:
             if args.training_steps is None:
-                raise RuntimeError("Either epochs or training_steps need to be specified.")
-            self.training_steps = args.training_steps
-            self.epochs = math.ceil(self.training_steps / steps_per_epoch)
-        else:
-            self.training_steps = None
-            self.epochs = args.epochs if self.training else args.epochs_inference
+                RuntimeError("Either epochs or training_steps need to be specified.")
+            self.epochs = math.ceil(args.training_steps / steps_per_epoch)
         self.epochs_per_save = args.epochs_per_save
         self.steps_per_log = args.steps_per_log
         self.steps_per_epoch = steps_per_epoch
         self.recording_steps = self.steps_per_epoch if recording_steps is None else recording_steps
         self.total_steps = self.steps_per_epoch * self.epochs
         self.writer = writer
-
-        self.samples_per_step = args.batches_per_step * \
-            args.gradient_accumulation_factor * args.replication_factor * args.micro_batch_size
+        self.use_packed_sequence_format = args.use_packed_sequence_format
+        self.use_popdist = args.use_popdist
+        self.popdist_size = args.popdist_size
 
         # This should get overridden but will ensure we can always write a scalar to TB.
         self.learning_rate = 0
-
+        self.total_sequences_so_far = 0
+        self.sequences_per_step = deque(maxlen=self.recording_steps)
         self.durations = deque(maxlen=self.recording_steps)
         self.cycles = deque(maxlen=self.recording_steps)
         self.losses = deque(maxlen=self.recording_steps)
@@ -73,24 +76,44 @@ class Iteration:
 
         if args.use_popdist:
             self.distributed = True
-            self.samples_per_step *= args.popdist_size
             self.steps_per_distributed_reduce = 1
         else:
             self.distributed = False
 
     @property
     def throughput(self):
-        return np.divide(self.samples_per_step, self.durations)
+        return np.divide(self.sequences_per_step, self.durations)
 
     def add_scalar(self, name, scalar):
         if self.writer is not None:
-            self.writer.add_scalar(name, scalar, self.count)
+            if self.use_packed_sequence_format:
+                self.writer.add_scalar(name, scalar, self.total_sequences_so_far)
+            else:
+                self.writer.add_scalar(name, scalar, self.count)
 
-    def add_stats(self, duration, hw_cycles, *args):
+    def add_stats(self, duration, hw_cycles, data, *args):
         self.durations.append(duration)
+
+        if self.use_packed_sequence_format:
+            # To count the number of samples in each batch first
+            # expand the micro-batch dimension (flattened on device)
+            input_mask = data["input_mask"]
+            new_shape = list(input_mask.shape[:-1]) + [self.micro_batch_size, -1]
+            input_mask = input_mask.reshape(new_shape)
+            sequences_per_microbatch = input_mask.max(-1).sum(-1)
+            sequences_in_step = int(sequences_per_microbatch.sum())
+            args = sequences_per_microbatch, sequences_in_step, *args
+        else:
+            sequences_in_step = self.batches_per_step * self.gradient_accumulation_factor * \
+                                self.replication_factor * self.micro_batch_size  # noqa
+        if self.use_popdist:
+            sequences_in_step = sequences_in_step * self.popdist_size
+        self.total_sequences_so_far += sequences_in_step
+        self.sequences_per_step.append(sequences_in_step)
+
         if hw_cycles:
             self.cycles.append(hw_cycles)
-        if self.training:
+        if self.training or self.use_packed_sequence_format:
             self.add_training_stats(*args)
 
             if self.distributed and (self.count % self.steps_per_distributed_reduce) == 0:
@@ -98,6 +121,8 @@ class Iteration:
 
             self.add_scalar("defaultLearningRate", self.learning_rate)
             self.add_scalar("throughput", np.average(self.throughput))
+            if self.use_packed_sequence_format:
+                self.add_scalar("update_steps", self.count)
             self.write_training_stats()
         else:
             self.add_inference_stats(*args)
@@ -121,6 +146,9 @@ class Iteration:
             status_string = \
                 f"Iteration: {self.count:6} " \
                 f"Epoch: {self.count/self.steps_per_epoch:6.2f}/{self.epochs} "
+        if self.use_packed_sequence_format:
+            status_string +=  \
+                f"Sequences processed: {self.total_sequences_so_far/1000.0:6.1f}k "
         return status_string
 
     def training_metrics_string(self):
@@ -137,7 +165,7 @@ class Iteration:
         avg = np.average
         status_string = \
             f"Duration: {avg(self.durations):6.4f} s " \
-            f"Throughput: {avg(self.throughput):6.1f} samples/s "
+            f"Throughput: {avg(self.throughput):6.1f} sequences/s "
         if self.cycles:
             status_string += f"Cycles: {int(avg(self.cycles))} "
         return status_string
@@ -160,13 +188,13 @@ class Iteration:
     def inference_metrics_string(self):
         return ""
 
-    def report_inference_stats(self, mean_latency, min_latency, max_latency):
+    def report_inference_stats(self, mean_latency, min_latency, max_latency, p99_latency, p999_latency):
         avg = np.average
         status_string = f"Iteration: {self.count:6} "
         status_string += self.inference_metrics_string()
         status_string += self.throughput_string()
         if mean_latency is not None:
-            status_string += f"Per-sample Latency: {mean_latency} {min_latency} {max_latency} seconds (mean min max) "
+            status_string += f"Per-sample Latency: {mean_latency} {min_latency} {max_latency} {p99_latency} {p999_latency} seconds (mean min max p99 p99.9) "
         logger.info(status_string)
 
 
@@ -174,6 +202,27 @@ def pretraining_stats(args, anchors, losses, accuracies):
     losses = map(lambda loss: reduce_metric(args, anchors, [loss]), losses)
     accuracies = map(lambda acc: reduce_metric(args, anchors, [acc]), accuracies)
     return tuple(losses), tuple(accuracies)
+
+
+def packed_pretraining_stats(sequences_per_microbatch, sequences_in_step, args, anchors, losses, accuracies):
+    """
+    Perform the per-step averaging of losses and accuracies when using the
+    packed data format.
+    Since each step potentially contains a different number of sequences, each step should
+    be weighted according to how many sequences it contains. However, this type of averaging is
+    only necessary for the MLM accuracy while other metrics are averaged as usual.
+    """
+    # The MLM accuracy is weighted by the number of samples in each step
+    # the MLM loss is averaged with equal weights for each step
+    mlm_loss = reduce_metric(args, anchors, [losses[0]])
+    mlm_accuracy = anchors[accuracies[0]]
+    mlm_accuracy = sum(mlm_accuracy * sequences_per_microbatch)/sequences_in_step
+
+    # The NSP and accuracy and loss are averaged assuming each step has same weight
+    nsp_loss = reduce_metric(args, anchors, [losses[1]])
+    nsp_accuracy = reduce_metric(args, anchors, [accuracies[1]])
+
+    return (mlm_loss, nsp_loss), (mlm_accuracy, nsp_accuracy)
 
 
 def pretraining_inference_stats(args, anchors, losses, accuracies):
@@ -192,10 +241,14 @@ class PretrainingIteration(Iteration):
         self.calculate_perplexity = args[0].inference_lm_perplexity
         self.losses = [deque(maxlen=self.recording_steps), deque(maxlen=self.recording_steps)]
         self.accuracies = [deque(maxlen=self.recording_steps), deque(maxlen=self.recording_steps)]
-        if self.training:
-            self.stats_fn = pretraining_stats
+
+        if self.use_packed_sequence_format:
+            self.stats_fn = packed_pretraining_stats
         else:
-            self.stats_fn = pretraining_inference_stats
+            if self.training:
+                self.stats_fn = pretraining_stats
+            else:
+                self.stats_fn = pretraining_inference_stats
 
     def average_distributed_stats(self):
         replica_avg = partial(average_distributed_deques, N=self.steps_per_distributed_reduce)

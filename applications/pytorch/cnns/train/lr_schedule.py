@@ -9,10 +9,8 @@ class WarmUpLRDecorator(_LRScheduler):
         self.warmup_epoch = warmup_epoch
         super(WarmUpLRDecorator, self).__init__(optimizer, last_epoch=last_epoch)
 
+
     def get_lr(self):
-        if not self._get_lr_called_within_step:
-            warnings.warn("To get the last learning rate computed by the scheduler, "
-                          "please use `get_last_lr()`.", UserWarning)
         lr = self.lr_scheduler._get_closed_form_lr()
         if self.last_epoch < self.warmup_epoch:
             return [e*(self.last_epoch)/float(self.warmup_epoch) for e in lr]
@@ -20,12 +18,10 @@ class WarmUpLRDecorator(_LRScheduler):
             return lr
 
     def step(self, epoch=None):
-        if epoch is None:
-            super(WarmUpLRDecorator, self).step(epoch)
-            self.lr_scheduler.step(epoch)  # this has to be stepped in this order since the constructor calls step()
-        else:
-            self.lr_scheduler.step(epoch)
-            super(WarmUpLRDecorator, self).step(epoch)
+        if epoch is not None:
+            self.last_epoch = epoch - 1  # It is going to be increased by one in the parent's step function. Need to decrease by one to revert this effect.
+        super(WarmUpLRDecorator, self).step()
+        self.lr_scheduler.step(epoch)  # This has to be stepped in this order since the constructor calls step()
 
 
 class PeriodicLRDecorator(_LRScheduler):
@@ -36,17 +32,15 @@ class PeriodicLRDecorator(_LRScheduler):
         super(PeriodicLRDecorator, self).__init__(optimizer, last_epoch=last_epoch)
 
     def get_lr(self):
-        if not self._get_lr_called_within_step:
-            warnings.warn("To get the last learning rate computed by the scheduler, "
-                          "please use `get_last_lr()`.", UserWarning)
-        return self.lr_scheduler.get_last_lr()
+        return self.lr_scheduler._get_closed_form_lr()
 
     def step(self, epoch=None):
         epoch = epoch if epoch is not None else self.last_epoch + 1
+        self.last_epoch = epoch
         if epoch >= self.next_update:
             self.next_update += self.period
-            self.lr_scheduler.step(epoch)
-        super(PeriodicLRDecorator, self).step(epoch)
+            self.optimizer._step_count = 1  # Initialize step as Poptorch does not call optimizer.step() explicitly
+            self.lr_scheduler.step()
 
     def _get_closed_form_lr(self):
-        return self.lr_scheduler.get_last_lr()
+        return self.lr_scheduler._get_closed_form_lr()

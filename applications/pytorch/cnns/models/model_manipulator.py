@@ -1,5 +1,7 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 from collections import OrderedDict
+import re
+import logging
 import torch
 import torchvision
 import poptorch
@@ -43,7 +45,7 @@ def create_efficientnet(model_name, pretrained=True, num_classes=1000, norm_laye
         replace_bn(model, norm_layer)
     init_efficientnet(model)
     if pretrained:
-        pretrained_model = EfficientNet.from_name(model_name)
+        pretrained_model = EfficientNet.from_pretrained(model_name)
         load_modified_model_from_state(model, pretrained_model.state_dict())
     return model
 
@@ -166,19 +168,18 @@ def full_precision_norm(model, norm_layer):
             stack.append(child)
             if isinstance(child, norm_layer):
                 child.float()
-                replace_layer(node, name, torch.nn.Sequential(datasets.ToFloat(), child))
+                replace_layer(node, name, torch.nn.Sequential(datasets.ToFloat(), child, datasets.ToHalf()))
 
 
 def recompute_model(model, recompute_checkpoints):
-    stack = [model]
-    while len(stack) != 0:
-        node = stack.pop()
-        for name, child in node.named_children():
-            if ("conv" in recompute_checkpoints and isinstance(child, torch.nn.Conv2d)) or \
-               ("norm" in recompute_checkpoints and (isinstance(child, torch.nn.GroupNorm) or isinstance(child, torch.nn.BatchNorm2d))):
-                new_layer = RecomputationCheckpoint(child)
-                replace_layer(node, name, new_layer)
-            stack.append(child)
+    # Put recomutation checkpoint if regular expression matches
+    for name, modules in model.named_modules():
+        name = name.replace('.', '/')
+        for checkpoint_re in recompute_checkpoints:
+            if re.match(checkpoint_re, name):
+                parent, node, field_or_idx_str = get_module_and_parent_by_name(model, name.split('/'))
+                replace_layer(parent, field_or_idx_str, RecomputationCheckpoint(node))
+                break
 
 
 class RecomputationCheckpoint(torch.nn.Module):

@@ -1,0 +1,9 @@
+libeigen3-dev
+libboost-all-dev
+libopencv-dev
+libopenexr-dev
+libspdlog-dev
+cmake
+ninja-build
+pfstools
+imagemagick

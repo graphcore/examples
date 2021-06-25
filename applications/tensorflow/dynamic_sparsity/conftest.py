@@ -66,7 +66,7 @@ def ipu_sparse_ops(scope="session"):
         "tensorflow",
         "dynamic_sparsity"
     )
-    completed = run(['python-config', '--extension-suffix'], stdout=PIPE)
+    completed = run(['python3-config', '--extension-suffix'], stdout=PIPE)
     extension = completed.stdout.decode().replace('\n', '')
     shared_libs = [f'host_utils{extension}', 'libsparse_matmul.so']
     paths = [Path(build_path, "ipu_sparse_ops", f) for f in shared_libs]

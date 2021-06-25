@@ -2,6 +2,7 @@
 
 # coding=utf-8
 import os
+from tensorflow.python.ipu.config import IPUConfig
 import tensorflow.compat.v1 as tf
 from tensorflow.contrib.compiler import xla
 
@@ -31,16 +32,15 @@ def get_ipu_option_dict(ipu_id=None, prng=False, n_ipus=1):
     Returns:
         dict of config
     """
-    options = ipu.utils.create_ipu_config(prefetch_data_streams=True,
-                                          merge_infeed_io_copies=True)
+    options = IPUConfig()
+    options.optimizations.prefetch_data_streams = True
+    options.optimizations.merge_infeed_io_copies = True
 
     if ipu_id is None:
-        options = ipu.utils.auto_select_ipus(options, num_ipus=[n_ipus])
+        options.auto_select_ipus = [n_ipus]
     else:
-        options = ipu.utils.select_ipus(options, [ipu_id])
-    options = ipu.utils.set_compilation_options(options, {
-        "device.clearAtomicFlagAfterExchange": "false",
-        "prng.enable": "true" if prng else "false"})   # Stochastic rounding
+        options.select_ipus = [ipu_id]
+    options.floating_point_behaviour.esr = prng
 
     return {'ipu_options': options}
 

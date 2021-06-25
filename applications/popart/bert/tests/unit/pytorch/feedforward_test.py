@@ -191,14 +191,14 @@ def popart_result_and_model(popart_config, mode, batch_serialization_factor, is_
                 l1 = popart_model.builder.aiGraphcore.l1loss(
                     [output],
                     l1_lambda,
-                    debugPrefix="l1LossVal",
+                    debugContext="l1LossVal",
                     reduction=popart.ReductionType.Sum)
 
         else:
             l1 = popart_model.builder.aiGraphcore.l1loss(
                 [output],
                 l1_lambda,
-                debugPrefix="l1LossVal",
+                debugContext="l1LossVal",
                 reduction=popart.ReductionType.Sum)
         proto = popart_model.builder.getModelProto()
 

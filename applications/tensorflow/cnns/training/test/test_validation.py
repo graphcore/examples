@@ -30,7 +30,8 @@ class TestCifar10Validation(unittest.TestCase):
                                '--log-dir': log_dir,
                                '--iterations': 4,
                                '--batches-per-step': 2,
-                               '--no-validation': ''})
+                               '--no-validation': '',
+                               '--ckpts-per-epoch': 1000000})
             dir_to_restore = None
             for line in out.split('\n'):
                 if line.find('Saving to ') != -1:

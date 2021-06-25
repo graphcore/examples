@@ -84,7 +84,7 @@ def cutmix_permute_batch_op(batch_size):
     return partial(tf.roll, shift=2 if batch_size > 2 else 1, axis=0)
 
 
-def cutmix(data_dict, cutmix_lambda, rng_seed_for_testing=None):
+def cutmix(data_dict, cutmix_lambda, cutmix_version=2, rng_seed_for_testing=None):
     """
     implementation of cutmix, https://arxiv.org/abs/1905.04899
     There is a major difference in our implementation. While the authors proposed sampling cutmix_lambda from a
@@ -95,6 +95,7 @@ def cutmix(data_dict, cutmix_lambda, rng_seed_for_testing=None):
 
     :param data_dict: data dictionary with the 'image' and 'label' for the batch
     :param cutmix_lambda: approximate proportion of the output image that the 'base' image makes up
+    :param cutmix_version: int: which version of cutmix to use (v1 to repeat the results of [paper-url])
     :param rng_seed_for_testing: seed for testing purposes
     :return: data_dict with new fields 'cutmix_label', 'cutmix_lambda' and (if mixup) 'cutmix_label2', all of which
       are to be used in the loss function
@@ -106,6 +107,8 @@ def cutmix(data_dict, cutmix_lambda, rng_seed_for_testing=None):
     channels = int(input_images.shape[-1])
     assert tf.keras.backend.ndim(input_images) == 4
     assert batch_size > 1, "cutmix must have batch size > 1"
+
+    cutmix_lambda = cutmix_v1_sample_lambda(cutmix_lambda) if cutmix_version == 1 else cutmix_lambda
 
     # do the shuffling by 'bumping' the array along by TWO. Random shuffling will end up with  many cases of the image
     # being shuffled with itself (because we normally have small batches).
@@ -121,19 +124,22 @@ def cutmix(data_dict, cutmix_lambda, rng_seed_for_testing=None):
     w = int(input_images.shape[2])
 
     # coordinates for the centre of the cutout box
-    r_x = tf.random.uniform([1], maxval=w, seed=rng_seed_for_testing)
-    r_y = tf.random.uniform([1], maxval=h, seed=rng_seed_for_testing)
+    r_x = tf.random.uniform([], maxval=w, seed=rng_seed_for_testing)
+    r_y = tf.random.uniform([], maxval=h, seed=rng_seed_for_testing)
 
     # box will have same aspect ratio as the image itself
     r_w = w * tf.sqrt(1. - cutmix_lambda)
     r_h = h * tf.sqrt(1. - cutmix_lambda)
 
-    # bounding box corner coordinates
-    x1 = tf.cast(tf.round(tf.maximum(r_x - r_w / 2., 0.)), tf.int32)[0]
-    x2 = tf.cast(tf.round(tf.minimum(r_x + r_w / 2., w)), tf.int32)[0]
+    # make sure that the corner is at least r_w / 2 away from any x edge, r_h / 2 away from a y edge
+    r_x = tf.clip_by_value(r_x, r_w / 2, w - r_w / 2)
+    r_y = tf.clip_by_value(r_y, r_h / 2, h - r_h / 2)
 
-    y1 = tf.cast(tf.round(tf.maximum(r_y - r_h / 2., 0.)), tf.int32)[0]
-    y2 = tf.cast(tf.round(tf.minimum(r_y + r_h / 2., h)), tf.int32)[0]
+    # bounding box corner coordinates
+    x1 = tf.cast(tf.round(r_x - r_w / 2.), tf.int32)
+    x2 = tf.cast(tf.round(r_x + r_w / 2.), tf.int32)
+    y1 = tf.cast(tf.round(r_y - r_h / 2.), tf.int32)
+    y2 = tf.cast(tf.round(r_y + r_h / 2.), tf.int32)
 
     # creating the box of logicals (1=shuffled image, 0=original image)
     x = tf.range(w)
@@ -165,3 +171,22 @@ def cutmix(data_dict, cutmix_lambda, rng_seed_for_testing=None):
         data_dict['cutmix_label2'] = permute_batch_op(data_dict['label_mixed_up'])
 
     return data_dict
+
+
+def cutmix_v1_sample_lambda(cutmix_lambda):
+    """
+    draws a cutmix lambda from a distribution that:
+    i) has a chance of cutmix_lambda := 1 (no cutmix)
+    ii) draws non-unity values of cutmix lambda from the distribution below
+    :param cutmix_lambda: original value of cutmix lambda
+    :return: the new value of cutmix_lambda
+    """
+    print("\nUsing cutmix V1.\n")
+
+    denom = 4.
+    # sampling to determine (i) if cutmix should be set to 1. and (ii) if not, what it should be set to
+    sample_0 = tf.random.uniform([], dtype=tf.float32)
+    # ensure second term of cutmix_lambda where expression >= 0
+    sample_1 = tf.random.uniform([], dtype=tf.float32, minval=tf.math.exp(-denom))
+    cutmix_lambda = tf.where(sample_0 < (cutmix_lambda * 1.55 - 0.96), 1., 1. + tf.math.log(sample_1) / denom)
+    return cutmix_lambda

@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 from ipu_sparse_ops import layers, optimizers
+from tensorflow.python.ipu.config import IPUConfig
 import os
 import glob
 import json
@@ -161,11 +162,9 @@ if __name__ == "__main__":
     opts = parser.parse_args()
 
     # Enable profiling in order to check if functions were used
-    cfg = ipu.utils.create_ipu_config(profiling=True, profile_execution=True,
-                                      enable_poplar_serialized_graph=True,
-                                      report_directory=opts.report_path)
-    cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    ipu.utils.configure_ipu_system(cfg)
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 1
+    cfg.configure_ipu_system()
 
     # Run once without functions and once without functions then compare
     input_values = np.random.randn(2, opts.hidden_length).astype(np.float32)

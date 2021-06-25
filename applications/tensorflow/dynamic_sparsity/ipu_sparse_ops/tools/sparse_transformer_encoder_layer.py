@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import tempfile
+from tensorflow.python.ipu.config import IPUConfig
 import numpy as np
 from functools import partial
 import tensorflow.compat.v1 as tf
@@ -105,9 +106,9 @@ def main(args):
     activations_np = random_gen.uniform(-0.1, 0.1, size=(args.batch_size, args.source_sequence_length, args.hidden_length))
 
     # Configure the IPU
-    cfg = ipu.utils.create_ipu_config(profiling=args.profile, report_directory="./report/")
-    cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    ipu.utils.configure_ipu_system(cfg)
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 1
+    cfg.configure_ipu_system()
 
     # Build IPU graphs
     sparse_decoder_graph = tf.Graph()

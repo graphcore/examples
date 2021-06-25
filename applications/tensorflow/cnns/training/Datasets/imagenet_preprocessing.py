@@ -1,3 +1,4 @@
+# Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# Improved data throughput and added normalization interface
+# Added a modification for fused normalization.
 """Provides utilities to preprocess images.
 
 Training images are sampled using the provided bounding boxes, and subsequently
@@ -36,10 +39,9 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow.python import ipu
 
-'''
-FROM https://github.com/tensorflow/models/blob/master/official/vision/image_classification/resnet/imagenet_preprocessing.py
-'''
+# FROM https://github.com/tensorflow/models/blob/master/official/vision/image_classification/resnet/imagenet_preprocessing.py
 
 NUM_CLASSES = 1000
 
@@ -47,6 +49,10 @@ NUM_IMAGES = 1200000  # 1.2M
 NUM_VALIDATION_IMAGES = 50000  # 50k
 
 _NUM_TRAIN_FILES = 1024
+# values taken from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L198
+NORMALIZED_MEAN = [0.485, 0.456, 0.406]
+NORMALIZED_STD = [0.229, 0.224, 0.225]
+ORIGINAL_MEAN = [123.68, 116.78, 103.94]
 
 
 def _parse_example_proto(example_serialized):
@@ -139,7 +145,6 @@ def parse_record(raw_record, is_training, dtype, image_size, full_normalisation,
         full_normalisation=full_normalisation,
         seed=seed)
     image = tf.cast(image, dtype)
-
     return image, label
 
 
@@ -350,18 +355,19 @@ def _resize_image(image, height, width):
 
 def normalise_image(image, full_normalisation=False, num_channels=3):
     if full_normalisation:
-        # values taken from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L198
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
-        image = _normalise_image(image, mean, std, num_channels)
+        image = _normalise_image(image, NORMALIZED_MEAN, NORMALIZED_STD, num_channels)
     else:
-        # original mean
-        _R_MEAN = 123.68
-        _G_MEAN = 116.78
-        _B_MEAN = 103.94
-        _CHANNEL_MEANS = [_R_MEAN, _G_MEAN, _B_MEAN]
-        image = _mean_image_subtraction(image, _CHANNEL_MEANS, num_channels)
+        image = _mean_image_subtraction(image, ORIGINAL_MEAN, num_channels)
     return image
+
+
+def fused_normalise_image(image, full_normalisation=False):
+    """Call fused operation for image normalisation.
+    """
+    scale = 1.0/255.0 if full_normalisation else 1.0
+    mean = NORMALIZED_MEAN if full_normalisation else ORIGINAL_MEAN
+    std = NORMALIZED_STD if full_normalisation else [1.0, 1.0, 1.0]
+    return ipu.image_ops.normalise_image(image, mean, std, scale)
 
 
 def preprocess_image(image_buffer, bbox, output_height, output_width,

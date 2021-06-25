@@ -18,7 +18,6 @@
 import re
 import logging
 import operator
-from tensorflow import distribute
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 import tensorflow as tf
 from tensorflow.python.training import optimizer
@@ -27,13 +26,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python import ipu
 from tensorflow.python.ipu.ops import cross_replica_ops
-from tensorflow.compiler.plugin.poplar.ops import gen_poputil_ops
-from tensorflow.python.ipu import ipu_multi_worker_strategy
 from math import sqrt
 from functools import reduce
 
 
-class AdamWeightDecayOptimizer(tf.train.Optimizer):
+class AdamWeightDecayOptimizer(tf.compat.v1.train.Optimizer):
     """A basic Adam optimizer that includes "correct" L2 weight decay."""
     def __init__(self,
                  learning_rate,
@@ -109,7 +106,7 @@ class AdamWeightDecayOptimizer(tf.train.Optimizer):
                 if self._do_use_weight_decay(param_name):
                     update += self.weight_decay_rate * param
 
-                update_with_lr = self.learning_rate * update
+                update_with_lr = tf.cast(self.learning_rate, param.dtype) * update
 
                 next_param = param - update_with_lr
 
@@ -141,7 +138,7 @@ class AdamWeightDecayOptimizer(tf.train.Optimizer):
         return param_name
 
 
-class LAMBOptimizer(tf.train.Optimizer):
+class LAMBOptimizer(tf.compat.v1.train.Optimizer):
     """LAMB (Layer-wise Adaptive Moments optimizer for Batch training).
 
     This class has been adapted by Graphcore Ltd from NVIDIA code at
@@ -181,7 +178,7 @@ class LAMBOptimizer(tf.train.Optimizer):
 
         self.beta_1 = tf.cast(beta_1, dtype=tf.float32)
         self.beta_2 = tf.cast(beta_2, dtype=tf.float32)
-        self.loss_scaling = tf.cast(loss_scaling, dtype=tf.float32)
+        self.loss_scaling = loss_scaling
         self.epsilon = tf.cast(epsilon, dtype=tf.float16)
         logging.info("Setting Epsilon to {}".format(epsilon))
 
@@ -199,7 +196,7 @@ class LAMBOptimizer(tf.train.Optimizer):
                 self.weight_clip))
         else:
             logging.info("Not clipping the norm of the weights.")
-        self.learning_rate = tf.cast(learning_rate, dtype=self.target_type)
+        self.learning_rate = learning_rate
 
         self.exclude_from_weight_decay = exclude_from_weight_decay
         # If true use the NVLAM implimentaion found:
@@ -310,6 +307,7 @@ class LAMBOptimizer(tf.train.Optimizer):
 
                 # We convert the gradient to fp32 and we rescale it
                 cast_grad = tf.cast(grad, dtype=tf.float32)
+
                 cast_grad = cast_grad / self.loss_scaling
 
                 if self.use_nvlamb:
@@ -384,7 +382,7 @@ class LAMBOptimizer(tf.train.Optimizer):
                 # We reshape the ration in order to be broadcastable
                 ratio = tf.reshape(ratio, shape=ratio.shape.as_list() + [1])
                 # We combine the learning rate and the ratio at fp32
-                ratio = ratio * tf.cast(self.learning_rate, dtype=tf.float32)
+                ratio = ratio * self.learning_rate
                 # We now downcast to do the next operation
                 # If the scaledd is present we do not need this operation
                 ratio = tf.cast(ratio, dtype=tf.float16)
@@ -438,7 +436,7 @@ class LAMBOptimizer(tf.train.Optimizer):
         return param_name
 
 
-class StageMomentumOptimizer(optimizer.Optimizer):
+class StageMomentumOptimizer(tf.compat.v1.train.Optimizer):
     """
     Given different decay of learning rate and momentum to different weights at different pipeline stages.
     """

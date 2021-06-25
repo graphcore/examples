@@ -45,6 +45,7 @@ import tf_layers as layers
 
 # IPU imports
 from tensorflow.python import ipu
+from tensorflow.python.ipu.config import IPUConfig
 
 # Custom Keras imports
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
@@ -65,10 +66,6 @@ RANDOM_WEIGHTS = True
 # For loading the hdf5 file
 if not RANDOM_WEIGHTS:
     trained_weight_path = os.getcwd()+'/trained_weights/VGG_VOC0712_SSD_300x300_iter_120000.h5'
-
-# Reporting flag and location for profiling information
-REPORT = False
-REPORT_DIR = "ssd_single_image_reports"
 
 # Save output flag
 # Download trained weights to see the detections in the output image
@@ -485,12 +482,10 @@ for var in tf.trainable_variables():
     param_setters[var.name] = (tf.assign(var, placeholder), placeholder)
 
 # Setup IPU configuration and build session
-cfg = ipu.utils.create_ipu_config(profiling=REPORT,
-                                  profile_execution=REPORT,
-                                  report_directory=REPORT_DIR)
-cfg = ipu.utils.auto_select_ipus(cfg, num_ipus=NUM_IPUS)
-cfg = ipu.utils.set_convolution_options(cfg, convolution_options={"availableMemoryProportion": "0.4"})
-ipu.utils.configure_ipu_system(cfg)
+cfg = IPUConfig()
+cfg.auto_select_ipus = NUM_IPUS
+cfg.convolutions.poplar_options = {'availableMemoryProportion': '0.4'}
+cfg.configure_ipu_system()
 ipu.utils.move_variable_initialization_to_cpu()
 
 # Load an image and prepare it for network processing

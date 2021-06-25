@@ -6,16 +6,19 @@ from torchvision import transforms
 normalization_parameters = {"mean": [0.485, 0.456, 0.406],
                             "std": [0.229, 0.224, 0.225]}
 
+use_bbox_info_config = {False: {"max_trial": 1, "minimum_bbox_interlap": 0.0},
+                        True: {"max_trial": 10, "minimum_bbox_interlap": 0.1}}
 
-def get_preprocessing_pipeline(train, input_size=224, half_precision=False, normalize=True):
+
+def get_preprocessing_pipeline(train, input_size=224, half_precision=False, normalize=True, eightbit=False, use_bbox_info=False):
     """
     Return optimized pipeline, which contains fused transformations.
     """
-    pipeline_steps = [transforms.Resize(256)]
+    pipeline_steps = []
     if train:
-        pipeline_steps.append(RandomResizedFlipCrop(input_size))
+        pipeline_steps.append(RandomResizedFlipCrop(input_size, **use_bbox_info_config[use_bbox_info]))
     else:
-        pipeline_steps.append(transforms.CenterCrop(input_size))
+        pipeline_steps = [transforms.Resize(256), transforms.CenterCrop(input_size)]
 
     if normalize:
         pipeline_steps.append(NormalizeToTensor(mean=normalization_parameters["mean"], std=normalization_parameters["std"]))
@@ -26,8 +29,11 @@ def get_preprocessing_pipeline(train, input_size=224, half_precision=False, norm
         if not half_precision:
             pipeline_steps.append(ToFloat())
 
-    if half_precision:
+    if eightbit:
+        pipeline_steps.append(ToByte())
+    elif half_precision:
         pipeline_steps.append(ToHalf())
+
     return transforms.Compose(pipeline_steps)
 
 
@@ -41,12 +47,45 @@ class ToFloat(torch.nn.Module):
         return tensor.float()
 
 
+class ToByte(torch.nn.Module):
+    def forward(self, tensor):
+        return tensor.byte()
+
+
 class RandomResizedFlipCrop(transforms.RandomResizedCrop):
     """
     Fuse RandomResizedCrop and RandomHorizontalFlip augmentation.
+    The horizontal flip happens before the resize, depends on the croped imge size
     """
+    def __init__(self, *args, max_trial=1, minimum_bbox_interlap=0.0, **kwargs):
+        self.max_trial = max_trial
+        self.minimum_bbox_interlap = minimum_bbox_interlap
+        super(RandomResizedFlipCrop, self).__init__(*args, **kwargs)
+
+    def get_bbox(self, img, bbox=None):
+        if bbox is None:
+            return self.get_params(img, self.scale, self.ratio)
+        trial_nr = 1
+        # adjust bbox with image sizes
+        w, h = transforms.functional._get_image_size(img)
+        bbox = bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h
+        while trial_nr < self.max_trial:
+            i, j, h, w = self.get_params(img, self.scale, self.ratio)
+            dx = min(i + h, bbox[2]) - max(i, bbox[0])
+            dy = min(j + w, bbox[3]) - max(j, bbox[1])
+            if h * w * self.minimum_bbox_interlap <= dx * dy:
+                return i, j, h, w
+            trial_nr += 1
+        return i, j, h, w
+
+
     def __call__(self, img):
-        i, j, h, w = self.get_params(img, self.scale, self.ratio)
+        if isinstance(img, tuple):   # unpack bbox values if available
+            bbox = img[1]
+            img = img[0]
+        else:
+            bbox = None
+        i, j, h, w = self.get_bbox(img, bbox)
         if isinstance(img, torch.Tensor):
             tensor = torch.unsqueeze(img, 0)
             tensor = transforms.functional_tensor.crop(tensor, i, j, h, w)

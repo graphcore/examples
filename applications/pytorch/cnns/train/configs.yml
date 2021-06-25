@@ -1,3 +1,4 @@
+# --- RESNET50 --- #
 resnet50: &resnet50
   model: resnet50
   data: imagenet
@@ -5,112 +6,96 @@ resnet50: &resnet50
   enable_stochastic_rounding: true
   label_smoothing: 0.1
   weight_decay: 0.0001
+  optimizer: sgd_combined
   lr: 0.5
   lr_schedule: cosine
   momentum: 0.85
   warmup_epoch: 5
-  epoch: 80
+  epoch: 100
   norm_type: group
   norm_num_groups: 32
   loss_scaling: 128
   lr_scheduler_freq: 16
-
-
-resnet50-16ipu-mk1:
-  <<: *resnet50
-  batch_size: 4
-  gradient_accumulation: 64
+  half_partial: true
   device_iterations: 1
-  pipeline_splits: [layer1/2, layer2/3, layer3/4]
-  replicas: 4
-  offload_optimizer: false
+  loss_velocity_scaling_ratio: 1
+  seed: 42
 
 
-resnet50-16ipu-mk2: &resnet50-16ipu-mk2
+resnet50-16ipu-mk2-recompute:
   <<: *resnet50
-  batch_size: 6
-  gradient_accumulation: 11
-  device_iterations: 1
+  batch_size: 8
+  gradient_accumulation: 8
+  enable_recompute: true
+  recompute_checkpoints: [.*conv.*, .*bn.*]
   pipeline_splits: []
   replicas: 16
   offload_optimizer: false
   enable_recompute: false
   recompute_checkpoints: []
-  half_partial: true
-  loss_velocity_scaling_ratio: 1
-  epoch: 100
   warmup_epoch: 16
   lr: 0.3125
   initial_loss_scaling: 64
   loss_scaling: 512
-  seed: 42
+  enable_fast_groupnorm: true  # disable to create portable model.
 
 
-resnet50-16ipu-mk2-recompute:
-  <<: *resnet50-16ipu-mk2
-  batch_size: 8
-  gradient_accumulation: 8
-  enable_recompute: true
-  recompute_checkpoints: [conv, norm]
-
-
-resnet50_mk2_pipelined:
-  model: resnet50
-  data: imagenet
+resnet50_mk2_pipelined: &resnet50_mk2_pipelined
+  <<: *resnet50
   precision: "16.32"
   momentum: 0.9
-  label_smoothing: 0.1
-  lr_schedule: cosine
   lr: 2.0
   pipeline_splits: [layer1/2, layer2/3, layer3/4]
   batch_size: 16
-  epoch: 100
   gradient_accumulation: 256
   device_iterations: 1
   replicas: 4
   norm_type: batch
-  weight_decay: 0.0001
-  enable_stochastic_rounding: true
-  lr_schedule: cosine
-  loss_scaling: 128
+  offload_optimizer: false
+  half_partial: true
+  eight_bit_io: true
+  normalization_location: ipu
+  use_bbox_info: true
+  recompute_checkpoints: [layer3/5/conv1, layer3/5/conv2, layer3/5/conv3, layer3/4/conv1, layer3/4/conv2, layer3/4/conv3, layer4/0/conv1, layer4/0/conv2, layer4/0/conv3, layer3/5/bn1, layer3/5/bn2, layer3/5/bn3, layer3/2/conv1, layer3/2/conv2, layer3/2/conv3, layer3/3/conv1, layer3/3/conv2, layer3/3/conv3, layer3/1/conv1, layer3/1/conv2, layer3/1/conv3, layer4/1/conv2, layer4/1/conv3, layer4/2/conv1, layer4/2/conv2, layer4/2/conv3, layer4/1/bn1, layer4/1/bn2, layer4/1/bn3, layer3/0/bn1, layer3/0/bn3, layer3/1/bn2, layer3/1/bn3, layer3/0/bn2, layer3/2/bn1, layer3/3/bn1 , layer3/2/bn2, layer3/2/bn3, layer1/0/bn3, layer1/1/bn1, layer1/1/bn2, layer1/2/bn3, layer2/1/bn1, layer2/2/bn1, layer3/1/bn1, layer4/0/bn1, layer4/0/bn3, layer4/2/bn1, layer4/2/bn2, layer4/2/bn3]
 
 
-efficientnet-b0: &efficientnet-b0
+resnet50_mk2_pipelined_pod64:
+  <<: *resnet50_mk2_pipelined
+  replicas: 16
+  gradient_accumulation: 64
+
+
+# --- EfficientNet --- #
+efficientnet-b0-g16-gn-16ipu-mk2:
   model: efficientnet-b0
   data: imagenet
-  epoch: 350
-  warmup_epoch: 5
+  seed: 0
   precision: "16.32"
-  label_smoothing: 0.1
-  enable_stochastic_rounding: true
-  optimizer: rmsprop
-  lr: 0.1
-  lr_schedule: exponential
-  lr_decay: 0.98
-  lr_scheduler_freq: 0.416
-  momentum: 0.9
-  weight_decay: 1.e-5
-  loss_scaling: 128
+  eight_bit_io: true
+  normalization_location: ipu
+  half_partial: true
+  enable_stochastic_rounding: false
+  efficientnet_group_dim: 16
+  efficientnet_expand_ratio: 4
   norm_type: group
   norm_num_groups: 4
-
-
-efficientnet-b0-16ipu-mk1:
-  <<: *efficientnet-b0
-  pipeline_splits: [_blocks/1/_project_conv, _blocks/4/_project_conv, _blocks/11/_bn1]
-  device_iteration: 1
-  available_memory_proportion: [0.1]
-  batch_size: 2
-  gradient_accumulation: 128
+  epoch: 350
+  warmup_epoch: 5
+  optimizer: rmsprop_tf
+  optimizer_eps: 0.001
+  momentum: 0.9
+  rmsprop_decay: 0.953125
   offload_optimizer: false
-
-
-efficientnet-b0-16ipu-mk2:
-  <<: *efficientnet-b0
-  pipeline_splits: [_blocks/1/_project_conv, _blocks/4, _blocks/8/_project_conv]
-  device_iteration: 1
-  batch_size: 16
-  gradient_accumulation: 128
-  offload_optimizer: false
-
-
+  lr: 0.0483
+  lr_schedule: exponential
+  lr_scheduler_freq: 0.424
+  lr_decay: 0.97
+  loss_scaling: 128
+  weight_decay: 0.00001
+  label_smoothing: 0.1
+  weight_avg_strategy: exponential
+  weight_avg_exp_decay: 0.97
+  pipeline_splits: [_blocks/4]
+  replicas: 8
+  batch_size: 12
+  gradient_accumulation: 8

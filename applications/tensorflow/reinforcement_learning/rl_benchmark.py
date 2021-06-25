@@ -15,6 +15,7 @@ from tensorflow.python.ipu import loops
 from tensorflow.python.ipu import utils
 from tensorflow.python.ipu import embedding_ops
 from tensorflow.python.ipu import rnn_ops
+from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu.optimizers import CrossReplicaOptimizer
 from tensorflow.python.ipu.optimizers import GradientAccumulationOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope
@@ -190,13 +191,11 @@ def train(replication_factor, batch_size, batch_per_step, profile, num_iter, tim
             report = gen_ipu_ops.ipu_event_trace()
 
     # Set up session on IPU
-    opts = utils.create_ipu_config(profiling=profile,
-                                   use_poplar_text_report=use_poplar_text_report,
-                                   profile_execution=profile,
-                                   merge_infeed_io_copies=True)
-    opts = utils.set_optimization_options(opts, max_cross_replica_sum_buffer_size=10000000)
-    opts = utils.auto_select_ipus(opts, [replication_factor])
-    utils.configure_ipu_system(opts)
+    opts = IPUConfig()
+    opts.optimizations.merge_infeed_io_copies = True
+    opts.optimizations.maximum_cross_replica_sum_buffer_size = 10000000
+    opts.auto_select_ipus = [replication_factor]
+    opts.configure_ipu_system()
     sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True))
 
     # Initialize variables

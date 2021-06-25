@@ -13,16 +13,20 @@
 # limitations under the License.
 
 import os
+import sys
 import subprocess
 from collections import deque
-from pathlib import Path
 import popart
 import numpy as np
-from utils.distributed import setup_comm, average_distributed_deques
+from tests.utils import bert_root_dir
+from utils.distributed import setup_comm, average_distributed_deques  # noqa
 
 
 def test_average_distributed_deques():
-    subprocess.run(f"mpirun -np 2 python {Path(__file__).absolute()}", check=True, shell=True)
+    subprocess.check_output(f"mpirun --allow-run-as-root -x PYTHONPATH={bert_root_dir()}:$PYTHONPATH -np 2 "
+                            f"python3 {os.path.abspath(__file__)}",
+                            shell=True,
+                            cwd=bert_root_dir())
 
 
 def gather_and_check():

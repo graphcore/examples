@@ -88,27 +88,6 @@ class TestCifar10ResNeXtFullTraining(unittest.TestCase):
 
 @pytest.mark.category2
 @pytest.mark.ipus(2)
-class TestShardedTraining(unittest.TestCase):
-    """Example of sharding for model parallelism"""
-
-    @classmethod
-    def setUpClass(cls):
-        out = run_train(**{'--generated-data': '',
-                           '--dataset': 'ImageNet',
-                           '--model': 'resnext',
-                           '--model-size': 14,
-                           '--shards': 2,
-                           '--batch-size': 2,
-                           '--iterations': '5000',
-                           '--no-validation': ''})
-        cls.training = get_csv(out, 'training.csv')
-
-    def test_iterations_completed(self):
-        self.assertEqual(self.training['iteration'][-1], 5000)
-
-
-@pytest.mark.category2
-@pytest.mark.ipus(2)
 class TestPipelineResNeXt14(unittest.TestCase):
     """A simple pipelined model"""
 
@@ -124,7 +103,8 @@ class TestPipelineResNeXt14(unittest.TestCase):
                            '--gradient-accumulation-count': 128,
                            '--batch-size': 1,
                            '--no-validation': '',
-                           '--pipeline-splits': 'b2/0/relu'})
+                           '--pipeline-splits': 'b2/0/relu',
+                           '--fused-preprocessing': ''})
         cls.out = out
         cls.training = get_csv(out, 'training.csv')
 
@@ -133,7 +113,7 @@ class TestPipelineResNeXt14(unittest.TestCase):
         self.assertEqual(self.training['iteration'][-1], 500)
 
         # test_number_of_parameters
-        self.assertTrue('9411880' in self.out)
+        self.assertTrue('9415016' in self.out)
 
 
 @pytest.mark.category2

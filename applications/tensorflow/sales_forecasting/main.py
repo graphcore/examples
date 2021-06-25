@@ -16,6 +16,7 @@ from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu import summary_ops
+from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu.optimizers import CrossReplicaOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope, ipu_shard
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
@@ -154,20 +155,18 @@ def generic_graph(opts, data, trainFlag):
     # Attach to IPUs and configure system
     # Subprocesses must set up IPU systems in their own scopes, then use their devices as IPU:0
     if (not training and opts.multiprocessing) or training:
-        config = ipu_utils.create_ipu_config(profiling=training,
-                                             use_poplar_text_report=True)
+        ipu_config = IPUConfig()
 
-        config = ipu_utils.set_optimization_options(
-            config,
-            max_cross_replica_sum_buffer_size=10000000,
-            max_inter_ipu_copies_buffer_size=10000000)
+        ipu_config.optimizations.maximum_cross_replica_sum_buffer_size = 10000000
+        ipu_config.optimizations.maximum_inter_ipu_copies_buffer_size = 10000000
 
         if opts.select_ipus == 'AUTO':
-            config = ipu_utils.auto_select_ipus(config, [opts.replication_factor])
+            ipu_config.auto_select_ipus = [opts.replication_factor]
         else:
-            config = ipu_utils.select_ipus(config, [opts.select_ipus[not training]])
-        config = ipu_utils.set_compilation_options(config, {"prng.enable": str(opts.prng).lower()})
-        ipu_utils.configure_ipu_system(config)
+            ipu_config.select_ipus = [opts.select_ipus[not training]]
+
+        ipu_config.floating_point_behaviour.esr = opts.prng
+        ipu_config.configure_ipu_system()
 
     graph_outputs = ([avg_loss] if training else [avg_rmse]) + [summary]
     sess = tf.Session(graph=graph)

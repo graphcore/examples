@@ -52,9 +52,6 @@ def get_model(opts, data_info, pretrained=True):
     if len(opts.pipeline_splits) > 0:
         pipeline_model(model, opts.pipeline_splits)
 
-    if opts.normalization_location == "ipu":
-        model = NormalizeInputModel(model, datasets.normalization_parameters["mean"], datasets.normalization_parameters["std"])
-
     if opts.precision[-3:] == ".16":
         model.half()
         if opts.full_precision_norm:
@@ -67,6 +64,11 @@ def get_model(opts, data_info, pretrained=True):
 
     if hasattr(opts, "recompute_checkpoints") and len(opts.recompute_checkpoints) > 0:
         recompute_model(model, opts.recompute_checkpoints)
+
+    if opts.normalization_location == "ipu":
+        cast = "half" if opts.precision[:3] == "16." else "full"
+        model = NormalizeInputModel(model, datasets.normalization_parameters["mean"], datasets.normalization_parameters["std"], output_cast=cast)
+
 
     logging.info(model)
 
@@ -98,21 +100,31 @@ def get_norm_layer(opts):
     if opts.norm_type == "none":
         return torch.nn.Identity
     elif opts.norm_type == "batch":
-        return torch.nn.BatchNorm2d
+        return lambda x: torch.nn.BatchNorm2d(x, momentum=opts.batchnorm_momentum)
     elif opts.norm_type == "group":
         return lambda x: torch.nn.GroupNorm(opts.norm_num_groups, x)
 
 
 class NormalizeInputModel(torch.nn.Module):
-    def __init__(self, model, mean, std):
+    def __init__(self, model, mean, std, output_cast=None):
         super().__init__()
         self.model = model
         mean = torch.as_tensor(mean)
         std = torch.as_tensor(std)
         self.mul = (1.0/(255.0 * std)).view(-1, 1, 1)
         self.sub = (mean / std).view(-1, 1, 1)
+        self.output_cast = output_cast
+        if output_cast == "full":
+            self.mul, self.sub = self.mul.float(), self.sub.float()
+        elif output_cast == "half":
+            self.mul, self.sub = self.mul.half(), self.sub.half()
+
 
     def forward(self, img):
-        img.mul_(self.mul)
-        img.sub_(self.sub)
+        if self.output_cast == "half":
+            img = img.half()
+        elif self.output_cast == "full":
+            img = img.float()
+        img = img.mul(self.mul)
+        img = img.sub(self.sub)
         return self.model(img)

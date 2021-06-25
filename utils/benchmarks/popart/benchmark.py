@@ -83,11 +83,6 @@ def run(benchmark, opts):
     compilation_duration = time.time() - start
     print("Duration: {:.3f} seconds\n".format(compilation_duration))
 
-    if opts.tensor_tile_mapping:
-        with open("tile_mapping.json", 'w') as f:
-            json.dump(session.getTensorTileMap(), f)
-            print("Written to file: tile_mapping.json")
-
     # Create buffers to receive results from the execution
     anchors = session.initAnchorArrays()
 
@@ -153,8 +148,6 @@ def parse_opts(benchmark, arg_string=None):
                         help="Run the program on the IPU Model")
     parser.add_argument('--save-graph', action="store_true",
                         help="Save default graph to model.onnx")
-    parser.add_argument('--tensor-tile-mapping', action="store_true",
-                        help="Save a tensor tile mapping JSON file")
     parser.add_argument('--use-zero-values', action="store_true",
                         help="If True weights and input will be initialised to zeros (otherwise random data)")
     parser.add_argument('--report-hw-cycle-count', type=bool, default=False,

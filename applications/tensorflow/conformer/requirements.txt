@@ -1,0 +1,7 @@
+numpy==1.18.5
+PyYAML==5.4.1
+kaldiio==2.17.2
+editdistance==0.5.3
+tensorboardX==2.2
+pytest==4.6.11
+tqdm==4.58.0

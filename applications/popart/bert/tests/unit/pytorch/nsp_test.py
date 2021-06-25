@@ -140,11 +140,11 @@ def nsp_bwd(custom_ops, mode, opt_type, vocab_length=9728, hidden_size=768):
         if mode == ExecutionMode.PHASED:
             with popart_model.scope_provider(popart_model.builder, popart_model.nsp_scope):
                 loss = popart_model.builder.aiGraphcore.l1loss([outputs[0]],
-                                                               l1_lambda, debugPrefix="l1LossVal",
+                                                               l1_lambda, debugContext="l1LossVal",
                                                                reduction=popart.ReductionType.Sum)
         else:
             loss = popart_model.builder.aiGraphcore.l1loss([outputs[0]], l1_lambda,
-                                                           debugPrefix="l1LossVal",
+                                                           debugContext="l1LossVal",
                                                            reduction=popart.ReductionType.Sum)
             popart_model.builder.virtualGraph(loss, popart_model.nsp_scope.virtualGraph)
         return loss

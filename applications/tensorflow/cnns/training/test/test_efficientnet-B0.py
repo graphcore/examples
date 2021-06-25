@@ -33,10 +33,11 @@ class TestEfficientNetB0Pipelining2IPUs(unittest.TestCase):
                            '--gradient-accumulation-count': 256,
                            '--batch-size': 2,
                            '--no-validation': '',
-                           '--xla-recompute': '',
+                           '--enable-recomputation': '',
                            '--available-memory-proportion': 0.2,
                            '--iterations': 10,
-                           '--pipeline-splits': 'block3b'})
+                           '--pipeline-splits': 'block3b',
+                           '--fused-preprocessing': ''})
         cls.out = out
         cls.training = get_csv(out, 'training.csv')
 
@@ -44,7 +45,7 @@ class TestEfficientNetB0Pipelining2IPUs(unittest.TestCase):
         # test_iterations_completed
         self.assertEqual(self.training['iteration'][-1], 500)
         # test_number_of_parameters
-        self.assertTrue('5288548' in self.out)
+        self.assertTrue('5288836' in self.out)
         # test_overall_batch_size
         self.assertTrue("Batch Size: 512" in self.out)
 
@@ -69,7 +70,7 @@ class TestModifiedEfficientNetB0Pipelining2IPUs(unittest.TestCase):
                            '--gradient-accumulation-count': 128,
                            '--batch-size': 4,
                            '--no-validation': '',
-                           '--xla-recompute': '',
+                           '--enable-recomputation': '',
                            '--pipeline-schedule': 'Grouped',
                            '--group-dim': 16,
                            '--expand-ratio': 4,
@@ -102,7 +103,7 @@ class TestEfficientNetB0Pipelining2IPUs2Replicas(unittest.TestCase):
                            '--pipeline-schedule': 'Grouped',
                            '--batch-size': 2,
                            '--no-validation': '',
-                           '--xla-recompute': '',
+                           '--enable-recomputation': '',
                            '--group-dim': 16,
                            '--expand-ratio': 4,
                            '--use-relu': '',
@@ -130,7 +131,7 @@ class TestEfficientNetCifar(unittest.TestCase):
                            '--model-size': 'cifar',
                            '--batch-size': 10,
                            '--no-validation': '',
-                           '--xla-recompute': '',
+                           '--enable-recomputation': '',
                            '--group-dim': 16,
                            '--expand-ratio': 4})
         cls.training = get_csv(out, 'training.csv')

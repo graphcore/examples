@@ -31,11 +31,8 @@ if __name__ == '__main__':
     model.train()
 
     optimizer = get_optimizer(opts, model)
-    lr_scheduler = get_lr_scheduler(opts, optimizer)
-
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    # set the LR scheduler to the correct position
-    lr_scheduler.last_epoch += checkpoint["epoch"]
+    lr_scheduler = get_lr_scheduler(opts, optimizer, len(train_data), start_epoch=checkpoint["epoch"])
     training_model = convert_to_ipu_model(model, opts, optimizer)
 
     training_validation_func = get_validation_function(opts, model) if opts.validation_mode == "during" else None

@@ -143,7 +143,7 @@ class MNIST_model(object):
         prob = self.builder.aiOnnx.softmax([output])
         label_shape = popart.TensorInfo("INT32", [batch_size])
         label = self.builder.addInputTensor(label_shape)
-        loss = self.builder.aiGraphcore.nllloss([prob, label], debugPrefix = "nllLossVal")
+        loss = self.builder.aiGraphcore.nllloss([prob, label], debugContext = "nllLossVal")
         proto = self.builder.getModelProto()
         return proto, input_x, label, output, loss
 

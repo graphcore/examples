@@ -8,20 +8,10 @@ In particular this example shows [Edge Conditioned Convolutional Networks](https
 
 Install the Poplar SDK following the the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` script for poplar.  
 
-<<<<<<< HEAD
-```python3 -m pip install -U pip```
-
-```pip3 install tensorflow-2*```
-
-```pip3 install -r requirements.txt```
-
-```python3 qm9_ipu.py```
-=======
-1. Update pip: ```python3 -m pip install -U pip```
-2. Install the Graphcore Tensorflow wheel: ```pip3 install tensorflow-2*```
-3. Install the Spektral GNN library requirements: ```pip3 install -r requirements.txt```
-4. Run the example: ```python3 qm9_ipu.py```
->>>>>>> ss
+1. Update pip: `python3 -m pip install -U pip`
+2. Install the Graphcore Tensorflow wheel: `pip3 install tensorflow-2*`
+3. Install the Spektral GNN library requirements: `pip3 install -r requirements.txt`
+4. Run the example: `python3 qm9_ipu.py`
 
 The above script will download the [QM9 dataset](http://quantum-machine.org/datasets/) automatically which is just about 40MB in size.
 

@@ -64,7 +64,7 @@ class BaseModel(object):
             if not self.device_config['on_ipu']:
                 raise AttributeError
             # this will work if version > 0.8.18
-            ipu.utils.configure_ipu_system(self.device_config['ipu_options']['ipu_options'])
+            self.device_config['ipu_options']['ipu_options'].configure_ipu_system()
             self.sess = tf.Session(graph=self.graph, config=tf.ConfigProto(**self.device_config['sess_options']))
         except AttributeError:
             sess_config = tf.ConfigProto(**self.device_config['sess_options'], **self.device_config['ipu_options'])

@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import os
+from tensorflow.python.ipu.config import IPUConfig
 import json
 import subprocess
 import numpy as np
@@ -190,8 +191,9 @@ if __name__ == "__main__":
         kt = tf.placeholder(tf.float32, shape=[B, A, H // A, S])
         v = tf.placeholder(tf.float32, shape=[B, A, S, H // A])
 
-    cfg = ipu.utils.auto_select_ipus(ipu.utils.create_ipu_config(), 1)
-    ipu.utils.configure_ipu_system(cfg)
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 1
+    cfg.configure_ipu_system()
     with ipu.scopes.ipu_scope("/device:IPU:0"):
         sparse_out = ipu.ipu_compiler.compile(autoregressive_self_attention, [q, kt, v])
         dense_out = ipu.ipu_compiler.compile(_dense_autoregressive_self_attention, [q, kt, v])
