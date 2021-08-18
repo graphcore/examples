@@ -49,7 +49,6 @@ class BertConfig(object):
                  use_attention_projection_bias=True,
                  use_cls_layer=False,
                  use_qkv_bias=False,
-                 use_qkv_split=False,
                  task='pretraining',
                  matmul_serialize_factor=6,
                  static_mask=False,
@@ -109,7 +108,6 @@ class BertConfig(object):
         self.use_attention_projection_bias = use_attention_projection_bias
         self.use_cls_layer = use_cls_layer
         self.use_qkv_bias = use_qkv_bias
-        self.use_qkv_split = use_qkv_split
         self.task = task
         self.matmul_serialize_factor = matmul_serialize_factor
         self.static_mask = static_mask
@@ -272,54 +270,59 @@ class BertModel(object):
 
         input_tensor_2d = reshape_to_matrix(input_tensor)
 
-        # We combine the query, key and value layers to reduce memory consume.
-        # `qkv_layer` = [B*S, 3N*H]    if use_qkv_split:
-        if self.bert_config.use_qkv_split:
-            head_shape = [num_attention_heads*size_per_head, num_attention_heads*size_per_head]
-            with tf.variable_scope('query'):
-                q_weight = tf.get_variable(
-                    dtype=self.bert_config.dtype,
-                    name="kernel",
-                    shape=head_shape,
-                    initializer=create_initializer(self.bert_config.initializer_range),
-                    trainable=True)
-            with tf.variable_scope('key'):
-                k_weight = tf.get_variable(
-                    dtype=self.bert_config.dtype,
-                    name="kernel",
-                    shape=head_shape,
-                    initializer=create_initializer(self.bert_config.initializer_range),
-                    trainable=True)
-            with tf.variable_scope('value'):
-                v_weight = tf.get_variable(
-                    dtype=self.bert_config.dtype,
-                    name="kernel",
-                    shape=head_shape,
-                    initializer=create_initializer(self.bert_config.initializer_range),
-                    trainable=True)
-            qkv_weight = tf.concat([q_weight, k_weight, v_weight], axis=-1)
-
-        else:
-            with tf.variable_scope('kernel'):
-                qkv_weight = tf.get_variable(
-                    dtype=self.bert_config.dtype,
-                    name="qkv_weight",
-                    shape=[num_attention_heads*size_per_head, 3*num_attention_heads*size_per_head],
-                    initializer=create_initializer(self.bert_config.initializer_range),
-                    trainable=True)
+        # The query, key and value layers are created separately.
+        # each layer = [B*S, N*H]
+        head_shape = [num_attention_heads*size_per_head, num_attention_heads*size_per_head]
+        with tf.variable_scope('query'):
+            q_weight = tf.get_variable(
+                dtype=self.bert_config.dtype,
+                name="kernel",
+                shape=head_shape,
+                initializer=create_initializer(self.bert_config.initializer_range),
+                trainable=True)
+        with tf.variable_scope('key'):
+            k_weight = tf.get_variable(
+                dtype=self.bert_config.dtype,
+                name="kernel",
+                shape=head_shape,
+                initializer=create_initializer(self.bert_config.initializer_range),
+                trainable=True)
+        with tf.variable_scope('value'):
+            v_weight = tf.get_variable(
+                dtype=self.bert_config.dtype,
+                name="kernel",
+                shape=head_shape,
+                initializer=create_initializer(self.bert_config.initializer_range),
+                trainable=True)
+        qkv_weight = tf.concat([q_weight, k_weight, v_weight], axis=-1)
 
         @ipu.outlined_function
         def inner_attention_func():
             qkv = tf.matmul(input_tensor_2d, qkv_weight)
 
             if self.bert_config.use_qkv_bias:
-                qkv_bias = tf.get_variable(
+                query_bias = tf.get_variable(
                     dtype=self.bert_config.dtype,
-                    name="qkv_bias",
-                    shape=[3*num_attention_heads*size_per_head],
+                    name="query_bias",
+                    shape=[num_attention_heads*size_per_head],
                     initializer=tf.zeros_initializer(),
                     trainable=True
                 )
+                key_bias = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="key_bias",
+                    shape=[num_attention_heads*size_per_head],
+                    initializer=tf.zeros_initializer(),
+                    trainable=False
+                )
+                value_bias = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="value_bias",
+                    shape=[num_attention_heads*size_per_head],
+                    initializer=tf.zeros_initializer(),
+                    trainable=True
+                )
+                qkv_bias = tf.concat([query_bias, key_bias, value_bias], axis=-1)
                 qkv = tf.nn.bias_add(qkv, qkv_bias)
             # Split and transpose to [B, N, S, H]
             query_layer, key_layer, value_layer = [

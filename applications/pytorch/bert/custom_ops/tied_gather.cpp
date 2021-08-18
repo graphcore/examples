@@ -62,8 +62,7 @@ class TiedGatherOpx : public popart::popx::Opx {
 public:
   TiedGatherOpx(popart::Op *op, popart::popx::Devicex *devicex) : popart::popx::Opx(op, devicex) {
     verifyOp<TiedGatherOp>(op, CustomOperators::TiedGather);
-    // We always want this to layout its inputs
-    inputCreatorPriority = std::numeric_limits<double>::max();
+    inputCreatorPriority = -1;
   }
 
   bool createsEquiv(int, const popart::popx::Opx *, int) const final { return false; }

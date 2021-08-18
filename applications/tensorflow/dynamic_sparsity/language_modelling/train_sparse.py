@@ -267,9 +267,9 @@ def run_training(opts, transformer):
 
         logger.info("Creating infeed and outfeed queues")
         # Queues for streaming from host to device and back
-        train_infeed = IPUInfeedQueue(dataset, feed_name="train_infeed")
-        train_outfeed = IPUOutfeedQueue(feed_name="train_outfeed")
-        prune_and_grow_outfeed = IPUOutfeedQueue(feed_name="prune_and_grow_outfeed")
+        train_infeed = IPUInfeedQueue(dataset)
+        train_outfeed = IPUOutfeedQueue()
+        prune_and_grow_outfeed = IPUOutfeedQueue()
 
         # Helper function
         def loop_builder(iterations, builder_func, infeed):
@@ -436,8 +436,8 @@ def run_testing(opts, transformer):
             logger.info(f"Effective batch-size (global batch): {batch_size}")
 
             logger.info("Creating infeed and outfeed queues")
-            test_infeed = IPUInfeedQueue(dataset, feed_name="test_infeed")
-            test_outfeed = IPUOutfeedQueue(feed_name="test_outfeed")
+            test_infeed = IPUInfeedQueue(dataset)
+            test_outfeed = IPUOutfeedQueue()
 
         # Compile the forward pass for testing
         with scopes.ipu_scope("/device:IPU:0"):

@@ -9,6 +9,7 @@ from .model_manipulator import create_efficientnet, residual_normlayer_init, rep
 import sys
 sys.path.append('..')
 import datasets
+import datasets.augmentations as augmentations
 
 available_models = {'resnet18': {"model": torchvision.models.resnet18, "input_shape": (3, 224, 224)},
                     'resnet34': {"model": torchvision.models.resnet34, "input_shape": (3, 224, 224)},
@@ -29,12 +30,13 @@ available_models = {'resnet18': {"model": torchvision.models.resnet18, "input_sh
                     }
 
 
-def get_model(opts, data_info, pretrained=True):
+def get_model(opts, data_info, pretrained=True, mixup=False):
     """
     params:
     opts: contains the user defined command line parameters
     data info: the input and the output shape of the data
     pretrain: if it is true the weights are loaded from a publicly available pretrained model
+    mixup: use on-device mixup augmentation
     """
     norm_layer = get_norm_layer(opts)
 
@@ -69,9 +71,10 @@ def get_model(opts, data_info, pretrained=True):
         cast = "half" if opts.precision[:3] == "16." else "full"
         model = NormalizeInputModel(model, datasets.normalization_parameters["mean"], datasets.normalization_parameters["std"], output_cast=cast)
 
+    if mixup:
+        model = augmentations.MixupModel(model)
 
     logging.info(model)
-
     return model
 
 

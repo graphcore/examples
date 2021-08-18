@@ -138,6 +138,7 @@ struct IpuPathTraceJob {
     randUniform_0_1 = graph.addVariable(poplar::HALF, {randomCount}, "random" + suffix);
     auto genRays = graph.addComputeSet("ray_gen" + suffix);
     rayGenVertex = graph.addVertex(genRays, "GenerateCameraRays");
+    graph.setPerfEstimate(rayGenVertex, 1); // Fake perf estimate (for IpuModel only).
     addScalarConstant<unsigned>(graph, rayGenVertex, "startRow", poplar::UNSIGNED_INT, jobSpec.startRow);
     addScalarConstant<unsigned>(graph, rayGenVertex, "startCol", poplar::UNSIGNED_INT, jobSpec.startCol);
     addScalarConstant<unsigned>(graph, rayGenVertex, "endRow", poplar::UNSIGNED_INT, jobSpec.endRow);
@@ -266,7 +267,7 @@ private:
     graph.setTileMapping(rayGenVertex, ipuCore);
     for (auto& v : tracerVertices) {
       graph.setTileMapping(v, ipuCore);
-      graph.setPerfEstimate(v, 1); // Fake cycle estimate (for IpuModel only).
+      graph.setPerfEstimate(v, 1); // Fake perf estimate (for IpuModel only).
     }
   }
 

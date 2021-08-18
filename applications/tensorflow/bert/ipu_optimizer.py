@@ -161,7 +161,6 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                  beta_2=0.999,
                  epsilon=1e-4,
                  exclude_from_weight_decay=None,
-                 exclude_from_layer_adaptation=None,
                  name="LAMBOptimizer",
                  high_precision=True,
                  use_nvlamb=False,
@@ -217,38 +216,8 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                                         trainable=False)
         #  https://developer.nvidia.com/blog/pretraining-bert-with-layer-wise-adaptive-learning-rates/
         # -----
-        # exclude_from_layer_adaptation is set to exclude_from_weight_decay if the
-        # arg is None.
-        # TODO(jingli): validate if exclude_from_layer_adaptation is necessary.
-        if exclude_from_layer_adaptation:
-            self.exclude_from_layer_adaptation = exclude_from_layer_adaptation
-        else:
-            self.exclude_from_layer_adaptation = exclude_from_weight_decay
         self.clipping_value = tf.cast(clipping_value, dtype=tf.float32)
         self.add_cross_replica_sums = add_cross_replica_sums
-
-    def forward_transform(self, input_tensor):
-        # Input tensor dimension is [H, 3H]
-        # In the code from the modeling the transformation is
-        # [H, 3H] -> [H, 3, H] -> [3, H^2]
-        hidden_dim = input_tensor.shape.as_list()[0]
-        reshaped_param = tf.reshape(input_tensor, [hidden_dim, 3, hidden_dim])
-        reshaped_param = tf.transpose(reshaped_param, [1, 0, 2])
-        reshaped_param = tf.reshape(reshaped_param,
-                                    [3, hidden_dim * hidden_dim])
-        return reshaped_param
-
-    def backward_transform(self, input_tensor):
-        # This function performs the opposite transformation as the previous one
-        # [3, H^2] -> [3, H, H] -> [H, 3, H] -> [H, 3H]
-        hidden_dim = int(sqrt(input_tensor.shape.as_list()[-1]))
-        backward_transformed_tensor = tf.reshape(input_tensor,
-                                                 [3, hidden_dim, hidden_dim])
-        backward_transformed_tensor = tf.transpose(backward_transformed_tensor,
-                                                   [1, 0, 2])
-        backward_transformed_tensor = tf.reshape(backward_transformed_tensor,
-                                                 [hidden_dim, 3 * hidden_dim])
-        return backward_transformed_tensor
 
     def clipped_norm(self, gradients_list):
         # We compute the total norm of the gradient
@@ -349,13 +318,8 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                                       dtype=update.dtype) * tf.cast(
                                           param, dtype=update.dtype)
 
-                if 'qkv' in param_name:
-                    # We reshape the parameters
-                    reshaped_param = self.forward_transform(param)
-                    reshaped_update = self.forward_transform(update)
-                else:
-                    reshaped_param = tf.reshape(param, [-1])
-                    reshaped_update = tf.reshape(update, [-1])
+                reshaped_param = tf.reshape(param, [-1])
+                reshaped_update = tf.reshape(update, [-1])
 
                 # Norms are then computed in fp32
                 w_norm = linalg_ops.norm(tf.cast(reshaped_param,
@@ -388,10 +352,7 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                 ratio = tf.cast(ratio, dtype=tf.float16)
                 update_with_lr = ratio * reshaped_update
                 # Backward transform to the same as param
-                if 'qkv' in param_name:
-                    update_with_lr = self.backward_transform(update_with_lr)
-                else:
-                    update_with_lr = tf.reshape(update_with_lr, shape=param.shape)
+                update_with_lr = tf.reshape(update_with_lr, shape=param.shape)
                 update_with_lr = tf.cast(update_with_lr, dtype=param.dtype)
 
                 next_param = param - update_with_lr
@@ -416,14 +377,6 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
             return False
         if self.exclude_from_weight_decay:
             for r in self.exclude_from_weight_decay:
-                if re.search(r, param_name) is not None:
-                    return False
-        return True
-
-    def _do_layer_adaptation(self, param_name):
-        """Whether to do layer-wise learning rate adaptation for `param_name`."""
-        if self.exclude_from_layer_adaptation:
-            for r in self.exclude_from_layer_adaptation:
                 if re.search(r, param_name) is not None:
                     return False
         return True

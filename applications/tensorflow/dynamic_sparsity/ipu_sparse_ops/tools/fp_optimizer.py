@@ -63,11 +63,11 @@ batches_per_step = len(x_train) // batchsize
 
 # Create the infeeds and outfeeds
 infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(
-    create_dataset(x_train, y_train, batchsize), feed_name="infeed_queue")
+    create_dataset(x_train, y_train, batchsize))
 infeed_queue_2 = ipu.ipu_infeed_queue.IPUInfeedQueue(
-    create_dataset(x_train, y_train, batchsize), feed_name="infeed_queue_2")
-outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed_queue")
-outfeed_queue_2 = ipu.ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed_queue_2")
+    create_dataset(x_train, y_train, batchsize))
+outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
+outfeed_queue_2 = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
 
 # create weights initialisation matrix
 init_hidden = np.random.normal(size=(28 * 28, 128)).astype(opts.dtype)

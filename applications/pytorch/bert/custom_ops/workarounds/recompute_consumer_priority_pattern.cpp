@@ -15,20 +15,22 @@
 #include <popart/ir.hpp>
 #include <popart/op.hpp>
 #include <popart/op/accumulate.hpp>
+#include <popart/op/histogram.hpp>
 
-// This Pattern set the scheduling priority on AccumulateOps involved in gradient accumulation to 'max'.
-// This is due to the usage of implicit recomputation when pipelining. The scheduler cannot reason about the liveness
-// of recomputed operations in the backwards pass so it will make a sub-optimial schedule when there
-// are more than 1 recompute stages per IPU. By increasing the priority of these Ops we ensure they are
-// scheduled as early as possible. Changing the schedule from:
+// This Pattern set the scheduling priority on Ops involved in gradient accumulation to 'max'.
+// This is due to the usage of implicit recomputation when pipelining. The scheduler cannot 
+// reason about the liveness  of recomputed operations in the backwards pass so it will make 
+// a sub-optimial schedule when there are more than 1 recompute stages per IPU. By increasing 
+// the priority of these Ops we ensure they are scheduled as early as possible. 
 //
-//  recomp, bwd, recomp, bwd... accum, accum...
+// This changes the schedule from:
+//  recomp, bwd, recomp, bwd... op, op...
 // to:
-//  recomp, bwd, accum, recomp, bwd, accum...
+//  recomp, bwd, op, recomp, bwd, op...
 //
 // (T29047) Remove this once Pipeline configs support using explicit recompute.
 
-class AccumulatePriorityPattern : public popart::PreAliasPattern {
+class RecomputeConsumerPriorityPattern : public popart::PreAliasPattern {
 public:
     bool matches(popart::Op *op) const override {
         auto &ir = op->getIr();
@@ -40,9 +42,9 @@ public:
             return false;
         }
 
-        auto accum = dynamic_cast<popart::AccumulateOp *>(op);
-        if (accum) {
-            return accum->settings.executionContext == popart::ExecutionContext::Normal && accum->settings.schedulePriority != std::numeric_limits<double>::max();
+        if (op->isConvertibleTo<popart::AccumulateOp>() || 
+            op->isConvertibleTo<popart::HistogramOp>()) {
+            return op->settings.executionContext == popart::ExecutionContext::Normal && op->settings.schedulePriority != std::numeric_limits<double>::max();
         }
         return false;
     }
@@ -56,4 +58,4 @@ public:
     }
 };
 
-static popart::PatternCreator<AccumulatePriorityPattern> AccumulatePriorityPatternCreator("AccumulatePriorityPattern", true);
+static popart::PatternCreator<RecomputeConsumerPriorityPattern> RecomputeConsumerPatternCreator("RecomputeConsumerPriorityPattern", true);

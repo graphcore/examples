@@ -20,7 +20,7 @@
 CTR Model -- DIEN
 """
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.python.ops.rnn_cell import GRUCell
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ipu.ops.rnn_ops import PopnnAUGRU

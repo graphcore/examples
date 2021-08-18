@@ -113,7 +113,9 @@ def parse_bert_args(args=None):
     parser.add_argument("--lr-schedule", type=str, choices=["constant", "linear"],
                         help="Type of learning rate schedule. --learning-rate will be used as the max value")
     parser.add_argument("--lr-warmup", type=float, help="Proportion of lr-schedule spent in warm-up. Number in range [0.0, 1.0]")
-    parser.add_argument("--loss-scaling", type=float, help="Loss scaling factor (recommend using powers of 2)")
+    parser.add_argument("--auto-loss-scaling", type=str_to_bool, nargs="?", const=True, default=False, help="Enable automatic loss scaling")
+    parser.add_argument("--loss-scaling", type=float, help="Loss scaling factor (recommend using powers of 2).\
+                             If using automatic loss scaling, this value will be the initial value.")
     parser.add_argument("--weight-decay", type=float, help="Set the weight decay")
     parser.add_argument("--enable-half-first-order-momentum", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Use float16 for the first order momentum in the optimizer.")
@@ -155,6 +157,8 @@ def parse_bert_args(args=None):
                         help="Log the model parameter statistics to Weights and Biases after every n training steps")
     parser.add_argument("--disable-progress-bar", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Disable the training progress bar. This is useful if you want to parse the stdout of a run")
+    parser.add_argument("--compile-only", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Create an offline IPU target that can only be used for offline compilation.")
 
     # Checkpointing
     parser.add_argument("--checkpoint-dir", type=str, default="", help="Directory where checkpoints will be saved and restored from.\
@@ -223,8 +227,12 @@ def parse_bert_args(args=None):
     if args.checkpoint_every_nsteps is not None and args.checkpoint_every_nsteps < 1:
         parser.error("checkpoint-every-nsteps must be >=1")
 
-    args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.batch_size
-    args.samples_per_step = args.global_batch_size * args.batches_per_step
+    if args.use_popdist:
+        args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.batch_size * args.popdist_size
+    else:
+        args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.batch_size
+
+    args.samples_per_step = args.replication_factor * args.gradient_accumulation * args.batch_size * args.batches_per_step
     args.intermediate_size = args.hidden_size * 4
 
     return args

@@ -1,8 +1,3 @@
-# Keep data and config
-!data/*
-!config/*
-!*.json
-
 # Build and Release Folders
 bin-debug/
 bin-release/

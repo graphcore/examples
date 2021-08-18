@@ -144,18 +144,22 @@ struct ApplicationBuilder : public utils::BuilderInterface {
       exeName = args.at("load-exe").as<std::string>();;
     }
 
+    bool compileOnly = args.at("compile-only").as<bool>();
+    bool deferAttach = args.at("defer-attach").as<bool>();
+
     return utils::RuntimeConfig{
       args.at("ipus").as<std::size_t>(),
       exeName,
       args.at("model").as<bool>(),
       !args.at("save-exe").as<std::string>().empty(),
       !args.at("load-exe").as<std::string>().empty(),
-      args.at("compile-only").as<bool>()
+      compileOnly,
+      compileOnly || deferAttach
     };
   }
 
   /// Construct the graph and programs.
-  void build(poplar::Graph& g, const poplar::Device& device) override {
+  void build(poplar::Graph& g, const poplar::Target& target) override {
     using namespace poplar;
 
     poprand::addCodelets(g);
@@ -329,6 +333,8 @@ boost::program_options::variables_map parseOptions(int argc, char** argv) {
   )
   ("compile-only", po::bool_switch()->default_value(false),
    "If set and save-exe is also set then exit after compiling and saving the graph.")
+  ("defer-attach", po::bool_switch()->default_value(false),
+   "If true hardware devices will not attach until execution is ready to begin. If false they will be attached (reserved) before compilation starts. ")
   ("outfile,o", po::value<std::string>()->required(), "Set output file name.")
   ("save-interval", po::value<std::uint32_t>()->default_value(1))
   ("width,w", po::value<std::uint32_t>()->default_value(256), "Output image width (total pixels).")

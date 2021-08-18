@@ -41,40 +41,47 @@ def create_callback_stepio(data: dict,
                            anchors: dict,
                            start_times: DefaultDict[str, list],
                            end_times: DefaultDict[str, list],
-                           batches_per_step: int):
+                           batches_per_step: int,
+                           replication_factor: int):
     '''Create a popart.PyStepIOCallback using data and anchors.
         Will record timing information in start_times and end_times.'''
 
-    micro_batch_indices = defaultdict(int)
+    input_callback_indices = defaultdict(int)
 
     # Input callback is called when the data is needed:
     def input_callback(tensor_id: str, is_prefetch: bool):
         input_time = time.perf_counter()
         start_times[tensor_id].append(input_time)
-        return data[tensor_id][micro_batch_indices[tensor_id]]
+
+        idx = input_callback_indices[tensor_id]
+        input_callback_indices[tensor_id] = (idx + 1) % (batches_per_step *
+                                                         replication_factor)
+        return data[tensor_id][idx]
 
     # Called after the input buffer has been consumed by the device:
     def input_complete_callback(tensor_id: str):
-        micro_batch_indices[tensor_id] = \
-            (micro_batch_indices[tensor_id] + 1) % batches_per_step
         return
+
+    output_callback_indices = defaultdict(int)
 
     # Output callback is called when a buffer is needed for the result:
     def output_callback(tensor_id: str):
-        return anchors[tensor_id][micro_batch_indices[tensor_id]]
+        idx = output_callback_indices[tensor_id]
+        output_callback_indices[tensor_id] = (idx + 1) % (batches_per_step *
+                                                          replication_factor)
+
+        replica_idx = idx % replication_factor
+        batch_idx = idx // replication_factor
+        return anchors[tensor_id][batch_idx, replica_idx]
 
     # Complete callback is called when the output buffer has
     # been filled (result is ready to be consumed by the host):
     def output_complete_callback(tensor_id: str):
         output_time = time.perf_counter()
         end_times[tensor_id].append(output_time)
-        micro_batch_indices[tensor_id] = \
-            (micro_batch_indices[tensor_id] + 1) % batches_per_step
 
-    stepio = popart.PyStepIOCallback(input_callback,
-                                     input_complete_callback,
-                                     output_callback,
-                                     output_complete_callback)
+    stepio = popart.PyStepIOCallback(input_callback, input_complete_callback,
+                                     output_callback, output_complete_callback)
     return stepio
 
 

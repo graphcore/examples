@@ -508,13 +508,13 @@ def set_defaults(opts):
             opts["weight_decay"] = wd_default
         if opts.get("lars_weight_decay") is None:
             opts["lars_weight_decay"] = 1e-5
-        if not opts.get('base_learning_rate'):
+        if not opts.get('base_learning_rate_exponent'):
             if opts['optimiser'] == 'SGD':
-                opts['base_learning_rate'] = -7.0
+                opts['base_learning_rate_exponent'] = -7.0
             elif opts['optimiser'] == 'momentum':
-                opts['base_learning_rate'] = -10.0
+                opts['base_learning_rate_exponent'] = -10.0
             elif opts['optimiser'] == 'RMSprop':
-                opts['base_learning_rate'] = -14.0
+                opts['base_learning_rate_exponent'] = -14.0
         if opts['optimiser'] == 'RMSprop' and opts['rmsprop_base_decay_exp'] is None:
             opts['rmsprop_base_decay_exp'] = -14.0
         if not opts.get('epochs') and not opts.get('iterations'):
@@ -551,8 +551,8 @@ def set_defaults(opts):
             opts["weight_decay"] = wd_default
         if opts.get("lars_weight_decay") is None:
             opts["lars_weight_decay"] = 1e-6
-        if not opts.get('base_learning_rate'):
-            opts['base_learning_rate'] = -6
+        if not opts.get('base_learning_rate_exponent'):
+            opts['base_learning_rate_exponent'] = -6
         if not opts.get('epochs') and not opts.get('iterations'):
             opts['epochs'] = 300
         if opts.get('lr_schedule') == 'stepped':

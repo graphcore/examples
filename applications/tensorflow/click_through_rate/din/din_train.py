@@ -80,7 +80,7 @@ def generic_train_graph(opts, is_training):
         else:
             dataset_train = get_dataset_embed(opts, is_training=True)
 
-        infeed_train = ipu_infeed_queue.IPUInfeedQueue(dataset_train, feed_name = 'DIN_dataset_infeed_train', replication_factor = (opts['replicas']))
+        infeed_train = ipu_infeed_queue.IPUInfeedQueue(dataset_train)
 
         with ipu_scope('/device:IPU:0'):
             def comp_fn():

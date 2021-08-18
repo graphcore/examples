@@ -287,8 +287,7 @@ if __name__ == '__main__':
                                           dataflow,
                                           session_options,
                                           training=True,
-                                          optimizer=optimizer,
-                                          profile=conf.profile)
+                                          optimizer=optimizer)
 
     if not conf.no_validation:  # Create the validation session
 
@@ -299,8 +298,7 @@ if __name__ == '__main__':
                                                                  device,
                                                                  dataFlow=dataflow,
                                                                  options=session_options,
-                                                                 training=False,
-                                                                 profile=conf.profile)
+                                                                 training=False)
 
     logger.info("Sending weights from Host")
     training_session.weightsFromHost()

@@ -67,6 +67,7 @@ def get_config(fp_exceptions,
     cfg.optimizations.maximum_cross_replica_sum_buffer_size = max_cross_replica_sum_buffer_size
     cfg.optimizations.merge_infeed_io_copies = True
     cfg.optimizations.enable_graph_outlining = not disable_graph_outlining
+    cfg.optimizations.minimum_remote_tensor_size = minimum_remote_tensor_size
 
     if available_memory_proportion is not None:
         cfg.convolutions.poplar_options = {

@@ -777,10 +777,6 @@ def bert_train_loop(args,
                     anchors,
                     iteration,
                     optimizer_factory):
-
-    save_model(args, session,
-               iteration.count, iteration.epoch)
-
     start_epoch = iteration.epoch
     for iteration.epoch in range(start_epoch, iteration.epochs):
         for data in dataset:
@@ -818,8 +814,9 @@ def bert_infer_loop(args,
 
     stepio = None
     if args.low_latency_inference and args.task == "SQUAD":
-        stepio = create_callback_stepio(static_data, anchors, start_times, end_times,
-                                        dataset.batches_per_step)
+        stepio = create_callback_stepio(static_data, anchors, start_times,
+                                        end_times, dataset.batches_per_step,
+                                        args.replication_factor)
 
     with realtime_scheduling(args.realtime_scheduler):
         for iteration.epoch in range(args.epochs_inference):
@@ -979,6 +976,10 @@ def main(args):
                             iteration, optimizer_factory)
 
             save_model(args, session, iteration.count)
+            if args.wandb_save_checkpoints:
+                artifact = wandb.Artifact(name=args.wandb_save_checkpoints, type="model")
+                artifact.add_dir(args.checkpoint_dir)
+                wandb.log_artifact(artifact)
 
             device.detach()
             logger.info("Training Finished")
@@ -1048,6 +1049,10 @@ if __name__ == "__main__":
     if args.wandb and popdist_root(args):
         import wandb
         wandb.init(project="popart-bert", config=args, sync_tensorboard=True)
+        if args.wandb_checkpoint:
+            artifact = wandb.use_artifact(args.wandb_checkpoint, type='model')
+            artifact_dir = artifact.download()
+            args.onnx_checkpoint = os.path.join(artifact_dir, "model.onnx")
 
     logger.info("Program Start")
     logger.info("Hostname: " + socket.gethostname())

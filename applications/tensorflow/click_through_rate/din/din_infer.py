@@ -80,10 +80,9 @@ def generic_infer_graph(opts, is_training):
         else:
             dataset_val = get_dataset_embed(opts, is_training=False)
 
-        infeed_val = ipu_infeed_queue.IPUInfeedQueue(dataset_val, feed_name = 'DIN_dataset_infeed_val', replication_factor = (opts['replicas']))
+        infeed_val = ipu_infeed_queue.IPUInfeedQueue(dataset_val)
 
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="DIN_validation_outfeed",
-                                                          replication_factor=opts['replicas'])
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         with ipu_scope('/device:IPU:0'):
             def comp_fn_validate():

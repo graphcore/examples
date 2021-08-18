@@ -8,7 +8,7 @@ import poptorch
 from torchvision.models.utils import load_state_dict_from_url
 from efficientnet_pytorch import EfficientNet, get_model_params
 from torchvision.models.resnet import model_urls as resnet_urls
-from torchvision.models.mobilenet import model_urls as mobilenet_urls
+from torchvision.models.mobilenetv2 import model_urls as mobilenet_urls
 import sys
 sys.path.append('..')
 import datasets
@@ -176,7 +176,7 @@ def recompute_model(model, recompute_checkpoints):
     for name, modules in model.named_modules():
         name = name.replace('.', '/')
         for checkpoint_re in recompute_checkpoints:
-            if re.match(checkpoint_re, name):
+            if re.fullmatch(checkpoint_re, name):
                 parent, node, field_or_idx_str = get_module_and_parent_by_name(model, name.split('/'))
                 replace_layer(parent, field_or_idx_str, RecomputationCheckpoint(node))
                 break

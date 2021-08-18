@@ -108,8 +108,7 @@ def training_graph(opts, training_data, device_index=0, learning_rate=0.001):
 
         dataset, _, placeholders = training_data.get_dataset(
             opts, is_training=True)
-        infeed = ipu_infeed_queue.IPUInfeedQueue(
-            dataset, "training_dataset_infeed{0}".format(device_index), 0)
+        infeed = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
         with ipu_scope('/device:IPU:0'):
 

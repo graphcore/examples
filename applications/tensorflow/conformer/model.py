@@ -214,7 +214,7 @@ class ConformerAM(object):
         dataset = dataset.batch(self.config['batch_size'], drop_remainder=True)
 
         self.infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
-            dataset, "InfeedQueue", prefetch_depth=10)
+            dataset, prefetch_depth=10)
 
     def _build_pos_embedding(self, max_len, dmodel, reverse=False):
         '''
@@ -913,8 +913,7 @@ class ConformerAM(object):
         self._build_dataset()
         self._build_computational_stages()
         self.get_pipeline_depth()
-        self.outfeed_queue = \
-            ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
+        self.outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         def train(lr, infeed, outfeed, pipeline_depth):
             pipeline_op = pipelining_ops.pipeline(

@@ -62,7 +62,7 @@ class TestCifar10ResNeXtFullTraining(unittest.TestCase):
                            '--warmup-epochs': 2,
                            '--lr-schedule': 'cosine',
                            '--label-smoothing': '0.05',
-                           '--base-learning-rate': -5,
+                           '--base-learning-rate-exponent': -5,
                            '--precision': '16.32'})
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
@@ -160,7 +160,7 @@ class TestLotsOfOptions(unittest.TestCase):
                            '--batch-norm': '',
                            '--pipeline-num-parallel': 8,
                            '--generated-data': '',
-                           '--base-learning-rate': -4,
+                           '--base-learning-rate-exponent': -4,
                            '--precision': '32.32',
                            '--seed': 1234,
                            '--warmup-epochs': 0,

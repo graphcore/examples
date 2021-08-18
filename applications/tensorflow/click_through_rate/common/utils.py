@@ -16,7 +16,7 @@
 #
 # This file has been modified by Graphcore Ltd.
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.python.ops.rnn_cell import *
 from tensorflow import keras
 from tensorflow.python.ops import math_ops

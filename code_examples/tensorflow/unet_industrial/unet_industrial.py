@@ -220,30 +220,6 @@ def model_fn(mode=None, params=None, args=None, inference_features=None):
             gradient_accumulation_count=args.gradient_accumulation_batches)
 
 
-class ProfilerHook(tf.train.SessionRunHook):
-    """Estimator hook to generate and write a Poplar report to write_dir"""
-
-    def __init__(self, write_dir, name=''):
-        self._write_dir = write_dir
-        self._name = name
-
-    def begin(self):
-        from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-        self._report_op = gen_ipu_ops.ipu_event_trace()
-
-    def end(self, session):
-        import os
-        raw_report = session.run(self._report_op)
-        write_file = os.path.join(self._write_dir, f'{self._name}_report.txt')
-        with open(write_file, 'w') as f:
-            f.write(ipu.utils.extract_all_strings_from_event_trace(raw_report))
-
-        from gcprofile import save_tf_report
-        save_tf_report(raw_report)
-
-        print(f"Wrote profiling report to {write_file}")
-
-
 class ThroughputCalcHook(tf.train.SessionRunHook):
     """Estimator hook to calculate mean throughput"""
 

@@ -581,16 +581,11 @@ def run_mnist(opts):
         labels=y_test,
         is_training=False)
 
-    infeed_train_queue = ipu_infeed_queue.IPUInfeedQueue(
-        train_dataset, feed_name="train_infeed")
-    outfeed_train_queue = ipu_outfeed_queue.IPUOutfeedQueue(
-        feed_name="train_outfeed")
-    outfeed_prune_and_grow_queue = ipu_outfeed_queue.IPUOutfeedQueue(
-        feed_name="train_prune_and_grow_outfeed")
-    infeed_test_queue = ipu_infeed_queue.IPUInfeedQueue(
-        test_dataset, feed_name="test_infeed")
-    outfeed_test_queue = ipu_outfeed_queue.IPUOutfeedQueue(
-        feed_name="test_outfeed")
+    infeed_train_queue = ipu_infeed_queue.IPUInfeedQueue(train_dataset)
+    outfeed_train_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+    outfeed_prune_and_grow_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+    infeed_test_queue = ipu_infeed_queue.IPUInfeedQueue(test_dataset)
+    outfeed_test_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
     # Get optimiser
     opt_cls, opt_kws = build_optimizer(opts.optimizer, opts.optimizer_arg)

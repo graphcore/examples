@@ -12,7 +12,6 @@
    "use_attention_projection_bias": false,
    "use_cls_layer": false,
    "use_qkv_bias": false,
-   "use_qkv_split": true,
 
    "pipeline_stages": [
       ["emb", "pos","hid","hid","hid"],

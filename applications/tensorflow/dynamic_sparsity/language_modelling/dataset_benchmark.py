@@ -57,8 +57,7 @@ def make_and_run_on_device_benchmark(opts, train=True):
     with graph.as_default():
         ds, num_ds, *_ = make_dataset(opts, use_synthetic_data=False, training=train)
         num_ds = num_ds // opts.batch_size
-        infeed = ipu_infeed_queue.IPUInfeedQueue(
-            ds, feed_name="to_device_infeed_" + name)
+        infeed = ipu_infeed_queue.IPUInfeedQueue(ds)
 
         def empty_loop():
             def empty_body(data_infeed):
@@ -101,8 +100,7 @@ if __name__ == "__main__":
         train_set, num_train, *_ = make_dataset(opts, use_synthetic_data=False, training=True)
         num_train = num_train // opts.batch_size
 
-        infeed_train_queue = ipu_infeed_queue.IPUInfeedQueue(
-            train_set, feed_name="train_infeed")
+        infeed_train_queue = ipu_infeed_queue.IPUInfeedQueue(train_set)
         # Benchmark it
         infeed_perf_train = dataset_benchmark.infeed_benchmark(
             infeed_queue=infeed_train_queue,
@@ -121,8 +119,7 @@ if __name__ == "__main__":
         test_set, num_test, *_ = make_dataset(opts, use_synthetic_data=False, training=False)
         num_test = num_test // opts.batch_size
 
-        infeed_test_queue = ipu_infeed_queue.IPUInfeedQueue(
-            test_set, feed_name="test_infeed")
+        infeed_test_queue = ipu_infeed_queue.IPUInfeedQueue(test_set)
         # Benchmark it
         infeed_perf_test = dataset_benchmark.infeed_benchmark(
             infeed_queue=infeed_test_queue,

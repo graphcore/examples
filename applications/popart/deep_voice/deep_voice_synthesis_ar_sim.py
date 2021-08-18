@@ -45,8 +45,7 @@ if __name__ == '__main__':
                                                                    dataflow,
                                                                    session_options,
                                                                    training=False,
-                                                                   optimizer=None,
-                                                                   profile=conf.profile)
+                                                                   optimizer=None)
 
     if not os.path.exists(conf.trained_model_file):
         logger.error("Model file does not exist: {}".format(conf.trained_model_file))

@@ -47,7 +47,7 @@ def SparseOptimizer(cls: Type[tf.train.Optimizer]) -> Type[tf.train.Optimizer]:
     If you wish to record the dense gradient into an outfeed queue
     so it will be available on the host it can be accomplished like this:
     ```
-    prune_and_grow_outfeed_queue = IPUOutfeedQueue(feed_name="prune_and_grow_outfeed")
+    prune_and_grow_outfeed_queue = IPUOutfeedQueue()
 
     ...
     fc_sparse_0 = SparseFcLayer(...)

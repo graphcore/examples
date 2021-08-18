@@ -7,7 +7,6 @@ import horovod.torch as hvd
 import sys
 import weight_avg
 sys.path.append('..')
-import models
 import utils
 import logging
 
@@ -68,6 +67,7 @@ def parse_arguments():
     parser.add_argument('--enable-fp-exceptions', action="store_true", help="Enable Floating Point Exceptions")
     parser.add_argument('--webdataset-percentage-to-use', type=int, default=100, choices=range(1, 101), help="Percentage of dataset to be used for traini")
     parser.add_argument('--use-bbox-info', action='store_true', help='Use bbox information for training: reject the augmenetation, which does not overlap with the object.')
+    parser.add_argument('--mixup-alpha', type=float, default=0.0, help="The first shape parameter of the beta distribution used to sample mixup coefficients. The second shape parameter is the same as the first one. Value of 0.0 means mixup is disabled.")
     # weight averaging params
     weight_avg.add_parser_arguments(parser)
 
@@ -85,11 +85,7 @@ def parse_arguments():
 
     num_stages = len(opts.pipeline_splits)+1
     num_amps = len(opts.available_memory_proportion)
-
-    if num_stages == 1 and num_amps > 0:
-        logging.error('--available-memory-proportion should only be set when pipelining')
-        sys.exit()
-    elif num_stages > 1 and num_amps > 0 and num_amps != num_stages and num_amps != 1:
+    if num_stages > 1 and num_amps > 0 and num_amps != num_stages and num_amps != 1:
             logging.error(f'--available-memory-proportion number of elements should be either 1 or equal to the number of pipeline stages: {num_stages}')
             sys.exit()
 
@@ -112,5 +108,13 @@ def parse_arguments():
 
     if opts.wandb_weight_histogram:
         assert opts.wandb, "Need to enable W&B with --wandb to log the histogram of the weights"
+
+    if opts.mixup_alpha < 0.0:
+        logging.error('--mixup-alpha must be >= 0.0')
+        sys.exit()
+
+    if opts.mixup_alpha > 0.0 and opts.batch_size < 2:
+        logging.error('Mixup requires batch size of at least 2')
+        sys.exit()
 
     return opts

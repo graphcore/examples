@@ -108,6 +108,10 @@ static T *search_consumers_for(popart::Tensor *w, std::queue<popart::Tensor *> &
         if (consumer->isConvertibleTo<popart::DropoutGradOp>()) {
             q.push(consumer->output->tensor(popart::DropoutGradOp::getGradInIndex()));
         }
+        if (consumer->isConvertibleTo<popart::ReplicatedReduceScatterOp>()) {
+          q.push(consumer->output->tensor(
+              popart::ReplicatedReduceScatterOp::getOutIndex()));
+        }
 
         if (consumer->input->n() == 1 && consumer->output->n() == 1) {
             q.push(consumer->output->tensor(0));
@@ -118,7 +122,7 @@ static T *search_consumers_for(popart::Tensor *w, std::queue<popart::Tensor *> &
     }
     w = q.front();
     q.pop();
-    return search_consumers_for<T>(w, q);
+    return search_consumers_for<T, Ctx>(w, q);
 }
 template <class T, popart::ExecutionContext Ctx = popart::ExecutionContext::Normal>
 static T *search_consumers_for(popart::Tensor *w) {
@@ -144,6 +148,10 @@ static void find_all_consumers(popart::Tensor *w,std::queue<popart::Tensor *> &q
             }
             if (consumer->isConvertibleTo<popart::MatMulOp>()) {
                 q.push(consumer->output->tensor(popart::MatMulOp::getOutIndex()));
+            }
+            if (consumer->isConvertibleTo<popart::ReplicatedReduceScatterOp>()) {
+                q.push(consumer->output->tensor(
+                    popart::ReplicatedReduceScatterOp::getOutIndex()));
             }
             // Most ops that have one input and one output are view changing.
             if (consumer->input->n() == 1 && consumer->output->n() == 1) {

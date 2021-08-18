@@ -101,7 +101,7 @@ class TestCifar10FullTraining(unittest.TestCase):
                            '--warmup-epochs': 2,
                            '--lr-schedule': 'cosine',
                            '--label-smoothing': '0.05',
-                           '--base-learning-rate': -5,
+                           '--base-learning-rate-exponent': -5,
                            '--precision': '16.32'})
         cls.validation = get_csv(out, 'validation.csv')
         cls.training = get_csv(out, 'training.csv')
@@ -249,7 +249,7 @@ class TestLotsOfOptions(unittest.TestCase):
                            '--pipeline-num-parallel': 8,
                            '--generated-data': '',
                            '--batch-size': 16,
-                           '--base-learning-rate': -4,
+                           '--base-learning-rate-exponent': -4,
                            '--precision': '32.32',
                            '--seed': 1234,
                            '--warmup-epochs': 0,
@@ -385,7 +385,7 @@ class TestDistributedTraining(unittest.TestCase):
                 '--no-validation',
                 '--iterations=100',
                 '--learning-rate-schedule=1',
-                '--base-learning-rate=-14',
+                '--base-learning-rate-exponent=-14',
                 '--log-dir', logdir,
                 '--ckpt-all-instances', "true",
                 '--log-all-instances', "true",

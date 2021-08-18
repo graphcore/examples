@@ -109,7 +109,9 @@ if __name__ == "__main__":
     duration_compilation = time.perf_counter() - start_compile
     logger(f"Compiled/Loaded model in {duration_compilation} secs")
     logger("-----------------------------------------------------------")
-
+    if config.compile_only:
+        sys.exit()
+    
     # Training loop
     logger("--------------------- Training Started --------------------")
     factor = config.gradient_accumulation * config.batches_per_step

@@ -25,6 +25,7 @@ defaults: &defaults
   profile: False
   profile_dir: profile
   optimizer: AdamW
+  auto_loss_scaling: False
   weight_decay: 0.0
   pred_head_transform: True
   embedding_serialization_factor: 1
@@ -154,7 +155,7 @@ pretrain_large_128: &pretrain_large_128
   lr_warmup: 0.28
   lr_schedule: linear
   learning_rate: 0.006
-  loss_scaling: 2048.0
+  loss_scaling: 4096.0
   weight_decay: 0.01
 
   # Dataset
@@ -168,9 +169,10 @@ pretrain_large_128_POD64:
   # Execution
   replication_factor: 16
   gradient_accumulation: 512
+  matmul_proportion: [0.15, 0.2, 0.2, 0.2]
 
   # Optimizer
-  loss_scaling: 16384.0
+  loss_scaling: 32768.0
 
 #----------------------------------------------------------------------------------
 

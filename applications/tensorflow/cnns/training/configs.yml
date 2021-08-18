@@ -131,7 +131,7 @@ mk2_resnet50_bn_16ipus: &mk2_resnet50_bn_16ipus
   disable_variable_offloading: True
   precision: "16.32"
   lr_schedule: cosine
-  base_learning_rate: -13
+  base_learning_rate_exponent: -13
   label_smoothing: 0.1
 
 mk2_resnet50_gn_64ipus:
@@ -170,7 +170,7 @@ mk2_resnext101_16ipus:
   disable_variable_offloading: True
   normalise_input: True
   stable_norm: True
-  base_learning_rate: -11
+  base_learning_rate_exponent: -11
 
   enable_half_partials: True
   lr_schedule: cosine
@@ -231,7 +231,7 @@ mk2_efficientnet_b4_g16_64ipus_LARS:
   <<: *mk2_efficientnet_b4_g16_16ipus
   optimiser: LARS
   lr_schedule: polynomial_decay_lr
-  base_learning_rate: -9.5
+  base_learning_rate_exponent: -9.5
   available_memory_proportion: ["0.2"]
   replicas: 16
   gradient_accumulation_count: 38

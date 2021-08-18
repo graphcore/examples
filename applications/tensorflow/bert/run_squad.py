@@ -291,11 +291,8 @@ def build_graph(opts, iterations_per_step=1, is_training=True, feed_name=None):
         else:
             learning_rate = None
 
-        train_iterator = ipu_infeed_queue.IPUInfeedQueue(data_loader.load(opts, is_training=is_training),
-                                                         feed_name=feed_name + "_in",
-                                                         replication_factor=opts['replicas'])
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name=feed_name + "_out",
-                                                          replication_factor=opts['replicas'])
+        train_iterator = ipu_infeed_queue.IPUInfeedQueue(data_loader.load(opts, is_training=is_training))
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         # building networks with pipeline
         if not should_be_pipeline_when_inference(opts):
@@ -429,7 +426,7 @@ def training_loop(opts):
 
     # Checkpoints restore and save
     init_checkpoint_path = opts['init_checkpoint']
-    if init_checkpoint_path:
+    if init_checkpoint_path and not opts.get('generated_data', False):
         if os.path.isfile(init_checkpoint_path):
             init_checkpoint_path = os.path.splitext(init_checkpoint_path)[0]
 
@@ -586,7 +583,7 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
         finetuned_checkpoint_path = opts['init_checkpoint']
 
     # Note that finetuned_checkpoint_path could be already set during "do_predict"
-    if finetuned_checkpoint_path:
+    if finetuned_checkpoint_path and not opts.get('generated_data', False):
         (assignment_map, _initialized_variable_names) = bert_ipu.get_assignment_map_from_checkpoint(
             predict.tvars, finetuned_checkpoint_path)
         saver_restore = tf.train.Saver(assignment_map)

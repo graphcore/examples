@@ -87,10 +87,8 @@ class YoloTest(object):
             ds = ds.repeat()
             ds = ds.prefetch(self.repeat_count*10)
             # The host side queues
-            infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
-                ds, feed_name="infeed")
-            outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
-                feed_name="outfeed")
+            infeed_queue = ipu_infeed_queue.IPUInfeedQueue(ds)
+            outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
             def model_func(input_data, nums):
                 pred_sbbox, pred_mbbox, pred_lbbox, nums = network_func(input_data, nums)
@@ -317,7 +315,11 @@ if __name__ == "__main__":
         description="evaluation in TensorFlow", add_help=False)
     parser.add_argument("--config", type=str, default="config/config_800.json",
                         help="json config file for yolov3.")
+    parser.add_argument("--test_path", type=str, default="./data/dataset/voc_test.txt",
+                        help="data path for test")
+
     arguments = parser.parse_args()
     with open(arguments.config) as f:
         opts = json.load(f)
+    opts['test']['annot_path'] = arguments.test_path
     YoloTest(opts).evaluate()

@@ -20,7 +20,7 @@ import csv
 import random
 import string
 import json
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 def add_arguments(parser):

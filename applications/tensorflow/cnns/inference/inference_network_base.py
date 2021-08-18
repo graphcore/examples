@@ -23,10 +23,7 @@ from get_weights import get_weights
 from tensorflow.core.framework import graph_pb2
 from tensorflow.tools.graph_transforms import TransformGraph
 
-# Add model module to path
-models_path = Path(Path(__file__).absolute().parent.parent)
-sys.path.append(str(models_path))
-from models.optimize_for_infer import fold_batch_norms  # noqa
+from models.optimize_for_infer import fold_batch_norms
 
 
 class InferenceNetwork(object):

@@ -27,8 +27,7 @@ from qm9_argparser import get_argparser
 ################################################################################
 parser = get_argparser()
 args = parser.parse_args()
-gradient_accumulation_count = 6
-
+gradient_accumulation_count, epochs = (1, 2) if args.profile else (6, args.epochs)
 
 ################################################################################
 # CONFIGURE THE DEVICE
@@ -72,8 +71,17 @@ n_out = y.shape[-1]   # Dimension of the target
 
 # Train/test split
 data = train_test_split(A, X, E, y, test_size=0.1, random_state=0)
+
 A_train, A_test, X_train, X_test, E_train, E_test, y_train, y_test = [x.astype(np.float32) for x in data]
 
+train_data_len = A_train.shape[0]
+test_data_len = A_test.shape[0]
+
+train_dataset = tf.data.Dataset.from_tensor_slices(((X_train, A_train, E_train), y_train))
+train_dataset = train_dataset.repeat().batch(args.batch_size, drop_remainder=True)
+
+test_dataset = tf.data.Dataset.from_tensor_slices(((X_test, A_test, E_test), y_test))
+test_dataset = test_dataset.batch(1, drop_remainder=True)
 
 ################################################################################
 # RUN INSIDE OF A STRATEGY
@@ -92,18 +100,27 @@ with strategy.scope():
     X_3 = GlobalSumPool()(X_2)
     output = Dense(n_out)(X_3)
 
-    model = ipu.keras.Model(inputs=[X_in, A_in, E_in],
-                            outputs=output,
-                            gradient_accumulation_count=1 if args.profile else gradient_accumulation_count)
+    model = tf.keras.Model(inputs=[X_in, A_in, E_in],
+                           outputs=output)
+
+    model.set_gradient_accumulation_options(
+        gradient_accumulation_steps_per_replica=gradient_accumulation_count
+    )
     optimizer = Adam(lr=args.learning_rate)
-    model.compile(optimizer=optimizer, loss='mse')
+
+    steps_per_execution = args.num_ipus * gradient_accumulation_count
+
+    model.compile(optimizer=optimizer, loss='mse', steps_per_execution=steps_per_execution)
     model.summary()
 
     ############################################################################
     # FIT MODEL
     ############################################################################
+
+    train_steps_per_epoch = steps_per_execution if args.profile else train_data_len - train_data_len % steps_per_execution
+
     tic = time.perf_counter()
-    model.fit([X_train, A_train, E_train], y_train, batch_size=args.batch_size, epochs=2 if args.profile else args.epochs, steps_per_epoch=4 if args.profile else None)
+    model.fit(train_dataset, batch_size=args.batch_size, epochs=epochs, steps_per_epoch=train_steps_per_epoch)
     toc = time.perf_counter()
     duration = toc - tic
     print(f"Training time duration {duration}")
@@ -112,11 +129,14 @@ with strategy.scope():
         ############################################################################
         # EVALUATE MODEL
         ############################################################################
+
         print('Testing model')
+        model.compile(steps_per_execution=args.num_ipus)
+        test_steps = test_data_len - test_data_len % args.num_ipus
+
         tic = time.perf_counter()
-        model_loss = model.evaluate([X_test, A_test, E_test],
-                                    y_test,
-                                    batch_size=args.batch_size)
+
+        model_loss = model.evaluate(test_dataset, batch_size=1, steps=test_steps)
         print(f"Done. Test loss {model_loss}")
 
         toc = time.perf_counter()

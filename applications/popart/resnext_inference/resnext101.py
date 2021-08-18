@@ -126,12 +126,7 @@ def main(argv):
 
     print("Compiling...")
     start = time.time()
-    try:
-        session.prepareDevice()
-    except popart.PrepareDeviceException as e:
-        import gcprofile
-        gcprofile.save_popart_report(session, exception=e)
-        sys.exit(1)
+    session.prepareDevice()
     compilation_duration = time.time() - start
     print("Time to compile: {:.3f} seconds\n".format(compilation_duration))
 

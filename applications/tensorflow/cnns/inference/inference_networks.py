@@ -20,19 +20,16 @@ from pathlib import Path
 from typing import Dict
 
 import tensorflow.compat.v1 as tf
-# Add models module to path
-models_path = Path(Path(__file__).absolute().parent.parent)
-sys.path.append(str(models_path))
-from models.official_keras.densenet_base import DenseNet  # noqa
-from models.official_keras.inceptionv1_base import InceptionV1  # noqa
-from models.official_keras.inceptionv3_base import InceptionV3  # noqa
-from models.official_keras.mobilenet_base import MobileNet  # noqa
-from models.official_keras.mobilenetv2_base import MobileNetV2  # noqa
-from models.official_keras.nasnet_mobile_base import NASNetMobile  # noqa
-from models.official_keras.resnet50_base import ResNet50  # noqa
-from models.official_keras.xception_base import Xception  # noqa
+from models.official_keras.densenet_base import DenseNet
+from models.official_keras.inceptionv1_base import InceptionV1
+from models.official_keras.inceptionv3_base import InceptionV3
+from models.official_keras.mobilenet_base import MobileNet
+from models.official_keras.mobilenetv2_base import MobileNetV2
+from models.official_keras.nasnet_mobile_base import NASNetMobile
+from models.official_keras.resnet50_base import ResNet50
+from models.official_keras.xception_base import Xception
 
-from inference_network_base import InferenceNetwork  # noqa
+from inference_network_base import InferenceNetwork
 
 
 class DenseNet121Infer(InferenceNetwork):

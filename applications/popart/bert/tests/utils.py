@@ -106,7 +106,6 @@ def run_py(proto: onnx.ModelProto,
            loss: Optional[str] = None,
            optimizer: Optional[popart.Optimizer] = None,
            patterns: Optional[popart.Patterns] = None,
-           return_stats: bool = False,
            log_dir: Optional[str] = None,
            ipus: Optional[int] = None,
            batches_per_step: int = 1,
@@ -178,13 +177,6 @@ def run_py(proto: onnx.ModelProto,
         if key not in ["batchSerializationFactor", "executionPhases"]:
             setattr(options, key, value)
 
-    if return_stats:
-        options.engineOptions = {
-            "debug.allowOutOfMemory": "true",
-            "debug.instrument": "true",
-            "opt.internalExchangeOptimisationTarget": "balanced",
-        }
-
     replicas = user_options.get("replicatedGraphCount", 1)
     request_ipus = pow(2, math.ceil(math.log2(ipus * replicas)))
     request_ipus *= replication_factor
@@ -221,12 +213,6 @@ def run_py(proto: onnx.ModelProto,
     try:
         session.prepareDevice()
     except popart.session.OutOfMemoryException as e:
-        if return_stats and log_dir:
-            import gcprofile
-            os.makedirs(log_dir, exist_ok=True)
-            gcprofile.save_popart_report(session,
-                                         log_dir=log_dir,
-                                         exception=e)
         device.detach()
         raise e
     print("Compilation complete")
@@ -264,21 +250,6 @@ def run_py(proto: onnx.ModelProto,
     # Release device
     device.detach()
 
-    if return_stats:
-        if log_dir:
-            import gcprofile
-            os.makedirs(log_dir, exist_ok=True)
-            reports = gcprofile.save_popart_report(session, log_dir=log_dir)
-            graph_report = json.loads(reports["graph"])
-            exec_report = json.loads(reports["execution"])
-        else:
-            graph_report = json.loads(session.getGraphReport())
-            exec_report = json.loads(session.getExecutionReport())
-        max_tile_memory = max(graph_report["memory"]["byTile"]["total"])
-        total_memory = np.sum(graph_report["memory"]["byTile"]["total"])
-        cycles = exec_report["simulation"]["cycles"]
-        return (anchors[output] for output in outputs
-                ), post_proto, total_memory, max_tile_memory, cycles
     return (anchors[output] for output in outputs), post_proto
 
 

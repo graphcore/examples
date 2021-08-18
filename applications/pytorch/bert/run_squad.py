@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import time
 import torch
 import poptorch
@@ -108,6 +109,9 @@ def main():
         duration_compilation = time.perf_counter() - start_compile
         logger(f"Compiled/Loaded model in {duration_compilation} secs")
 
+        if config.compile_only:
+            sys.exit()
+
         # Train
         factor = config.gradient_accumulation * config.batches_per_step
         scheduler = get_lr_scheduler(optimizer, "linear", config.lr_warmup, config.num_epochs * len(train_dl))
@@ -153,6 +157,10 @@ def main():
         inference_model.compile(sample_batch["input_ids"],
                                 sample_batch["attention_mask"],
                                 sample_batch["token_type_ids"])
+
+        if config.compile_only:
+            sys.exit()
+
         logger("Validating...")
         for step, batch in enumerate(val_dl):
             start_step = time.perf_counter()

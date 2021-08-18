@@ -12,6 +12,7 @@ import sys
 import re
 import random
 sys.path.append('..')
+from datasets.augmentations import MixupModel
 from datasets.preprocess import NormalizeToTensor, RandomResizedFlipCrop, ToHalf, get_preprocessing_pipeline
 from datasets.webdataset_format import DistributeNode, match_preprocess
 from datasets.dataset import get_data, _WorkerInit
@@ -119,8 +120,6 @@ class TestCustomAugmentations():
         correct = correct_pipeline(img)
         assert torch.allclose(custom, correct, atol=1e-06)
 
-
-
     @pytest.mark.category1
     def test_ipu_side_normalization(self):
         img_host = torch.rand(3, 100, 100) * 255.0
@@ -130,6 +129,36 @@ class TestCustomAugmentations():
         host_result = host_pipeline(img_host)
         ipu_result = model(img_ipu)
         assert torch.allclose(host_result, ipu_result, atol=1e-06)
+
+    @pytest.mark.category2
+    def test_mixup(self):
+        class Model(torch.nn.Module):
+            def forward(self, batch):
+                return batch
+
+        images = torch.stack([
+            torch.ones(1, 12, 12),
+            torch.ones(1, 12, 12) * 2,
+            torch.ones(1, 12, 12) * 3,
+        ]).to(torch.float)
+        labels = torch.tensor([1, 2, 3])
+        mixup_coeffs = torch.tensor([0.5, 0.5, 0.5])
+
+        model = poptorch.inferenceModel(MixupModel(Model()))
+        mixed_images, labels_permuted = model((images, mixup_coeffs), labels)
+
+        correct_mixed_images = torch.stack([
+            torch.ones(1, 12, 12) * 2,    # 0.5 * 1 + 0.5 * 3
+            torch.ones(1, 12, 12) * 1.5,  # 0.5 * 2 + 0.5 * 1
+            torch.ones(1, 12, 12) * 2.5,  # 0.5 * 3 + 0.5 * 2
+        ]).to(torch.float)
+        torch.testing.assert_allclose(mixed_images, correct_mixed_images)
+        torch.testing.assert_allclose(
+            actual=labels_permuted,
+            expected=torch.tensor([3, 1, 2]),
+            rtol=0,
+            atol=0,
+        )
 
 
 class TestHostBenchmark:

@@ -74,3 +74,9 @@ To run the demo on the Graphcore IPU simulator use the flag `--ipu-model`.
 If you see an error saying cannot load pywrap_tensorflow.so then TensorFlow can probably
 not find the Poplar libraries. You need to have Poplar installed and referenced by
 LD_LIBRARY_PATH / DYLD_LIBRARY_PATH.
+
+# Licenses
+
+The images provided by the `get_images.sh` script are attributed to employees of [Graphcore](https://graphcore.ai) and are provided permissively under a [Creative Commons Attribution 4.0 International License](http://creativecommons.org/licenses/by/4.0/)
+
+![Copyright Icon](https://i.creativecommons.org/l/by/4.0/88x31.png)

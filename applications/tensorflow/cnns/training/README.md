@@ -139,8 +139,8 @@ using more IPUs.
 After training is complete, you can execute validation by adapting the instruction to run each model on 1 IPU, similarly to what was done above:
 
     poprun -v --host xxx.xxx.xxx.1,xxx.xxx.xxx.2,xxx.xxx.xxx.3,xxx.xxx.xxx.4 --numa-aware=yes --vipu-server-host=xxx.xxx.xxx.xxx \ --vipu-partition=pod64_partition_name --reset-partition=yes --update-partition=no --mpi-global-args="--tag-output \
-    --mca btl_tcp_if_include xxx.xxx.xxx.0/24" --mpi-local-args="-x LD_LIBRARY_PATH -x PYTHONPATH \
-    -x TF_CPP_VMODULE=poplar_compiler=1 -x IPUOF_VIPU_API_TIMEOUT=300 \
+    --mca btl_tcp_if_include xxx.xxx.xxx.0/24 --mca oob_tcp_if_include xxx.xxx.xxx.0/24" \
+    --mpi-local-args="-x LD_LIBRARY_PATH -x PYTHONPATH -x TF_CPP_VMODULE=poplar_compiler=1 -x IPUOF_VIPU_API_TIMEOUT=300 \
     -x TF_POPLAR_FLAGS=--executable_cache_path=$WORKSPACE/exec_cache" --num-replicas=64 --num-instances=32 \
     --ipus-per-replica 1 python3 $WORKSPACE/examples/applications/tensorflow/cnns/training/validation.py \
     --config mk2_resnet50_bn_64ipus --shards 1 --data-dir your_dataset_path --restore-path generated_checkpoints_dir_path
@@ -189,10 +189,10 @@ the model is replicated over the 16 IPUs. To make sure there are no validation s
 For POD64 systems, a similar configuration is used. Again each IPU runs a single replica of the model with a micro-batch size of 20. To maintain a similar total batch size we use a gradient accumulation count of 2 and 64 replicas for a total batch size of 2560. We also use 32 instances to maximize throughput. The optimiser, partials, activations recomputation and distributed batch norm setting are the same as for POD16 systems.
 
     POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false"}' POPLAR_TARGET_OPTIONS='{"gatewayMode":"false"}' \
-    poprun -vv --host xxx.xxx.1.1,xxx.xxx.1.2,xxx.xxx.1.3,xxx.xxx.1.4, xxx.xxx.2.1,xxx.xxx.2.2,xxx.xxx.2.3,xxx.xxx.2.4 \
-    --mpi-global-args='--tag-output --allow-run-as-root --mca oob_tcp_if_include 10.1.0.0/16 \
-    --mca btl_tcp_if_include xxx.xxx.0.0/16' --mpi-local-args=' -x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH' \
-    -x PYTHONPATH -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=WARN -x POPLAR_ENGINE_OPTIONS \
+    poprun -vv --host xxx.xxx.1.1,xxx.xxx.1.2,xxx.xxx.1.3,xxx.xxx.1.4 \
+    --mpi-global-args='--tag-output --allow-run-as-root --mca oob_tcp_if_include xxx.xxx.xxx.0/24 \
+    --mca btl_tcp_if_include xxx.xxx.xxx.0/24' --mpi-local-args=' -x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH \
+    -x PYTHONPATH -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=WARN -x POPLAR_ENGINE_OPTIONS' \
     --update-partition=no --reset-partition=yes --vipu-server-timeout 300 --ipus-per-replica 1 --numa-aware 1 \
     --only-output-from-instance 0 --vipu-server-host xxx.xxx.xxx.xxx --vipu-partition=pod64_partition_name \
     --num-instances 32 --num-replicas 64 python train.py --config mk2_resnet50_mlperf_pod64_bs20 --epochs-per-sync 20 \
@@ -316,8 +316,8 @@ Use `python train.py --model efficientnet --help` to see other model options.
 sizes used on GPUs. A batch size of four or less is often used, but in these cases using group normalisation is
 recommended instead of batch normalisation (see `--group-norm`).
 
-`--base-learning-rate` : The base learning rate is scaled by the batch size to obtain the final learning rate. This
-means that a single `base-learning-rate` can be appropriate over a range of batch sizes.
+`--base-learning-rate-exponent` : The base learning rate exponent, N, is used to set the value of the base learning rate, which is 2<sup>N</sup>. The base learning rate is scaled by the batch size to obtain the final learning rate. This
+means that a single base learning rate can be appropriate over a range of batch sizes.
 
 `--epochs` \ `--iterations` : These options determine the length of training and only one should be specified.
 
@@ -401,20 +401,6 @@ line).
 
 `--no-hostside-norm` : Moves the image normalisation from the CPU to the IPU. This can help improve throughput if
 the bottleneck is on the host CPU, but marginally increases the workload and code size on the IPU.
-
-`--gc-profile` : Generates profiling files for use with the PopVision Graph Analyser.
-Python must be run with the gc-profile command line tool:
-
-    gc-profile -d profile_dir -- python train.py --gc-profile
-
-The type of execution profile can be specified (default: IPU_PROFILE):
-
-* NO_PROFILE: indicates that there should be no execution profiling.
-* DEVICE_PROFILE: indicates that the execution profile should contain only device wide events.
-* IPU_PROFILE: indicates that the profile should contain IPU level execution events.
-* TILE_PROFILE: indicates that the profile should contain Tile level execution events.
-
-NOTE: If using multiple iterations, the profile only considers the first iteration.
 
 `--available-memory-proportion` : The approximate proportion of memory which is available for convolutions.
 It may need to be adjusted (e.g. to 0.1) if an Out of Memory error is raised. A reasonable range is [0.05, 0.6].

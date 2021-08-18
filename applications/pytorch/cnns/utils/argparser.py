@@ -47,6 +47,8 @@ def get_common_parser():
     parser.add_argument('--replicas', type=int, default=1, help="Number of IPU replicas")
     parser.add_argument('--device-iterations', type=int, default=1, help="Device Iteration")
     parser.add_argument('--half-partial', action='store_true', help='Accumulate matrix multiplication partials in half precision')
+    parser.add_argument('--exchange-memory-target', choices=['cycles', 'balanced', 'memory'], help='Exchange memory optimisation target: balanced/cycles/memory. In case of '
+                        'cycles it uses more memory, but runs faster.')
     parser.add_argument('--norm-type', choices=['batch', 'group', 'none'], default='batch',  help="Set normalization layers in the model")
     parser.add_argument('--norm-num-groups', type=int, default=32, help="In case of group normalization, the number of groups")
     parser.add_argument('--enable-fast-groupnorm', action='store_true', help="There are two implementations of the group norm layer. If the fast implementation enabled, "

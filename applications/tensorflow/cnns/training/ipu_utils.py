@@ -17,7 +17,6 @@ import subprocess
 import re
 from tensorflow.python.ipu.config import IPUConfig, SchedulingAlgorithm
 from tensorflow.python.ipu import utils
-from tensorflow.python.ipu.utils import ExecutionProfileType
 
 
 def get_ipu_arch():
@@ -45,7 +44,6 @@ def get_config(prng=False,
                conv_output=False,
                enable_recomputation=False,
                seed=None,
-               profile=None,
                availableMemoryProportion=None,
                stable_norm=False,
                internalExchangeOptimisationTarget=None,

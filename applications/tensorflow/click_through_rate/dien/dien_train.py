@@ -22,7 +22,7 @@ import random
 import argparse
 import numpy as np
 import logging
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from collections import namedtuple
 from tensorflow.python.ipu import utils
 from tensorflow.python.ipu import ipu_compiler
@@ -75,7 +75,7 @@ def generic_graph(opts):
             feed_dict_values = {}
         else:
             dataset, feed_dict_values = get_dataset_embed_from_tensors(opts, data_type)
-        infeed = ipu_infeed_queue.IPUInfeedQueue(dataset, feed_name = 'DIEN_dataset_infeed', replication_factor = (opts['replicas']))
+        infeed = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
         with ipu_scope('/device:IPU:0'):
             def comp_fn():
@@ -196,7 +196,7 @@ if __name__ == '__main__':
 
     seed = args['seed']
     if seed is not None:
-        tf.compat.v1.set_random_seed(seed)
+        tf.set_random_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
         utils.reset_ipu_seed(seed)

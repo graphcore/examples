@@ -6,9 +6,9 @@ import time
 import torch
 import poptorch
 import logging
-import collections
 import popdist
 import horovod.torch as hvd
+import numpy as np
 
 from poptorch.optim import SGD, RMSprop, AdamW
 from lr_schedule import WarmUpLRDecorator, PeriodicLRDecorator
@@ -19,35 +19,51 @@ import weight_avg
 import sys
 sys.path.append('..')
 import models
+import models.loss
 import utils
 import datasets
+import datasets.augmentations as augmentations
 
 
 class TrainingModelWithLoss(torch.nn.Module):
-    def __init__(self, model, label_smoothing=0.0):
+    def __init__(self, model, label_smoothing=0.0, mixup_alpha=0.0):
         super().__init__()
         self.model = model
         self.label_smoothing = label_smoothing
-        self.loss = torch.nn.NLLLoss(reduction="mean")
+        self.mixup_alpha = mixup_alpha
+        if mixup_alpha > 0.0:
+            self.loss = models.loss.weighted_nll_loss
+        else:
+            self.loss = torch.nn.NLLLoss(reduction='mean')
 
-
-    def forward(self, args, loss_inputs=None):
-        output = self.model(args)
+    def forward(self, input_data, labels=None):
+        if self.mixup_alpha > 0.0:
+            output, labels_permuted = self.model(input_data, labels)
+        else:
+            output = self.model(input_data)
         # Calculate loss in full precision
         output = output.float()
-        if loss_inputs is None:
+        if labels is None:
             return output
         else:
             loss_items = {}
             log_preds = torch.nn.functional.log_softmax(output, dim=1)
-            loss_items['classification_loss'] = (1.0-self.label_smoothing) * self.loss(log_preds, loss_inputs)
+
+            if self.mixup_alpha > 0.0:
+                weights1 = input_data[1]
+                weights2 = 1.0 - weights1
+                classification_loss = self.loss(log_preds, [labels, labels_permuted], [weights1.float(), weights2.float()])
+            else:
+                classification_loss = self.loss(log_preds, labels)
+            loss_items['classification_loss'] = (1.0 - self.label_smoothing) * classification_loss
+
             if self.label_smoothing > 0.0:
                 # cross entropy between uniform distribution and output distribution
-                loss_items["smoothing_loss"] = - torch.mean(log_preds) * self.label_smoothing
+                loss_items["smoothing_loss"] = -torch.mean(log_preds) * self.label_smoothing
+                final_loss = loss_items["smoothing_loss"] + loss_items["classification_loss"]
             else:
-                loss_items["smoothing_loss"] = torch.zeros(1)
-            final_loss = loss_items["smoothing_loss"] + loss_items["classification_loss"]
-            return output, poptorch.identity_loss(final_loss, reduction='mean'), tuple(loss_items.values())
+                final_loss = loss_items["classification_loss"]
+            return output, poptorch.identity_loss(final_loss, reduction='none'), tuple(loss_items.values())
 
 
 def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, validation_function=None):
@@ -59,6 +75,10 @@ def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, 
     num_loss_scaling_steps = int(math.log2(opts.loss_scaling // opts.initial_loss_scaling)) + 1
     loss_scaling_steps = {i * (opts.epoch // num_loss_scaling_steps) + 1: opts.initial_loss_scaling * (2 ** i) for i in range(num_loss_scaling_steps)}
     new_loss_scaling = old_loss_scaling = opts.initial_loss_scaling
+
+    if opts.mixup_alpha > 0.0:
+        mixup_alpha_generator = np.random.default_rng(opts.seed)
+
     for epoch in epochs:
         logging.info(f"Epoch {epoch}/{opts.epoch}")
         if opts.disable_metrics or (opts.use_popdist and not(opts.popdist_rank == 0)):
@@ -70,13 +90,23 @@ def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, 
         if epoch in loss_scaling_steps.keys():
             new_loss_scaling = loss_scaling_steps[epoch]
         for batch_idx, (input_data, labels) in enumerate(bar):
-            preds, losses, sublosses = training_model(input_data, labels)
+            if opts.mixup_alpha > 0.0:
+                # Sample mixup coefficients in the main process on the host.
+                mixup_coefficients = augmentations.sample_mixup_coefficients(
+                    alpha=opts.mixup_alpha,
+                    batch_size=opts.batch_size * opts.gradient_accumulation * opts.replicas,
+                    np_type=np.float16 if opts.precision[:3] == "16." else np.float,
+                    random_generator=mixup_alpha_generator,
+                )
+                preds, losses, sublosses = training_model((input_data, mixup_coefficients), labels)
+            else:
+                preds, losses, sublosses = training_model(input_data, labels)
             epoch_num = epoch - 1 + float(batch_idx+1) / iterations_per_epoch
             if not opts.disable_metrics:
                 with torch.no_grad():
                     mean_loss = torch.mean(losses).item()
                     classification_loss = torch.mean(sublosses[0]).item()
-                    smoothing_loss = torch.mean(sublosses[1]).item()
+                    smoothing_loss = torch.mean(sublosses[1]).item() if len(sublosses) > 1 else 0.0
                     acc = utils.accuracy(preds, labels)
                 metrics.save_value("accuracy", acc)
                 metrics.save_value("loss", mean_loss)
@@ -152,7 +182,11 @@ def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, 
                 os.makedirs(opts.checkpoint_path)
             filename = f"{opts.model}_{opts.data}_{epoch}.pt"
             save_path = os.path.join(opts.checkpoint_path, filename)
-            state = training_model.model.model.state_dict()
+            if opts.mixup_alpha > 0.0:
+                assert isinstance(training_model.model.model, augmentations.MixupModel)
+                state = training_model.model.model.model.state_dict()
+            else:
+                state = training_model.model.model.state_dict()
             optimizer_state = optimizer.state_dict()
             torch.save({
                 'epoch': epoch,
@@ -183,7 +217,7 @@ def create_model_opts(opts):
 def convert_to_ipu_model(model, opts, optimizer):
     model_opts = create_model_opts(opts)
     model_opts = utils.train_settings(opts, model_opts)
-    model_with_loss = TrainingModelWithLoss(model, label_smoothing=opts.label_smoothing)
+    model_with_loss = TrainingModelWithLoss(model, label_smoothing=opts.label_smoothing, mixup_alpha=opts.mixup_alpha)
     training_model = poptorch.trainingModel(model_with_loss, model_opts, optimizer=optimizer)
     return training_model
 
@@ -222,8 +256,13 @@ def get_optimizer(opts, model):
 
 
 def get_validation_function(opts, model):
-    if run_opts.validation_mode == "none":
+    if opts.validation_mode == "none":
         return None
+
+    if opts.mixup_alpha > 0.0:
+        assert isinstance(model, augmentations.MixupModel)
+        model = model.model
+
     inference_model_opts = create_validation_opts(opts)
     test_data = datasets.get_data(opts, inference_model_opts, train=False, async_dataloader=True, return_remaining=True)
     inference_model = poptorch.inferenceModel(model, inference_model_opts)
@@ -263,7 +302,7 @@ if __name__ == '__main__':
     train_data = datasets.get_data(run_opts, model_opts, train=True, async_dataloader=True)
 
     logging.info("Initialize the model")
-    model = models.get_model(run_opts, datasets.datasets_info[run_opts.data], pretrained=False)
+    model = models.get_model(run_opts, datasets.datasets_info[run_opts.data], pretrained=False, mixup=run_opts.mixup_alpha > 0.0)
     model.train()
 
     optimizer = get_optimizer(run_opts, model)

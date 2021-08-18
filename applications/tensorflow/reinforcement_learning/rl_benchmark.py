@@ -21,14 +21,6 @@ from tensorflow.python.ipu.optimizers import GradientAccumulationOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope
 from tensorflow.keras.layers import Dense
 
-try:
-    from gcprofile import save_tf_report
-    use_poplar_text_report = False
-except ImportError:
-    use_poplar_text_report = True
-    report_dest = 'profile_data'
-    warnings.warn('Could not import gcprofile, falling back to text reports.', ImportWarning)
-
 
 # Hyper-parameters
 DTYPE = np.float16
@@ -159,7 +151,7 @@ def build_train_op(previous_loss, *infeed_data):
         return previous_loss + loss
 
 
-def train(replication_factor, batch_size, batch_per_step, profile, num_iter, time_steps):
+def train(replication_factor, batch_size, batch_per_step, num_iter, time_steps):
     """Launch training."""
 
     # Set up in-feeds for the data
@@ -175,8 +167,7 @@ def train(replication_factor, batch_size, batch_per_step, profile, num_iter, tim
         dataset = tf.data.Dataset.from_generator(data_generator,
                                                  output_types=output_types,
                                                  output_shapes=output_shapes)
-        infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, "InfeedQueue",
-                                                       replication_factor=replication_factor)
+        infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
         data_init = infeed_queue.initializer
 
     # Compile loss op
@@ -185,10 +176,6 @@ def train(replication_factor, batch_size, batch_per_step, profile, num_iter, tim
                                                                build_train_op,
                                                                infeed_queue=infeed_queue,
                                                                inputs=[tf.constant(0.0, dtype=DTYPE)]))
-    # Set up report op optionally.
-    if profile:
-        with tf.device('cpu'):
-            report = gen_ipu_ops.ipu_event_trace()
 
     # Set up session on IPU
     opts = IPUConfig()
@@ -213,20 +200,6 @@ def train(replication_factor, batch_size, batch_per_step, profile, num_iter, tim
         sess.run(total_loss)
         t1 = time.perf_counter()
 
-        if profile:
-            raw_reports = sess.run(report)
-            if use_poplar_text_report:
-                # extract the report
-                rep = utils.extract_all_strings_from_event_trace(raw_reports)
-                print("Writing profiling report to %s" % report_dest)
-                with open(report_dest, "w") as f:
-                    f.write(rep)
-            else:
-                os.makedirs('profile_rl', exist_ok=True)
-                save_tf_report(raw_reports, log_dir='profile_rl')
-                print("Writing profiling report to profile_rl")
-            break
-
         if iters > skip_iterations:
             total_time += (t1 - t0)
             total_samples += (batch_size * batch_per_step * replication_factor)
@@ -246,8 +219,6 @@ if __name__ == '__main__':
                         action='store_true', help="Flag that turns on gradient accumulation.")
     parser.add_argument('--num_mini_batches', type=int, default=128,
                         help="Number of batches to accumulate gradients over, if accumulate_grad flag is on")
-    parser.add_argument('--profile', default=False, dest='profile', action='store_true',
-                        help='Collect profiling information.')
     parser.add_argument('--data', dest="data", type=str, default="generated",
                         help="Run inference on generated data (transfer images host -> device) "
                              "or using on-device synthetic data",
@@ -259,4 +230,4 @@ if __name__ == '__main__':
             os.environ["TF_POPLAR_FLAGS"] += syn_flags
         else:
             os.environ["TF_POPLAR_FLAGS"] = syn_flags
-    train(args.num_ipus, args.batch_size, args.batch_per_step, args.profile, args.num_iter, args.time_steps)
+    train(args.num_ipus, args.batch_size, args.batch_per_step, args.num_iter, args.time_steps)

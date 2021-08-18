@@ -18,7 +18,7 @@
 #include <popart/opidentifier.hpp>
 #include <popart/tensornames.hpp>
 #include <popart/op/slice.hpp>
-#include <popart/op/add.hpp>
+#include <popart/op/collectives/replicatedreducescatter.hpp>
 #include <popart/op/sum.hpp>
 #include <popart/op/lamb.hpp>
 #include <popart/op/adamvarupdate.hpp>
@@ -30,23 +30,38 @@
 //
 //   Slice(W)        U_sliced    }
 //     | (R1)           | (R2)   }
+//   ReduceScatter      |        }   (Optional, to support RTS)
+//     |                |        }
 //   LambSquare     LambSquare   }   x N
+//       |              |        }
+//     AllReduce   AllReduce     }   (Optional, to support RTS)
 //           \      /            }
 //         AdamVarUpdate         }
 // Into:
 //
 //   Slice(W)        U_sliced    }
 //     |                |        }
+//   ReduceScatter      |        }   (Optional, to support RTS)
+//     |                |        }
 //   LambSquare     LambSquare   }   x N
 //     |                |        }
 //     Sum             Sum
-//        \            /         
+//        \            /
+//     AllReduce   AllReduce     }   (Optional, to support RTS)
+//           \      /            }
 //        AdamVarUpdate          }   x N
-// 
-// A key property of LambSquare is that the output has not been sqrt yet, so it is valid
-// to just Sum the outputs.
+//
+// A key property of LambSquare is that the output has not been sqrt yet, so it
+// is valid to just Sum the outputs.
 
 namespace {
+
+popart::Tensor* maybe_traverse_reduce_scatter(popart::Tensor *t) {
+    if (t->hasProducer() &&  t->getProducer()->isConvertibleTo<popart::ReplicatedReduceScatterOp>()) {
+        return t->getProducer()->inTensor(popart::ReplicatedReduceScatterOp::getInIndex());
+    }
+    return t;
+}
 
 bool produced_by_slice(popart::Tensor *t) {
     return t->hasProducer() && t->getProducer()->isConvertibleTo<popart::BaseSliceOp>();
@@ -77,9 +92,12 @@ public:
 
         auto lambsq = dynamic_cast<popart::LambSquareOp *>(op);
         if (lambsq) {
-            bool only_a_slice = produced_by_slice(lambsq->inTensor(popart::LambSquareOp::getInIndex()));
-            // Check we haven't already applied the pattern.
-            return only_a_slice && !consumed_by_add(lambsq->outTensor(popart::LambSquareOp::getOutIndex()));
+          auto w_slice = maybe_traverse_reduce_scatter(
+              lambsq->inTensor(popart::LambSquareOp::getInIndex()));
+          bool only_a_slice = produced_by_slice(w_slice);
+          // Check we haven't already applied the pattern.
+          return only_a_slice && !consumed_by_add(lambsq->outTensor(
+                                     popart::LambSquareOp::getOutIndex()));
         }
         return false;
     }
@@ -119,13 +137,14 @@ public:
         //  3. Insert a SumOp between the consumers of LambSquareOp->outTensor(0) and their consumers
 
         // (1)
-        auto root_weight = get_variable(op->inTensor(popart::LambSquareOp::getInIndex()));
+        auto root_weight = get_variable(maybe_traverse_reduce_scatter(
+            op->inTensor(popart::LambSquareOp::getInIndex())));
         // (2)
         auto r1_lamb_ops = find_all_consumers<popart::LambSquareOp, popart::ExecutionContext::AccumulateOuterFragment>(root_weight);
 
         // Only Sum if there is more than one Op
         if (r1_lamb_ops.size() <= 1) {
-            return true;
+            return false;
         }
 
         std::vector<popart::TensorId> r1_inputs(r1_lamb_ops.size());
@@ -147,15 +166,19 @@ public:
         for (auto lamb_op : r1_lamb_ops) {
             auto tensor_to_replace = lamb_op->outTensor(popart::LambSquareOp::getOutIndex());
             for (auto cons : tensor_to_replace->consumers.getOps()) {
-                if (cons->id != r1_sum->id) {
-                    for (auto in_index : cons->input->indices(tensor_to_replace)) {
-                        cons->disconnectInTensor(tensor_to_replace);
-                        cons->connectInTensor(in_index, r1_output);
-                    }
-                    if (cons->isConvertibleTo<popart::AdamVarUpdateOp>()) {
-                        var_updates_to_search_for_r2.push_back(cons);
-                    }
+              if (cons->id != r1_sum->id) {
+                auto update = search_consumers_for<
+                    popart::AdamVarUpdateOp,
+                    popart::ExecutionContext::AccumulateOuterFragment>(
+                    tensor_to_replace);
+                for (auto in_index : cons->input->indices(tensor_to_replace)) {
+                  cons->disconnectInTensor(tensor_to_replace);
+                  cons->connectInTensor(in_index, r1_output);
                 }
+                if (update) {
+                  var_updates_to_search_for_r2.push_back(update);
+                }
+              }
             }
         }
 

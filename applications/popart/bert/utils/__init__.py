@@ -305,6 +305,8 @@ def parse_bert_args(args_string=None):
                        help="Path to Tensorflow Checkpoint to initialise the model.")
     group.add_argument("--onnx-checkpoint", type=str,
                        help="Path to .onnx file created by this application to initialise the model.")
+    group.add_argument("--wandb-checkpoint", type=str,
+                       help="Weights and Biases model artifact path. Should contain a model.onnx file to load.")
 
     group = parser.add_argument_group("Data Config")
     group.add_argument("--input-files", type=str, nargs="*", default = [],
@@ -439,6 +441,8 @@ def parse_bert_args(args_string=None):
                        help="Save weight and optimizer state initializers external to the model.onnx file.")
     group.add_argument("--wandb", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Enable logging to Weights and Biases.")
+    group.add_argument("--wandb-save-checkpoints", type=str,
+                       help="Save the checkpoint directory as an artifact under this name in Weights and Biases.")
     group.add_argument("--log-level", type=str, default='INFO',
                        choices=['NOTSET', 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'],
                        help="Set the logging level")
@@ -456,13 +460,6 @@ def parse_bert_args(args_string=None):
                        help="Set the seconds to wait for an ondemand device to become before available before exiting.")
     group.add_argument("--use-ipu-model", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Target the IPU Model.")
-
-    group = parser.add_argument_group("Distribution Config")
-    group.add_argument("--mpi-distributed", type=str_to_bool, nargs="?", const=True, default=False,
-                       help="Enable distributed training with MPI backend. Distributed training with MPI is currently in preview."
-                       "Full support for distributed training will be coming in a future release.")
-    group.add_argument("--mpi-rank", type=int, default=0, help="Input the MPI rank of this process. This value will be overwritten by the rank determined by the MPI controller")
-    group.add_argument("--mpi-size", type=int, default=1, help="Input the MPI size. This value will be overwritten by the size determined by the MPI controller")
 
     # This is here only for the help message
     group.add_argument("--config", type=str,
@@ -490,6 +487,8 @@ def parse_bert_args(args_string=None):
 
     set_batch_arguments(args)
 
+    args.sdk_version = get_sdk_version()
+
     # Invalidate incompatible options
     if args.no_drop_remainder and args.task != "SQUAD":
         raise RuntimeError(f"--no-drop-remainder is only compatible with SQUAD and not with {args.task}, aborting")
@@ -511,7 +510,6 @@ def parse_bert_args(args_string=None):
     args.checkpoint_dir = os.path.join(args.checkpoint_dir,
                                        datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S"))
     os.makedirs(args.checkpoint_dir, exist_ok=True)
-    save_args(args)
     return args
 
 
@@ -579,13 +577,6 @@ def clean_exclusive_presets(parser, preset, remaining_argv):
             remove_mutually_exclusive_clashes(group, preset, cmd_arg)
 
 
-def save_args(args):
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
-    config_path = os.path.join(args.checkpoint_dir, "config.json")
-    with open(config_path, "w") as f:
-        json.dump(vars(args), f, indent=2)
-
-
 def get_validation_args(args):
     validation_kwargs = dict(
         inference=True,
@@ -634,3 +625,10 @@ def set_popdist_args(args):
 
     from mpi4py import MPI
     setup_comm(MPI.COMM_WORLD)
+
+
+def get_sdk_version():
+    sdk_path = os.environ.get("POPLAR_SDK_ENABLED", None)
+    if sdk_path:
+        return os.path.split(os.path.split(sdk_path)[0])[1]
+    return "Unknown"

@@ -12,7 +12,6 @@
    "use_attention_projection_bias": false,
    "use_cls_layer": false,
    "use_qkv_bias": false,
-   "use_qkv_split": true,
 
    "pipeline_stages": [
       ["emb", "pos","hid","hid","hid"],
@@ -33,7 +32,7 @@
    "lr_schedule": "polynomial_decay",
    "base_learning_rate": 0.006,
    "warmup": 2000,
-   "loss_scaling": 2048,
+   "loss_scaling_by_step": {"0": 4096, "1500": 1024},
    "optimizer": "lamb",
    "weight_decay_rate": 0.01,
    "gradient_accumulation_count": 2050,
@@ -48,7 +47,7 @@
    "fp_exceptions": false,
    "matmul_serialize_factor": 5,
    "steps_per_tensorboard": -1,
-   "steps_per_ckpts": 100,
+   "steps_per_ckpts": 1000,
    "steps_per_logs": 1,
    "duplicate_factor":5,
 

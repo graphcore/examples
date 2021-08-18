@@ -14,17 +14,17 @@ Pillow==8.0.1
 pyparsing==2.4.7
 python-dateutil==2.8.1
 pytz==2020.4
-requests==2.24.0
+requests==2.26.0
 scipy==1.5.4
 seaborn==0.11.0
 statsmodels==0.12.1
 tensorflow-probability==0.7.0
 tqdm==4.51.0
-urllib3==1.25.11
+urllib3==1.26.6
 
 # For machinable
 pendulum==2.1.2
-PyYAML==5.3.1
+PyYAML==5.4.1
 fs==2.4.11
 fs-s3fs==1.1.1
 python-baseconv==1.2.2

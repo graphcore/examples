@@ -50,7 +50,7 @@ flags.DEFINE_integer(
     "num_ipus", 8, "Number of IPUs to be used. One IPU runs one compute process and processes a fraction of the batch of samples.")
 flags.DEFINE_string("data_dir", "datasets/",
                     "Parent directory containing subdirectory dataset(s). The number of sub directories should equal num_ipus")
-flags.DEFINE_integer("num_workers", 12, "Number of threads per dataloader. There is one dataloader per IPU.")
+flags.DEFINE_integer("num_workers", 4, "Number of threads per dataloader. There is one dataloader per IPU.")
 flags.DEFINE_integer("batches_per_step", 1500,
                      "Number of batches to fetch on the host ready for streaming onto the device, reducing host IO")
 flags.DEFINE_string("model_name", "resnext101_32x4d",

@@ -23,7 +23,7 @@ python bert.py --config configs/mk2/pretrain_large_128.json --input-files=$DATAS
 
 Command:
 ```console
-python bert.py --config configs/mk2/pretrain_large_128.json --input-files=$DATASETS_DIR/wikipedia/AA/sequence_128/wiki_*_tokenised --replication 16 --loss-scaling 4096 --wandb
+python bert.py --config configs/mk2/pretrain_large_128_POD64.json --input-files=$DATASETS_DIR/wikipedia/AA/sequence_128/wiki_*_tokenised --replication 16 --wandb
 ```
 
 ### BERT-Large Phase 2 Pre-training Sequence length 384

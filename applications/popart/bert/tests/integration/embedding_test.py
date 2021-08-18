@@ -95,7 +95,7 @@ def run_embedding_layer(args):
         static_data = {}
         if args.low_latency_inference and args.task == "SQUAD":
             stepio = create_callback_stepio(static_data, anchors, start_times, end_times,
-                                            dataset.batches_per_step)
+                                            dataset.batches_per_step, args.replication_factor)
         else:
             stepio = None
 

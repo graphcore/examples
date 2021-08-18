@@ -126,7 +126,7 @@ resnext_inference_launch.py:
     (default: '8')
     (an integer)
   --num_workers: Number of threads per dataloader. There is one dataloader per IPU.
-    (default: '12')
+    (default: '4')
     (an integer)
   --[no]synthetic: Use synthetic data created on the IPU.
     (default: 'false')

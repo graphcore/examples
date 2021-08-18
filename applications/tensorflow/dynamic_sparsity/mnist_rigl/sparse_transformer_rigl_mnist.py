@@ -196,9 +196,9 @@ def run_training(opts, transformer, x_train, y_train):
             dataset = dataset.repeat().batch(opts.batch_size, drop_remainder=True)
 
             # Queues for streaming from host to device and back
-            train_infeed = IPUInfeedQueue(dataset, feed_name="train_infeed")
-            train_outfeed = IPUOutfeedQueue(feed_name="train_outfeed")
-            png_outfeed = IPUOutfeedQueue(feed_name="prune_and_grow_outfeed")
+            train_infeed = IPUInfeedQueue(dataset)
+            train_outfeed = IPUOutfeedQueue()
+            png_outfeed = IPUOutfeedQueue()
 
             # Helper function
             def loop_builder(iterations, builder_func, infeed):
@@ -252,8 +252,8 @@ def run_training(opts, transformer, x_train, y_train):
                 num_tokens = transformer.source_sequence_length * batches_per_step * opts.batch_size
                 throughput = num_tokens / dt
                 desc = f"Loss {session_outputs['mean_loss'][-1]:.5f} " \
-                       f"Accuracy {session_outputs['acc'][-1]:.5f} " \
-                       f"Iteration: {session_outputs['iteration'][-1]}"
+                    f"Accuracy {session_outputs['acc'][-1]:.5f} " \
+                    f"Iteration: {session_outputs['iteration'][-1]}"
                 progress.set_description(desc + f" Throughput {throughput:.1f} token/s")
 
                 # Perform pruning (if using RigL the dense grads from session_outputs are used)
@@ -287,8 +287,8 @@ def run_testing(opts, transformer, x_test, y_test):
             # Create dataset and IPU feeds:
             dataset = tf.data.Dataset.from_tensor_slices((place_x, place_y)).cache()
             dataset = dataset.batch(opts.batch_size, drop_remainder=True)
-            test_infeed = IPUInfeedQueue(dataset, feed_name="test_infeed")
-            test_outfeed = IPUOutfeedQueue(feed_name="test_outfeed")
+            test_infeed = IPUInfeedQueue(dataset)
+            test_outfeed = IPUOutfeedQueue()
 
             # Helper function
             def loop_builder(iterations, builder_func, infeed):

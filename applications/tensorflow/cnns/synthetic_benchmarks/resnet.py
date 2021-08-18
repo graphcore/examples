@@ -18,7 +18,7 @@ import tensorflow.compat.v1 as tf
 from tensorflow.python.ipu import utils
 
 # Add model module to path
-models_path = Path(Path(__file__).absolute().parent.parent)
+models_path = Path(Path(__file__).absolute().parent.parent, 'inference')
 sys.path.append(str(models_path))
 from models.resnet import TensorflowResNet  # noqa
 
@@ -118,7 +118,7 @@ if __name__ == '__main__':
               opts.size,
               "Training" if opts.train else "Inference",
               opts.batch_size,
-              opts.batches_per_step if not opts.report else "n/a",
-              opts.steps if not opts.report else "n/a"))
+              opts.batches_per_step,
+              opts.steps))
 
     run(module, opts)

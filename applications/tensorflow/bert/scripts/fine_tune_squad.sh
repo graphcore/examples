@@ -28,10 +28,12 @@ PHASE2_CKPT_FILE="${PHASE2_CKPT_DIR}/ckpt-2098"
 WANDB_NAME="SQuAD $1 fine tuning"
 echo "Using pretrained checkpoint: ${PHASE2_CKPT_FILE}"
 
-if [[ $1 != 'large' ]]; then
-    CONFIG_PATH='configs/squad_large.json'
-else
-    CONFIG_PATH='configs/squad_base.json'
+if [[ $1 == 'large' ]]; then
+	CONFIG_PATH='configs/squad_large.json'
+elif [[ $1 == 'base' ]]; then
+	CONFIG_PATH='configs/squad_base.json'
+else 
+	exit -1
 fi
 
 ./run_squad.py --config "${CONFIG_PATH}" --do-training --do-predict --do-evaluation --init-checkpoint "${PHASE2_CKPT_FILE}" --wandb --wandb-name "${WANDB_NAME}"

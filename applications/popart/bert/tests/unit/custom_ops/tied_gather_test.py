@@ -44,13 +44,9 @@ def model(splits=1):
 
 def session(train=False, skip_execution=False, include_patterns=True, splits=1, outline=False, optim="Sgd"):
     proto, data, x, loss = model(splits=splits)
-    # Required
-    extraPatterns = []
-    if include_patterns:
-        extraPatterns += ["TiedGatherPattern", "TiedGatherAccumulatePattern"]
     patterns = popart.Patterns()
-    for extraPattern in extraPatterns:
-        patterns.enablePattern(extraPattern, True)
+    patterns.enablePattern("TiedGatherPattern", include_patterns)
+    patterns.enablePattern("TiedGatherAccumulatePattern", include_patterns)
 
     user_options = {
         "enableOutlining": outline,
@@ -61,7 +57,9 @@ def session(train=False, skip_execution=False, include_patterns=True, splits=1, 
     if optim == "Lamb":
         optimizer = popart.Adam({
             "defaultLearningRate": (0.1, False),
-            "defaultWeightDecay": (0.01, True),
+            "defaultWeightDecay": (0.1, True),
+            "defaultBeta1": (0.1, True),
+            "defaultBeta2": (0.1, True),
             "lossScaling": (20, True),
         }, mode=popart.AdamMode.LambNoBias)  # NoBias to increase the error of incorrect gradients
         user_options["optimizerStateTensorLocationSettings"] = popart.TensorLocationSettings(

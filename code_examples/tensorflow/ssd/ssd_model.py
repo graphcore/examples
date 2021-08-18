@@ -219,13 +219,13 @@ dataset = tf.data.Dataset \
 # Setup infeed queue
 if BATCHES_PER_STEP > 1:
     with tf.device('cpu'):
-        infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(dataset, feed_name="inference_infeed")
+        infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(dataset)
 else:
     raise NotImplementedError(
         "batches per step == 1 not implemented yet.")
 
 # Setup outfeed
-outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
+outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
 
 
 def ssd_model():

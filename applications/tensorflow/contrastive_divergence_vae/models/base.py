@@ -17,11 +17,6 @@ from utils.run_utils import is_nearest_multiple
 from utils.train_utils import optimiser_configs
 
 try:
-    from gcprofile import save_tf_report
-except ImportError:
-    pass
-
-try:
     from tensorflow.python.ipu.optimizers import CrossReplicaOptimizer
 except ImportError:
     pass
@@ -224,9 +219,7 @@ class BaseModel(object):
             if self.use_infeed:
                 if self.device_config['on_ipu']:
                     infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(
-                        self.experiment.data_sets['train'],
-                        feed_name=f'training_infeed_{np.random.rand()}',   # To avoid same infeed names between runs
-                        replication_factor=self.n_replicas)
+                        self.experiment.data_sets['train'])
                     infeed_queue_init = infeed_queue.initializer
                 elif self.device_config['do_xla']:
                     infeed_queue = (i_tr, X_b_tr, y_b_tr)

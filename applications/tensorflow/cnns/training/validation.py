@@ -92,7 +92,7 @@ class LatencyThread:
             self.latency_sum += latencies.sum()
 
     def get_latency(self):
-        return self.latency_sum/self.total_batches if self.total_batches != 0 else -1
+        return self.latency_sum/self.total_batches if self.total_batches != 0 else -0.001
 
 
 def validation_graph_builder(model, data_dict, opts):
@@ -115,13 +115,10 @@ def validation_graph(model, opts):
         valid_dataset = dataset.data(opts, is_training=False).map(lambda x: {'data_dict': x})
 
         valid_iterator = ipu_infeed_queue.IPUInfeedQueue(valid_dataset,
-                                                         feed_name='validation_feed',
-                                                         replication_factor=opts['replicas']*opts['shards'],
                                                          prefetch_depth=opts['prefetch_depth'])
 
         if opts['latency']:
-            timestamp_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name='timestamp',
-                                                                replication_factor=opts['replicas']*opts['shards'])
+            timestamp_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         with ipu_scope('/device:IPU:0'):
             def comp_fn():
@@ -185,7 +182,6 @@ def validation_graph(model, opts):
                              conv_dithering=opts["enable_conv_dithering"],
                              enable_recomputation=opts["enable_recomputation"],
                              seed=opts["seed"],
-                             profile = opts['profile'],
                              availableMemoryProportion=globalAMP,
                              stable_norm=opts["stable_norm"],
                              compile_only=opts["compile_only"],
@@ -221,7 +217,7 @@ def validation_graph(model, opts):
 
     valid_graph.finalize()
 
-    return train.GraphOps(valid_graph, valid_sess, valid_init, ops, placeholders, valid_iterator, None, valid_saver, None)
+    return train.GraphOps(valid_graph, valid_sess, valid_init, ops, placeholders, valid_iterator, None, valid_saver)
 
 
 def validation_run(valid, filepath, i, epoch, first_run, opts, latency_thread):

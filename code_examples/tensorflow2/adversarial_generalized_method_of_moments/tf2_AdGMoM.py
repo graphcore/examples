@@ -485,7 +485,7 @@ def get_conf(parser, print_model_conf=True):
     conf = parser.parse_args()
 
     with open(conf.model_conf_yaml, "r") as f:
-        model_conf = yaml.load(f)
+        model_conf = yaml.safe_load(f)
     for k in model_conf.keys():
         setattr(conf, k, model_conf[k])
 
@@ -498,13 +498,6 @@ def get_conf(parser, print_model_conf=True):
     conf.learning_rate_critic_gradient = tf.constant(
         conf.learning_rate_critic_gradient,
         name="learning_rate_critic_gradient")
-
-    if conf.l1_regularization:
-        conf.l1_regularization = tf.constant(conf.l1_regularization,
-                                             name="l1_regularization")
-    if conf.l2_regularization:
-        conf.l2_regularization = tf.constant(conf.l2_regularization,
-                                             name="l2_regularization")
 
     if print_model_conf:
         logger.info("Model configuration params:")
@@ -541,17 +534,12 @@ def configure_ipu(conf):
 
         if not conf.dry_run:
             # Configure the IPU system
-            cfg = ipu.utils.create_ipu_config(
-                profiling=conf.gen_report, use_poplar_text_report=False,
-                profile_execution=conf.gen_report,
-                enable_poplar_serialized_graph=conf.gen_report,
-                report_directory="./reports",
-                max_report_size=9474542850 if conf.gen_report else 0
-            )
-            cfg = ipu.utils.auto_select_ipus(cfg, conf.replication_factor)
-            cfg = ipu.utils.set_matmul_options(cfg, matmul_options={
-                "availableMemoryProportion": conf.availableMemoryProportion})
-            ipu.utils.configure_ipu_system(cfg)
+            cfg = ipu.config.IPUConfig()
+            cfg.auto_select_ipus = conf.replication_factor
+            cfg.matmuls.poplar_options = {
+                'availableMemoryProportion': conf.availableMemoryProportion
+            }
+            cfg.configure_ipu_system()
 
     return
 
@@ -640,7 +628,7 @@ if __name__ == "__main__":
         # train the model
         if conf.use_ipu:
             for loop_ind in range(conf.n_steps // conf.iterations_per_loop + 1):
-                loss = strategy.experimental_run_v2(
+                loss = strategy.run(
                     training_loop, args=[keras_modeler, critic])
 
                 # repetition does not benefit report

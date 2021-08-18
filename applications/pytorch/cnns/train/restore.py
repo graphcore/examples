@@ -1,7 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import argparse
 import torch
-import poptorch
 from train import train, convert_to_ipu_model, get_validation_function
 from validate import validate_checkpoints
 import os
@@ -12,6 +11,8 @@ sys.path.append('..')
 import models
 import utils
 import datasets
+import datasets.augmentations as augmentations
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Restoring training run from a given checkpoint')
@@ -28,6 +29,8 @@ if __name__ == '__main__':
     logging.info(f"Restore the {opts.model} model to epoch {checkpoint['epoch']} on {opts.data} dataset(Loss:{checkpoint['loss']}, train accuracy:{checkpoint['train_accuracy']})")
     model = models.get_model(opts, datasets.datasets_info[opts.data], pretrained=False)
     model.load_state_dict(checkpoint['model_state_dict'])
+    if opts.mixup_alpha > 0.0:
+        model = augmentations.MixupModel(model)
     model.train()
 
     optimizer = get_optimizer(opts, model)

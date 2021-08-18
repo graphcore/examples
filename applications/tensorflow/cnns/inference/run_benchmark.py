@@ -27,14 +27,6 @@ import numpy as np
 import tensorflow.compat.v1 as tf
 import yaml
 
-try:
-    from gcprofile import save_tf_report
-
-    report_mode = 'gcprofile'
-except ImportError:
-    report_mode = 'text'
-    warnings.warn('Could not import gc_profile, falling back to text reports.', ImportWarning)
-
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu import ipu_infeed_queue, ipu_outfeed_queue
@@ -56,48 +48,6 @@ logging.basicConfig(format='%(asctime)s %(module)s - %(funcName)s: %(message)s',
 logging.getLogger().setLevel(logging.DEBUG)
 
 tf.logging.set_verbosity("INFO")
-
-
-def get_report(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation, outfeed_op: tf.Operation,
-               report_dest: str, available_memory_proportion: Optional[float] = 0.6) -> None:
-    """Generate report from running model on IPU and save to disk.
-
-    Args:
-        loop_op: Inference op to generate report on.
-        infeed_queue_initializer: Initializer for the infeed queue
-        outfeed_op: Outfeed operator.
-        report_dest: Location to store report.
-        available_memory_proportion: Proportion of tile memory available as temporary memory
-        for matmul and convolution execution
-
-    """
-    # Set compile and device options
-    use_poplar_text_report = report_mode == 'text'
-    opts = IPUConfig()
-    opts.matmuls.poplar_options = {'availableMemoryProportion': str(
-        available_memory_proportion)}
-    opts.convolutions.poplar_options = {'availableMemoryProportion': str(
-        available_memory_proportion)}
-    opts.auto_select_ipus = [1]
-    opts.configure_ipu_system()
-
-    with tf.device('cpu'):
-        report = gen_ipu_ops.ipu_event_trace()
-
-    run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
-    session = tf.Session()
-    session.run(infeed_queue_initializer)
-    session.run(loop_op, options=run_options)
-    session.run(outfeed_op, options=run_options)
-    out = session.run(report)
-    if report_mode == 'text':
-        # extract the report
-        rep = ipu_utils.extract_all_strings_from_event_trace(out)
-        logging.info("Writing profiling report to %s" % report_dest)
-        with open(report_dest, "w") as f:
-            f.write(rep)
-    else:
-        save_tf_report(out)
 
 
 def run_inference(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation, outfeed_op: tf.Operation,
@@ -259,12 +209,8 @@ def construct_graph(network_class: Type[InferenceNetwork],
                           img_height=config_dict["input_shape"][0], dtype=config_dict['dtype'])
 
     # Set up graph on device, connect infeed and outfeed to the graph.
-    num_replicas = num_ipus if mode == 'replicated' else 1
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, device_ordinal=0, feed_name="infeed",
-                                                   replication_factor=num_replicas)
-    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(device_ordinal=0, feed_name="outfeed",
-                                                      outfeed_mode=ipu_outfeed_queue.IPUOutfeedMode.ALL,
-                                                      replication_factor=num_replicas)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
     def comp_fn():
         def body(img):
@@ -294,7 +240,7 @@ def construct_graph(network_class: Type[InferenceNetwork],
 
 def main(model_arch: str, images: List, batch_size: int,
          batches_per_step: int, loop: bool, num_iterations: int, num_ipus: int, mode: str, data: str,
-         available_memory_proportion: float, gen_report: bool, save_graph_pb: bool, use_ipu_model: bool) -> None:
+         available_memory_proportion: float, save_graph_pb: bool, use_ipu_model: bool) -> None:
     """Run inference on chosen model.
 
     Args:
@@ -309,7 +255,6 @@ def main(model_arch: str, images: List, batch_size: int,
         data: Run on real data (transfer images host -> device) or using on-device synthetic data
         available_memory_proportion: Proportion of tile memory available as
          temporary memory for matmul and convolution execution
-        gen_report: Generate a report after 1 iteration.
         save_graph_pb: If true, export frozen graph to event file to view in Tensorboard
         use_ipu_model: Run code with a CPU based IPU simulator.
 
@@ -352,14 +297,10 @@ def main(model_arch: str, images: List, batch_size: int,
                                                               model_cls.preprocess_method(), num_ipus,
                                                               mode, save_graph_pb)
     # Run on model or device
-    if gen_report:
-        get_report(loop_op, infeed_initializer, outfeed_op, f"{config.stem}_report.txt",
-                   available_memory_proportion=available_memory_proportion)
-    else:
-        ground_truth = tuple([Path(filename).stem for filename in images])
-        run_inference(loop_op, infeed_initializer, outfeed_op, batch_size, batches_per_step, config.stem,
-                      model_cls.decode_method(), ground_truth, num_iterations, num_ipus, mode, data,
-                      available_memory_proportion=available_memory_proportion)
+    ground_truth = tuple([Path(filename).stem for filename in images])
+    run_inference(loop_op, infeed_initializer, outfeed_op, batch_size, batches_per_step, config.stem,
+                  model_cls.decode_method(), ground_truth, num_iterations, num_ipus, mode, data,
+                  available_memory_proportion=available_memory_proportion)
 
 
 if __name__ == "__main__":
@@ -394,7 +335,6 @@ if __name__ == "__main__":
     parser.add_argument('--available-mem-prop', dest='available_mem_prop', type=float, default=None,
                         help="Float between 0.05 and 1.0: Proportion of tile memory available as temporary " +
                              "memory for matmul and convolutions execution (default:0.6 and 0.2 for Mobilenetv2)")
-    parser.add_argument('--gc-profile', dest='gen_report', action='store_true', help="Generate report.")
     parser.add_argument('--save-graph-pb', dest='save_graph_pb', type=bool, default=False,
                         help="Export frozen graph to event file to view in Tensorboard")
 
@@ -429,4 +369,4 @@ if __name__ == "__main__":
 
     main(args.model_arch, image_filenames, args.batch_size, args.batches_per_step, args.loop,
          args.num_iterations, args.num_ipus, args.mode, args.data, args.available_mem_prop,
-         args.gen_report, args.save_graph_pb, args.use_ipu_model)
+         args.save_graph_pb, args.use_ipu_model)

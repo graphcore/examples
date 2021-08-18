@@ -156,6 +156,13 @@ def test_loss_function(label_smoothing):
     assert torch.allclose(ground_truth, loss, atol=1e-05)
 
 
+@pytest.mark.category3
+@pytest.mark.ipus(1)
+def test_mixup():
+    gc.collect()
+    run_script("train.py", f"--mixup-alpha 0.1 --data generated --model resnet18 --epoch 1 --validation-mode none --optimizer sgd_combined --batch-size 3 --dataloader-worker 1 --seed 0")
+
+
 class TestSynthetic:
     @pytest.mark.category3
     @pytest.mark.ipus(2)
@@ -198,6 +205,7 @@ class TestTrainCIFAR10:
         assert acc > 15.0
 
 
+    @pytest.mark.skip(reason="T42276")
     @pytest.mark.category3
     @pytest.mark.ipus(2)
     def test_efficient_net(self):
@@ -280,6 +288,25 @@ class TestRestoreCheckpoint:
         assert acc1 > 15
         assert acc1 == acc2
         shutil.rmtree(os.path.join(script_dir, "restore_test_path_weight_avg"))
+
+    @pytest.mark.category3
+    @pytest.mark.ipus(1)
+    def test_mixup_validation_weight_avg(self):
+        # Only make sure that checkpoint loading works with mixup model wrapper.
+        gc.collect()
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        run_script("train.py", f"--mixup-alpha 0.1 --data generated --checkpoint-path test_mixup_validation_weight_avg --weight-avg-strategy exponential --weight-avg-exp-decay 0.97 --model resnet18 --epoch 2 --validation-mode after --optimizer sgd_combined --batch-size 3 --dataloader-worker 1 --seed 0")
+        shutil.rmtree(os.path.join(script_dir, "test_mixup_validation_weight_avg"))
+
+    @pytest.mark.category3
+    @pytest.mark.ipus(1)
+    def test_mixup_restore_train(self):
+        # Only make sure that checkpoint loading works with mixup model wrapper.
+        gc.collect()
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        run_script("train.py", f"--mixup-alpha 0.1 --data generated --checkpoint-path test_mixup_restore_train --model resnet18 --epoch 2 --validation-mode none --optimizer sgd_combined --batch-size 3 --dataloader-worker 1 --seed 0")
+        run_script("restore.py", "--checkpoint-path test_mixup_restore_train/resnet18_generated_1.pt")
+        shutil.rmtree(os.path.join(script_dir, "test_mixup_restore_train"))
 
 
 class TestPopDist:

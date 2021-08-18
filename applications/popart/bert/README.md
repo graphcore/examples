@@ -78,10 +78,11 @@ virtualenv venv -p python3.6
 source venv/bin/activate
 pip install -r requirements.txt
 pip install <path to the tensorflow-1 wheel from the Poplar SDK>
+pip install --no-cache-dir <path to the horovod wheel from the Poplar SDK>
 ```
 
 Note: TensorFlow is required by `bert_tf_loader.py`. You can use the Graphcore TensorFlow version, or the standard TensorFlow version.
-
+Note: Horovod is required to run on IPU-POD128 and larger systems, or if you wish to run all of the tests. You can safely skip if you are targeting IPU-POD16 or IPU-POD64. 
 
 ### Generate pre-training data (small sample)
 

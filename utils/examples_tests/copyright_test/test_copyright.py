@@ -13,17 +13,23 @@ C_FILE_EXTS = ['c', 'cpp', 'C', 'cxx', 'c++', 'h', 'hpp']
 
 
 EXCLUDED = ['applications/tensorflow/cnns/training/Datasets/imagenet_preprocessing.py',
-            'applications/tensorflow/cnns/inference/ssd/bounding_box_utils/bounding_box_utils.py',
-            'applications/tensorflow/cnns/inference/ssd/keras_layers/keras_layer_DecodeDetections.py',
-            'applications/tensorflow/cnns/inference/ssd/keras_layers/keras_layer_L2Normalization.py',
-            'applications/tensorflow/cnns/inference/ssd/keras_layers/keras_layer_AnchorBoxes.py',
-            'applications/tensorflow/cnns/models/optimize_for_infer.py',
+            'code_examples/tensorflow/cnns/inference/models/optimize_for_infer.py',
             'applications/popart/bert/bert_data/tokenization.py',
             'applications/popart/bert/bert_data/squad_utils.py',
             'applications/popart/bert/bert_data/create_pretraining_data.py',
             'applications/popart/bert/tests/torch_bert.py',
             'applications/tensorflow/click_through_rate/common/Dice.py',
-            'code_examples/tensorflow/cosmoflow/models/resnet.py']
+            'code_examples/tensorflow/ssd/bounding_box_utils/bounding_box_utils.py',
+            'code_examples/tensorflow/ssd/keras_layers/keras_layer_DecodeDetections.py',
+            'code_examples/tensorflow/ssd/keras_layers/keras_layer_L2Normalization.py',
+            'code_examples/tensorflow/ssd/keras_layers/keras_layer_AnchorBoxes.py',
+            'code_examples/tensorflow/cosmoflow/models/resnet.py',
+            'applications/tensorflow/detection/yolov3/tests/original_model/backbone.py',
+            'applications/tensorflow/detection/yolov3/tests/original_model/__init__.py',
+            'applications/tensorflow/detection/yolov3/tests/original_model/common.py',
+            'applications/tensorflow/detection/yolov3/tests/original_model/config.py',
+            'applications/tensorflow/detection/yolov3/tests/original_model/yolov3.py'
+            ]
 
 
 def check_file(path, language, amend):
@@ -33,14 +39,16 @@ def check_file(path, language, amend):
     empty_file = False
     with open(path, "r") as f:
         first_line = f.readline()
-        # if the first line is encoding, then read the second line
-        if first_line.startswith("{} coding=utf-8".format(comment)):
-            first_line = f.readline()
 
         if first_line == '':
             empty_file = True
 
         if language == "python" and first_line.startswith("#!"):
+            first_line_index += 1
+            first_line = f.readline()
+
+        # if the line is encoding, then skip line
+        if first_line.startswith("{} coding=utf-8".format(comment)):
             first_line_index += 1
             first_line = f.readline()
 

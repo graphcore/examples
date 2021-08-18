@@ -1,3 +1,4 @@
 build
 *.gp
 *.poplar.exe
+!images/example.png

@@ -56,8 +56,6 @@ def parse_args():
     # Override IPU settings
     add_arg('--iterations-per-loop', type=int, help="Overide number of iterations (batches) per loop on IPU.")
     add_arg('--num-ipus', type=int, help="Overide number of IPUs for replication.")
-    add_arg('--profiling', action="store_true", default=False,
-            help="Perform gc-profile. If not specified, then profiler is turned off")
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--use-estimator', action="store_true", default=False,
                        help="Use IPUEstimator. If not specified, then tf.session with in/out feeds are used")
@@ -117,8 +115,6 @@ def load_config(args):
         config['ipu_config']['iterations_per_loop'] = args.iterations_per_loop
     if args.num_ipus is not None:
         config['ipu_config']['num_ipus'] = args.num_ipus
-    if args.profiling:
-        config['ipu_config']['profiling'] = args.profiling
 
     # Hyperparameters
     if args.conv_size is not None:
@@ -167,14 +163,10 @@ def get_ipu_options(cosmoflow_config):
 
     if cosmoflow_config['ipu_config']['num_ipus'] > 1:
         ipu_options = ipu.utils.create_ipu_config(
-            profiling=cosmoflow_config['ipu_config']['profiling'],
-            profile_execution=cosmoflow_config['ipu_config']['profiling'],
             use_poplar_text_report=False,
         )
     else:
         ipu_options = ipu.utils.create_ipu_config(
-            profiling=cosmoflow_config['ipu_config']['profiling'],
-            profile_execution=cosmoflow_config['ipu_config']['profiling'],
             use_poplar_text_report=False,
         )
 
@@ -249,17 +241,6 @@ def get_input_fn(data_config):
     return datasets["train_dataset"]
 
 
-class ProfilerHook(tf.train.SessionRunHook):
-    def begin(self):
-        from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-        self._report = gen_ipu_ops.ipu_event_trace()
-
-    def end(self, session):
-        raw_reports = session.run(self._report)
-        from gcprofile import save_tf_report
-        save_tf_report(raw_reports)
-
-
 class PerformanceHook(tf.train.StepCounterHook):
     def __init__(self, perf_fp, every_n_steps, batch_size):
         self.perf_fp = perf_fp
@@ -303,9 +284,6 @@ def train_with_ipu_estimator(input_fn, cosmoflow_config):
     perf_fp = os.path.join(cosmoflow_config['output_dir'], 'estimator_throughput.txt')
     effective_bs = data_config["batch_size"] * cosmoflow_config['ipu_config']['num_ipus']
     hooks = [PerformanceHook(perf_fp=perf_fp, every_n_steps=1, batch_size=effective_bs)]
-
-    if cosmoflow_config['ipu_config']['profiling']:
-        hooks = hooks.append(ProfilerHook())
 
     # remember that effective batch-size is batch-size X num_ipus
     num_steps = ((data_config["n_epochs"] * data_config["n_train"]) // effective_bs)
@@ -384,13 +362,6 @@ def train_with_session(input_fn, cosmoflow_config):
                  (data_config["batch_size"] * cosmoflow_config['ipu_config']['num_ipus'] *
                   cosmoflow_config['ipu_config']['iterations_per_loop']))
 
-
-    if cosmoflow_config['ipu_config']['profiling']:
-        with tf.device('cpu'):
-            from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-            # Event trace
-            trace = gen_ipu_ops.ipu_event_trace()
-
     with tf.Session() as sess:
         sess.run(infeed_queue.initializer)
         sess.run(tf.global_variables_initializer())
@@ -399,10 +370,6 @@ def train_with_session(input_fn, cosmoflow_config):
         print("Compiling and Warmup...")
         start = time.time()
         sess.run(res)
-        if cosmoflow_config['ipu_config']['profiling']:
-            report = sess.run(trace)
-            from gcprofile import save_tf_report
-            save_tf_report(report)
         duration = time.time() - start
         print("Duration: {:.3f} seconds\n".format(duration))
         print("Executing...")

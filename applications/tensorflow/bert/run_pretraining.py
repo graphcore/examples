@@ -289,11 +289,9 @@ def build_graph(opts, is_training=True, feed_name=None):
         loss_scaling = placeholders['loss_scaling']
 
         # define input, datasets must be defined outside the ipu device scope.
-        train_iterator = ipu.ipu_infeed_queue.IPUInfeedQueue(data_loader.load(opts, is_training=is_training),
-                                                             feed_name=feed_name+"_in", replication_factor=opts['replicas'])
+        train_iterator = ipu.ipu_infeed_queue.IPUInfeedQueue(data_loader.load(opts, is_training=is_training))
         # define output
-        outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue(
-            feed_name=feed_name+"_out", replication_factor=opts['replicas'])
+        outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
 
         # building networks with pipeline
         def bert_net():

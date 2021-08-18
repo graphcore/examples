@@ -14,7 +14,7 @@ def inference_settings(opts, model_opts):
     model_opts.Precision.setPartialsType(partial_type)
     # Use the faster GroupNorm implementation or compatible version.
     model_opts._Popart.set("groupNormStridedChannelGrouping", opts.enable_fast_groupnorm)
-
+    engine_options = {}
     if opts.profile:
         engine_options = {
                 "debug.allowOutOfMemory": "true",
@@ -22,7 +22,8 @@ def inference_settings(opts, model_opts):
                 "profiler.format": "v3",
                 "autoReport.all": "true",
         }
-        model_opts._Popart.set("engineOptions", engine_options)
+        engine_options["opt.internalExchangeOptimisationTarget"] = opts.exchange_memory_target
+    model_opts._Popart.set("engineOptions", engine_options)
     return model_opts
 
 
@@ -35,7 +36,7 @@ def train_settings(opts, model_opts):
         model_opts._Popart.set("enableFloatingPointChecks", True)
 
     if opts.enable_recompute and len(opts.pipeline_splits) == 0:
-            model_opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
+        model_opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
 
     if opts.offload_optimizer:
         tensor_location = poptorch.TensorLocationSettings().useOnChipStorage(False)

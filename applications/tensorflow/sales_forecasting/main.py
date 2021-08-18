@@ -39,7 +39,6 @@ GraphOps = namedtuple(
                  'iterator',
                  'saver',
                  'writer',
-                 'report',
                  'mode'])
 
 
@@ -104,8 +103,7 @@ def generic_graph(opts, data, trainFlag):
 
     with graph.as_default():
         dataset, placeholders = data.get_dataset(opts, mode=trainFlag)
-        kwargs = {} if opts.replication_factor == 1 else {'replication_factor': opts.replication_factor}
-        infeed = ipu_infeed_queue.IPUInfeedQueue(dataset, f"{mode_name}_dataset_infeed", **kwargs)
+        infeed = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
         with ipu_scope(f'/device:IPU:0'):
             def comp_fn():
@@ -140,12 +138,6 @@ def generic_graph(opts, data, trainFlag):
         init = tf.global_variables_initializer()
 
         report = None
-        if opts.compiler_report:
-            if training:
-                summary_ops.ipu_compile_summary('compile_summary', avg_loss)
-            with tf.device('cpu'):
-                print('Initializing training report...')
-                report = gen_ipu_ops.ipu_event_trace()
 
     writer = tf.summary.FileWriter(
         opts.logs_path + f'/{mode_name}',
@@ -159,6 +151,11 @@ def generic_graph(opts, data, trainFlag):
 
         ipu_config.optimizations.maximum_cross_replica_sum_buffer_size = 10000000
         ipu_config.optimizations.maximum_inter_ipu_copies_buffer_size = 10000000
+
+        if opts.compile_only:
+            ipu_config.device_connection.version = opts.compile_only_ipu_version
+            ipu_config.device_connection.enable_remote_buffers = True
+            ipu_config.device_connection.type = ipu_utils.DeviceConnectionType.PRE_COMPILE
 
         if opts.select_ipus == 'AUTO':
             ipu_config.auto_select_ipus = [opts.replication_factor]
@@ -178,7 +175,6 @@ def generic_graph(opts, data, trainFlag):
                     infeed,
                     saver,
                     writer,
-                    report,
                     trainFlag)
 
 # ----------------- GENERAL TRAINING ----------------
@@ -194,21 +190,6 @@ def run(graph_op, i=0, learning_rate=None):  # Must pass a learning_rate in for 
     time_taken = time.time() - start
     graph_op.writer.add_summary(outputs[-1], i)
     return outputs[:-1] + [time_taken]
-
-
-def generate_report(graph):
-    print(f'Generating training report... {graph.report}')
-    report = graph.session.run(graph.report)
-    compilation_report = ipu_utils.extract_compile_reports(report)
-    execution_report = ipu_utils.extract_execute_reports(report)
-
-    with open("report.txt", "w") as f:
-        f.write(ipu_utils.extract_all_strings_from_event_trace(report))
-    with open("compilation_report.json", "w") as f:
-        json.dump(compilation_report, f)
-    with open("execution_report.json", "w") as f:
-        json.dump(execution_report, f)
-    print('Reports saved to .')
 
 
 def compile_graph(opts, graph):
@@ -260,6 +241,9 @@ def train_process(opts, training_data, valid_data):
     if not opts.no_validation and not opts.multiprocessing:
         valid = validation_process(opts, valid_data)
 
+    if opts.compile_only:
+        print('Compilation done')
+        exit()
     # Training loop
     print("Begin training loop")
     for i in range(opts.iterations):
@@ -271,11 +255,6 @@ def train_process(opts, training_data, valid_data):
 
         # Aggregate and print stats
         train_logger.update(i, batch_time=batch_time, loss=loss)
-
-        # If we're only compiling report, do so and stop at epoch 0
-        if i == 0 and opts.compiler_report:
-            generate_report(train)
-            return
 
         # Validation on first, last and scheduled steps
         if not opts.no_validation and (i in [0, opts.iterations-1] or not (i+1) % opts.steps_per_valid_log):
@@ -445,8 +424,11 @@ def get_options():
                            help="Run the validation and training graphs in separate processes.")
     group.add_argument('--use-init',            action="store_true",
                        help="Use the same weight initialization across runs.")
-    group.add_argument('--compiler-report',     action="store_true",
-                       help="Include a compiler report in the log")
+    group.add_argument('--compile-only',     action="store_true",
+                       help="Configure TensorFlow to only compile the graph. This will not acquire any IPUs and thus "
+                       "facilitates profiling without using hardware resources.")
+    group.add_argument('--compile-only-ipu-version',         type=str,   default="ipu2",
+                       help="IPU version to be used while using --compile-only option")
     group.add_argument('--mov-mean-window', type=int, default=10,
                        help="Number of iterations to take the throughput moving mean over. Set to 0 for all iterations.")
     opts = parser.parse_args()

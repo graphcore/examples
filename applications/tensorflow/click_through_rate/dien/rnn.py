@@ -42,7 +42,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import nest
 from tensorflow.python.ipu.ops.embedding_ops import embedding_lookup
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 # pylint: disable=protected-access
 _concat = rnn_cell_impl._concat

@@ -101,7 +101,7 @@ def make_graph(fc_weights):
     graph = tf.Graph()
 
     with graph.as_default():
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="sparse_outfeed")
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
         fc, weights["init_weights"] = create_sparse_layers(opts, fc_weights)
 
         model_op = partial(model, fc=fc,

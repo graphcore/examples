@@ -1,4 +1,10 @@
 *.tar.gz
+*.zip
+
+*.npy
+*.pth
+*.ark
+*.bin
 
 **/weights
 **/images
@@ -16,6 +22,8 @@ __pycache__
 *.so
 *.lock
 report.txt
+archive.a
+vars.capnp
 
 *.onnx
 

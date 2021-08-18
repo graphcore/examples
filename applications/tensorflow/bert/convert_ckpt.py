@@ -55,7 +55,6 @@ def convert_google_ckpt_to_gc(
     use_attention_bias,
     use_qkv_bias,
     use_cls_layer,
-    use_qkv_split,
     dtype,
 ):
 
@@ -148,20 +147,10 @@ def convert_google_ckpt_to_gc(
                 weight = tf.cast(reader.get_tensor(weight_name), dtype=dtype)
                 bias = tf.cast(reader.get_tensor(bias_name), dtype=dtype)
 
-                if use_qkv_split:
-                    add_variable(weight_name, tf.Variable(weight, name=weight_name))
-                else:
-                    # Concatenate
-                    qkv_weight.append(weight)
+                add_variable(weight_name, tf.Variable(weight, name=weight_name))
 
                 # The QKV bias is always concantenated
                 qkv_bias.append(bias)
-
-            # import ipdb; ipdb.set_trace()
-            if not use_qkv_split:
-                qkv_weight = tf.concat(qkv_weight, axis=-1)
-                qkv_w = tf.Variable(qkv_weight, shape=qkv_weight.shape, name=layer_name + "/kernel/qkv_weight")
-                add_variable("qkv_weight", qkv_w)
 
             if use_qkv_bias:
                 qkv_bias = tf.concat(qkv_bias, axis=0)
@@ -300,12 +289,6 @@ if __name__ == "__main__":
         help="""Use a final dense layer.""",
     )
     parser.add_argument(
-        "--use_qkv_split",
-        action="store_true",
-        default=True,
-        help="""Split the QKV matrix into three matrices.""",
-    )
-    parser.add_argument(
         "--precision",
         type=int,
         choices=[16, 32],
@@ -334,7 +317,6 @@ if __name__ == "__main__":
             use_attention_bias=args.use_attention_bias,
             use_qkv_bias=args.use_qkv_bias,
             use_cls_layer=args.use_cls_layer,
-            use_qkv_split=args.use_qkv_split,
             dtype=precision_type,
         )
 

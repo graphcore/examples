@@ -324,13 +324,8 @@ class YoloTrain(object):
         with ExitStack() as stack:
             if self.opts["use_popdist"]:
                 stack.enter_context(strategy.scope())
-            self.infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
-                ds,
-                replication_factor=self.opts["train"]["replicas"],
-                feed_name="infeed")
-            self.outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
-                replication_factor=self.opts["train"]["replicas"],
-                feed_name="outfeed")
+            self.infeed_queue = ipu_infeed_queue.IPUInfeedQueue(ds)
+            self.outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
             with ipu.scopes.ipu_scope("/device:IPU:0"):
                 if self.opts["use_popdist"]:
@@ -583,10 +578,19 @@ if __name__ == "__main__":
         description="yolov3 training in TensorFlow", add_help=False)
     parser.add_argument("--config", type=str, default="config/config.json",
                         help="json config file for yolov3.")
+    parser.add_argument("--train_path", type=str, default="./data/dataset/voc_train.txt",
+                        help="data path for train")
+    parser.add_argument("--test_path", type=str, default="./data/dataset/voc_test.txt",
+                        help="data path for test")
+    parser.add_argument("--init_weight", type=str, default="./ckpt_init/yolov3_coco_converted.fp16.ckpt", help="ckpt init weight")
+
     arguments = parser.parse_args()
     with open(arguments.config) as f:
         opts = json.load(f)
 
+    opts['train']['annot_path'] = arguments.train_path
+    opts['train']['initial_weight'] = arguments.init_weight
+    opts['test']['annot_path'] = arguments.test_path
     if popdist.isPopdistEnvSet():
         opts["use_popdist"] = True
         opts["train"]["replicas"] = popdist.getNumLocalReplicas()

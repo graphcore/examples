@@ -54,30 +54,101 @@ void saveExe(const poplar::Executable& exe, const std::string& name) {
   logger()->info("Saved Poplar executable as: '{}'", fileName);
 }
 
-// Return a HW device with the requested number of IPUs.
-// If no devices with the requested number are available
-// then an exception is thrown.
-inline
-poplar::Device getIpuHwDevice(std::size_t numIpus) {
-  auto dm = poplar::DeviceManager::createDeviceManager();
-  auto hwDevices = dm.getDevices(poplar::TargetType::IPU, numIpus);
-  if (hwDevices.size() > 0) {
-    for (auto &d : hwDevices) {
-      if (d.attach()) {
-        return std::move(d);
-      }
+/// Abstract Interface for a device within the builder framework.
+class DeviceInterface {
+public:
+  DeviceInterface() {}
+  virtual ~DeviceInterface() {}
+  virtual const poplar::Target& getTarget() = 0;
+  virtual const poplar::Device& getPoplarDevice() = 0;
+  virtual void attach() = 0;
+  virtual void detach() = 0;
+};
+
+/// Utility class for managing delayed attach to hardware devices.
+class DeferredDevice : public DeviceInterface {
+public:
+  /// Create a device specifying whether hardware attach should
+  /// be immediate (defer = false) or deferred (defer = true).
+  DeferredDevice(bool defer) : attached (nullptr), deferredAttach(defer) {}
+  virtual ~DeferredDevice() {}
+
+  /// Create a device with specified IPU model configuration.
+  void getIpuModel(std::size_t numIpus) {
+    poplar::IPUModel ipuModel;
+    ipuModel.numIPUs = numIpus;
+    devices.clear();
+    devices.push_back(ipuModel.createDevice());
+    logger()->info("Using IPU model");
+    // IPU models do not need to attach so always record as attached:
+    attached = &devices.front();
+  }
+
+  /// Create a lazy device with specified hardware IPU configuration. If no
+  /// device with the requested config is available then an exception is thrown.
+  void getIpuHardware(std::size_t numIpus) {
+    auto dm = poplar::DeviceManager::createDeviceManager();
+    devices = dm.getDevices(poplar::TargetType::IPU, numIpus);
+    if (devices.empty()) {
+      logger()->error("No devices found with {} ipus.", numIpus);
+      throw std::runtime_error("No IPU hardware with requested configuration.");
+    }
+    logger()->info("Found {} compatible IPU devices.", devices.size());
+    if (deferredAttach == false) {
+      attach();
     }
   }
-  throw std::runtime_error("No IPU hardware available.");
-}
 
-// Return an IPU Model device with the requested number of IPUs.
-inline
-poplar::Device getIpuModelDevice(std::size_t numIpus) {
-  poplar::IPUModel ipuModel;
-  ipuModel.numIPUs = numIpus;
-  return ipuModel.createDevice();
-}
+  const poplar::Target& getTarget() override {
+    if (attached) {
+      return attached->getTarget();
+    } else {
+      if (devices.empty()) {
+        logger()->error("Device list was empty during attempt to attach.");
+        throw std::runtime_error("Could not attach to an IPU device.");
+      }
+      return devices.front().getTarget();
+    }
+  }
+
+  const poplar::Device& getPoplarDevice() override {
+    if (attached) {
+      return *attached;
+    }
+    logger()->error("No device attached ({} available).", devices.size());
+    throw std::runtime_error("No device attached.");
+  }
+
+  void attach() override {
+    if (attached) { return; }
+
+    for (auto &d : devices) {
+      if (d.attach()) {
+        auto ipus = d.getTarget().getNumIPUs();
+        auto tilesPerIpu = d.getTarget().getTilesPerIPU();
+        auto workers = d.getTarget().getNumWorkerContexts();
+        bool remoteBuffers = d.supportsRemoteBuffers();
+        logger()->info("Attached to device with {} IPUs, {} tiles, {} workers. remote-buffers-supported: {}", ipus, ipus * tilesPerIpu, workers, remoteBuffers);
+        attached = &d;
+        return;
+      }
+    }
+    logger()->error("None of the {} IPU devices were available.", devices.size());
+    throw std::runtime_error("Could not attach to an IPU device.");
+  }
+
+  void detach() override {
+    if (attached) {
+      attached->detach();
+      attached = nullptr;
+    }
+  }
+
+private:
+  std::vector<poplar::Device> devices;
+  poplar::Device* attached;
+  bool deferredAttach;
+};
 
 struct RuntimeConfig {
   std::size_t numIpus;
@@ -86,26 +157,19 @@ struct RuntimeConfig {
   bool saveExe;
   bool loadExe;
   bool compileOnly;
+  bool deferredAttach;
 };
 
-/// Determine whether to acquire a HW device or IPU model,
-/// and number of IPUs for either, from the relevant command
-/// line options.
-inline poplar::Device getDeviceFromConfig(RuntimeConfig config) {
-    poplar::Device device;
+/// Determine whether to acquire a HW device or IPU model, and number of IPUs
+/// for either, from the relevant command line options.
+inline
+std::unique_ptr<DeviceInterface> getDeviceFromConfig(RuntimeConfig config) {
+    std::unique_ptr<DeferredDevice> device(new DeferredDevice(config.deferredAttach));
     if(config.useIpuModel) {
-      device = getIpuModelDevice(config.numIpus);
-      logger()->info("Using IPU model");
+      device->getIpuModel(config.numIpus);
     } else {
-      device = getIpuHwDevice(config.numIpus);
-      logger()->info("Using IPU device ID: {}", device.getId());
+      device->getIpuHardware(config.numIpus);
     }
-    auto ipus = device.getTarget().getNumIPUs();
-    auto tilesPerIpu = device.getTarget().getTilesPerIPU();
-    auto workers = device.getTarget().getNumWorkerContexts();
-    bool remoteBuffers = device.supportsRemoteBuffers();
-    logger()->info("IPUs {}, tiles {}, workers {}, remote-buffers-supported: {}",
-                   ipus, ipus * tilesPerIpu, workers, remoteBuffers);
     return device;
 }
 
@@ -211,13 +275,13 @@ struct BuilderInterface {
   /// Methods below are private as they should only be called by the GraphManager.
 private:
   friend class GraphManager;
-  virtual void build(poplar::Graph& graph, const poplar::Device& device) = 0;
+  virtual void build(poplar::Graph& graph, const poplar::Target& target) = 0;
   virtual void execute(poplar::Engine& engine, const poplar::Device& device) = 0;
 
-  /// The default getDevice() creates a device from the config. This
+  /// The default implementation creates a device from the config. This
   /// can be overridden by derived classes if more sophisticated behaviour
   /// is needed.
-  virtual poplar::Device getDevice() {
+  virtual std::unique_ptr<DeviceInterface> getDevice() {
     return getDeviceFromConfig(getRuntimeConfig());
   }
 };
@@ -239,7 +303,7 @@ public:
 
       auto config = builder.getRuntimeConfig();
       auto device = builder.getDevice();
-      poplar::Graph graph(device.getTarget());
+      poplar::Graph graph(device->getTarget());
 
       if (config.loadExe) {
         // When loading, we simply load-construct the executable and run it:
@@ -255,12 +319,12 @@ public:
           throw;
         }
         pvti::Tracepoint::end(&traceChannel, "loading_graph");
-        executeGraphProgram(exe, device, builder);
+        executeGraphProgram(exe, *device, builder);
       } else {
         // Otherwise we must build and compile the graph:
         logger()->info("Graph construction started");
         pvti::Tracepoint::begin(&traceChannel, "constructing_graph");
-        builder.build(graph, device);
+        builder.build(graph, device->getTarget());
         pvti::Tracepoint::end(&traceChannel, "constructing_graph");
         logger()->info("Graph construction finished");
 
@@ -283,7 +347,7 @@ public:
         }
 
         // Run the graph we just built and compiled.
-        executeGraphProgram(exe, device, builder);
+        executeGraphProgram(exe, *device, builder);
       }
 
     } catch (const std::exception& e) {
@@ -295,13 +359,15 @@ public:
   }
 
 private:
-  void executeGraphProgram(poplar::Executable& exe, poplar::Device& device,
+  void executeGraphProgram(poplar::Executable& exe,
+                           DeviceInterface& device,
                            BuilderInterface& builder) {
     // Prepare the execution engine and connect
     // data streams to/from IPU:
     poplar::Engine engine(std::move(exe));
-    engine.load(device);
-    builder.execute(engine, device);
+    device.attach();
+    engine.load(device.getPoplarDevice());
+    builder.execute(engine, device.getPoplarDevice());
   }
 };
 

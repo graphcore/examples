@@ -25,6 +25,7 @@ import math
 import argparse
 import datetime
 import random
+import warnings
 from socket import gethostname
 from collections import deque, OrderedDict, namedtuple
 from contextlib import ExitStack
@@ -71,8 +72,7 @@ GraphOps = namedtuple(
                  'placeholders',
                  'iterator',
                  'outfeed',
-                 'saver',
-                 'profile'])
+                 'saver'])
 
 pipeline_schedule_options = [str(p).split(".")[-1] for p in list(pipelining_ops.PipelineSchedule)]
 
@@ -479,11 +479,8 @@ def training_graph(model, opts, iterations_per_step=1):
 
         # datasets must be defined outside the ipu device scope
         train_iterator = ipu_infeed_queue.IPUInfeedQueue(training_dataset,
-                                                         feed_name='training_feed',
-                                                         replication_factor=opts['replicas'],
                                                          prefetch_depth=opts['prefetch_depth'])
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed",
-                                                          replication_factor=opts['replicas'])
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         with ipu_scope('/device:IPU:0'):
             train = training_step_with_infeeds_and_outfeeds(train_iterator, outfeed_queue, model,
@@ -501,8 +498,6 @@ def training_graph(model, opts, iterations_per_step=1):
         logging.print_trainable_variables(opts)
 
         train_saver = tf.train.Saver(max_to_keep=999999)
-        with tf.device('cpu'):
-            profile_report = gen_ipu_ops.ipu_event_trace()
         ipu.utils.move_variable_initialization_to_cpu(graph=None)
         train_init = tf.global_variables_initializer()
 
@@ -536,7 +531,6 @@ def training_graph(model, opts, iterations_per_step=1):
                              conv_output=opts["gather_conv_output"],
                              enable_recomputation=opts["enable_recomputation"],
                              seed=opts["seed"],
-                             profile=opts['profile'],
                              availableMemoryProportion=globalAMP,
                              stable_norm=opts["stable_norm"],
                              internalExchangeOptimisationTarget=opts[
@@ -571,8 +565,7 @@ def training_graph(model, opts, iterations_per_step=1):
     placeholders = {'learning_rate': learning_rate_ph,
                     'iteration': iteration_ph}
 
-    return GraphOps(train_graph, train_sess, train_init, ops, placeholders, train_iterator, outfeed, train_saver,
-                    profile_report)
+    return GraphOps(train_graph, train_sess, train_init, ops, placeholders, train_iterator, outfeed, train_saver)
 
 
 def training_step(train, e, learning_rate):
@@ -845,11 +838,6 @@ def train_process(model, LR_Class, opts):
         if valid_this_step and opts['validation'] and opts['distributed_worker_index'] == 0:
             validation_points.append((i + iterations_per_step, epoch, i <= iterations_per_valid, filepath))
 
-        # ------------ COLLECT PROFILE -----------
-        # only instance 0 writes the tf profile to disk
-        if opts['profile'] and i == 0 and opts['distributed_worker_index'] == 0:
-            from gcprofile import save_tf_report
-            save_tf_report(train.session.run(train.profile))
         i += iterations_per_step
         if round(epoch) == opts['epochs'] and i >= iterations:
             logging.mlperf_logging(key="EPOCH_STOP", log_type="stop",
@@ -938,7 +926,7 @@ def add_training_arguments(parser):
                           help="""Number of gradients to accumulate before doing a weight update.
                                 When using pipelining this is the number of times each pipeline stage
                                 will be executed.""")
-    tr_group.add_argument('--base-learning-rate', type=float,
+    tr_group.add_argument('--base-learning-rate-exponent', type=float,
                           help="Base learning rate exponent (2**N). blr = lr /  bs")
     tr_group.add_argument('--abs-learning-rate', type=float,
                           help="Absolute learning rate, if value not specified the base learning rate is used.")
@@ -1038,7 +1026,7 @@ def set_training_defaults(opts):
         opts['summary_str'] += "  Gradients accumulated over {gradient_accumulation_count} fwds/bwds passes \n"
     if opts['replicas'] > 1:
         opts['summary_str'] += "  Training on {replicas} replicas \n"
-    opts['summary_str'] += (" Base Learning Rate: 2**{base_learning_rate}\n"
+    opts['summary_str'] += (" Base Learning Rate: 2**{base_learning_rate_exponent}\n"
                             " Weight Decay: {weight_decay}\n"
                             " Loss Scaling: {loss_scaling}\n")
     if opts["iterations"]:
@@ -1047,7 +1035,7 @@ def set_training_defaults(opts):
         opts['summary_str'] += " Epochs: {epochs}\n"
 
     if opts['abs_learning_rate'] is not None:
-        opts['base_learning_rate'] = math.log(opts['abs_learning_rate'] / opts['total_batch_size'], 2.0)
+        opts['base_learning_rate_exponent'] = math.log(opts['abs_learning_rate'] / opts['total_batch_size'], 2.0)
 
     if opts['rmsprop_base_decay_exp'] is not None:
         if opts['rmsprop_decay'] is None:
@@ -1098,7 +1086,8 @@ def add_ipu_arguments(parser):
     group.add_argument('--precision', type=str, default="16.16", choices=["16.16", "16.32", "32.32"],
                        help="Precision of Ops(weights/activations/gradients) and Master data types: 16.16, 16.32, 32.32")
     group.add_argument('--enable-half-partials', action="store_true", default=False,
-                       help="Use half (float16) partials for both convolutions and matmuls.")
+                       help="Use half (float16) partials for both convolutions and matmuls. This option will be ignored "
+                       "if enabled and precision is set to 32.32 as half partials are incompatible with float32 training.")
     group.add_argument('--gather-conv-output', action="store_true", default=False,
                        help="Reduce sync cost of small sized all-reduces. Useful when paired with distributed batch norm")
     group.add_argument('--no-stochastic-rounding', action="store_true",
@@ -1112,9 +1101,6 @@ def add_ipu_arguments(parser):
     group.add_argument('--enable-recomputation', action="store_true",
                        help="Allow recomputation of activations required on the backward pass, which redueces memory used at cost of extra computation")
     group.add_argument('--seed', default=None, help="Seed for randomizing training")
-    group.add_argument('--gc-profile', type=str, dest='profile', nargs='?', action='store', default=None,
-                       const="IPU_PROFILE", choices=["DEVICE_PROFILE", "IPU_PROFILE", "TILE_PROFILE", "NO_PROFILE"],
-                       help="Generate profile reprts")
     group.add_argument('--dataset-benchmark', action="store_true", default=False, help="Benchmark dataset")
     group.add_argument('--available-memory-proportion', default=None, nargs='+',
                        help="Proportion of memory which is available for convolutions. Use a value of less than 0.6 "
@@ -1190,6 +1176,7 @@ def set_ipu_defaults(opts):
     opts['summary_str'] += 'Device\n'
     opts['summary_str'] += ' Precision: {}{}\n'.format(opts['precision'],
                                                        '_noSR' if opts['no_stochastic_rounding'] else '')
+    opts['summary_str'] += ' Half partials: {}\n'.format(False if opts['precision'] == '32.32' else opts['enable_half_partials'])
     opts['summary_str'] += ' IPU\n'
     opts['poplar_version'] = os.popen('popc --version').read()
     opts['summary_str'] += ' {poplar_version}'
@@ -1243,11 +1230,6 @@ def set_defaults(model, LR, opts):
     logging.set_defaults(opts)
 
 
-def set_profiling_opts(opts):
-    if opts["profile"]:
-        opts["summary_str"] += 'A profiling session is run, the report will be retrieved for the first iteration'
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CNN Training in TensorFlow', add_help=False)
     parser = add_main_arguments(parser)
@@ -1286,6 +1268,9 @@ if __name__ == '__main__':
             if len(amps) != int(opts['shards']) * 2:
                 raise ValueError(
                     '--available-memory-proportion should have either one value or 2*shards values specified')
+
+        if opts['enable_half_partials'] and opts['precision'] == '32.32':
+            warnings.warn('Half partials are incompatible with float32 training, so the option will be ignored.')
 
         if opts['shards'] > 1 and opts['pipeline'] is False:
             raise ValueError('--shards should be used in combination with --pipeline.')
@@ -1347,7 +1332,6 @@ if __name__ == '__main__':
             opts['image_size'] = 32
         if opts['wandb'] and opts['distributed_worker_index'] == 0:
             logging.initialise_wandb(opts)
-        set_profiling_opts(opts)
         logging.print_to_file_and_screen("Command line: " + opts['command'], opts)
         logging.print_to_file_and_screen(opts['summary_str'].format(**opts), opts)
         opts['summary_str'] = ""

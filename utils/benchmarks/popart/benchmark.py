@@ -105,9 +105,6 @@ def run(benchmark, opts):
         session.run(stepio)
         duration = time.time() - start
 
-        if opts.report:
-            return save_reports(opts, session)
-
         average_batches_per_sec += (opts.batches_per_step /
                                     duration)/opts.steps
         report_string = "{:<8.3} sec/itr.".format(duration)
@@ -128,8 +125,6 @@ def parse_opts(benchmark, arg_string=None):
                         help='Which graph to run: infer/eval/train')
     parser.add_argument('--use-generated-data', action="store_true",
                         help="Add data transfer ops. Models execution with IO but unbounded by the CPU pipeline.")
-    parser.add_argument('--report', action="store_true",
-                        help="Generate Graph and Execution Reports")
     parser.add_argument('--batches-per-step', type=int, default=1,
                         help="Number of batches to run per step (on the device)")
     parser.add_argument('--steps', type=int, default=1,
@@ -162,11 +157,3 @@ def parse_opts(benchmark, arg_string=None):
 
     # Should change this to a dictonary
     return opts
-
-
-def save_reports(opts, session):
-    with open("graph.json", "wb") as f:
-        f.write(session.getGraphReport())
-    with open("execution.json", "wb") as f:
-        f.write(session.getExecutionReport())
-    print("Written to: graph.json, execution.json")

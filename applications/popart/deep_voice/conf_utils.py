@@ -70,8 +70,6 @@ def add_conf_args(run_mode):
                         help="Enable Stochastic Rounding")
     parser.add_argument('--fp_exceptions', action="store_true", default=False,
                         help="Enable floating point exception")
-    parser.add_argument('--profile', action="store_true", default=False,
-                        help="Perform gc-profile. Profile is generated only when compilation fails")
     parser.add_argument('--no_validation', action="store_true",
                         help="Do not do any validation runs.")
     parser.add_argument('--proportion_train_set', type=float, default=0.80,
@@ -207,7 +205,7 @@ def get_session_options(opts):
 
 
 def create_session_anchors(proto, loss, device, dataFlow,
-                           options, training, optimizer=None, profile=False):
+                           options, training, optimizer=None):
     """ Create the desired session and compile the graph """
 
     if training:
@@ -225,18 +223,10 @@ def create_session_anchors(proto, loss, device, dataFlow,
                                           dataFlow=dataFlow,
                                           userOptions=options)
 
-    try:
-        logger.info("Preparing the {} graph".format(session_type))
-        session.prepareDevice()
-        logger.info("{0} graph preparation complete.".format(session_type.capitalize(),))
+    logger.info("Preparing the {} graph".format(session_type))
+    session.prepareDevice()
+    logger.info("{0} graph preparation complete.".format(session_type.capitalize(),))
 
-    except popart.OutOfMemoryException as e:
-        logger.warn("Caught Exception while Preparing Device")
-        # Dump the profiled result before raising exception and exit
-        if profile:
-            from gcprofile import save_popart_report
-            save_popart_report(session, exception=e)
-        raise
 
     # Create buffers to receive results from the execution
     anchors = session.initAnchorArrays()

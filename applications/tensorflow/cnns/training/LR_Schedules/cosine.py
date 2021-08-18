@@ -19,7 +19,7 @@ import numpy as np
 class LearningRate:
     """A cosine learning rate schedule with optional warmup."""
     def __init__(self, opts, total_iterations):
-        self.base_lr = 2 ** opts["base_learning_rate"]
+        self.base_lr = 2 ** opts["base_learning_rate_exponent"]
         self.initial_lr = self.base_lr * opts["total_batch_size"]
         self.total_iterations = total_iterations
 

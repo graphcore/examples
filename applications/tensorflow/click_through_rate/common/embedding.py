@@ -18,7 +18,7 @@
 
 import os
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import logging
 from tensorflow.python.ipu import embedding_ops
 from common.data_generation import data_generator, parse_data

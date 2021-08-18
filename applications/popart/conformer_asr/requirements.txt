@@ -1,3 +1,4 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
 numba==0.48.0
 numpy==1.18.5
 scipy==1.4.1
@@ -7,4 +8,4 @@ tqdm==4.46.1
 six==1.15.0
 pytest==5.4.1
 pytest-pythonpath==0.7.3 
-torch==1.7.1
+torch==1.7.1+cpu

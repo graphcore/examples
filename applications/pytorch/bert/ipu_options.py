@@ -30,7 +30,7 @@ def get_options(config):
     https://docs.graphcore.ai/en/latest/
     '''
 
-    if poptorch.ipuHardwareVersion() != 2:
+    if not config.compile_only and poptorch.ipuHardwareVersion() != 2:
         raise RuntimeError("This version of BERT requires an IPU Mk2 system to run.")
 
     # Custom ops
@@ -60,6 +60,8 @@ def get_options(config):
     opts.deviceIterations(config.batches_per_step)
     opts.Training.gradientAccumulation(config.gradient_accumulation)
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
+    if config.auto_loss_scaling is True:
+        opts.Training.setAutomaticLossScaling(True)
     opts.anchorMode(poptorch.AnchorMode.Sum)
     opts.TensorLocations.setOptimizerLocation(
         poptorch.TensorLocationSettings()
@@ -68,6 +70,8 @@ def get_options(config):
     opts.randomSeed(config.random_seed)
     opts.setExecutionStrategy(
         poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
+    if config.compile_only:
+        opts.useOfflineIpuTarget()
 
     mem_prop = {
         f'IPU{i}': config.matmul_proportion[i]

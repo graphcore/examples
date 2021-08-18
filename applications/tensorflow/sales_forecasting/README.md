@@ -106,7 +106,10 @@ The dynamic scheduler has two features:
 
 `--use-init` sets the initial weights of the model to be the same across separate runs.
 
-`--compiler-report` causes the model to generate a compilation report and then terminate.
+`--compile-only` causes the model to only compile. This will not acquire any IPUs and thus facilitates
+profiling without using hardware resources.
+
+`--compile-only-ipu-version` sets the IPU version to be used while using --compile-only option
 
 ### Test script
 

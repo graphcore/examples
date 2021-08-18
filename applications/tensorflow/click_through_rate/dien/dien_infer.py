@@ -22,7 +22,7 @@ import random
 import argparse
 import numpy as np
 import logging
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from collections import namedtuple
 from tensorflow.python.ipu import loops
 from tensorflow.python.ipu import utils
@@ -78,11 +78,8 @@ def generic_graph(opts, is_training):
             dataset = get_synthetic_dataset(opts)
         else:
             dataset = get_dataset_embed(opts, False)
-        infeed = ipu_infeed_queue.IPUInfeedQueue(dataset,
-                                                 feed_name = 'DIEN_dataset_infeed',
-                                                 replication_factor = (opts['replicas']))
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="DIEN_outfeed",
-                                                          replication_factor=opts['replicas'])
+        infeed = ipu_infeed_queue.IPUInfeedQueue(dataset)
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         with ipu_scope('/device:IPU:0'):
             def comp_fn():

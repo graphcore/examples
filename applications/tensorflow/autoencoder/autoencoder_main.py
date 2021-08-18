@@ -101,8 +101,7 @@ def training_graph(opts, training_data):
 
         dataset, train_iterator, placeholders = training_data.get_dataset(
             opts, is_training=True)
-        infeed = ipu_infeed_queue.IPUInfeedQueue(
-            dataset, "training_dataset_infeed", 0)
+        infeed = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
         with ipu_scope('/device:IPU:0'):
 
@@ -169,7 +168,7 @@ def validation_graph(opts, valid_data):
     with valid_graph.as_default():
         dataset, _, _ = valid_data.get_dataset(opts, is_training=False)
         infeed = ipu_infeed_queue.IPUInfeedQueue(
-            dataset, "validation_dataset_infeed", tf_device_ordinal)
+            dataset, device_ordinal=tf_device_ordinal)
 
         with ipu_scope('/device:IPU:{}'.format(tf_device_ordinal)):
             def comp_fn():
