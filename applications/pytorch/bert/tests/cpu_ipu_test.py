@@ -19,13 +19,12 @@ import numpy as np
 from transformers import BertTokenizer, BertConfig
 from modeling import PipelinedBertForPretraining
 from ipu_options import get_options
-from utils import parse_bert_args
+from args import parse_bert_args
 
 
 @pytest.mark.ipus(4)
-@pytest.mark.category1
-@pytest.mark.parametrize("embedding_serialization, recompute_checkpoint", [(1, False), (5, True)])
-def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization):
+@pytest.mark.parametrize("embedding_serialization_factor, recompute_checkpoint", [(1, False), (5, True)])
+def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization_factor):
     """
     Test that the BERT model ran on IPU approximately matches that same
     model ran on the CPU.
@@ -50,19 +49,20 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization):
     config.hidden_dropout_prob = 0.0
     config.attention_probs_dropout_prob = 0.0
     config.recompute_checkpoint_every_layer = recompute_checkpoint
-    config.embedding_serialization = embedding_serialization
+    config.embedding_serialization_factor = embedding_serialization_factor
 
     # Models and options
     opts = get_options(config)
     opts.anchorMode(poptorch.AnchorMode.Final)
     model_cpu = PipelinedBertForPretraining(config).train()
-    model_ipu = PipelinedBertForPretraining(config).train()
+    model_ipu = PipelinedBertForPretraining(config).parallelize().train()
     model_ipu.load_state_dict(model_cpu.state_dict())
 
     # Check that copy was successful
     assert model_ipu is not model_cpu
-    assert all([(a == b).all() for a, b in zip(
-        model_cpu.parameters(), model_ipu.parameters())]) is True
+    for name, tensor1 in model_cpu.state_dict().items():
+        tensor2 = model_ipu.state_dict()[name]
+        assert torch.all(tensor1 == tensor2)
 
     optimizer_cpu = torch.optim.AdamW(model_cpu.parameters(), lr=0.001)
     optimizer_ipu = poptorch.optim.AdamW(model_ipu.parameters(), lr=0.001, loss_scaling=1.0)

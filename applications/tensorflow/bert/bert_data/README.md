@@ -18,8 +18,8 @@ The following files are found in the `bert_data/` folder:
 * `wiki_preprocess.py`: Outputs files that can be used as input for  `create_pretraining_data.py`.
 * `tokenization.py`: Tokenizer file used to create pre-training data.
 * `squad.py`: Load the SQuAD data.
-* `squad_results.py`: Read the SQuAD results. 
-* `pretraining.py`: Load the pre-training data. 
+* `squad_results.py`: Read the SQuAD results.
+* `pretraining.py`: Load the pre-training data.
 
 
 
@@ -27,7 +27,7 @@ The following files are found in the `bert_data/` folder:
 
 The sample text is in a form that is already suitable to create the pre-training data. Run the script as:
 
-`python3 create_pretraining_data.py --input-file path/to/sample.txt --output-file data/sample.tfrecord --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 -- mask-tokens 20 --duplication-factor 6`
+`python3 create_pretraining_data.py --input-file path/to/sample.txt --output-file data/sample.tfrecord --vocab-file path_to_the_vocab/vocab.txt --sequence-length 128 --mask-tokens 20 --duplication-factor 6`
 
 ## Wikipedia pre-training data
 

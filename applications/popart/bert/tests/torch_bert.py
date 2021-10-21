@@ -1,4 +1,5 @@
 # coding=utf-8
+# Copyright (c) 2020 Graphcore Ltd. All Rights Reserved.
 # Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
@@ -13,7 +14,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# From https://github.com/huggingface/transformers/blob/master/transformers/modeling_bert.py
+# From https://github.com/huggingface/transformers/blob/v4.9.1/src/transformers/models/bert/modeling_bert.py
 # This file has been modified by Graphcore Ltd.
 
 import sys

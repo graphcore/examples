@@ -47,6 +47,147 @@ def is_qkv_tensor(tensor_name):
     return False
 
 
+def convert_research_ckpt_to_apps(
+    ckpt_file,
+    output_dir,
+    num_embed_split,
+    vocab_size,
+    use_attention_bias,
+    use_qkv_bias,
+    use_cls_layer,
+    baseline,
+    dtype,
+):
+
+    saved_variables = []
+    split_embeddings = []
+
+    def add_variable(old_tensor, new_tensor):
+        logging.info(f"{old_tensor} -> {new_tensor}")
+        saved_variables.append(new_tensor)
+
+    graph = tf.Graph()
+    reader = pywrap_tensorflow.NewCheckpointReader(ckpt_file)
+    var_to_shape_map = reader.get_variable_to_shape_map()
+
+    with graph.as_default():
+        sess = tf.compat.v1.Session()
+        for old_tensor_name in sorted(var_to_shape_map):
+            # Filter out the optimizer variables
+            if 'global_step' in old_tensor_name:
+                continue
+            if filter_optimizer(old_tensor_name):
+                continue
+            if not use_cls_layer and "transform" in old_tensor_name:
+                logging.info("Discarding dense layer before MLM loss.")
+                continue
+            if not use_attention_bias and "output/dense/bias" in old_tensor_name:
+                logging.info("Discarding attention biases.")
+                continue
+
+
+            this_tensor_dtype = dtype
+
+            tensor_value = tf.cast(reader.get_tensor(old_tensor_name), dtype=this_tensor_dtype)
+
+            new_name = old_tensor_name
+
+            if new_name.startswith('all/'):
+                new_name = new_name[4:]
+
+            if "Norm" in new_name:
+                new_name = new_name.replace("GroupNorm", "LayerNorm")
+
+            if "/layer_" in new_name and "encoder" in new_name:
+
+                if new_name.endswith('weight') and '/dwconv/' not in new_name:
+                    new_name = new_name.replace("weight", "dense/kernel")
+                if new_name.endswith('bias'):
+                    new_name = new_name.replace("bias", "dense/bias")
+
+                if '/boom' in new_name:
+                    new_name = new_name.replace("boom", "feed_forward_")
+
+                    if '/up/' in new_name:
+                        new_name = new_name.replace("/up/", "/intermediate/")
+                    if '/down/' in new_name:
+                        new_name = new_name.replace("/down/", "/output/")
+                    if '/mixer/' in new_name:
+                        new_name = new_name.replace("/mixer/", "/output/mixer/")
+
+                    if baseline:
+                        new_name = new_name.replace("/feed_forward_", "")
+                        new_name = new_name.replace("/postnorm/", "/output/")
+
+                if '/conv/' in new_name:
+                    new_name = new_name.replace("/conv/", "/convolution/")
+
+                    if "/pre/" in new_name:
+                        hidden_dim = tensor_value.shape[-1] // 2
+                        values = tensor_value[..., :hidden_dim]
+                        gates = tensor_value[..., hidden_dim:]
+                        values_name = new_name.replace("/pre/", "/pre/glu/values/")
+                        gates_name = new_name.replace("/pre/", "/pre/glu/gates/")
+                        values_var = tf.Variable(values, name=values_name)
+                        gates_var = tf.Variable(gates, name=gates_name)
+                        add_variable(old_tensor_name, values_var)
+                        add_variable(old_tensor_name, gates_var)
+                        continue
+
+
+                if '/attention/' in new_name:
+                    new_name = new_name.replace("attention/output", "attention/projection")
+                    new_name = new_name.replace("/qkv/", "/self/")
+                    if '/self/' in new_name:
+                        new_name = new_name.replace("dense/bias", "bias")
+                        if 'self/dense/kernel' in new_name:
+                            hidden_dim = tensor_value.shape[-1] // 3
+                            q = tensor_value[..., :hidden_dim]
+                            k = tensor_value[..., hidden_dim: 2 * hidden_dim]
+                            v = tensor_value[..., 2 * hidden_dim: 3 * hidden_dim]
+                            q_name = new_name.replace("/dense/kernel", "/query/kernel")
+                            k_name = new_name.replace("/dense/kernel", "/key/kernel")
+                            v_name = new_name.replace("/dense/kernel", "/value/kernel")
+                            q_var = tf.Variable(q, name=q_name)
+                            add_variable(old_tensor_name, q_var)
+                            k_var = tf.Variable(k, name=k_name)
+                            add_variable(old_tensor_name, k_var)
+                            v_var = tf.Variable(v, name=v_name)
+                            add_variable(old_tensor_name, v_var)
+                            continue
+
+                    if baseline:
+                        new_name = new_name.replace("/postnorm/", "/projection/")
+
+            elif 'encoder/post_layers' in new_name:
+                new_name = new_name.replace("bert/encoder/post_layers/", "")
+
+            elif "word_embeddings" in new_name:
+                split_match = re.search("/s\d/", new_name)
+                if split_match and num_embed_split == 1:
+                    split_embeddings.append(tensor_value)
+                    continue
+                else:
+                    pass
+
+            new_var = tf.Variable(tensor_value, name=new_name)
+            add_variable(old_tensor_name, new_var)
+
+        if split_embeddings and num_embed_split == 1:
+            merged_embedding = tf.concat(split_embeddings, axis=0)
+            new_var = tf.Variable(merged_embedding, name="bert/embeddings/word_embeddings")
+            add_variable(split_embeddings[0], new_var)
+
+        sess.run(tf.compat.v1.global_variables_initializer())
+        saver = tf.compat.v1.train.Saver()
+        _dir_name, ckpt_name = os.path.split(ckpt_file)
+        output_file = os.path.join(output_dir, ckpt_name)
+        saver.save(sess, output_file)
+
+        num_params = np.sum([np.prod(v.shape) for v in saved_variables])
+        print(f"Number of parameters saved: {num_params}")
+
+
 def convert_google_ckpt_to_gc(
     ckpt_file,
     output_dir,
@@ -246,7 +387,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("action",
                         type=str,
-                        choices=["graphcore2google", "google2graphcore"],
+                        choices=["graphcore2google", "google2graphcore", "research2apps"],
                         help="""Type of conversion between models""")
     parser.add_argument("checkpoint_path",
                         type=str,
@@ -269,6 +410,12 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="""Number word embeddings splits.""",
+    )
+    parser.add_argument(
+        "--baseline",
+        action="store_true",
+        default=False,
+        help="""Convert GroupBERT or baseline checkpoint.""",
     )
     parser.add_argument(
         "--use_attention_bias",
@@ -329,5 +476,18 @@ if __name__ == "__main__":
             use_attention_bias=args.use_attention_bias,
             use_qkv_bias=args.use_qkv_bias,
             use_cls_layer=args.use_cls_layer,
+            dtype=precision_type,
+        )
+
+    elif args.action.lower() == "research2apps":
+        convert_research_ckpt_to_apps(
+            args.checkpoint_path,
+            args.output_dir,
+            num_embed_split=args.num_embeddings_splits,
+            vocab_size=args.vocab_size,
+            use_attention_bias=args.use_attention_bias,
+            use_qkv_bias=args.use_qkv_bias,
+            use_cls_layer=args.use_cls_layer,
+            baseline=args.baseline,
             dtype=precision_type,
         )

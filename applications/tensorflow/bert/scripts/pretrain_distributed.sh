@@ -2,50 +2,84 @@
 # Copyright (c) 2021 Graphcore Ltd. All Rights Reserved.
 
 # This script can be used to pretrain BERT Large on IPU-POD64
-set +eux
-display_usage() {
-	echo "Pretrain BERT.Large on IPU-POD64"
-	echo "Usage: $0 VIPU_HOST"
-	echo "VIPU_HOST: VIPU server host IP address."
+set -x
 
+display_usage() {
+	echo "Pretrain BERT.Large on IPU-POD64 or IPU-POD128"
+	echo "Usage: $0 CONFIG VIPU_HOST HOST1 HOST2 ..."
+	echo "CONFIG: \"POD64\" or \"POD128\"."
+	echo "VIPU_HOST: VIPU IP address."
+	echo "HOSTn: a list of IP addresses on which the instances will be run."
 }
 
-if [[ $# -lt 1 ]]; then
+if [[ $# -lt 3 ]]; then
    display_usage
    exit 1
 fi
 
 # First argument is VIPU server IPU address.
-VIPU_SERVER_IP="$1"
-HOSTS=()
+CONFIG="$1"
+VIPU_SERVER_IP="$2"
+# Parse arguments $3 to end
+shift
+shift
+HOSTS="$@"
+NUM_INSTANCES="$#"
 
-IP_PART_A="${VIPU_SERVER_IP%*.*}"
-IP_PART_B="${VIPU_SERVER_IP#*.*.*.*}"
+HOSTS_LIST="${HOSTS[@]}"
+echo ${HOSTS_LIST}
+HOSTS_LIST="${HOSTS_LIST// /,}"
 
-for k in $(seq 0 3); do
-   HOSTS+=("${IP_PART_A}.$((IP_PART_B+k))")
-done
+NETIF_NETMASK__IP_PART=(${HOSTS[0]//./ })
+TCP_IF_NETMASK="${NETIF_NETMASK__IP_PART[0]}.${NETIF_NETMASK__IP_PART[1]}.0.0/16"
+
+if [[ "${CONFIG}" == "POD64" ]]; then
+   if [[ "${NUM_INSTANCES}" -ne 1 ]]; then
+      echo "To run on POD64 use a single host."
+      exit 1
+   fi
+   NUM_REPLICAS=16
+   NUM_ILDS=1
+   PHASE1_CONFIG_PATH='configs/pretrain_large_128_phase1_POD64.json'
+   PHASE2_CONFIG_PATH='configs/pretrain_large_384_phase2_POD64.json'
+   WANDB_NAME="POD64 Large"
+   VIPU_PARTITION_NAME='pod64'
+elif [[ "${CONFIG}" == "POD128" ]]; then
+   if [[ "${NUM_INSTANCES}" -ne 2 ]]; then
+      echo "To run on POD128 use two hosts, one on each combined POD64."
+      exit 1
+   fi
+   NUM_REPLICAS=32
+   NUM_ILDS=2
+   PHASE1_CONFIG_PATH='configs/pretrain_large_128_phase1_POD128.json'
+   PHASE2_CONFIG_PATH='configs/pretrain_large_384_phase2_POD128.json'
+   WANDB_NAME="POD128 Large"
+   VIPU_PARTITION_NAME='gcl128'
+else
+   echo "Unknown configuration. Must be POD64 or POD128"
+   exit 1
+fi
 
 # IPU-POD hosts
-echo "Poprun will use hosts: ${HOSTS[*]}"
+echo "Running ${NUM_INSTANCES} instances on hosts ${HOSTS[*]}"
 
 LOCAL_HOME="/localdata/${USER}"
-TFBERT_PATH="${LOCAL_HOME}/public_examples/applications/tensorflow/bert"
+TFBERT_PATH="${LOCAL_HOME}/git/public_examples/applications/tensorflow/bert"
 
 copy_ssh() {
-   for host in "${HOSTS[@]}"; do
+   for host in ${HOSTS}; do
       ssh-copy-id "${host}"
    done
 }
 
 sync_venvs_and_code() {
-   for host in "${HOSTS[@]}"; do
+   for host in ${HOSTS}; do
       echo "Syncing local code with ${host}"
-      rsync --stats --exclude bert/checkpoint -av "${LOCAL_HOME}/public_examples" "${host}:${LOCAL_HOME}/"
+      rsync --stats --exclude bert/checkpoint -av "${LOCAL_HOME}/git/public_examples" "${host}:${LOCAL_HOME}/git/"
       echo "Syncing local venvs with ${host}"
-      rsync --stats -av "${LOCAL_HOME}/ENVS" "${host}:${LOCAL_HOME}/"
+      rsync --stats -av "${LOCAL_HOME}/venvs" "${host}:${LOCAL_HOME}/"
       echo "Syncing local SDK with ${host}"
-      rsync --stats -av "${LOCAL_HOME}/SDKS" "${host}:${LOCAL_HOME}/"
+      rsync --stats -av "${LOCAL_HOME}/sdks" "${host}:${LOCAL_HOME}/"
    done
 }
 
@@ -58,26 +92,31 @@ sync_venvs_and_code
 
 # Poplar options
 # MPI options
-MPI_GLOBAL_ARGS="--tag-output --mca btl_tcp_if_include ${VIPU_SERVER_IP}/24"
-MPI_LOCAL_ARGS="-x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x OPAL_PREFIX -x TF_CPP_VMODULE='poplar_compiler=1, poplar_executor=1' -x HOROVOD_LOG_LEVEL=WARN -x IPUOF_LOG_LEVEL=WARN -x  IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=WARN -x CPATH -x GCL_LOG_LEVEL=WARN -x TF_POPLAR_FLAGS=--executable_cache_path=${LOCAL_HOME}/exec_cache"
+MPI_GLOBAL_ARGS="--tag-output --mca btl_tcp_if_include ${TCP_IF_NETMASK} --mca oob_tcp_if_include ${TCP_IF_NETMASK}"
+MPI_LOCAL_ARGS="-x TF_CPP_VMODULE='poplar_compiler=0, poplar_executor=0' -x HOROVOD_LOG_LEVEL=WARN -x IPUOF_LOG_LEVEL=WARN -x POPLAR_LOG_LEVEL=WARN -x CPATH -x GCL_LOG_LEVEL=WARN -x TF_POPLAR_FLAGS=--executable_cache_path=${LOCAL_HOME}/exec_cache"
 
 # Comma-separated hosts
-HOSTS_LIST="${HOSTS[@]}"
-HOSTS_LIST="${HOSTS_LIST// /,}"
-
 # BERT training options
 # Phase 1
-PHASE1_CONFIG_PATH='configs/pretrain_large_128_phase1_POD64.json'
 PHASE1_TRAIN_FILE='/localdata/datasets/tf_wikipedia/tokenised_128_dup5_mask20/*.tfrecord'
-VIPU_PARTITION_NAME='pod64'
 
-POPRUN_OPTIONS="--host ${HOSTS_LIST} --num-ilds 1 --num-instances 4 --num-replicas 16 --ipus-per-replica 4 --numa-aware=yes --vipu-server-host=${VIPU_SERVER_IP} --reset-partition=no --update-partition=yes --vipu-partition=${VIPU_PARTITION_NAME} --vipu-server-timeout=600"
+POPRUN_OPTIONS="--host ${HOSTS_LIST} --num-ilds ${NUM_ILDS} --num-instances ${NUM_INSTANCES} --num-replicas ${NUM_REPLICAS} --ipus-per-replica 4 --vipu-server-host=${VIPU_SERVER_IP} --reset-partition=yes --update-partition=yes --remove-partition=no --vipu-partition=${VIPU_PARTITION_NAME} --print-topology=yes"
+TIMESTAMP="$(date +%s)"
 
-poprun ${POPRUN_OPTIONS} --mpi-global-args="${MPI_GLOBAL_ARGS}" --mpi-local-args="${MPI_LOCAL_ARGS}" python "${TFBERT_PATH}/run_pretraining.py" --config "${PHASE1_CONFIG_PATH}" --train-file "${PHASE1_TRAIN_FILE}" --wandb --wandb-name "POD64 Large"  2>&1 | tee pretrain_large_128_log.txt
+poprun ${POPRUN_OPTIONS} \
+      --mpi-global-args="${MPI_GLOBAL_ARGS}" \
+      --mpi-local-args="${MPI_LOCAL_ARGS}" \
+      python "${TFBERT_PATH}/run_pretraining.py" --config "${PHASE1_CONFIG_PATH}" --train-file "${PHASE1_TRAIN_FILE}" --wandb --wandb-name "${WANDB_NAME} phase 1" 2>&1 | tee "pretrain_large_128_log_${TIMESTAMP}.txt"
+
+phase1_ret_code="$?"
+echo "Phase 1 exit code: ${phase1_ret_code}"
+if [[ ${phase1_ret_code} != 0 ]]; then
+   echo "Phase 1 run failed. Exiting."
+   exit $?
+fi
 
 # Phase 2
-PHASE2_CONFIG_PATH='configs/pretrain_large_384_phase2_POD64.json'
-PHASE2_TRAIN_FILE='/localdata/datasets/tf_wikipedia/tokenised_384_dup5_mask56/*.tfrecord'
+PHASE2_TRAIN_FILE='/localdata/datasets/tf_wikipedia/tokenised_384_dup5_mask58/*.tfrecord'
 
 PHASE1_CKPT_BASENAME='ckpt-7031'
 
@@ -86,10 +125,14 @@ PHASE1_CHECKPOINT_DIR=$(dirname "${LAST_CHANGED_CKPT_FILE}")
 PHASE1_CHECKPOINT_DIR=$(realpath "${PHASE1_CHECKPOINT_DIR}")
 PHASE1_CHECKPOINT="${PHASE1_CHECKPOINT_DIR}/${PHASE1_CKPT_BASENAME}"
 
+
 # Synchronise phase 1 checkpoint with all hosts.
-for host in "${HOSTS[@]}"; do
+for host in ${HOSTS}; do
    echo "Syncing checkpoint ${PHASE1_CHECKPOINT} with ${host}:${PHASE1_CHECKPOINT_DIR}/"
    rsync -a --include "${PHASE1_CKPT_BASENAME}*" --exclude='*' "${PHASE1_CHECKPOINT_DIR}/" "${host}:${PHASE1_CHECKPOINT_DIR}/"
 done
 
-poprun ${POPRUN_OPTIONS} --mpi-global-args="${MPI_GLOBAL_ARGS}" --mpi-local-args="${MPI_LOCAL_ARGS}" python "${TFBERT_PATH}/run_pretraining.py" --config "${PHASE2_CONFIG_PATH}" --train-file "${PHASE2_TRAIN_FILE}" --init-checkpoint "${PHASE1_CHECKPOINT}" --wandb --wandb-name "Large phase 2 - 2 instances"  2>&1 | tee pretrain_large_384_log.txt
+poprun ${POPRUN_OPTIONS} \
+      --mpi-global-args="${MPI_GLOBAL_ARGS}" \
+      --mpi-local-args="${MPI_LOCAL_ARGS}" \
+      python "${TFBERT_PATH}/run_pretraining.py" --config "${PHASE2_CONFIG_PATH}" --train-file "${PHASE2_TRAIN_FILE}" --init-checkpoint "${PHASE1_CHECKPOINT}" --wandb --wandb-name "${WANDB_NAME} phase 2"  2>&1 | tee "pretrain_large_384_log_${TIMESTAMP}.txt"

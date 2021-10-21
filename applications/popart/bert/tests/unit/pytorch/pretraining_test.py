@@ -17,29 +17,20 @@ import popart
 import pytest
 import numpy as np
 
-from bert_model import BertConfig, ExecutionMode, get_model
+from bert_model import Bert, BertConfig
 from tests.torch_bert import BertConfig as TorchBertConfig, BertForMaskedLM
-
-from tests.utils import requires_remote_buffers, sanity
-
+from tests.utils import sanity
 from tests.unit.pytorch.full_graph_utils import fwd_graph, bwd_graph
 
 
 '''
 Tests the full pretraining graph.
 '''
-ONNX_TORCH_MAPPING = {}
-ONNX_TORCH_MAPPING[ExecutionMode.DEFAULT] = {
+ONNX_TORCH_MAPPING = {
     "cls.transform.dense.weight": "CLS/LMPredictionW",
     "cls.transform.dense.bias": "CLS/LMPredictionB",
     "cls.transform.LayerNorm.weight": "CLS/Gamma",
     "cls.transform.LayerNorm.bias": "CLS/Beta",
-}
-ONNX_TORCH_MAPPING[ExecutionMode.PHASED] = {
-    "cls.transform.dense.weight": "BertModel/MLM/LMPrediction/Dense/Weight",
-    "cls.transform.dense.bias": "BertModel/MLM/LMPrediction/Dense/Bias",
-    "cls.transform.LayerNorm.weight": "BertModel/MLM/LMPrediction/Norm/Gamma",
-    "cls.transform.LayerNorm.bias": "BertModel/MLM/LMPrediction/Norm/Beta",
 }
 
 
@@ -49,12 +40,7 @@ onnx_torch_tform = {
 }
 
 
-@pytest.mark.parametrize("mode, replication_factor, replicated_tensor_sharding",
-                         [(ExecutionMode.DEFAULT, 1, False),
-                          requires_remote_buffers(ExecutionMode.PHASED, 1, False),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, True),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, False)])
-def test_pretraining_fwd(custom_ops, mode, replication_factor, replicated_tensor_sharding):
+def test_pretraining_fwd(custom_ops):
     #  ------------------- PopART --------------------
     config = BertConfig(task="PRETRAINING",
                         encoder_start_ipu=1,
@@ -72,10 +58,9 @@ def test_pretraining_fwd(custom_ops, mode, replication_factor, replicated_tensor
                         no_cls_layer=False,
                         inference=True,
                         no_mask=True,
-                        execution_mode=mode,
                         split_qkv=False)
 
-    popart_model = get_model(config, mode)
+    popart_model = Bert(config)
 
     #  ------------------- PyTorch -------------------------
     torch_model = BertForMaskedLM(
@@ -89,29 +74,12 @@ def test_pretraining_fwd(custom_ops, mode, replication_factor, replicated_tensor
                         mask_tokens=config.mask_tokens,
                         no_cls_layer=config.no_cls_layer))
 
-    fwd_graph(popart_model, torch_model, mode, mapping=ONNX_TORCH_MAPPING[mode], transform=onnx_torch_tform,
-              replication_factor=replication_factor,
-              replicated_tensor_sharding=replicated_tensor_sharding)
+    fwd_graph(popart_model, torch_model, mapping=ONNX_TORCH_MAPPING, transform=onnx_torch_tform)
 
 
-@pytest.mark.parametrize("mode, replication_factor, replicated_tensor_sharding, opt_type",
-                         [sanity(ExecutionMode.DEFAULT, 1, False, "SGD"),
-                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 4, True, "SGD")),
-                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 4, True, "LAMB")),
-
-                          (ExecutionMode.DEFAULT, 1, False, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 1, False, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, True, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, False, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, False, "LAMB"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, True, "LAMB")])
-def test_pretraining_bwd(custom_ops, mode, replication_factor, replicated_tensor_sharding, opt_type):
+@pytest.mark.parametrize("opt_type", [sanity("SGD"), "LAMB"])
+def test_pretraining_bwd(custom_ops, opt_type):
     #  ------------------- PopART --------------------
-    if mode == ExecutionMode.PHASED:
-        # Phased Execution requires atleast two transformer layers to ensure mlm and embedding are in the same virtual graph.
-        num_layers = 2
-    else:
-        num_layers = 1
     config = BertConfig(task="PRETRAINING",
                         encoder_start_ipu=1,
                         vocab_length=1024,
@@ -128,10 +96,8 @@ def test_pretraining_bwd(custom_ops, mode, replication_factor, replicated_tensor
                         update_embedding_dict=True,
                         no_cls_layer=True,
                         no_mask=True,
-                        phased_execution_type="single",
-                        execution_mode=mode,
                         split_qkv = (opt_type == "LAMB"))
-    popart_model = get_model(config, mode)
+    popart_model = Bert(config)
 
     #  ------------------- PyTorch -------------------------
     torch_model = BertForMaskedLM(
@@ -148,22 +114,14 @@ def test_pretraining_bwd(custom_ops, mode, replication_factor, replicated_tensor
     l1_lambda = 0.1
 
     def popart_loss_fn(logits):
-        if mode == ExecutionMode.PHASED:
-            with popart_model.scope_provider(popart_model.builder, popart_model.mlm_scope):
-                loss = popart_model.builder.aiGraphcore.l1loss([logits[0]],
-                                                               l1_lambda, debugContext="l1LossVal",
-                                                               reduction=popart.ReductionType.Sum)
-        else:
-            loss = popart_model.builder.aiGraphcore.l1loss([logits[0]], l1_lambda, debugContext="l1LossVal", reduction=popart.ReductionType.Sum)
-            popart_model.builder.virtualGraph(loss, popart_model.mlm_scope.virtualGraph)
+        loss = popart_model.builder.aiGraphcore.l1loss([logits[0]], l1_lambda, debugContext="l1LossVal", reduction=popart.ReductionType.Sum)
+        popart_model.builder.virtualGraph(loss, popart_model.mlm_scope.virtualGraph)
         return loss
 
     bwd_graph(popart_model,
               torch_model,
-              mode,
               popart_loss_fn=popart_loss_fn,
               torch_loss_fn=lambda logits: l1_lambda * torch.norm(logits[0], 1),
-              mapping={}, transform=onnx_torch_tform,
-              replication_factor=replication_factor,
-              replicated_tensor_sharding=replicated_tensor_sharding,
+              mapping={},
+              transform=onnx_torch_tform,
               opt_type=opt_type)

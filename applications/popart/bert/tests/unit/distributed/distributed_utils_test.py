@@ -23,10 +23,19 @@ from utils.distributed import setup_comm, average_distributed_deques  # noqa
 
 
 def test_average_distributed_deques():
-    subprocess.check_output(f"mpirun --allow-run-as-root -x PYTHONPATH={bert_root_dir()}:$PYTHONPATH -np 2 "
-                            f"python3 {os.path.abspath(__file__)}",
-                            shell=True,
-                            cwd=bert_root_dir())
+    try:
+        subprocess.check_output(
+            f"mpirun --allow-run-as-root -x "
+            f"PYTHONPATH={bert_root_dir()}:$PYTHONPATH -np 2 "
+            f"python3 {os.path.abspath(__file__)}",
+            shell=True,
+            cwd=bert_root_dir(),
+            stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        print(f"TEST FAILED")
+        print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
+        print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
+        raise
 
 
 def gather_and_check():

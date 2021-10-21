@@ -78,11 +78,6 @@ class EmbeddingProjectionModel(nn.Module):
 
 def test_embedding_projection_fwd(custom_ops):
     #  ------------------- PopART --------------------
-    builder = popart.Builder(opsets={
-        "ai.onnx": 9,
-        "ai.onnx.ml": 1,
-        "ai.graphcore": 1
-    })
     config = BertConfig(vocab_length=9728,
                         embedding_serialization_vocab_steps=4,
                         micro_batch_size=1,
@@ -93,7 +88,8 @@ def test_embedding_projection_fwd(custom_ops):
                         no_dropout=True,
                         no_cls_layer=False,
                         inference=True)
-    popart_model = Bert(config, builder=builder)
+    popart_model = Bert(config)
+    builder = popart_model.builder
 
     sequence_info = popart.TensorInfo(
         "UINT32", [config.micro_batch_size * config.sequence_length])
@@ -147,11 +143,6 @@ def test_embedding_projection_bwd(custom_ops):
     l1_lambda = 0.1
 
     #  ------------------- PopART --------------------
-    builder = popart.Builder(opsets={
-        "ai.onnx": 9,
-        "ai.onnx.ml": 1,
-        "ai.graphcore": 1
-    })
     config = BertConfig(vocab_length=9728,
                         embedding_serialization_vocab_steps=4,
                         micro_batch_size=1,
@@ -165,7 +156,8 @@ def test_embedding_projection_bwd(custom_ops):
                         # available with momentum. And PopART != Pytorch momentum
                         # due to a bootstrapping step on iter 0.
                         update_embedding_dict=False)
-    popart_model = Bert(config, builder=builder)
+    popart_model = Bert(config)
+    builder = popart_model.builder
 
     sequence_info = popart.TensorInfo(
         "UINT32", [config.micro_batch_size * config.sequence_length])

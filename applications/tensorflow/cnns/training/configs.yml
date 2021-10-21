@@ -29,7 +29,7 @@ mk2_resnet50_mlperf_pod16: &mk2_resnet50_mlperf_pod16
   batch_norm: True
   dataset: imagenet
   data_dir: /localdata/datasets/
-  internal_exchange_optimisation_target: balanced
+  internal_exchange_optimisation_target: memory
   enable_half_partials: True
   eight_bit_io: True
   lr_schedule: polynomial_decay_lr
@@ -54,22 +54,9 @@ mk2_resnet50_mlperf_pod16_bs20:
   gradient_accumulation_count: 6
   batch_size: 20
   available_memory_proportion: [0.15]
-  disable_variable_offloading: True
   gather_conv_output: True
   abs_learning_rate: 3.824
-  epochs: 44
-  pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
-
-mk2_resnet50_mlperf_pod4_bs20:
-  <<: *mk2_resnet50_mlperf_pod16
-  gradient_accumulation_count: 24
-  batch_size: 20
-  available_memory_proportion: [0.145]
-  disable_variable_offloading: True
-  gather_conv_output: True
-  abs_learning_rate: 3.824
-  epochs: 44
-  replicas: 4
+  epochs: 40
   pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
 
 mk2_resnet50_mlperf_pod64_bs20:
@@ -77,14 +64,28 @@ mk2_resnet50_mlperf_pod64_bs20:
   gradient_accumulation_count: 2
   batch_size: 20
   available_memory_proportion: [0.14]
-  disable_variable_offloading: True
   gather_conv_output: True
   abs_learning_rate: 5.098
-  epochs: 45
+  epochs: 41
   ckpt_epochs_offset: 1
   replicas: 64
   batches_per_step: 100000
   pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+
+mk2_resnet50_mlperf_pod128_bs20:
+  <<: *mk2_resnet50_mlperf_pod16
+  gradient_accumulation_count: 1
+  batch_size: 16
+  available_memory_proportion: [0.14]
+  disable_variable_offloading: True
+  gather_conv_output: True
+  abs_learning_rate: 4.078
+  epochs: 41
+  ckpt_epochs_offset: 1
+  replicas: 128
+  batches_per_step: 100000
+  pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+  epochs_per_ckpt: 1
 
 mk2_resnet50_base: &mk2_resnet50_base
   model: resnet
@@ -262,3 +263,56 @@ mk1_resnet50_16ipus:
   lr_schedule: cosine
   label_smoothing: 0.1
   ckpts_per_epoch: 1
+
+mk2_resnet50_mlperf_pod16_lars: &mk2_resnet50_mlperf_pod16_lars
+  <<: *mk2_resnet50_mlperf_pod16
+  model_size: 50
+  replicas: 16
+  pipeline: True
+  shards: 1
+  pipeline_splits:  [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+  enable_recomputation: True
+  optimiser: LARS
+  momentum: 0.9
+  normalise_input: True
+  pipeline_schedule: Sequential
+  available_memory_proportion: [0.15]
+  batch_norm: True
+  dataset: imagenet
+  internal_exchange_optimisation_target: memory
+  enable_half_partials: True
+  eight_bit_io: True
+  lr_schedule: polynomial_decay_lr
+  mlperf_logging: True
+  standard_imagenet: True
+  gather_conv_output: True
+  abs_end_learning_rate: 0.0001
+  warmup_epochs: 2
+  label_smoothing: 0.1
+  weight_decay: 0.00005
+  BN_decay: 0.9
+  BN_span: 2
+  fused_preprocessing: True
+  loss_scaling: 128
+  abs_learning_rate: 7.3
+  gradient_accumulation_count: 6
+  epochs: 38
+  batch_size: 20
+  disable_variable_offloading: True
+
+mk2_resnet50_mlperf_pod64_lars:
+  <<: *mk2_resnet50_mlperf_pod16_lars
+  batch_size: 20
+  gradient_accumulation_count: 2
+  replicas: 64
+  epochs: 40
+  abs_learning_rate: 9
+  max_reduce_many_buffer_size: 216
+
+mk2_resnet50_mlperf_pod128_lars:
+  <<: *mk2_resnet50_mlperf_pod16_lars
+  batch_size: 14
+  gradient_accumulation_count: 2
+  replicas: 128
+  epochs: 44
+  abs_learning_rate: 10.5

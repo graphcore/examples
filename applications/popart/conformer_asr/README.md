@@ -104,5 +104,5 @@ The LibriSpeech  dataset used here is licensed under the Creative Commons Attrib
 See http://www.openslr.org/12
 
 The code for this application uses the [ctcdecode](https://github.com/parlance/ctcdecode) library which is licensed under the MIT license. 
-See https://github.com/parlance/ctcdecode/blob/master/LICENSE
+See https://github.com/parlance/ctcdecode/blob/v1.0/LICENSE
 

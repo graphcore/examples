@@ -109,20 +109,34 @@ def add_common_arguments(parser, required=True):
                        help= """The stdev of the truncated-normal-initializer for initializing all weight matrices.""")
     group.add_argument('--disable-acc', default=False, action='store_true',
                        help='Makes the calculation of the accuracy optional.')
+    group.add_argument('--use-qkv-bias', default=False, action='store_true',
+                       help='Use biases for QKV layer.')
+    group.add_argument('--use-qkv-split', default=False, action='store_true',
+                       help='Split QKV layer.')
 
     # Model options
     group.add_argument('--use-attention-projection-bias', type=_str_to_bool, default=True,
                        help="Whether to use bias in linear projection behind attention layer.")
     group.add_argument('--use-cls-layer', type=_str_to_bool, default=True,
                        help="""Include the CLS layer in pretraining. This layer comes after the encoders but before the projection for the MLM loss.""")
-    group.add_argument('--use-qkv-bias', type=_str_to_bool, default=True,
-                       help="""Whether to use bias in QKV calculation of attention layer.""")
+    group.add_argument('--use-prediction-bias', type=_str_to_bool, default=True,
+                       help="""Whether to use bias in mlm prediction.""")
     group.add_argument('--static-mask', action='store_true', default=False,
                        help="Use if the pretraining dataset was created with the masked tokens always at the beginning of the input tensor.")
     group.add_argument("--max-predictions-per-seq", type=int, default=20,
                        help="the number of masked words per sentence.")
     group.add_argument('--duplicate-factor', default=5, type=int,
                        help='The amount of duplication factor inside the dataset.')
+
+    # GroupBert architecture options
+    group.add_argument('--groupbert', action='store_true', default=False,
+                       help="Use GroupBert architecture")
+    group.add_argument('--groupbert-ffn-output-groups', type=int, default=4,
+                       help="Set number of groups for FFN layer in GroupBert")
+    group.add_argument('--groupbert-conv-kernel-size', type=int, default=7,
+                       help="Set size of convolution kernel in GroupBert")
+    group.add_argument('--groupbert-conv-group-size', type=int, default=16,
+                       help="Set size of convolution groups in GroupBert")
 
     # IPU options
     pipeline_schedule_options = [_.name for _ in ipu.ops.pipelining_ops.PipelineSchedule]
@@ -145,6 +159,8 @@ def add_common_arguments(parser, required=True):
                        help="Enable offloading of training variables into remote memory.")
     group.add_argument('--min-remote-tensor-size', type=int, default=128,
                        help="The minimum remote tensor size (bytes) for partial variable offloading")
+    group.add_argument('--replicated-tensor-sharding', action="store_true", default=False,
+                       help="Enable replicated tensor sharding of optimizer state.")
     group.add_argument('--stochastic-rounding', type=_str_to_bool, default=True,
                        help="Enable stochastic rounding. Set to False when run evaluation.")
     group.add_argument('--no-outlining', type=_str_to_bool, default=False,
@@ -157,6 +173,8 @@ def add_common_arguments(parser, required=True):
                        help="Floating-point precision of data in matmul and convolution operations..")
     group.add_argument('--max-cross-replica-sum-buffer-size', type=int, default=10 * 1024 * 1024,
                        help="The maximum number of bytes that can be waiting before a cross replica sum op is scheduled.")
+    group.add_argument('--max-reduce-scatter-buffer-size', type=int, default=0,
+                       help="The maximum number of bytes that can be waiting before reduce-scatter op is scheduled.")
     group.add_argument('--scheduler', type=str, default="CLUSTERING", choices=schedulers_available,
                        help="Forces the compiler to use a specific scheduler when ordering the instructions.")
     group.add_argument('--recomputation-mode', type=str, default="RecomputeAndBackpropagateInterleaved", choices=recomputation_modes_available)
@@ -174,8 +192,8 @@ def add_common_arguments(parser, required=True):
                        help="Configure Poplar to only compile the graph. This will not acquire any IPUs and thus facilitate profiling without using hardware resources.")
     group.add_argument('--matmul-serialize-factor', type=int, default=6,
                        help='Serialization factor of the embeddings lookup and projection. Must be a divisor of vocab_size.')
-    group.add_argument('--use-qkv-split', action='store_true', default=False,
-                       help='split the QKV layer into independent tensors.')
+    group.add_argument('--glue-dropout-prob', type=float, default=0.1,
+                       help='GLUE tasks dropout probability.')
     group.add_argument('--pipeline-stages', type=str,
                        help="""Pipeline stages, a list of [emb, pos, hid, mlm, nsp] layers forming the pipeline.""")
     group.add_argument('--device-mapping', type=str,

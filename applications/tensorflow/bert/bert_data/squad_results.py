@@ -20,6 +20,7 @@ from collections import OrderedDict, defaultdict, namedtuple
 
 import six
 import tensorflow.compat.v1 as tf
+from log import logger
 
 from . import tokenization
 
@@ -333,7 +334,7 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
         if not is_version_2_with_negative:
             all_predictions[example.qas_id] = nbest_json[0]["text"]
         else:
-            # predict "" iff the null score - the score of best non-null > threshold
+            # predict "" if the null score - the score of best non-null > threshold
             score_diff = score_null - best_non_null_entry.start_logit - (
                 best_non_null_entry.end_logit)
             scores_diff_json[example.qas_id] = score_diff
@@ -341,7 +342,6 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                 all_predictions[example.qas_id] = ""
             else:
                 all_predictions[example.qas_id] = best_non_null_entry.text
-
         all_nbest_json[example.qas_id] = nbest_json
 
     with tf.gfile.GFile(output_prediction_file, "w") as writer:

@@ -182,6 +182,7 @@ static poplar::program::Program InternalBuild(
 
 void BuildDSoftmax_metadata(
   std::vector<std::int64_t>& allocating_indices,
+  std::vector<std::int64_t>& replica_identical_output_indices,
   std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
@@ -210,6 +211,7 @@ poplar::program::Program BuildSoftmax(
 
 void BuildDSoftmaxInPlace_metadata(
   std::vector<std::int64_t>& allocating_indices,
+  std::vector<std::int64_t>& replica_identical_output_indices,
   std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
@@ -379,6 +381,7 @@ static poplar::program::Program InternalBuild_grad(
 
 void BuildDSoftmaxGrad_metadata(
   std::vector<std::int64_t>& allocating_indices,
+  std::vector<std::int64_t>& replica_identical_output_indices,
   std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,

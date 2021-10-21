@@ -22,6 +22,7 @@ from test_common import get_csv, parse_csv, run_train, cifar10_data_dir
 @pytest.mark.category1
 class TestBasicFunctionality(unittest.TestCase):
     """ Test that the help option works"""
+
     def test_help(self):
         help_out = run_train(**{'--help': ''})
         self.assertNotEqual(help_out.find("usage: train.py"), -1)
@@ -315,7 +316,11 @@ class TestPopdist(unittest.TestCase):
             cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
             env = os.environ.copy()
             env.update(extra_env)
-            subprocess.check_call(cmd, cwd=cwd, env=env)
+
+            try:
+                subprocess.check_output(cmd, cwd=cwd, env=env)
+            except subprocess.CalledProcessError as e:
+                print(e.output)
 
             instance_logdirs = glob.glob(f"{logdir}/*_popdist_instance_*")
             self.assertEqual(len(instance_logdirs), NUM_INSTANCES)
@@ -358,6 +363,7 @@ class TestPopdist(unittest.TestCase):
 
 @pytest.mark.category3
 @pytest.mark.ipus(16)
+@pytest.mark.ipu_version("ipu2")
 class TestDistributedTraining(unittest.TestCase):
     """Testing distributed training with multiple processes on a single machine with 16 IPUs."""
 
@@ -499,7 +505,6 @@ class TestConfig(unittest.TestCase):
                            '--data-dir': cifar10_data_dir,
                            })
         cls.training = get_csv(out, 'training.csv')
-
 
     def test_results(self):
         # test the cmd line arg overrode config arg

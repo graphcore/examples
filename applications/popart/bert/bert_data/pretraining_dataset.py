@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import numpy as np
+import numba as nb
+from numba.typed import List
+import time
 import random
 import glob
 import os
@@ -22,7 +25,8 @@ from functools import reduce
 
 from .dataset import DataSet
 from .data_sampler import DistributedDataSampler, SampleGenerator
-
+from utils.distributed import distributed_barrier
+import popdist.popart
 logger = getLogger(__name__)
 
 
@@ -53,11 +57,9 @@ def data_ranges(sequence_length, mask_tokens, vocab_length):
 #   packed_segment_ids, [sequence_length]
 #   packed_positions, [sequence_length]
 #   MLM:
-#   packed_masked_lm_positions, [mask_tokens + max_sequences_per_pack]
-#   packed_masked_lm_ids, [mask_tokens + max_sequences_per_pack]
-#   packed_masked_lm_weights, [mask_tokens + max_sequences_per_pack]
+#   packed_masked_lm_ids, [mask_tokens + max_sequences_per_pack - 1]
+#   packed_masked_lm_weights, [mask_tokens + max_sequences_per_pack - 1]
 #   NSP:
-#   packed_next_sentence_positions, [max_sequences_per_pack]
 #   packed_next_sentence_labels, [max_sequences_per_pack]
 #   packed_next_sentence_weights, [max_sequences_per_pack]
 
@@ -67,10 +69,8 @@ def packed_data_file_format(sequence_length, mask_tokens, max_sequences_per_pack
             sequence_length,
             sequence_length,
             sequence_length,
-            mask_tokens + max_sequences_per_pack,
-            mask_tokens + max_sequences_per_pack,
-            mask_tokens + max_sequences_per_pack,
-            max_sequences_per_pack,
+            mask_tokens + max_sequences_per_pack - 1,
+            mask_tokens + max_sequences_per_pack - 1,
             max_sequences_per_pack,
             max_sequences_per_pack]
 
@@ -80,10 +80,8 @@ def packed_data_ranges(sequence_length, mask_tokens, vocab_length, max_sequences
             max_sequences_per_pack,
             2,
             sequence_length,
-            sequence_length,
             vocab_length,
             max_sequences_per_pack,
-            sequence_length,
             1,
             1]
 
@@ -248,13 +246,45 @@ class CachedDataLoader(BinaryDataLoader):
         self.cache_index = 0
         self.data_cache = []
         logger.info("Filling Dataset Cache")
+        start_time = time.time()
         for __ in range(self.epochs_to_cache):
             data = []
             for __ in tqdm(self.files):
                 data.append(self.load_file())
-            data = np.concatenate(data, axis=0)
+
+            # Concatenate and shuffle the data that has been read in
+            @nb.jit(nopython=True, parallel=True, cache=True)
+            def concat_shuffle(buffer, data, indices, samples_per_file):
+                cumulative_samples_per_epoch = np.zeros((len(samples_per_file)), dtype=nb.int32)
+                cumulative_samples_per_epoch[1:] = np.cumsum(samples_per_file)[:-1]
+
+                for i in nb.prange(len(data)):
+                    start = cumulative_samples_per_epoch[i]
+                    end = cumulative_samples_per_epoch[i] + samples_per_file[i]
+                    access_pattern = indices[start:end]
+                    for k, j in enumerate(access_pattern):
+                        buffer[j] = data[i][k]
+                return buffer
+
+            # Create an array to hold the samples
+            samples_per_file = np.array([self.samples_in_file(f) for f in self.files])
+            total_samples_per_epoch = int(sum(samples_per_file))
+            buffer = np.empty([total_samples_per_epoch, self.sample_size], self.dtype)
+
+            # Shuffle the access indices instead of shuffling the whole dataset
+            indices = np.arange(total_samples_per_epoch)
             if self.shuffle:
-                self._rng.shuffle(data)
+                self._rng.shuffle(indices)
+
+            # Concatenate and shuffle the data from each file
+            # using the compiled Numba function
+            data = concat_shuffle(buffer, data, indices, samples_per_file)
+            logger.info(f"Dataset cache filled in {time.time() - start_time:3.2f} seconds.")
+
+            # Wait until all instances finish filling the dataset cache
+            if popdist.getNumInstances() > 1:
+                distributed_barrier()
+
             self.data_cache.append(data)
             self.file_index = 0
 

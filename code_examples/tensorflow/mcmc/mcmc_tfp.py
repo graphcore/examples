@@ -1,6 +1,7 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 import argparse
+from tensorflow.python.ipu.config import IPUConfig
 import os
 import time as time
 
@@ -190,10 +191,10 @@ for i in range(args.num_ipus):
 
 
 # Configure IPU
-config = utils.create_ipu_config()
+config = IPUConfig()
 # Create num_chips TF devices, with 1 IPU per device
-config = utils.auto_select_ipus(config, [1]*args.num_ipus)
-utils.configure_ipu_system(config)
+config.auto_select_ipus = [1] * args.num_ipus
+config.configure_ipu_system()
 utils.move_variable_initialization_to_cpu()
 
 # Initialize variables

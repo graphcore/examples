@@ -28,6 +28,7 @@ def get_configs():
     """Dynamically read all configs in the test config directory."""
     THIS_MODULE_PATH = os.path.dirname(__file__)
     filenames = glob.glob(os.path.join(THIS_MODULE_PATH, 'configs', '*.json'))
+    filenames = [f for f in filenames if "pretrain_tiny" in f]
     return filenames
 
 

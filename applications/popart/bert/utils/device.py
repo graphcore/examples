@@ -31,8 +31,10 @@ def _request_ipus(num_ipus):
 
 def get_ipu_model(args, request_ipus):
     opts = {"numIPUs": request_ipus}
-    if args.device_version is not None:
+    if args.device_version:
         opts["ipuVersion"] = args.device_version
+    if args.device_tiles:
+        opts["tilesPerIPU"] = args.device_tiles
 
     return get_device_manager(args).createIpuModelDevice(opts)
 
@@ -42,8 +44,6 @@ def get_offline_device(args, request_ipus):
         "numIPUs": request_ipus,
         "syncPattern": get_sync_pattern(args)
     }
-    if args.device_tiles:
-        opts["tilesPerIPU"] = args.device_tiles
     if args.device_version:
         opts["ipuVersion"] = args.device_version
 
@@ -68,10 +68,7 @@ def device_is_replicated(args):
 
 
 def get_sync_pattern(args):
-    if args.execution_mode == "PHASED" and args.phased_execution_type == "DUAL":
-        return popart.SyncPattern.ReplicaAndLadder
-
-    if args.execution_mode == "PIPELINE" and not device_is_replicated(args):
+    if not device_is_replicated(args):
         return popart.SyncPattern.SinglePipeline
 
     return popart.SyncPattern.Full

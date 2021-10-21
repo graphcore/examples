@@ -31,17 +31,9 @@ from typing import List, NamedTuple, Optional
 import numpy as np
 from scipy.stats import truncnorm
 
-import popart
-from phased_execution.scope_manager import ScopeProvider
 from utils import packed_bert_utils
 
 logger = logging.getLogger(__name__)
-
-
-class ExecutionMode(str, Enum):
-    DEFAULT = "DEFAULT"
-    PIPELINE = "PIPELINE"
-    PHASED = "PHASED"
 
 
 class BertConfig(NamedTuple):
@@ -89,8 +81,6 @@ class BertConfig(NamedTuple):
     # Or a list specifying the placement on each IPU.
     layers_per_ipu: List[int] = [2]
 
-    # Number of layers per phased execution phase (only used in phased mode)
-    layers_per_phase: int = 3
     # Specify the available memory proportion to be used by the Encoder MatMuls.
     # The same as `layers_per_ipu` this can be a single element list or a
     # list providing a specific value for each IPU.
@@ -147,11 +137,12 @@ class BertConfig(NamedTuple):
     @property
     def max_lm_predictions(self):
         # When using the packed sequence data format, the number of mask_tokens is
-        # increased by the number of sequences per pack.
+        # increased by the number of sequences per pack - 1.
+        # i.e. if there is 1 sequence per pack the number of mask tokens is unchanged
         if not self.use_packed_sequence_format:
             return self.mask_tokens
         else:
-            return self.mask_tokens + self.max_sequences_per_pack
+            return self.mask_tokens + self.max_sequences_per_pack - 1
 
     use_packed_sequence_format: bool = False
     max_sequences_per_pack: int = 1
@@ -168,13 +159,6 @@ class BertConfig(NamedTuple):
 
     projection_bias: bool = False
 
-    num_attention_splits: int = 1
-    num_ffwd_splits: int = 1
-
-    execution_mode: ExecutionMode = ExecutionMode.DEFAULT
-    num_io_tiles: int = 0
-    phased_execution_type: str = "SINGLE"
-
     # Return the start and end logits as a single tensor to be sliced on the host.
     squad_single_output: bool = True
     # Execute the squad task head on IPU0. If False, execute on the final encoder IPU/stage.
@@ -184,37 +168,27 @@ class BertConfig(NamedTuple):
 class DeviceScope(object):
     def __init__(self,
                  builder,
-                 execution_mode=ExecutionMode.DEFAULT,
+                 pipeline=False,
                  virtualGraph=None,
                  pipelineStage=None,
-                 executionPhase=None,
                  nameScope=None,
                  additional_scopes=None):
         self.builder = builder
-        self.execution_mode = execution_mode
+        self.pipeline = pipeline
         self.virtualGraph = virtualGraph
         self.pipelineStage = pipelineStage
-        self.executionPhase = executionPhase
         self.nameScope = nameScope
         self.additional_scopes = additional_scopes or []
 
     def __enter__(self):
         self.stack = ExitStack()
-        # ExecutionPhase will automatically set the virtualGraph attributes based on execution phase
-        if self.execution_mode != ExecutionMode.PHASED \
-                and self.virtualGraph is not None:
+        if self.virtualGraph is not None:
             self.stack.enter_context(
                 self.builder.virtualGraph(self.virtualGraph))
 
-        if self.execution_mode == ExecutionMode.PIPELINE\
-                and self.pipelineStage is not None:
+        if self.pipeline and self.pipelineStage is not None:
             self.stack.enter_context(
                 self.builder.pipelineStage(self.pipelineStage))
-
-        if self.execution_mode == ExecutionMode.PHASED\
-                and self.executionPhase is not None:
-            self.stack.enter_context(
-                self.builder.executionPhase(self.executionPhase))
 
         if self.nameScope is not None:
             self.stack.enter_context(self.builder.nameScope(self.nameScope))
@@ -228,14 +202,14 @@ class DeviceScope(object):
 
 
 class Model(object):
-    def __init__(self, builder=popart.Builder(), initializers=None, execution_mode=ExecutionMode.DEFAULT):
+    def __init__(self, builder=None, initializers=None, pipeline=False):
         if initializers is None:
             initializers = {}
+        if builder is None:
+            builder = popart.Builder()
         self.builder = builder
         self.initializers = initializers
-        if type(execution_mode) == str:
-            execution_mode = ExecutionMode(execution_mode)
-        self.execution_mode = execution_mode
+        self.pipeline = pipeline
 
         # Keep track of tensors in order to give them different parameters
         self.tensors = defaultdict(set)
@@ -287,8 +261,8 @@ class Model(object):
             value = value.astype(dtype)
         return self.builder.aiOnnx.constant(value, debug_name)
 
-    def device_scope(self, virtualGraph=None, pipelineStage=None, executionPhase=None, nameScope=None, additional_scopes=None):
-        return DeviceScope(self.builder, self.execution_mode, virtualGraph, pipelineStage, executionPhase, nameScope, additional_scopes)
+    def device_scope(self, virtualGraph=None, pipelineStage=None, nameScope=None, additional_scopes=None):
+        return DeviceScope(self.builder, self.pipeline, virtualGraph, pipelineStage, nameScope, additional_scopes)
 
     def _add_to_tensor_map(self, tensor):
         if self.builder.hasPipelineStage():
@@ -300,7 +274,13 @@ class Model(object):
 
 class Bert(Model):
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
+        # Specifying ai.onnx opset9 for the slice syntax
+        builder = popart.Builder(opsets={
+            "ai.onnx": 9,
+            "ai.onnx.ml": 1,
+            "ai.graphcore": 1
+        })
+        super().__init__(builder=builder, **kwargs)
         self.config = config
 
         self.dropout_modifier = 256
@@ -316,32 +296,24 @@ class Bert(Model):
     def init_device_placement(self):
         ''' Create a DeviceScope for each layer, ie Embedding, SQUAD, NSP
         '''
-        # Precompute offset for masks, which are prepared in phase 0 and 1
-        self.execution_phase_precompute_offset = 2
-
         layer_offset = self.config.encoder_start_ipu
-
         # Embedding
-        self.embedding_scope = self.device_scope(
-            0, 0, self.execution_phase_precompute_offset)
+        self.embedding_scope = self.device_scope(0, 0)
         ipu = max(layer_offset - 1, 0)
-        self.embedding_split_scope = self.device_scope(
-            ipu, ipu, ipu + self.execution_phase_precompute_offset)
+        self.embedding_split_scope = self.device_scope(ipu, ipu)
         # Transformer Layers
         pipeline_stage = self.encoder_layer_ipu(self.config.num_layers - 1) + 1
-        execution_phase = pipeline_stage + self.execution_phase_precompute_offset
         # Task Layers
         if self.config.task in ("NSP", "PRETRAINING"):
             self.nsp_scope = self.device_scope(
-                self.embedding_split_scope.virtualGraph, pipeline_stage, execution_phase, "NSP")
+                self.embedding_split_scope.virtualGraph, pipeline_stage, "NSP")
             self.cls_scope = self.device_scope(
-                self.embedding_split_scope.virtualGraph, pipeline_stage, execution_phase, "CLS")
+                self.embedding_split_scope.virtualGraph, pipeline_stage, "CLS")
         if self.config.task == "PRETRAINING":
             if self.embedding_scope.virtualGraph != self.embedding_split_scope.virtualGraph:
                 pipeline_stage += 1
-                execution_phase += 1
             self.mlm_scope = self.device_scope(
-                self.embedding_scope.virtualGraph, pipeline_stage, execution_phase, "MLM")
+                self.embedding_scope.virtualGraph, pipeline_stage, "MLM")
             self.final_loss_scope = self.mlm_scope
         if self.config.task == "SQUAD":
             ipu = self.embedding_scope.virtualGraph
@@ -349,20 +321,18 @@ class Bert(Model):
                 pipeline_stage -= 1
                 ipu = pipeline_stage
             self.squad_scope = self.device_scope(
-                ipu, pipeline_stage, execution_phase, "Squad")
+                ipu, pipeline_stage, "Squad")
             self.final_loss_scope = self.squad_scope
 
         # Scope to place all IO on first IPU for inference:
         if self.config.inference:
             pipeline_stage += 1
-            execution_phase += 1
             self.output_scope = self.device_scope(
-                self.embedding_scope.virtualGraph, pipeline_stage, execution_phase, "Output")
+                self.embedding_scope.virtualGraph, pipeline_stage, "Output")
         else:
             self.output_scope = None
 
         self.total_pipeline_stages = pipeline_stage + 1
-        self.total_execution_phases = execution_phase + 1
 
     @property
     def total_ipus(self):
@@ -370,9 +340,8 @@ class Bert(Model):
 
     def encoder_scope(self, layer_index):
         ipu = self.encoder_layer_ipu(layer_index)
-        execution_phase = ipu + self.execution_phase_precompute_offset
         logger.debug(f"Encoder Layer {layer_index} -> IPU {ipu}")
-        return self.device_scope(ipu, ipu, execution_phase, f"Layer{layer_index}")
+        return self.device_scope(ipu, ipu, f"Layer{layer_index}")
 
     def _encoder_layer_ipu_offset(self, layer_index):
         encoder_index = 0
@@ -767,62 +736,36 @@ class Bert(Model):
             masks[1] is the index that masking starts in the rest of the sequence
         Otherwise
             masks[0] is the index that masking starts in the rest of the sequence
-        When use_packed_sequence_format is turned on:
-            model.input["input_mask"] is used to create the block-diagonal mask which
-            prevents cross-contamination between sequences in a pack
         Example:
             Task: PRETRAINING
             masks: [2, 5]
             mask_tokens: 4
             returns: [0,0,-1000.0, -1000.0, 0, -1000.0, ...]
         """
-        if self.execution_mode == ExecutionMode.PHASED:
-            mask_idx = self.builder.getExecutionPhase() % 2
-            additional_scopes = [
-                self.builder.recomputeOutput(popart.RecomputeType.Checkpoint),
-                self.builder.outputTensorLocation(popart.TensorLocation.OnChip)
-            ]
-        else:
-            mask_idx = self.builder.getVirtualGraph() if self.builder.hasVirtualGraph() else None
-            additional_scopes = None
+        mask_idx = self.builder.getVirtualGraph() if self.builder.hasVirtualGraph() else None
 
         if mask_idx in self.masks:
             return self.masks[mask_idx]
 
         mask_scope = self.device_scope(mask_idx,
                                        self.builder.getPipelineStage() if self.builder.hasPipelineStage() else None,
-                                       mask_idx,
-                                       "Mask",
-                                       additional_scopes=additional_scopes)
+                                       "Mask")
         with mask_scope:
-            if not self.config.use_packed_sequence_format:
-                base_value = np.arange(self.config.sequence_length)
-                base = self.constant_tensor(base_value, np.uint32, "mask_sequence")
-                if self.config.task == "PRETRAINING":
-                    # Mask tokens mask
-                    mmask = self.builder.aiOnnx.less([base, masks[0]])
-                    # No constexpr for greater. Create as const instead
-                    _mask = self.constant_tensor(np.greater_equal(
-                        base_value, self.config.max_lm_predictions), np.bool)
-                    mmask = self.builder.aiOnnx.logical_or([mmask, _mask])
-                    # Sequence mask
-                    smask = self.builder.aiOnnx.less([base, masks[1]])
-                    final_mask = self.builder.aiOnnx.logical_and([mmask, smask])
-                else:
-                    final_mask = self.builder.aiOnnx.less([base, masks[0]])
-
-                final_mask = self.builder.aiOnnx.cast(
-                    [final_mask], self.config.popart_dtype)
-                final_mask = self.builder.aiOnnx.sub(
-                    [final_mask, self.constant_tensor(1.0, self.config.dtype)])
-                final_mask = self.builder.aiOnnx.mul(
-                    [final_mask, self.constant_tensor(1000.0, self.config.dtype)])
-                final_mask = self.builder.reshape_const(
-                    self.builder.aiOnnx,
-                    [final_mask],
-                    [self.config.micro_batch_size, 1, 1, self.config.sequence_length])
+            base_value = np.arange(self.config.sequence_length)
+            base = self.constant_tensor(base_value, np.uint32, "mask_sequence")
+            if self.config.task == "PRETRAINING":
+                # Mask tokens mask
+                mmask = self.builder.aiOnnx.less([base, masks[0]])
+                # No constexpr for greater. Create as const instead
+                _mask = self.constant_tensor(np.greater_equal(
+                    base_value, self.config.max_lm_predictions), np.bool)
+                mmask = self.builder.aiOnnx.logical_or([mmask, _mask])
+                # Sequence mask
+                smask = self.builder.aiOnnx.less([base, masks[1]])
+                final_mask = self.builder.aiOnnx.logical_and([mmask, smask])
             else:
                 final_mask = self.builder.aiOnnx.less([base, masks[0]])
+
             final_mask = self.builder.aiOnnx.cast(
                 [final_mask], self.config.popart_dtype)
             final_mask = self.builder.aiOnnx.sub(
@@ -953,7 +896,10 @@ class Bert(Model):
             x = self.builder.aiOnnx.mul([x, c])
 
             if not self.config.no_mask or masks is not None:
-                mask = self.attention_mask(masks)
+                if not self.config.use_packed_sequence_format:
+                    mask = self.attention_mask(masks)
+                else:
+                    mask = packed_bert_utils.attention_mask(self, x)
                 x = self.builder.aiOnnx.add([x, mask], "ApplyMask")
 
             x = self.builder.aiOnnx.softmax([x], axis=-1)
@@ -976,16 +922,10 @@ class Bert(Model):
         x = self.builder.reshape_const(self.builder.aiOnnx, [input_x], [
                                        self.config.micro_batch_size, self.config.sequence_length, self.config.hidden_size])
 
-        if self.config.use_packed_sequence_format:
-            # MLM tokens can be at arbitrary positions in the sequence
-            x = packed_bert_utils.mlm_projection_gather_indexes(self, x)
-
-        else:
-            # MLM tokens have been pre-arranged to the front of the sequence
-            x = self.builder.aiOnnxOpset9.slice([x], axes=[1], starts=[
-                0], ends=[self.config.max_lm_predictions])
-            x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
-                                        self.config.micro_batch_size * self.config.max_lm_predictions, self.config.hidden_size])
+        # MLM tokens have been pre-arranged to the front of the sequence
+        x = self.builder.aiOnnxOpset9.slice([x], axes=[1], starts=[0], ends=[self.config.max_lm_predictions])
+        x = self.builder.reshape_const(self.builder.aiOnnx, [x], [
+                                       self.config.micro_batch_size * self.config.max_lm_predictions, self.config.hidden_size])
 
         weight = self.embedding_dict
 
@@ -1040,8 +980,8 @@ class Bert(Model):
         fine-tuned), then run a FC layer with tanh activation
         """
         if self.config.use_packed_sequence_format:
-            # The [CLS] tokens can occur anywhere in the sequence
-            pooler_input = packed_bert_utils.pooler_gather_indexes(self, pooler_input)
+            # The [CLS] tokens have been re-arranged to the end of the sequence
+            pooler_input = packed_bert_utils.slice_nsp_tokens(self, pooler_input)
 
         else:
             # The [CLS] token occurs at the start of the token
@@ -1099,81 +1039,3 @@ class Bert(Model):
         x = self.intermediate_activation_function(x)
         x = self.norm(x)
         return x
-
-
-def get_model(config, mode, block=None, initializers=None):
-    # Specifying ai.onnx opset9 for the slice syntax
-    builder = popart.Builder(opsets={
-        "ai.onnx": 9,
-        "ai.onnx.ml": 1,
-        "ai.graphcore": 1
-    })
-
-    if mode == ExecutionMode.PHASED:
-        scope_provider = ScopeProvider(phased_execution_type=config.phased_execution_type)
-        if not block:
-            from phased_execution.bert_phased import BertModel
-            return BertModel(config,
-                             builder=builder,
-                             initializers=initializers,
-                             scope_provider=scope_provider)
-
-        if block.lower() == 'embedding':
-            from phased_execution.bert_layers_serialised import BertEmbedding
-            return BertEmbedding(config.vocab_length,
-                                 config.hidden_size,
-                                 config.sequence_length,
-                                 config.max_positional_length,
-                                 config.embedding_serialization_vocab_steps,
-                                 config.layer_norm_eps,
-                                 not config.no_dropout,
-                                 config.dropout_prob,
-                                 mode,
-                                 config.dtype,
-                                 not config.update_embedding_dict,
-                                 weight_transposed=False,
-                                 builder=builder,
-                                 scope_provider=scope_provider)
-
-        if block.lower() == 'attention':
-            from phased_execution.bert_layers import Attention
-            attention_params = {
-                'input_size': config.hidden_size,
-                'hidden_size': config.hidden_size,
-                'num_heads': config.attention_heads,
-                'serialize_matmul': config.split_linear_layers,
-                'available_memory_proportion': config.available_memory_proportion,
-                'epsilon': config.layer_norm_eps,
-                'dropout': not config.no_dropout,
-                'dropout_prob': config.dropout_prob,
-                'attn_dropout': not config.no_attn_dropout,
-                'attn_dropout_prob': config.attn_dropout_prob,
-                'micro_batch_size': config.micro_batch_size,
-                'sequence_length': config.sequence_length,
-                'dtype': config.dtype,
-                'task': config.task,
-                'num_mask_tokens': config.mask_tokens,
-                'split_qkv': config.split_qkv,
-                'attention_bias': config.attention_bias
-            }
-            return Attention('Attention', **attention_params, builder=builder, scope_provider=scope_provider)
-
-        if block.lower() == 'feedforward':
-            from phased_execution.bert_layers import FeedForward
-            return FeedForward('FF',
-                               config.hidden_size,
-                               config.ff_size,
-                               dropout=not config.no_dropout,
-                               dropout_prob=config.dropout_prob,
-                               epsilon=config.layer_norm_eps,
-                               intermediate_act_func=config.activation_type,
-                               dtype=config.dtype,
-                               alpha=config.relu_leak,
-                               serialize_matmul=config.split_linear_layers,
-                               builder=builder,
-                               scope_provider=scope_provider)
-    else:
-        return Bert(config,
-                    builder=builder,
-                    initializers=initializers,
-                    execution_mode=mode)

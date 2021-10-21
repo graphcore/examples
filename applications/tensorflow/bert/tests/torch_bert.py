@@ -16,7 +16,7 @@
 # limitations under the License.
 #
 # This file has been modified by Graphcore Ltd.
-# From https://github.com/huggingface/transformers/blob/master/transformers/modeling_bert.py
+# From https://github.com/huggingface/transformers/blob/v4.9.1/src/transformers/models/bert/modeling_bert.py
 import sys
 import math
 import torch

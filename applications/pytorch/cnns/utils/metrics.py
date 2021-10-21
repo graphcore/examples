@@ -7,9 +7,7 @@ import horovod.torch as hvd
 
 def accuracy(predictions, labels):
     _, ind = torch.max(predictions, 1)
-    # provide labels only for samples, where prediction is available (during the training, not every samples prediction is returned for efficiency reasons)
-    labels = labels[-predictions.size()[0]:]
-    accuracy = torch.sum(torch.eq(ind, labels)).item() / labels.size()[0] * 100.0
+    accuracy = torch.mean(torch.eq(ind, labels).float()) * 100.0
     return accuracy
 
 

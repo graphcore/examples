@@ -16,13 +16,24 @@ import subprocess
 import tensorflow as tf
 
 
+def check_output(*args, **kwargs):
+    try:
+        out = subprocess.check_output(stderr=subprocess.PIPE, *args, **kwargs)
+    except subprocess.CalledProcessError as e:
+        print(f"TEST FAILED")
+        print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
+        print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
+        raise
+    return out
+
+
 def run_train(**kwargs):
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('../')
     cmd = ['python', './dien_train.py']
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    return subprocess.check_output(cmd).decode('utf-8')
+    return check_output(cmd).decode("utf-8")
 
 
 def run_validation(**kwargs):
@@ -31,7 +42,7 @@ def run_validation(**kwargs):
     cmd = ['python', './dien_infer.py']
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    return subprocess.check_output(cmd).decode('utf-8')
+    return check_output(cmd).decode("utf-8")
 
 
 def get_log(out):

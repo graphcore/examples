@@ -1,0 +1,93 @@
+{
+    "attention_probs_dropout_prob": 0.0,
+    "available_memory_proportion": [0.15, 0.15, 0.2, 0.2],
+    "base_learning_rate": 0.0008,
+    "batch_size": 6,
+    "batches_per_step": 1,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "groupbert": true,
+    "groupbert_ffn_output_groups": 4,
+    "groupbert_conv_group_size": 16,
+    "groupbert_conv_kernel_size": 7,
+    "device_mapping": [
+        0,
+        1,
+        2,
+        3,
+        0
+    ],
+    "duplicate_factor": 5,
+    "epsilon": 0.000001,
+    "fp_exceptions": false,
+    "gradient_accumulation_count": 40,
+    "hidden_act": "gelu",
+    "hidden_dropout_prob": 0.0,
+    "hidden_size": 768,
+    "init_checkpoint": "",
+    "initializer_range": 0.02,
+    "intermediate_size": 3072,
+    "loss_scaling": 512,
+    "lr_schedule": "polynomial_decay",
+    "matmul_serialize_factor": 1,
+    "max_position_embeddings": 512,
+    "max_predictions_per_seq": 20,
+    "no_outlining": false,
+    "num_attention_heads": 12,
+    "num_hidden_layers": 12,
+    "num_train_steps": 833334,
+    "optimizer": "mpadamw",
+    "parallel_io_threads": 16,
+    "partials_type": "half",
+    "pipeline_schedule": "Grouped",
+    "pipeline_stages": [
+        [
+            "emb",
+            "pos"
+        ],
+        [
+            "hid",
+            "hid",
+            "hid",
+            "hid"
+        ],
+        [
+            "hid",
+            "hid",
+            "hid",
+            "hid"
+        ],
+        [
+            "hid",
+            "hid",
+            "hid"
+        ],
+        [
+            "hid",
+            "mlm",
+            "nsp"
+        ]
+    ],
+    "precision": "16",
+    "reduction_type": "sum",
+    "replicas": 2,
+    "restore_dir": "",
+    "save_path": "./checkpoint/phase1",
+    "seed": 1234,
+    "seq_length": 128,
+    "static_mask": false,
+    "steps_per_ckpts": 100000,
+    "steps_per_logs": 1000,
+    "stochastic_rounding": true,
+    "task": "pretraining",
+    "train_file": "data/tf_wikipedia/lower_case_1_seq_len_128_max_pred_20_masked_lm_prob_0.15_random_seed_12345_dupe_factor_5_shard_256_test_split_10/books_wiki_en_corpus/training/*.tfrecord",
+    "type_vocab_size": 2,
+    "use_attention_projection_bias": true,
+    "use_cls_layer": true,
+    "use_prediction_bias": true,
+    "variable_offloading": true,
+    "vocab_size": 30528,
+    "warmup": 10000,
+    "weight_decay_rate": 0.01,
+    "enable_recomputation": true
+}

@@ -261,8 +261,7 @@ def load_model_from_tf(
     indices,
     positions,
     segments,
-    task,
-    builder=popart.Builder(),
+    task
 ):
     """
     Loads weights, etc. from Tensorflow files into the Graphcore IPU BERT
@@ -277,7 +276,7 @@ def load_model_from_tf(
     with an older ONNX version). If not provided, a default builder is created.
     """
     initializers = load_initializers_from_tf(file_path, is_checkpoint, config, task)
-    popart_model = Bert(config, builder=builder, initializers=initializers)
+    popart_model = Bert(config, initializers=initializers)
 
     output_tensor = popart_model.build_graph(indices, positions, segments)
     proto = builder.getModelProto()

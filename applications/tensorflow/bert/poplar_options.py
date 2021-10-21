@@ -57,7 +57,7 @@ def set_poplar_engine_options(execution_profile, memory_profile, profile_dir, sy
         else:
             os.environ['TF_POPLAR_FLAGS'] = synthetic_data_flag
 
-    if tensorflow_progress_bar:
+    if tensorflow_progress_bar and not tensorflow_progress_bar == 'false':
         progress_bar_string = " --show_progress_bar="+tensorflow_progress_bar
         if os.environ.get('TF_POPLAR_FLAGS'):
             os.environ['TF_POPLAR_FLAGS'] += progress_bar_string

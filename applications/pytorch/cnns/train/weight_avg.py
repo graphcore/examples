@@ -2,11 +2,9 @@
 import logging
 import torch
 import argparse
-import poptorch
 import os
-import sys
 from torch.optim.swa_utils import AveragedModel
-sys.path.append('..')
+import import_helper
 import models
 import datasets
 
@@ -15,7 +13,7 @@ def load_model(checkpoint_file):
     checkpoint = torch.load(checkpoint_file)
     opts = checkpoint['opts']
     model = models.get_model(opts, datasets.datasets_info[opts.data], pretrained=False)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    models.load_model_state_dict(model, checkpoint['model_state_dict'])
     model.double()
     return model
 
@@ -54,12 +52,12 @@ def average_model_weights(checkpoint_path, average_fn, checkpoint_N):
         model.float()
 
     torch.save({
-                'epoch': last_checkpoint['epoch'] + 1,
-                'model_state_dict': averaged_model.module.state_dict(),
-                'loss': 0,  # dummy just to work with validate script
-                'train_accuracy': 0,  # dummy just to work with validate script
-                'opts': opts
-                }, save_path)
+        'epoch': last_checkpoint['epoch'] + 1,
+        'model_state_dict': models.get_model_state_dict(averaged_model),
+        'loss': 0,  # dummy just to work with validate script
+        'train_accuracy': 0,  # dummy just to work with validate script
+        'opts': opts
+    }, save_path)
 
     return averaged_model
 
@@ -79,11 +77,9 @@ def add_parser_arguments(parser):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint-path', type=str, required=True)
     add_parser_arguments(parser)
-
     args = parser.parse_args()
 
     if args.weight_avg_strategy != 'none':

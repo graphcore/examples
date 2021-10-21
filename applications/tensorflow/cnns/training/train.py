@@ -179,7 +179,7 @@ def get_optimizer(opts, lr):
                       'decay': opts['rmsprop_decay'],
                       'epsilon': opts['rmsprop_epsilon']}
     elif opts['optimiser'] == 'LARS':
-        from tensorflow.contrib.opt.python.training.lars_optimizer import LARSOptimizer
+        from lars_optimizer import LARSOptimizer
         optimizer = LARSOptimizer
         logging.mlperf_logging(key="OPT_NAME", value="lars")
         opts['lars_skip_list'] += ['batch_norm/moving_']
@@ -449,8 +449,6 @@ def create_popdist_strategy():
     Horovod-based IPUMultiReplicaStrategy. Horovod is used for the initial
     broadcast of the weights and when reductions are requested on the host.
     """
-    hvd.init()
-
     # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
     # so disable them in the IPUMultiReplicaStrategy.
     return ipu_multi_replica_strategy.IPUMultiReplicaStrategy(
@@ -540,7 +538,9 @@ def training_graph(model, opts, iterations_per_step=1):
                              number_of_distributed_batch_norm_replicas=opts.get("BN_span", 1),
                              min_remote_tensor_size=min_remote_tensor_size,
                              nanoo=not opts["saturate_on_overflow"],
-                             scheduling_algorithm=scheduling_algorith_map[opts['scheduling_algorithm']]
+                             scheduling_algorithm=scheduling_algorith_map[opts['scheduling_algorithm']],
+                             max_reduce_many_buffer_size=opts["max_reduce_many_buffer_size"],
+                             compile_only=opts["compile_only"]
                              )
 
     if opts['use_popdist']:
@@ -549,11 +549,6 @@ def training_graph(model, opts, iterations_per_step=1):
     if opts['on_demand']:
         ipu_options.device_connection.enable_remote_buffers = True
         ipu_options.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
-
-    if opts['compile_only']:
-        ipu_options.device_connection.version = 'ipu2'
-        ipu_options.device_connection.enable_remote_buffers = True
-        ipu_options.device_connection.type = ipu.utils.DeviceConnectionType.NEVER
 
     ipu_options.configure_ipu_system()
     train_sess = tf.Session(graph=train_graph, config=sess_config, target=sess_target)
@@ -573,6 +568,7 @@ def training_step(train, e, learning_rate):
     start = time.time()
     _ = train.session.run(train.ops['train'], feed_dict={train.placeholders['learning_rate']: learning_rate})
     batch_time = (time.time() - start)
+
     if not os.environ.get('TF_POPLAR_FLAGS') or '--use_synthetic_data' not in os.environ.get('TF_POPLAR_FLAGS'):
         loss, cross_ent, accuracy, lr_out = train.session.run(train.outfeed)
         loss = np.mean(loss)
@@ -704,7 +700,16 @@ def train_process(model, LR_Class, opts):
         print("Saved initial checkpoint to {}".format(filepath))
 
     # single warm up step without weight update or training
-    training_step(train, 0, 0)
+    # Graph gets compiled in here
+    _, _, compilation_time, _ = training_step(train, 0, 0)
+
+    logging.print_to_file_and_screen(
+            "Compilation time: {}s.".format(compilation_time), opts)
+
+    # End to avoid any training if compile only mode
+    if opts['compile_only']:
+        print("Training graph successfully compiled")
+        sys.exit(0)
 
     # ------------- TRAINING LOOP ----------------
 
@@ -1101,6 +1106,7 @@ def add_ipu_arguments(parser):
     group.add_argument('--enable-recomputation', action="store_true",
                        help="Allow recomputation of activations required on the backward pass, which redueces memory used at cost of extra computation")
     group.add_argument('--seed', default=None, help="Seed for randomizing training")
+    group.add_argument('--identical-replica-seeding', action="store_true", default=False, help="Seed all replicas with the same seed")
     group.add_argument('--dataset-benchmark', action="store_true", default=False, help="Benchmark dataset")
     group.add_argument('--available-memory-proportion', default=None, nargs='+',
                        help="Proportion of memory which is available for convolutions. Use a value of less than 0.6 "
@@ -1125,6 +1131,8 @@ def add_ipu_arguments(parser):
                        help="Number of replicas used for distributed batch norm "
                             "(power of 2, lower or equal to the number of replicas). "
                             "Default: 1.")
+    group.add_argument("--max-reduce-many-buffer-size", type=int, default=0,
+                       help="Maximum reduceMany buffer size.")
     group.add_argument('--saturate-on-overflow', action="store_true",
                        help="Saturate to the max value instead returning NaN for float16")
     group.add_argument('--latency', action='store_true',
@@ -1193,6 +1201,18 @@ def set_ipu_defaults(opts):
         opts['seed'] = seed
     else:
         opts['seed_specified'] = False
+
+    if opts['identical_replica_seeding']:
+        # If an explicit seed was specified, randint has already been seeded.
+        identical_seed = random.randint(-2**16, 2**16 - 1)
+
+        # Make sure the seed is the same across instances.
+        if opts['use_popdist']:
+            with tf.Graph().as_default(), tf.Session():
+                identical_seed = hvd.broadcast(
+                    identical_seed, root_rank=0, name="broadcast_seed").eval()
+
+        reset_ipu_seed(identical_seed, experimental_identical_replicas=True)
 
     opts['summary_str'] += (' {hostname}\n'
                             ' {datetime}\n')
@@ -1281,6 +1301,7 @@ if __name__ == '__main__':
             raise ValueError('--pipeline-splits should be used in combination with --pipeline.')
 
         if popdist.isPopdistEnvSet():
+            hvd.init()
             opts['use_popdist'] = True
             opts['replicas'] = popdist.getNumLocalReplicas()
             opts['total_replicas'] = popdist.getNumTotalReplicas()

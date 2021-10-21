@@ -27,7 +27,7 @@
     "loss_scaling": 2,
     "micro_batch_size": 4,
     "gradient_accumulation_factor": 512,
-    "replication_factor": 1,
+    "replication_factor": 2,
     "split_qkv": true,
     "shuffle": true,
     "duplication_factor": 1,
@@ -46,6 +46,6 @@
     "lr_warmup_start" : 4e-3,
     "learning_rate": 8e-3,
     "weight_decay": 1e-2,
-    "input_files": ["data/packed_pretraining_data/*"],
+    "input_files": ["data/jan2020_three_seq_per_pack_with_duplications_v2/*"],
     "engine_cache": "__cache_mlperf_bert_tiny"
 }

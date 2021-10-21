@@ -36,6 +36,7 @@ import tensorflow.compat.v1 as tf
 from tensorflow.python import ipu
 from tensorflow.python.ipu import horovod as hvd
 from tensorflow.python.ipu import pipelining_ops
+from tensorflow.python.ipu.config import DeviceConnectionType
 
 import ipu_utils
 import log
@@ -149,7 +150,11 @@ def build_network(infeed,
                   is_training=True):
 
     # build model
-    pipeline_model = bert_ipu.BertModel(bert_config, is_training=is_training)
+    if opts["groupbert"]:
+        logger.info(f"************* Using GroupBERT model architecture *************")
+        pipeline_model = bert_ipu.GroupBertModel(bert_config, is_training=is_training)
+    else:
+        pipeline_model = bert_ipu.BertModel(bert_config, is_training=is_training)
 
     # build stages & device mapping
     computational_stages = build_pretrain_pipeline_stages(
@@ -213,6 +218,7 @@ def build_network(infeed,
                                                        recomputation_mode=ipu.ops.pipelining_ops.RecomputationMode[
                                                            opts['recomputation_mode']],
                                                        accumulate_outfeed=True,
+                                                       replicated_optimizer_state_sharding=opts['replicated_tensor_sharding'],
                                                        name="Pipeline")
     else:
         pipeline_ops = ipu.ops.pipelining_ops.pipeline(computational_stages=computational_stages,
@@ -229,6 +235,7 @@ def build_network(infeed,
                                                        pipeline_schedule=pipeline_schedule,
                                                        recomputation_mode=ipu.ops.pipelining_ops.RecomputationMode[
                                                            opts['recomputation_mode']],
+                                                       replicated_optimizer_state_sharding=opts['replicated_tensor_sharding'],
                                                        name="Pipeline")
 
     return pipeline_ops
@@ -277,7 +284,13 @@ def build_graph(opts, is_training=True, feed_name=None):
         if strategy:
             stack.enter_context(strategy.scope())
 
-        bert_config = bert_ipu.BertConfig.from_dict(opts)
+        if opts["groupbert"]:
+            bert_config = bert_ipu.BertConfig.from_dict(
+                opts, config=bert_ipu.GroupBertConfig(vocab_size=None))
+        else:
+            bert_config = bert_ipu.BertConfig.from_dict(
+                opts, config=bert_ipu.BertConfig(vocab_size=None))
+
         bert_config.dtype = tf.float32 if opts["precision"] == '32' else tf.float16
 
         # define placeholders
@@ -349,12 +362,36 @@ def build_graph(opts, is_training=True, feed_name=None):
         enable_stochastic_rounding=opts['stochastic_rounding'],
         minimum_remote_tensor_size=opts['min_remote_tensor_size'],
         max_cross_replica_sum_buffer_size=opts['max_cross_replica_sum_buffer_size'],
+        max_reduce_scatter_buffer_size=opts['max_reduce_scatter_buffer_size'],
         scheduler_selection=opts['scheduler'],
         compile_only=opts['compile_only'],
         ipu_id = opts['select_ipu'])
 
     if opts['use_popdist']:
         ipu_config = popdist.tensorflow.set_ipu_config(ipu_config, opts['shards'], configure_device=False)
+
+    # Do not acquire a device, compile only.
+    if opts["compile_only"]:
+        ipu_config.device_connection.version = "ipu2"
+        ipu_config.device_connection.enable_remote_buffers = True
+        # PRE_COMPILE allows for runing execuatables on graph without being online
+        ipu_config.device_connection.type = DeviceConnectionType.PRE_COMPILE
+
+        # Enforce using a exe cache dir, defaulting if not given
+        if ("TF_POPLAR_FLAGS" in os.environ):
+            if ("--executable_cache_path" not in os.environ["TF_POPLAR_FLAGS"]):
+                print("Warning: --executable_cache_path in TF_POPLAR_FLAGS " +
+                      "(for 'poprun --mpi_local_args') not set. Setting to default " +
+                      "path: ./tmp/tf_cache/")
+                os.environ["TF_POPLAR_FLAGS"] = "--executable_cache_path=/tmp/tf_cache"
+
+        # Sometimes TF_POPLAR_FLAGS might not even exist
+        else:
+            print("Warning: TF_POPLAR_FLAGS environment variable (for 'poprun " +
+                  "--mpi_local_args') not set. --executable_cache_path must be " +
+                  "defined when using --compile-only. Setting to default path: " +
+                  "./tmp/tf_cache/")
+            os.environ["TF_POPLAR_FLAGS"] = "--executable_cache_path=/tmp/tf_cache"
 
     ipu_config.configure_ipu_system()
 
@@ -394,6 +431,7 @@ def train(opts):
 
     total_samples_per_epoch = total_samples/opts["duplicate_factor"]
     logger.info(f"Total samples for each epoch {total_samples_per_epoch}")
+    logger.info(f"Global batch size {opts['global_batch_size']}")
     steps_per_epoch = total_samples_per_epoch//opts["global_batch_size"]
     logger.info(f"Total steps for each epoch {steps_per_epoch}")
 
@@ -467,6 +505,28 @@ def train(opts):
     logger.info("Tensorboard event file path {}".format(log_path))
     summary_writer = tf.summary.FileWriter(
         log_path, train.graph, session=train.session)
+
+    # End to avoid any training if compile only mode
+    if opts['compile_only']:
+
+        # single warm up step without weight update or training
+        # Graph gets compiled in here
+        compilation_time, _, _, _, _ = training_step(train, 0, 0)
+
+        print("Training graph successfully compiled. " +
+              "Exiting as --compile-only was passed.")
+
+        # Copying these from below, adding compile time to summary
+        poplar_summary = tf.Summary()
+        poplar_summary.value.add(
+            tag='poplar/compile_time',
+            simple_value=compilation_time)
+        summary_writer.add_summary(poplar_summary)
+        summary_writer.flush()
+
+        logger.info("Compile time: {}".format(compilation_time))
+
+        sys.exit(0)
 
     # ------------- TRAINING LOOP ----------------
     print_format = (

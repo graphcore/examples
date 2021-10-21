@@ -19,7 +19,7 @@ extern "C" {
 
 /// Check the Targeting the IPU from TensorFlow document for
 /// the API level required for the version of the Poplar SDK that you are using.
-int32_t custom_op_api_level = 4;
+int32_t custom_op_api_level = 5;
 
 static auto logger = createLogger();
 
@@ -413,6 +413,7 @@ poplar::program::Program BuildDDS(
 /// Meta data function sets properties of the forward op.
 void BuildDSD_metadata(
   std::vector<std::int64_t>& allocating_indices,
+  std::vector<std::int64_t>& replica_identical_output_indices,
   std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
@@ -428,6 +429,7 @@ void BuildDSD_metadata(
 
 void BuildDDS_metadata(
   std::vector<std::int64_t>& allocating_indices,
+  std::vector<std::int64_t>& replica_identical_output_indices,
   std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
   bool& is_elementwise,
   bool& is_stateless,
@@ -565,6 +567,7 @@ poplar::Tensor BuildDSD_allocator(
 
 /// Meta data function sets properties of the gradient op.
 void BuildDSD_grad_metadata(std::vector<std::int64_t>& allocating_indices,
+                            std::vector<std::int64_t>& replica_identical_output_indices,
                             std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
                             bool& is_elementwise,
                             bool& is_stateless,
@@ -578,6 +581,7 @@ void BuildDSD_grad_metadata(std::vector<std::int64_t>& allocating_indices,
 }
 
 void BuildDDS_grad_metadata(std::vector<std::int64_t>& allocating_indices,
+                    std::vector<std::int64_t>& replica_identical_output_indices,
                     std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
                     bool& is_elementwise,
                     bool& is_stateless,

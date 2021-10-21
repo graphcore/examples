@@ -17,10 +17,10 @@ import popart
 import pytest
 import numpy as np
 
-from bert_model import BertConfig, ExecutionMode, get_model
+from bert_model import Bert, BertConfig
 from tests.torch_bert import BertConfig as TorchBertConfig, BertForQuestionAnswering
 
-from tests.utils import requires_remote_buffers, sanity
+from tests.utils import sanity
 
 from .full_graph_utils import fwd_graph, bwd_graph
 
@@ -29,23 +29,13 @@ from .full_graph_utils import fwd_graph, bwd_graph
 Tests the full squad graph.
 '''
 
-ONNX_TORCH_MAPPING = {}
-ONNX_TORCH_MAPPING[ExecutionMode.DEFAULT] = {
+ONNX_TORCH_MAPPING = {
     "qa_outputs.weight": "Squad/SquadW",
     "qa_outputs.bias": "Squad/SquadB"
 }
-ONNX_TORCH_MAPPING[ExecutionMode.PHASED] = {
-    "qa_outputs.weight": "BertModel/Squad/Dense/Weight",
-    "qa_outputs.bias": "BertModel/Squad/Dense/Bias"
-}
 
 
-@pytest.mark.parametrize("mode, replication_factor, replicated_tensor_sharding",
-                         [(ExecutionMode.DEFAULT, 1, False),
-                          requires_remote_buffers(ExecutionMode.PHASED, 1, False),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, True),
-                          requires_remote_buffers(ExecutionMode.PHASED, 4, False)])
-def test_squad_fwd(custom_ops, mode, replication_factor, replicated_tensor_sharding):
+def test_squad_fwd(custom_ops):
     #  ------------------- PopART --------------------
     config = BertConfig(task="SQUAD",
                         encoder_start_ipu=1,
@@ -61,11 +51,10 @@ def test_squad_fwd(custom_ops, mode, replication_factor, replicated_tensor_shard
                         no_attn_dropout=True,
                         inference=True,
                         no_mask=True,
-                        execution_mode=mode,
                         split_qkv=False,
                         squad_single_output=False)
 
-    popart_model = get_model(config, mode)
+    popart_model = Bert(config)
 
     #  ------------------- PyTorch -------------------------
     torch_model = BertForQuestionAnswering(
@@ -81,31 +70,20 @@ def test_squad_fwd(custom_ops, mode, replication_factor, replicated_tensor_shard
 
     fwd_graph(popart_model,
               torch_model,
-              mode,
-              mapping=ONNX_TORCH_MAPPING[mode],
+              mapping=ONNX_TORCH_MAPPING,
               transform={
                   "qa_outputs.weight": np.transpose
-              },
-              replication_factor=replication_factor,
-              replicated_tensor_sharding=replicated_tensor_sharding)
+              })
 
 
-@pytest.mark.parametrize("mode, replication_factor, replicated_tensor_sharding, opt_type",
-                         [sanity(ExecutionMode.DEFAULT, 2, True, "SGD"),
-                          sanity(ExecutionMode.DEFAULT, 2, False, "LAMB"),
-                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 2, False, "SGD")),
-                          sanity(requires_remote_buffers(ExecutionMode.PHASED, 2, True, "LAMB")),
-
-                          (ExecutionMode.DEFAULT, 1, False, "SGD"),
-                          (ExecutionMode.DEFAULT, 2, True, "SGD"),
-                          (ExecutionMode.DEFAULT, 2, False, "LAMB"),
-                          (ExecutionMode.DEFAULT, 2, True, "LAMB"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 1, False, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, False, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, False, "LAMB"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 2, True, "SGD"),
-                          requires_remote_buffers(ExecutionMode.PHASED, 1, False, "LAMB")])
-def test_squad_bwd(custom_ops, mode, replication_factor, replicated_tensor_sharding, opt_type):
+@pytest.mark.parametrize("replication_factor, replicated_tensor_sharding, opt_type",
+                         [sanity(2, True, "SGD"),
+                          sanity(2, False, "LAMB"),
+                          (1, False, "SGD"),
+                          (2, True, "SGD"),
+                          (2, False, "LAMB"),
+                          (2, True, "LAMB")])
+def test_squad_bwd(custom_ops, replication_factor, replicated_tensor_sharding, opt_type):
     #  ------------------- PopART --------------------
     config = BertConfig(task="SQUAD",
                         num_layers=2,
@@ -121,9 +99,8 @@ def test_squad_bwd(custom_ops, mode, replication_factor, replicated_tensor_shard
                         no_attn_dropout=True,
                         update_embedding_dict=True,
                         no_mask=True,
-                        execution_mode=mode,
                         split_qkv=(opt_type == "LAMB"))
-    popart_model = get_model(config, mode)
+    popart_model = Bert(config)
 
     #  ------------------- PyTorch -------------------------
     torch_model = BertForQuestionAnswering(
@@ -141,28 +118,17 @@ def test_squad_bwd(custom_ops, mode, replication_factor, replicated_tensor_shard
     l1_lambda = 0.1
 
     def popart_loss_fn(outputs):
-        if mode == ExecutionMode.PHASED:
-            with popart_model.scope_provider(popart_model.builder, popart_model.squad_scope):
-                losses = [
-                    popart_model.builder.aiGraphcore.l1loss(
-                        [outputs[0]], l1_lambda, debugContext="startsLossVal", reduction=popart.ReductionType.Sum),
-                    popart_model.builder.aiGraphcore.l1loss(
-                        [outputs[1]], l1_lambda, debugContext="endsLossVal", reduction=popart.ReductionType.Sum),
-                ]
-                final_loss = popart_model.builder.aiOnnx.sum(losses, debugContext="finalLoss")
+        losses = [
+            popart_model.builder.aiGraphcore.l1loss(
+                [outputs[0]], l1_lambda, debugContext="startsLossVal", reduction=popart.ReductionType.Sum),
+            popart_model.builder.aiGraphcore.l1loss(
+                [outputs[1]], l1_lambda, debugContext="endsLossVal", reduction=popart.ReductionType.Sum),
+        ]
+        for loss in losses:
+            popart_model.builder.virtualGraph(loss, popart_model.squad_scope.virtualGraph)
 
-        else:
-            losses = [
-                popart_model.builder.aiGraphcore.l1loss(
-                    [outputs[0]], l1_lambda, debugContext="startsLossVal", reduction=popart.ReductionType.Sum),
-                popart_model.builder.aiGraphcore.l1loss(
-                    [outputs[1]], l1_lambda, debugContext="endsLossVal", reduction=popart.ReductionType.Sum),
-            ]
-            for loss in losses:
-                popart_model.builder.virtualGraph(loss, popart_model.squad_scope.virtualGraph)
-
-            final_loss = popart_model.builder.aiOnnx.sum(losses, debugContext="finalLoss")
-            popart_model.builder.virtualGraph(final_loss, popart_model.squad_scope.virtualGraph)
+        final_loss = popart_model.builder.aiOnnx.sum(losses, debugContext="finalLoss")
+        popart_model.builder.virtualGraph(final_loss, popart_model.squad_scope.virtualGraph)
         return final_loss
 
     def torch_loss_fn(outputs):
@@ -172,10 +138,9 @@ def test_squad_bwd(custom_ops, mode, replication_factor, replicated_tensor_shard
 
     bwd_graph(popart_model,
               torch_model,
-              mode,
               popart_loss_fn=popart_loss_fn,
               torch_loss_fn=torch_loss_fn,
-              mapping=ONNX_TORCH_MAPPING[mode],
+              mapping=ONNX_TORCH_MAPPING,
               transform={
                   "qa_outputs.weight": np.transpose
               },

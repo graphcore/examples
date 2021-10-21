@@ -76,7 +76,8 @@ def add_conf_args(run_mode):
                         help="Proportion of training set [0.0-1.0]")
     parser.add_argument('--generated_data', action="store_true", default=False,
                         help="Enable random data generation for benchmarking")
-
+    parser.add_argument('--num_io_tiles', type=int, default=0,
+                        help="Number of IO tiles")
     return parser
 
 
@@ -200,6 +201,17 @@ def get_session_options(opts):
         # Enable merge updates
         options.mergeVarUpdate = popart.MergeVarUpdateType.AutoLoose
         options.mergeVarUpdateMemThreshold = 6000000
+
+    if opts.num_io_tiles > 0:
+        options.enableExplicitMainLoops = True
+        options.useHostCopyOps = True
+        options.numIOTiles = opts.num_io_tiles
+        options.virtualGraphMode = popart.VirtualGraphMode.Auto
+
+        # Both true & false should work - testing with false to avoid
+        # host-cycle-overhead
+        options.rearrangeAnchorsOnHost = False
+        options.rearrangeStreamsOnHost = False
 
     return options
 

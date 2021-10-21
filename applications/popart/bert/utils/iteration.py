@@ -54,11 +54,13 @@ class Iteration:
             if args.training_steps is None:
                 RuntimeError("Either epochs or training_steps need to be specified.")
             self.epochs = math.ceil(args.training_steps / steps_per_epoch)
+            self.total_steps = args.training_steps
+        else:
+            self.total_steps = steps_per_epoch * self.epochs
         self.epochs_per_save = args.epochs_per_save
         self.steps_per_log = args.steps_per_log
         self.steps_per_epoch = steps_per_epoch
         self.recording_steps = self.steps_per_epoch if recording_steps is None else recording_steps
-        self.total_steps = self.steps_per_epoch * self.epochs
         self.writer = writer
         self.use_packed_sequence_format = args.use_packed_sequence_format
         self.use_popdist = args.use_popdist
@@ -72,6 +74,7 @@ class Iteration:
         self.cycles = deque(maxlen=self.recording_steps)
         self.losses = deque(maxlen=self.recording_steps)
         self.accuracies = deque(maxlen=self.recording_steps)
+        self.packing_ratio = deque(maxlen=self.recording_steps)
         self.stats_fn = output_stats
 
         if args.use_popdist:
@@ -98,11 +101,12 @@ class Iteration:
             # To count the number of samples in each batch first
             # expand the micro-batch dimension (flattened on device)
             input_mask = data["input_mask"]
+            mlm_weights = data["masked_lm_weights"]
             new_shape = list(input_mask.shape[:-1]) + [self.micro_batch_size, -1]
             input_mask = input_mask.reshape(new_shape)
-            sequences_per_microbatch = input_mask.max(-1).sum(-1)
-            sequences_in_step = int(sequences_per_microbatch.sum())
-            args = sequences_per_microbatch, sequences_in_step, *args
+            sequences_in_step = int(input_mask.max(-1).sum())
+            tokens_in_step = int((mlm_weights > 0).sum())
+            args = tokens_in_step, sequences_in_step, *args
         else:
             sequences_in_step = self.batches_per_step * self.gradient_accumulation_factor * \
                                 self.replication_factor * self.micro_batch_size  # noqa
@@ -121,8 +125,11 @@ class Iteration:
 
             self.add_scalar("defaultLearningRate", self.learning_rate)
             self.add_scalar("throughput", np.average(self.throughput))
+
             if self.use_packed_sequence_format:
                 self.add_scalar("update_steps", self.count)
+                self.packing_ratio.append(data['nsp_weights'].sum()/len(data['nsp_weights']))
+                self.add_scalar("packing_ratio", np.average(self.packing_ratio))
             self.write_training_stats()
         else:
             self.add_inference_stats(*args)
@@ -204,24 +211,15 @@ def pretraining_stats(args, anchors, losses, accuracies):
     return tuple(losses), tuple(accuracies)
 
 
-def packed_pretraining_stats(sequences_per_microbatch, sequences_in_step, args, anchors, losses, accuracies):
+def packed_pretraining_stats(tokens_in_step, sequences_in_step, args, anchors, losses, accuracies):
     """
-    Perform the per-step averaging of losses and accuracies when using the
-    packed data format.
-    Since each step potentially contains a different number of sequences, each step should
-    be weighted according to how many sequences it contains. However, this type of averaging is
-    only necessary for the MLM accuracy while other metrics are averaged as usual.
+    In packedBERT each step contains a different number of sequences and masked tokens,
     """
-    # The MLM accuracy is weighted by the number of samples in each step
-    # the MLM loss is averaged with equal weights for each step
-    mlm_loss = reduce_metric(args, anchors, [losses[0]])
-    mlm_accuracy = anchors[accuracies[0]]
-    mlm_accuracy = sum(mlm_accuracy * sequences_per_microbatch)/sequences_in_step
+    mlm_loss = anchors[losses[0]].sum()/tokens_in_step
+    mlm_accuracy = anchors[accuracies[0]].sum()/tokens_in_step
 
-    # The NSP and accuracy and loss are averaged assuming each step has same weight
-    nsp_loss = reduce_metric(args, anchors, [losses[1]])
-    nsp_accuracy = reduce_metric(args, anchors, [accuracies[1]])
-
+    nsp_loss = anchors[losses[1]].sum()/sequences_in_step
+    nsp_accuracy = anchors[accuracies[1]].sum()/sequences_in_step
     return (mlm_loss, nsp_loss), (mlm_accuracy, nsp_accuracy)
 
 

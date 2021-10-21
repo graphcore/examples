@@ -37,12 +37,9 @@ from torch.utils.tensorboard import SummaryWriter
 import utils
 import utils.popvision as popvision
 from bert_data import get_pretraining_dataset, get_squad_dataset
-from bert_model import BertConfig, ExecutionMode, get_model
+from bert_model import Bert, BertConfig
 from bert_optimizer import ScheduledOptimizerFactory, LinearOptimizerFactory
 from bert_tf_loader import load_initializers_from_tf
-from phased_execution.weight_mapping import \
-    get_phased_initializers_from_default
-from utils.weight_loading import load_initializers_from_onnx
 from utils.device import acquire_device, device_is_replicated
 from utils.distributed import popdist_root, distributed_barrier
 from utils.iteration import Iteration, PretrainingIteration
@@ -50,7 +47,7 @@ from utils.inference import (create_callback_stepio,
                              realtime_scheduling,
                              compute_latency_from_durations,
                              compute_latency_from_callbacks)
-from utils import packed_bert_utils
+from utils import packed_bert_utils, load_initializers_from_onnx
 
 logger = logging.getLogger('BERT')
 
@@ -60,22 +57,6 @@ if os.path.exists(so_path):
     ctypes.cdll.LoadLibrary(so_path)
 else:
     logger.warning("Could not find custom_ops.so. Execute `make` before running this script.")
-
-
-def io_schedule(schedule_str):
-    if schedule_str == 'Preload':
-        return popart.ExecutionPhaseIOSchedule.Preload
-    if schedule_str == 'OnDemand':
-        return popart.ExecutionPhaseIOSchedule.OnDemand
-
-
-def optimizer_schedule(schedule_str):
-    if schedule_str == 'Interleaving':
-        return popart.ExecutionPhaseSchedule.Interleaving
-    if schedule_str == 'Batch':
-        return popart.ExecutionPhaseSchedule.Batch
-    if schedule_str == 'BatchClusteredIO':
-        return popart.ExecutionPhaseSchedule.BatchClusteredIO
 
 
 def set_library_seeds(seed):
@@ -138,23 +119,12 @@ def bert_add_inputs(args, model):
     return indices, positions, segments, masks, labels
 
 
-def bert_logits_graph(model, indices, positions, segments, masks, mode):
-    if mode == ExecutionMode.PHASED:
-        logits = model(indices, positions, segments, masks)
-    else:
-        logits = model.build_graph(indices, positions, segments, masks)
-    return logits
-
-
 def bert_infer_graph(model, logits, include_probs=True):
     # NOTE: include_probs added as we don't need to calculate the softmax if we only care about accuracy and not
     # about loss
     probs = None
     if model.config.task == "SQUAD":
-        scope = model.squad_scope
-        if model.config.execution_mode == ExecutionMode.PHASED:
-            scope = model.scope_provider(model.builder, scope)
-        with scope:
+        with model.squad_scope:
             predictions = list(
                 model.builder.aiOnnx.argmax([logit],
                                             axis=1,
@@ -171,19 +141,14 @@ def bert_infer_graph(model, logits, include_probs=True):
                     model.builder.setInplacePreferences(
                         prob, {"SoftmaxInplace": -1})
     elif model.config.task == "PRETRAINING":
-        nsp_scope = model.nsp_scope
-        mlm_scope = model.mlm_scope
-        if model.config.execution_mode == ExecutionMode.PHASED:
-            nsp_scope = model.scope_provider(model.builder, nsp_scope)
-            mlm_scope = model.scope_provider(model.builder, mlm_scope)
-        with nsp_scope:
+        with model.nsp_scope:
             nsp_predictions = model.builder.aiOnnx.argmax(
                 [logits[1]], axis=1, keepdims=0, debugContext="ArgMax")
             if include_probs:
                 nsp_probs = model.builder.aiOnnx.softmax([logits[1]],
                                                          axis=1,
                                                          debugContext="Softmax")
-        with mlm_scope:
+        with model.mlm_scope:
             mlm_predictions = model.builder.aiOnnx.argmax(
                 [logits[0]], axis=2, keepdims=0, debugContext="ArgMax")
             if include_probs:
@@ -209,18 +174,14 @@ def get_loss_scope(model, label):
         scope = model.nsp_scope
     else:
         scope = model.mlm_scope
-    if model.config.execution_mode == ExecutionMode.PHASED:
-        scope = model.scope_provider(model.builder, scope)
     return scope
 
 
 def bert_loss_graph(args, model, probs, labels):
     if args.gradient_reduction_type == "Sum":
         reduction_type = popart.ReductionType.Sum
-    elif args.gradient_reduction_type == "Mean":
-        reduction_type = popart.ReductionType.Mean
     else:
-        raise RuntimeError(f"Unknown gradient_reduction_type {args.gradient_reduction_type}")
+        reduction_type = popart.ReductionType.Mean
 
     def loss(prob, label):
         ignore_index = get_ignore_index(label)
@@ -242,10 +203,7 @@ def bert_loss_graph(args, model, probs, labels):
     losses = [loss(*p_l) for p_l in zip(probs, labels)]
 
     if len(losses) > 1:
-        scope = model.final_loss_scope
-        if model.config.execution_mode == ExecutionMode.PHASED:
-            scope = model.scope_provider(model.builder, scope)
-        with scope:
+        with model.final_loss_scope:
             final_loss = model.builder.aiOnnx.sum(losses, "FinalLoss")
     else:
         final_loss = losses[0]
@@ -355,52 +313,6 @@ def bert_add_logit_outputs(model, logits):
     return outputs
 
 
-def set_phased_options(options, engine_options, model, args):
-    options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
-    options.enableOutlining = True
-    options.outlineThreshold = -np.inf
-    options.enableOutliningCopyCostPruning = False
-    options.outlineSequenceBreakCost = 100000.0
-    options.subgraphCopyingStrategy = popart.SubgraphCopyingStrategy.OnEnterAndExit
-    options.executionPhaseSettings.phases = model.total_execution_phases
-    options.batchSerializationSettings.factor = args.batch_serialize
-    options.batchSerializationSettings.transformContext = popart.BatchSerializationTransformContext.Bwd
-    options.batchSerializationSettings.concatOnVirtualGraphChange = False
-    options.batchSerializationSettings.concatOnExecutionPhaseChange = False
-    options.batchSerializationSettings.concatOnPipelineStageChange = False
-    options.batchSerializationSettings.batchSchedule = popart.BatchSerializationBatchSchedule.OverlapOnCompute
-    options.batchSerializationSettings.method = popart.BatchSerializationMethod.Loop
-    options.autoRecomputation = popart.RecomputationType.Standard
-    options.explicitRecomputation = True
-    options.aliasZeroCopy = True
-
-    varLocation = popart.TensorLocation()
-    varLocation.storage = popart.TensorStorage.OffChip
-    varLocation.loadTileSet = popart.TileSet.IO
-    varLocation.storageTileSet = popart.TileSet.IO
-    varLocation.replicatedTensorSharding = (popart.ReplicatedTensorSharding.On
-                                            if args.replicated_tensor_sharding else
-                                            popart.ReplicatedTensorSharding.Off)
-
-    options.weightTensorLocationSettings.location = varLocation
-    options.optimizerStateTensorLocationSettings.location = varLocation
-    options.accumulatorTensorLocationSettings.location = varLocation
-    options.activationTensorLocationSettings.location = varLocation
-
-    if args.tensor_storage_onchip:
-        options.weightTensorLocationSettings.location.storage = popart.TensorStorage.OnChip
-        options.optimizerStateTensorLocationSettings.location.storage = popart.TensorStorage.OnChip
-        options.accumulatorTensorLocationSettings.location.storage = popart.TensorStorage.OnChip
-    options.executionPhaseSettings.activationIOSchedule = io_schedule(args.activation_io_schedule)
-    options.executionPhaseSettings.weightIOSchedule = io_schedule(args.weight_io_schedule)
-    options.executionPhaseSettings.schedule = optimizer_schedule(args.optimizer_schedule)
-    options.numIOTiles = args.num_io_tiles
-    engine_options["target.syncReplicasIndependently"] = "false"
-    if args.activations_on_chip:
-        options.activationTensorLocationSettings = popart.TensorLocationSettings(
-            popart.TensorStorage.OnChip, 0)
-
-
 def bert_optimizer_location_settings(args):
     storage = popart.TensorStorage.OnChip
     if args.optimizer_state_offchip:
@@ -434,18 +346,38 @@ def bert_session_options(args, model):
     # such as add or reshapeInplace.
     # Instead only reusing ops with a highSubgraphValue such as matmul or normalisation.
     options.outlineThreshold = 10.0
-    if args.execution_mode == "PIPELINE":
+    if args.pipeline:
         options.enablePipelining = True
         options.autoRecomputation = popart.RecomputationType.Pipeline
-    elif args.execution_mode == "PHASED":
-        set_phased_options(options, engine_options, model, args)
+        if args.recompute_checkpoint_every_layer and any(map(lambda l: l > 1, args.layers_per_ipu)):
+            options.scheduleNonWeightUpdateGradientConsumersEarly = True
 
     options.optimizerStateTensorLocationSettings = bert_optimizer_location_settings(args)
+
+    # RTS to shard optimizer states with multiple IPU Pods
+    num_local_replicas = popdist.getNumLocalReplicas()
+    num_total_replicas = popdist.getNumTotalReplicas()
+
+    if num_total_replicas > num_local_replicas and args.replicated_tensor_sharding:
+        # Fewer elements would not make sense to shard
+        options.optimizerStateTensorLocationSettings.minElementsForReplicatedTensorSharding = num_local_replicas
+        sharding_domain = popart.CommGroup(
+            popart.CommGroupType.Consecutive, num_local_replicas)
+
+        # Ensure all related tensors have the same sharding domain set
+        options.weightTensorLocationSettings.location.shardingDomain = sharding_domain
+        options.optimizerStateTensorLocationSettings.location.shardingDomain = sharding_domain
+        options.accumulatorTensorLocationSettings.location.shardingDomain = sharding_domain
+
+    if "Mean" in args.gradient_reduction_type:
+        options.accumulationAndReplicationReductionType = popart.ReductionType.Mean
+        options.meanAccumulationAndReplicationReductionStrategy = popart.MeanReductionStrategy.Post
+        if args.gradient_reduction_type == "RunningMean":
+            options.meanAccumulationAndReplicationReductionStrategy = popart.MeanReductionStrategy.Running
+
     if args.gradient_accumulation_factor > 1:
         options.enableGradientAccumulation = True
         options.accumulationFactor = args.gradient_accumulation_factor
-        if args.gradient_reduction_type == "Mean":
-            options.accumulationAndReplicationReductionType = popart.ReductionType.Mean
 
         # When not replicated SyncPattern.SinglePipeline will provide better overlap
         # than this option.
@@ -512,20 +444,13 @@ def bert_session_patterns(args):
     if args.disable_attention_dropout_bwd:
         patterns.enablePattern("DisableAttnDropoutBwdPattern", True)
 
-    if args.execution_mode == ExecutionMode.PHASED:
-        patterns.enablePattern("TiedGatherPattern", False)
-        patterns.enablePattern("SparseAccumulatePattern", False)
-
-    if args.execution_mode == ExecutionMode.PIPELINE and args.recompute_checkpoint_every_layer and any(map(lambda l: l > 1, args.layers_per_ipu)):
-        patterns.enablePattern("AccumulatePriorityPattern", True)
-
-    if args.task == "PRETRAINING" and args.execution_mode != ExecutionMode.PHASED and args.gradient_accumulation_factor <= 1 and not args.inference:
+    if args.task == "PRETRAINING" and args.gradient_accumulation_factor <= 1 and not args.inference:
         patterns.enablePattern("TiedGatherPattern", False)
         logger.warning("Running Pretraining without Gradient Accumulation will disable optimisations "
                        "for the Word Embedding weight. This will increase memory usage. "
                        "Consider enabling Gradient Accumulation.")
 
-    if args.optimizer == "SGD" and args.optimizer_state_offchip and args.execution_mode != ExecutionMode.PHASED:
+    if args.optimizer == "SGD" and args.optimizer_state_offchip:
         patterns.enablePattern("TiedGatherPattern", False)
         logger.warning("Remote Optimizer State with SGD/SGD+M is not a recommended configuration")
 
@@ -533,15 +458,24 @@ def bert_session_patterns(args):
 
 
 def compile_graph_checked(args, session):
+
     start_time = time.time()
-    session.prepareDevice()
+
+    if args.compile_only:
+        session.compileAndExport(args.engine_cache)
+    else:
+        session.prepareDevice()
+
     end_time = time.time()
+
     compile_time = end_time - start_time
     logger.info(f"Compiled. Duration {compile_time} seconds")
+
     if args.profile:
         popvision.save_app_info({"compile_time": compile_time})
-        if args.device_connection_type == "offline":
-            sys.exit(0)
+
+    if args.compile_only:
+        sys.exit(0)
 
 
 def bert_distributed_training_session(args, **kwargs):
@@ -841,15 +775,7 @@ def bert_infer_loop(args,
 
 
 def bert_required_ipus(args, model):
-    if args.execution_mode == "PHASED":
-        if args.phased_execution_type == "DUAL":
-            num_ipus = 2
-        else:
-            num_ipus = 1
-    else:
-        num_ipus = model.total_ipus
-    num_ipus *= args.replication_factor
-    return num_ipus
+    return model.total_ipus * args.replication_factor
 
 
 def bert_pretrained_initialisers(config, args):
@@ -873,9 +799,6 @@ def bert_pretrained_initialisers(config, args):
     if args.tf_checkpoint:
         logger.info(f"Initialising from TF checkpoint: {args.tf_checkpoint}")
         init = load_initializers_from_tf(args.tf_checkpoint, True, config, args.task)
-
-    if init is not None:
-        init.update(**get_phased_initializers_from_default(args, init))
 
     return init
 
@@ -914,14 +837,14 @@ def main(args):
     initializers = bert_pretrained_initialisers(config, args)
 
     logger.info("Building Model")
-    model = get_model(config,
-                      mode=args.execution_mode,
-                      initializers=initializers)
+    model = Bert(config,
+                 pipeline=args.pipeline,
+                 initializers=initializers)
 
     if not config.use_packed_sequence_format:
         # If config.host_embedding is enabled, indices and positions will have the matrices instead of the index vector.
         indices, positions, segments, masks, labels = bert_add_inputs(args, model)
-        logits = bert_logits_graph(model, indices, positions, segments, masks, args.execution_mode)
+        logits = model.build_graph(indices, positions, segments, masks)
         outputs, accuracies, losses, final_loss, writer = bert_add_outputs(args, model, logits, labels)
         dataset = get_bert_dataset(model, args, [indices, positions, segments, masks, labels])
 
@@ -1027,7 +950,7 @@ if __name__ == "__main__":
             # for onnx reader and popart builder object. Calling onnx external
             # data_helper explicity solves this issue, but does not support abs paths.
             # Onnx external data helper removes leading `/` while reading the checkpoint back."
-            # "https://github.com/onnx/onnx/blob/master/onnx/external_data_helper.py#L46"
+            # "https://github.com/onnx/onnx/blob/v1.10.0/onnx/external_data_helper.py#L46"
             raise ValueError("Please specify relative path for `checkpoint_dir` when saving initializers externally. ")
 
     if args.profile:

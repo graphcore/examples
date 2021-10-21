@@ -12,8 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import re
 import subprocess
 import tensorflow as tf
+
+
+def check_output(*args, **kwargs):
+    try:
+        out = subprocess.check_output(stderr=subprocess.PIPE, *args, **kwargs)
+    except subprocess.CalledProcessError as e:
+        print(f"TEST FAILED")
+        print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
+        print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
+        raise
+    return out
 
 
 def run_train(**kwargs):
@@ -22,7 +34,7 @@ def run_train(**kwargs):
     cmd = ['python', './din_train.py']
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    return subprocess.check_output(cmd).decode('utf-8')
+    return check_output(cmd).decode("utf-8")
 
 
 def run_validation(**kwargs):
@@ -31,21 +43,25 @@ def run_validation(**kwargs):
     cmd = ['python', './din_infer.py']
     args = [str(item) for sublist in kwargs.items() for item in sublist if item != '']
     cmd.extend(args)
-    return subprocess.check_output(cmd).decode('utf-8')
+    return check_output(cmd).decode("utf-8")
 
 
 def get_log(out):
     log_dir = './din_log.txt'
     acc = 0.0
-    auc = 0.0
+
     for line in out.split('\n'):
         if line.find('time over batch:') != -1:
-            if float(line[43:49]) >= acc:
-                acc = float(line[43:49])
-                return acc
-    else:
-        auc = parse_log(log_dir)
-        return auc
+            accuracy_pattern = re.compile(r"accuracy: ([\d\.]*),")
+            match = re.search(accuracy_pattern, line)
+            if match:
+                acc_string = match.group(1)
+                if float(acc_string) >= acc:
+                    acc = float(acc_string)
+                    return acc
+
+    auc = parse_log(log_dir)
+    return auc
 
 
 def parse_log(filepath):

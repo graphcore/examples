@@ -27,7 +27,7 @@ tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
 
 
 # `prepare_train_features` comes unmodified from
-# https://github.com/huggingface/transformers/blob/master/examples/pytorch/question-answering/run_qa.py
+# https://github.com/huggingface/transformers/blob/v4.9.1/examples/pytorch/question-answering/run_qa.py
 def prepare_train_features(examples):
     # Tokenize our examples with truncation and padding, but keep the overflows using a stride. This results
     # in one example possible giving several features when a context is long, each of those features having a

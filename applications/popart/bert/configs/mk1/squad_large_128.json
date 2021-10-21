@@ -40,7 +40,7 @@
     "tf_checkpoint": "data/ckpts/uncased_L-24_H-1024_A-16/bert_model.ckpt",
     "do_lower_case": true,
     "shuffle": true,
-    "execution_mode": "PIPELINE",
+    "pipeline": true,
     "checkpoint_dir": "ckpts/squad_large_128",
     "engine_cache": "__squad_large_128",
     "disable_attention_dropout_bwd": true,

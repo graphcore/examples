@@ -89,7 +89,7 @@
     "use_default_available_memory_proportion": true,
     "disable_fully_connected_pass": true,
     "shuffle": true,
-    "execution_mode": "PIPELINE",
+    "pipeline": true,
     "checkpoint_dir": "ckpts/pretrain_base",
     "no_validation": true,
     "no_cls_layer": true

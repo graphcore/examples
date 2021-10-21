@@ -1,68 +1,142 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-from collections import OrderedDict
 import re
 import logging
 import torch
 import torchvision
 import poptorch
+import timm
+from functools import partial
+from collections import OrderedDict
+from torch.fx import symbolic_trace
 from torchvision.models.utils import load_state_dict_from_url
-from efficientnet_pytorch import EfficientNet, get_model_params
 from torchvision.models.resnet import model_urls as resnet_urls
 from torchvision.models.mobilenetv2 import model_urls as mobilenet_urls
-import sys
-sys.path.append('..')
-import datasets
+import import_helper
+from .mobilenet_v3 import MobileNetV3_Large, MobileNetV3_Small
+import models
 
 
 model_urls = dict(resnet_urls.items() | mobilenet_urls.items())
-convert_model_names = {"resnext50": "resnext50_32x4d",
-                       "resnext101": "resnext101_32x8d",
-                       "mobilenet": "mobilenet_v2"}
+convert_model_names = {
+    "resnext50": "resnext50_32x4d",
+    "resnext101": "resnext101_32x8d",
+    "mobilenet": "mobilenet_v2",
+}
 
 
-def create_efficientnet(model_name, pretrained=True, num_classes=1000, norm_layer=torch.nn.BatchNorm2d, expand_ratio=6, group_dim=1):
-    """ Creates EfficientNet instance with the predefined parameters.
+def create_mobilenetv3(model_name, pretrained=True, num_classes=1000, norm_layer=torch.nn.BatchNorm2d):
+    """ Creates MobilenetV3 instance with the predefined parameters.
     Parameters:
-    model_name: Name of the model.
+    model_name: Name of the model, 'small' or 'large'.
     pretrained: if true the network is initialized with pretrained weights.
     norm_layer: The used normalization layer in the network. eg. torch.nn.Identity means no initialization.
-    expand_ratio: The used expand ratio in the blocks. Official EfficientNet uses 6
-    group_dim: Dimensionality of the depthwise convolution. Official EfficientNet uses 1.
 
     Returns:
-    The initialized EfficientNet model.
+    The initialized MobilenetV3 model.
     """
-    EfficientNet._check_model_name_is_valid(model_name)
-    blocks_args, global_params = get_model_params(model_name, {"num_classes": num_classes})
-    # Change expand ratio
-    for idx in range(1, len(blocks_args)):
-            blocks_args[idx] = blocks_args[idx]._replace(expand_ratio = expand_ratio)
-    model = EfficientNet(blocks_args, global_params)
-    model.set_swish(memory_efficient=False)
-    if group_dim > 1:
-        replace_en_depthwise_conv(model, group_dim)
-    if not isinstance(norm_layer, torch.nn.BatchNorm2d):
-        replace_bn(model, norm_layer)
-    init_efficientnet(model)
     if pretrained:
-        pretrained_model = EfficientNet.from_pretrained(model_name)
-        load_modified_model_from_state(model, pretrained_model.state_dict())
+        logging.info("Pretrained MobileNet v3 not available. Random initialization is used.")
+    if model_name == 'small':
+        model = MobileNetV3_Small(num_classes=num_classes, norm_layer=norm_layer)
+    else:
+        model = MobileNetV3_Large(num_classes=num_classes, norm_layer=norm_layer)
     return model
 
 
-def init_efficientnet(model):
+def create_efficientnet(model_name, pretrained=False, num_classes=1000,
+                        norm_layer=torch.nn.BatchNorm2d, expand_ratio=6,
+                        group_dim=1):
+    """Creates an initialized EfficientNet model.
+    Parameters:
+        model_name: variant of the model.
+        pretrained: if true the network is initialized with pretrained weights.
+        norm_layer: a function that creates normalization layers instances.
+        expand_ratio: expansion ratio, official EfficientNet uses 6.
+        group_dim: dimensionality of the group convolution, official EfficientNet
+            uses 1 (i.e. depthwise convolutions)
     """
-    The method optimize the EfficientNet initialization.
-    """
-    stack = [model]
-    while len(stack) != 0:
-        node = stack.pop()
-        if isinstance(node, torch.nn.Conv2d):
-            torch.nn.init.kaiming_normal_(node.weight, mode='fan_out', nonlinearity='relu')
-        elif isinstance(node, torch.nn.Linear):
-            torch.nn.init.xavier_uniform_(node.weight)
-        for name, child in node.named_children():
-            stack.append(child)
+    if pretrained and _creating_modified_en_model(norm_layer, expand_ratio, group_dim):
+        raise ValueError(
+            "Pretrained EfficientNet model is not supported if "
+            "the model is modified, please use batchnorm and other "
+            "default parameters with pretrained=True.")
+
+    model_variant = model_name.replace('-', '_')
+    if pretrained:
+        # Use weights ported from the original TF model.
+        model_variant = "tf_" + model_variant
+    model_config = models.available_models[model_name]
+
+    architecture_def = [
+        ['ds_r1_k3_s1_e1_c16_se0.25'],
+        ['ir_r2_k3_s2_e{:d}_c24_se0.25'.format(expand_ratio)],
+        ['ir_r2_k5_s2_e{:d}_c40_se0.25'.format(expand_ratio)],
+        ['ir_r3_k3_s2_e{:d}_c80_se0.25'.format(expand_ratio)],
+        ['ir_r3_k5_s1_e{:d}_c112_se0.25'.format(expand_ratio)],
+        ['ir_r4_k5_s2_e{:d}_c192_se0.25'.format(expand_ratio)],
+        ['ir_r1_k3_s1_e{:d}_c320_se0.25'.format(expand_ratio)],
+    ]
+
+    round_channels_fn = partial(
+        timm.models.efficientnet.round_channels,
+        multiplier=model_config['channel_multiplier'],
+    )
+
+    model = timm.models.helpers.build_model_with_cfg(
+        model_cls=timm.models.EfficientNet,
+        variant=model_variant,
+        default_cfg=timm.models.efficientnet.default_cfgs[model_variant],
+        pretrained=pretrained,
+        block_args=timm.models.efficientnet.decode_arch_def(
+            architecture_def,
+            model_config['depth_multiplier']
+        ),
+        num_features=round_channels_fn(1280),
+        stem_size=32,
+        round_chs_fn=round_channels_fn,
+        act_layer=timm.models.efficientnet.resolve_act_layer({'act_layer': 'swish'}),
+        norm_layer=norm_layer,
+        num_classes=num_classes,
+        drop_rate=model_config['dropout_rate'],
+        drop_path_rate=0.2,
+    )
+
+    if group_dim > 1:
+        model = _depthwise_conv_to_group_conv(model, group_dim)
+    model = _optimize_en_se_layers(model)
+    return model
+
+
+def _creating_modified_en_model(norm_layer, expand_ratio, group_dim):
+    uses_batch_norm = False
+    if isinstance(norm_layer, partial):
+        uses_batch_norm = norm_layer.func == torch.nn.BatchNorm2d
+    else:
+        uses_batch_norm = norm_layer == torch.nn.BatchNorm2d
+    return not (uses_batch_norm and expand_ratio == 6 and group_dim == 1)
+
+
+def _depthwise_conv_to_group_conv(model, group_dim):
+    for block in model.blocks:
+        for layer in block:
+            group_conv = timm.models.layers.create_conv2d(
+                in_channels=layer.conv_dw.in_channels,
+                out_channels=layer.conv_dw.out_channels,
+                kernel_size=layer.conv_dw.kernel_size[0],
+                stride=layer.conv_dw.stride[0],
+                dilation=layer.conv_dw.dilation[0],
+                groups=max(layer.conv_dw.in_channels // group_dim, 1),
+            )
+            replace_layer(layer, 'conv_dw', group_conv)
+    return model
+
+
+def _optimize_en_se_layers(model):
+    for block in model.blocks:
+        for layer in block:
+            se_ipu = models.SqueezeExciteIPU(layer.se)
+            replace_layer(layer, 'se', se_ipu)
+    return model
 
 
 def residual_normlayer_init(model):
@@ -83,40 +157,6 @@ def residual_normlayer_init(model):
                     norm_layer = block.bn3
             if hasattr(norm_layer, "weight"):
                 torch.nn.init.zeros_(norm_layer.weight)
-
-
-def replace_en_depthwise_conv(model, group_dim=1):
-    """
-    Modify the depthwise convolutions in EfficientNet to have the given group dimensionality.
-    """
-    for block in model._blocks:
-        groups = max(block._depthwise_conv.in_channels // group_dim, 1)
-        custom_conv = type(block._depthwise_conv)
-        new_conv_layer = custom_conv(in_channels=block._depthwise_conv.in_channels,
-                                     out_channels=block._depthwise_conv.out_channels,
-                                     groups=groups,
-                                     kernel_size=block._depthwise_conv.kernel_size,
-                                     stride=block._depthwise_conv.stride,
-                                     bias=False,
-                                     image_size=224)  # Use fake image size as it'll have no effect.
-        new_conv_layer.static_padding = block._depthwise_conv.static_padding
-        replace_layer(block, '_depthwise_conv', new_conv_layer)
-
-
-def replace_bn(model, norm_layer):
-    """Replaces the normalization layers to the given normalization layer.
-    Parameters:
-    model: The model.
-    norm_layer: The inserted torch.nn.Module instance.
-    """
-    stack = [model]
-    while len(stack) != 0:
-        node = stack.pop()
-        for name, child in node.named_children():
-            stack.append(child)
-            if isinstance(child, torch.nn.BatchNorm2d):
-                new_layer = norm_layer(child.num_features)
-                replace_layer(node, name, new_layer)
 
 
 def replace_layer(parent, field_name, new_layer):
@@ -160,33 +200,57 @@ def load_modified_model_from_state(model, pretrained_state_dict):
     return model
 
 
-def full_precision_norm(model, norm_layer):
-    stack = [model]
-    while len(stack) != 0:
-        node = stack.pop()
-        for name, child in node.named_children():
-            stack.append(child)
-            if isinstance(child, norm_layer):
-                child.float()
-                replace_layer(node, name, torch.nn.Sequential(datasets.ToFloat(), child, datasets.ToHalf()))
-
-
 def recompute_model(model, recompute_checkpoints):
     # Put recomutation checkpoint if regular expression matches
-    for name, modules in model.named_modules():
-        name = name.replace('.', '/')
+    traced_model = symbolic_trace(model)
+    for node in traced_model.graph.nodes:
+        name = str(node).replace('_', '/')
+        recompute_checkpoint = False
         for checkpoint_re in recompute_checkpoints:
             if re.fullmatch(checkpoint_re, name):
-                parent, node, field_or_idx_str = get_module_and_parent_by_name(model, name.split('/'))
-                replace_layer(parent, field_or_idx_str, RecomputationCheckpoint(node))
+                logging.info(f"RECOMPUTE CHECKPOINT:{name}")
+                recompute_checkpoint = True
+                with traced_model.graph.inserting_after(node):
+                    new_node = traced_model.graph.call_function(
+                        poptorch.recomputationCheckpoint, args=(node,))
+                    node.replace_all_uses_with(new_node)
+                    new_node.args = (node,)
                 break
+        if not recompute_checkpoint:
+            logging.info(f"RECOMPUTE:{name}")
+
+    traced_model.recompile()
+    return traced_model
 
 
-class RecomputationCheckpoint(torch.nn.Module):
+def pad_first_conv(model):
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Conv2d):
+            parent, node, field_or_idx_str = get_module_and_parent_by_name(model, name.split('/'))
+            replace_layer(parent, field_or_idx_str, PaddedConv(module))
+            return model
+    return model
+
+
+class PaddedConv(torch.nn.Conv2d):
+    """
+    This layer can be applied as the first Conv2d layer.
+    Expects 3 input channel and converts it for 4 channel for the Conv2d layer.
+    The inputs forth channel is padded with zeros.
+    """
     def __init__(self, layer):
-        super().__init__()
-        self.layer = layer
+        super().__init__(4, layer.out_channels, layer.kernel_size, stride=layer.stride, padding=layer.padding, dilation=layer.dilation, groups=layer.groups, bias=hasattr(layer, "bias"), padding_mode=layer.padding_mode)
+        self.extract_weights(layer)
 
-    def forward(self, x):
-        y = self.layer(x)
-        return poptorch.recomputationCheckpoint(y)
+
+    def forward(self, input):
+        pad_shape = list(input.size())
+        pad_shape[1] = 1
+        padding = torch.zeros(pad_shape, dtype=input.dtype)
+        padded_input = torch.cat((input, padding), 1)
+        return super().forward(padded_input)
+
+    def extract_weights(self, conv_layer):
+        self.weight.data[:, :3, :, :] = conv_layer.weight.data
+        if hasattr(conv_layer, "bias"):
+            self.bias = conv_layer.bias

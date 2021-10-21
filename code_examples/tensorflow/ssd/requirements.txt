@@ -1,3 +1,5 @@
 matplotlib==3.2.2
 h5py==2.10.0
-pillow==8.3.1
+pillow==8.3.2
+pytest
+pytest-pythonpath

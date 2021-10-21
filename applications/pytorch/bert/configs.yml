@@ -14,20 +14,15 @@
 
 #----------------------------------------------------------------------------------
 defaults: &defaults
-  random_seed: 42
+  random_seed: 1984
   vocab_size: 30522
   dataloader_workers: 64
   async_dataloader: True
-  file_buffer_size: 10
   ipus_per_replica: 4
   custom_ops: True
   synthetic_data: False
-  profile: False
-  profile_dir: profile
   optimizer: AdamW
-  auto_loss_scaling: False
   weight_decay: 0.0
-  pred_head_transform: True
   embedding_serialization_factor: 1
   recompute_checkpoint_every_layer: True
   replicated_tensor_sharding: False
@@ -215,13 +210,15 @@ squad_base_384: &squad_base_384
   <<: *defaults
 
   # Execution
-  batch_size: 4
+  batch_size: 2
   num_epochs: 3
-  batches_per_step: 1
-  replication_factor: 2
+  batches_per_step: 2
+  replication_factor: 4
   gradient_accumulation: 16
   executable_cache_dir: "./exe_cache"
   replicated_tensor_sharding: True
+  optimizer_state_offchip: False
+  enable_half_first_order_momentum: True
   dataset: squad
 
   # Model
@@ -236,6 +233,7 @@ squad_base_384: &squad_base_384
 
   # Optimizer
   learning_rate: 6e-5
+  lr_schedule: linear
   loss_scaling: 64.0
   weight_decay: 0.01
   lr_warmup: 0.1
@@ -243,54 +241,38 @@ squad_base_384: &squad_base_384
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
+# A 16IPU optimized squad_large configuration that relies on replicatedTensorSharding 
+# to reduce the optimizer state such that it fits on chip.
+# NB This requires replication_factor=2 to fit.
 squad_large_384: &squad_large_384
   <<: *squad_base_384
 
   # Execution
-  batch_size: 2
-  batches_per_step: 2
-  gradient_accumulation: 16
-  replication_factor: 4
-  num_epochs: 2
-
-  # Model
-  hidden_size: 1024
-  num_hidden_layers: 24
-  num_attention_heads: 16
-  layers_per_ipu: [3, 7, 7, 7]
-  matmul_proportion: [0.15, 0.2, 0.2, 0.2]
-  attention_probs_dropout_prob: 0.15
-
-  # Optimizer
-  loss_scaling: 1024.0
-  learning_rate: 6e-5
-  lr_warmup: 0.10
-#----------------------------------------------------------------------------------
-
-#----------------------------------------------------------------------------------
-# A 16IPU optimized squad_large configuration that relies on replicatedTensorSharding 
-# to reduce the optimizer state such that it fits on chip.
-# NB This requires replication_factor=2 to fit.
-squad_large_384_POD16:
-  <<: *squad_large_384
-
-  # Execution
   batch_size: 4
+  batches_per_step: 2
   gradient_accumulation: 32
   replication_factor: 2
   num_epochs: 3
 
   # Model
+  hidden_size: 1024
+  num_hidden_layers: 24
+  num_attention_heads: 16
+  attention_probs_dropout_prob: 0.15
   ipus_per_replica: 8
   layers_per_ipu: [2,3,3,3,3,3,3,4]
-  matmul_proportion: [0.1,0.28,0.32,0.32,0.36,0.38,0.4,0.32]
+  matmul_proportion: [0.08,0.28,0.32,0.32,0.36,0.38,0.4,0.32]
   optimizer_state_offchip: False
   enable_half_first_order_momentum: True
 
   # Optimizer
   loss_scaling: 64.0
   learning_rate: 5e-5
+  lr_warmup: 0.10
 #----------------------------------------------------------------------------------
+# Deprecated config name. Will be removed in next release.
+squad_large_384_POD16:
+  <<: *squad_large_384
 
 #----------------------------------------------------------------------------------
 unit_test:

@@ -22,62 +22,48 @@ resnet50: &resnet50
   seed: 42
 
 
-resnet50-16ipu-mk2-recompute:
+resnet50_mk2: &resnet50_mk2
   <<: *resnet50
-  batch_size: 8
-  gradient_accumulation: 8
-  enable_recompute: true
-  recompute_checkpoints: [.*conv.*, .*bn.*]
-  pipeline_splits: []
-  replicas: 16
-  offload_optimizer: false
-  enable_recompute: false
-  recompute_checkpoints: []
-  warmup_epoch: 16
-  lr: 0.3125
-  initial_loss_scaling: 64
-  loss_scaling: 512
-  enable_fast_groupnorm: true  # disable to create portable model.
-
-
-resnet50_mk2_pipelined: &resnet50_mk2_pipelined
-  <<: *resnet50
-  precision: "16.32"
+  precision: "16.16"
   momentum: 0.9
   lr: 2.0
-  pipeline_splits: [layer1/2, layer2/3, layer3/4]
-  batch_size: 16
-  gradient_accumulation: 256
+  batch_size: 18
+  pipeline_splits: []
+  replicas: 16
+  gradient_accumulation: 57
   device_iterations: 1
-  replicas: 4
   norm_type: batch
   offload_optimizer: false
   half_partial: true
   eight_bit_io: true
   normalization_location: ipu
   use_bbox_info: true
-  recompute_checkpoints: [layer3/5/conv1, layer3/5/conv2, layer3/5/conv3, layer3/4/conv1, layer3/4/conv2, layer3/4/conv3, layer4/0/conv1, layer4/0/conv2, layer4/0/conv3, layer3/5/bn1, layer3/5/bn2, layer3/5/bn3, layer3/2/conv1, layer3/2/conv2, layer3/2/conv3, layer3/3/conv1, layer3/3/conv2, layer3/3/conv3, layer3/1/conv1, layer3/1/conv2, layer3/1/conv3, layer4/1/conv2, layer4/1/conv3, layer4/2/conv1, layer4/2/conv2, layer4/2/conv3, layer4/1/bn1, layer4/1/bn2, layer4/1/bn3, layer3/0/bn1, layer3/0/bn3, layer3/1/bn2, layer3/1/bn3, layer3/0/bn2, layer3/2/bn1, layer3/3/bn1 , layer3/2/bn2, layer3/2/bn3, layer1/0/bn3, layer1/1/bn1, layer1/1/bn2, layer1/2/bn3, layer2/1/bn1, layer2/2/bn1, layer3/1/bn1, layer4/0/bn1, layer4/0/bn3, layer4/2/bn1, layer4/2/bn2, layer4/2/bn3]
+  exchange_memory_target: memory
+  recompute_mode: manual
+  recompute_checkpoints: [add, add/1, add/2, add/3, add/5, add/6, add/7, add/9, add/11, add/12]
+  disable_stable_batchnorm: true
+  available_memory_proportion: [0.12]
 
 
-resnet50_mk2_pipelined_pod64:
-  <<: *resnet50_mk2_pipelined
-  replicas: 16
-  gradient_accumulation: 64
+resnet50_mk2_pod64:
+  <<: *resnet50_mk2
+  replicas: 64
+  gradient_accumulation: 14
 
 
 # --- EfficientNet --- #
-efficientnet-b0-g16-gn-16ipu-mk2:
-  model: efficientnet-b0
+efficientnet-g16-gn-16ipu-mk2-base: &efficientnet-g16-gn-16ipu-mk2-base
   data: imagenet
   seed: 0
   precision: "16.32"
   eight_bit_io: true
   normalization_location: ipu
-  half_partial: true
+  use_bbox_info: true
   enable_stochastic_rounding: false
   efficientnet_group_dim: 16
   efficientnet_expand_ratio: 4
   norm_type: group
+  norm_eps: 0.001
   norm_num_groups: 4
   epoch: 350
   warmup_epoch: 5
@@ -86,7 +72,6 @@ efficientnet-b0-g16-gn-16ipu-mk2:
   momentum: 0.9
   rmsprop_decay: 0.953125
   offload_optimizer: false
-  lr: 0.0483
   lr_schedule: exponential
   lr_scheduler_freq: 0.424
   lr_decay: 0.97
@@ -95,7 +80,91 @@ efficientnet-b0-g16-gn-16ipu-mk2:
   label_smoothing: 0.1
   weight_avg_strategy: exponential
   weight_avg_exp_decay: 0.97
-  pipeline_splits: [_blocks/4]
+  available_memory_proportion: [0.15]
+  exchange_memory_target: balanced
+  half_partial: true
+  enable_fast_groupnorm: true
+
+
+efficientnet-b0-g16-gn-16ipu-mk2:
+  <<: *efficientnet-g16-gn-16ipu-mk2-base
+  model: efficientnet-b0
+  pipeline_splits: [blocks/3/0]
+  lr: 0.05
+  batch_size: 20
   replicas: 8
-  batch_size: 12
+  gradient_accumulation: 5
+  mixup_alpha: 0.1
+
+
+efficientnet-b4-g16-gn-16ipu-mk2:
+  <<: *efficientnet-g16-gn-16ipu-mk2-base
+  model: efficientnet-b4
+  pipeline_splits: [blocks/1/1, blocks/3/0, blocks/4/5]
+  lr: 0.0483
+  batch_size: 6
+  replicas: 4
+  gradient_accumulation: 32
+  device_iterations: 4
+  mixup_alpha: 0.2
+  cutmix_lambda_low: 0.65
+  cutmix_lambda_high: 1.0
+  cutmix_disable_prob: 0.35
+
+
+# --- MobileNet v3--- #
+mobilenet-v3-base: &mobilenet-v3-base
+  data: imagenet
+  label_smoothing: 0.1
+  weight_decay: 0.00003
+  optimizer: sgd_combined
+  lr_schedule: cosine
+  warmup_epoch: 5
+  initial_loss_scaling: 128
+  loss_scaling: 128
+  seed: 42
+  norm_type: batch
+  offload_optimizer: false
+  half_partial: true
+  eight_bit_io: true
+  normalization_location: ipu
+  epoch: 360
+  momentum: 0.9
+  lr: 0.52
+  device_iterations: 1
+  validation_mode: after
+  batch_size: 32
+
+
+mobilenet-v3-small: &mobilenet-v3-small
+  <<: *mobilenet-v3-base
+  model: mobilenet-v3-small
+  precision: "16.16"
+  recompute_mode: auto
+  gradient_accumulation: 32
+  replicas: 1
+  enable_stochastic_rounding: true
+
+
+mobilenet-v3-small-pod4:
+  <<: *mobilenet-v3-small
+  replicas: 4
   gradient_accumulation: 8
+  enable_stochastic_rounding: false
+
+
+mobilenet-v3-large: &mobilenet-v3-large
+  <<: *mobilenet-v3-base
+  model: mobilenet-v3-large
+  precision: "16.32"
+  pipeline_splits: [mb_block/2, mb_block/7, mb_block/11] #16.32
+  gradient_accumulation: 32
+  replicas: 1
+  enable_stochastic_rounding: true
+
+
+mobilenet-v3-large-pod16:
+  <<: *mobilenet-v3-large
+  replicas: 4
+  gradient_accumulation: 8
+  enable_stochastic_rounding: false

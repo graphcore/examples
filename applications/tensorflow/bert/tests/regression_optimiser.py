@@ -102,7 +102,6 @@ with tf.Session() as sess:
             fetches, feed_dict={inputs: input_values, targets: target_values})
         losses.append(loss)
         grads.append(dLdI)
-
 # Check that the loss is below the threshold given
 if loss > expected_losses[opts.optimiser]:
     raise RuntimeError("The losses has not reached the threshold.")

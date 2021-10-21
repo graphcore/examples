@@ -15,7 +15,7 @@
 import pytest
 from transformers import BertConfig
 from modeling import _get_layer_ipu
-from utils import parse_bert_args
+from args import parse_bert_args
 
 
 @pytest.mark.category1

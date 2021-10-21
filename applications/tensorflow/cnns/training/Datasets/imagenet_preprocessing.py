@@ -41,7 +41,7 @@ from __future__ import print_function
 import tensorflow as tf
 from tensorflow.python import ipu
 
-# FROM https://github.com/tensorflow/models/blob/master/official/vision/image_classification/resnet/imagenet_preprocessing.py
+# FROM https://github.com/tensorflow/models/blob/r2.6.0/official/vision/image_classification/resnet/imagenet_preprocessing.py
 
 NUM_CLASSES = 1000
 

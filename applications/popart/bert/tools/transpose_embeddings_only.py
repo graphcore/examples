@@ -51,13 +51,11 @@ def transpose_checkpoint_embedding(checkpoint):
     print(f"Loading checkpoint: {checkpoint}")
     initializers = utils.load_initializers_from_onnx(checkpoint)
     model = bert.Bert(config,
-                      builder=popart.Builder(
-                          opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}),
                       initializers=initializers,
-                      execution_mode=args.execution_mode)
+                      pipeline=args.pipeline)
 
     indices, positions, segments, masks, _ = bert.bert_add_inputs(args, model)
-    bert.bert_logits_graph(model, indices, positions, segments, masks, args.execution_mode)
+    bert.bert_logits_graph(model, indices, positions, segments, masks, args.pipeline)
 
     proto = model.builder.getModelProto()
     onnx_proto = onnx.load_from_string(proto)

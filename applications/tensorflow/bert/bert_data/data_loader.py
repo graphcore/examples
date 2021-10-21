@@ -16,15 +16,16 @@ import tensorflow.compat.v1 as tf
 import numpy as np
 from .pretraining import synthetic_pretraining_dataset, get_pretraining_dataset
 from .squad import get_squad_dataset
+from .glue import get_glue_dataset
 
 from log import logger
 
 
 def load(opts, is_training=True):
-    tf.set_random_seed(int(opts['seed']))
-    np.random.seed(int(opts['seed']))
     data_type = tf.float32 if opts["precision"] == '32' else tf.float16
     if opts['task'] == 'pretraining':
+        tf.set_random_seed(int(opts['seed']))
+        np.random.seed(int(opts['seed']))
         if opts['generated_data']:
             return synthetic_pretraining_dataset(opts)
         else:
@@ -36,6 +37,8 @@ def load(opts, is_training=True):
                 use_static_mask=opts['static_mask'])
     elif opts['task'] == 'SQuAD':
         return get_squad_dataset(opts, is_training)
+    elif opts['task'] == 'GLUE':
+        return get_glue_dataset(opts, is_training)
     else:
         raise ValueError(
             "Conflict options between generated_data and input_file")
@@ -68,10 +71,12 @@ def set_defaults(opts):
         logger.warning("generated-data flag passed, truning off the train_file flag")
         opts['train_file'] = None
         opts['test_file'] = None
-    # If neither the synthetic data nor the train_file flags are passed we are going to proceed with synthetic data
-    if not opts['generated_data'] and not opts['train_file']:
-        raise ValueError('Neither generated-data nor train-file was passed, set at least one of them to run the code.')
 
+    if opts['task'].lower() != 'glue':
+        # If neither the synthetic data nor the train_file flags are passed we are going to proceed with synthetic data
+        if not opts['generated_data'] and not opts['train_file'] and not opts['predict_file']:
+            raise ValueError(
+                'Neither generated-data nor train-file was passed, set at least one of them to run the code.')
     # In the case of synthetic-data training we set the duplication factor to 1
     if opts['generated_data']:
         opts['duplication_factor'] = 1

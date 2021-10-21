@@ -42,7 +42,7 @@ class BaseOptimizerFactory():
                 "defaultBeta1": args.beta1,
                 "defaultBeta2": args.beta2,
                 "lossScaling": args.loss_scaling,
-                "maxWeightNorm": args.max_weight_norm if args.max_weight_norm is not None else np.finfo(np.float16).max
+                "defaultMaxWeightNorm": args.max_weight_norm if args.max_weight_norm is not None else np.finfo(np.float16).max
             }
         else:
             raise RuntimeError("Unknown opt_type in BaseOptimizerFactory")
@@ -91,11 +91,13 @@ class BaseOptimizerFactory():
         return self.option_values["defaultLearningRate"]
 
     def include_for_weight_decay(self, tensor_id):
-        """ Do not include bias and norms for weight decay."""
+        """Do not include bias and norms for weight decay."""
 
-        return self.weight_decay > 0 and not tensor_id.endswith(
-            'B') and not tensor_id.endswith('Beta') and not tensor_id.endswith(
-                'Gamma') and not tensor_id.endswith('Bias')
+        return self.weight_decay > 0 and not any(map(lambda suffix: tensor_id.endswith(suffix), ['Beta', 'Bias', 'Gamma', 'B']))
+
+    def disable_lamb(self, tensor_id):
+        """Reverting to Adam on zero initialised weights improves their training."""
+        return "LAMB" in self.opt_type and any(map(lambda suffix: tensor_id.endswith(suffix), ['Beta', 'Bias', 'B']))
 
     def update_and_create(self, iteration):
         self.update(iteration)
@@ -138,6 +140,9 @@ class BaseOptimizerFactory():
                     weight_decay_tensor_list.append(tensor_id)
                 else:
                     params["weightDecay"] = 0
+
+                if self.disable_lamb(tensor_id):
+                    params["maxWeightNorm"] = 0
 
                 for transform in self.transforms:
                     params = transform(tensor_id, params, stage)

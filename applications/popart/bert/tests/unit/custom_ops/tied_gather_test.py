@@ -52,6 +52,8 @@ def session(train=False, skip_execution=False, include_patterns=True, splits=1, 
         "enableOutlining": outline,
         "enableGradientAccumulation": True,
         "accumulationFactor": 2,
+        "accumulationAndReplicationReductionType": popart.ReductionType.Mean,
+        "meanAccumulationAndReplicationReductionStrategy": popart.MeanReductionStrategy.Running
     }
 
     if optim == "Lamb":
@@ -127,7 +129,7 @@ def test_tied_gather_pattern_ir(splits, phase, optimizer, custom_ops):
                           ir["maingraph"])))
 
     if train:
-        assert len(list(filter(lambda op: op["type"] == "SparseAccumulate", ops))) == splits
+        assert len(list(filter(lambda op: op["type"] == "PopartSparseAccumulate", ops))) == splits
 
 
 @pytest.mark.sanity

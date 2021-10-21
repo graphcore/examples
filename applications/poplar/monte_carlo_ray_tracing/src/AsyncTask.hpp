@@ -20,7 +20,7 @@ public:
   void run(Args&& ...args) {
     if (job != nullptr) {
       auto error = "Attempted to run AsyncTask while a job was in progress.";
-      utils::logger()->error(error);
+      ipu_utils::logger()->error(error);
       throw std::logic_error(error);
     }
     job.reset(new std::thread(std::forward<Args>(args)...));
@@ -34,7 +34,7 @@ public:
         job->join();
         job.reset();
       } catch (std::system_error& e) {
-        utils::logger()->error("Thread could not be joined.");
+        ipu_utils::logger()->error("Thread could not be joined.");
       }
     }
   }

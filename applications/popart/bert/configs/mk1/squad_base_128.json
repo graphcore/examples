@@ -46,7 +46,7 @@
     "tf_checkpoint": "data/ckpts/uncased_L-12_H-768_A-12/bert_model.ckpt",
     "do_lower_case": true,
     "shuffle": true,
-    "execution_mode": "PIPELINE",
+    "pipeline": true,
     "checkpoint_dir": "ckpts/squad_base_128",
     "no_drop_remainder": true,
     "no_outlining": true,

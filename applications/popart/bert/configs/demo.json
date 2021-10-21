@@ -3,7 +3,7 @@
   "popart_dtype": "FLOAT16",
   "batches_per_step": 1,
   "gradient_accumulation_factor": 64,
-  "epochs": 150,
+  "training_steps": 500,
   "epochs_per_save": -1,
   "input_files": [
     "data/sample_text.bin"

@@ -21,6 +21,7 @@ import json
 import os
 
 import six
+import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.contrib.data import map_and_batch
 
@@ -377,6 +378,22 @@ class SquadExample(object):
 
 def read_squad_examples(input_file, opts, is_training):
     """Read a SQuAD json file into a list of SquadExample."""
+
+    examples = []
+
+    if opts['generated_data']:
+        for k in range(opts['num_synthetic_dataset_samples']):
+            example = SquadExample(qas_id=f"{100000000 + k}",
+                                   question_text="some question text",
+                                   doc_tokens=["a token", "another token", "a third token"],
+                                   orig_answer_text="some original answer text",
+                                   start_position=0,
+                                   end_position=1,
+                                   is_impossible=False)
+            examples.append(example)
+        return examples
+
+
     with tf.gfile.Open(input_file, "r") as reader:
         input_data = json.load(reader)["data"]
 
@@ -385,7 +402,6 @@ def read_squad_examples(input_file, opts, is_training):
             return True
         return False
 
-    examples = []
     for entry in input_data:
         for paragraph in entry["paragraphs"]:
             paragraph_text = paragraph["context"]
@@ -453,7 +469,6 @@ def read_squad_examples(input_file, opts, is_training):
                                        end_position=end_position,
                                        is_impossible=is_impossible)
                 examples.append(example)
-
     return examples
 
 
@@ -505,19 +520,21 @@ def get_squad_dataset(opts, is_training):
     if is_training:
         name_to_features["start_positions"] = tf.FixedLenFeature([], tf.int64)
         name_to_features["end_positions"] = tf.FixedLenFeature([], tf.int64)
-    else:
-        name_to_features["start_positions"] = tf.FixedLenFeature([], tf.int64, default_value=-99)
-        name_to_features["end_positions"] = tf.FixedLenFeature([], tf.int64, default_value=-99)
 
     batch_size = opts['batch_size']
     tfrecord_dir = opts['tfrecord_dir']
-
-    base_name = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}"
+    opts['global_batch_size'] = opts['replicas'] * opts['batch_size'] * opts['gradient_accumulation_count']
+    if opts["version_2_with_negative"]:
+        base_name_train = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}_SQuAD20"
+        base_name_eval = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}_{opts['global_batch_size']}_SQuAD20"
+    else:
+        base_name_train = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}_SQuAD11"
+        base_name_eval = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}_{opts['global_batch_size']}_SQuAD11"
     if is_training:
-        filename = os.path.join(tfrecord_dir, base_name + "_train.tfrecord")
+        filename = os.path.join(tfrecord_dir, base_name_train + "_train.tfrecord")
         input_file = opts['train_file']
     else:
-        filename = os.path.join(tfrecord_dir, base_name + "_eval.tfrecord")
+        filename = os.path.join(tfrecord_dir, base_name_eval + "_eval.tfrecord")
         input_file = opts['predict_file']
 
     if not os.path.exists(filename):
@@ -548,15 +565,27 @@ def get_squad_dataset(opts, is_training):
             # Padding for pipeline depth
             padding_to = opts['replicas'] * opts['batch_size'] * opts['gradient_accumulation_count']
 
-        convert_examples_to_features(examples=examples,
-                                     tokenizer=tokenizer,
-                                     max_seq_length=opts['seq_length'],
-                                     doc_stride=opts['doc_stride'],
-                                     max_query_length=opts['max_query_length'],
-                                     is_training=is_training,
-                                     output_fn=append_feature,
-                                     padding_to=padding_to)
+        num_of_features = convert_examples_to_features(examples=examples,
+                                                       tokenizer=tokenizer,
+                                                       max_seq_length=opts['seq_length'],
+                                                       doc_stride=opts['doc_stride'],
+                                                       max_query_length=opts['max_query_length'],
+                                                       is_training=is_training,
+                                                       output_fn=append_feature,
+                                                       padding_to=padding_to)
 
+        if is_training:
+            metadatafile = os.path.join(tfrecord_dir, "train_"+base_name_train+".metadata")
+            if not os.path.exists(metadatafile):
+                tf.logging.info(f'Logging converted no. of SQuAD train features in {metadatafile}')
+                with open(metadatafile, 'w') as f:
+                    f.write(str(num_of_features) + '\n')
+        else:
+            metadatafile = os.path.join(tfrecord_dir, "eval_"+base_name_eval+".metadata")
+            if not os.path.exists(metadatafile):
+                tf.logging.info(f'Logging converted no. of SQuAD eval features in {metadatafile}')
+                with open(metadatafile, 'w') as f:
+                    f.write(str(num_of_features) + '\n')
         writer.close()
 
     d = tf.data.TFRecordDataset(filename)
@@ -565,6 +594,9 @@ def get_squad_dataset(opts, is_training):
         if opts['distributed_worker_count'] > 1:
             d = d.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
         d = d.shuffle(buffer_size=100000, reshuffle_each_iteration=False)
+        d = d.repeat()
+
+    if opts['generated_data']:
         d = d.repeat()
 
     d = d.apply(

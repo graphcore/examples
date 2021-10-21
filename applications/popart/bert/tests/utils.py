@@ -111,7 +111,7 @@ def run_py(proto: onnx.ModelProto,
            batches_per_step: int = 1,
            user_options: Optional[Mapping[str, Any]] = None,
            skip_execution: bool = False,
-           execution_mode: str = 'DEFAULT',
+           pipeline: bool = False,
            replication_factor: int = 1,
            replicated_tensor_sharding: bool = False,
            num_reps: int = 1):
@@ -132,46 +132,13 @@ def run_py(proto: onnx.ModelProto,
     if replication_factor > 1:
         options.enableReplicatedGraphs = True
         options.replicatedGraphCount = replication_factor
-    if execution_mode == 'PHASED':
-        options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
-        options.enableOutlining = True
-        options.outlineThreshold = -np.inf
-        options.enableOutliningCopyCostPruning = False
-        options.autoRecomputation = popart.RecomputationType.Standard
-        options.explicitRecomputation = True
-        options.aliasZeroCopy = True
-        options.batchSerializationSettings.factor = user_options["batchSerializationFactor"]
-        options.executionPhaseSettings.phases = user_options["executionPhases"]
-        ipus = 1
-        options.virtualGraphMode = popart.VirtualGraphMode.ExecutionPhases
-        options.outlineSequenceBreakCost = 100000.0
-        options.batchSerializationSettings.transformContext = popart.BatchSerializationTransformContext.Bwd
-        options.batchSerializationSettings.concatOnVirtualGraphChange = False
-        options.batchSerializationSettings.concatOnExecutionPhaseChange = False
-        options.batchSerializationSettings.concatOnPipelineStageChange = False
-        options.batchSerializationSettings.batchSchedule = popart.BatchSerializationBatchSchedule.OverlapOnCompute
-        options.batchSerializationSettings.method = popart.BatchSerializationMethod.Loop
-        options.autoRecomputation = popart.RecomputationType.Standard
-
-        varLocation = popart.TensorLocation()
-        varLocation.storage = popart.TensorStorage.OffChip
-        varLocation.loadTileSet = popart.TileSet.IO
-        varLocation.storageTileSet = popart.TileSet.IO
-        options.weightTensorLocationSettings.location = varLocation
-        options.optimizerStateTensorLocationSettings.location = varLocation
-        options.accumulatorTensorLocationSettings.location = varLocation
-        options.activationTensorLocationSettings.location = varLocation
-        options.executionPhaseSettings.activationIOSchedule = popart.ExecutionPhaseIOSchedule.OnDemand
-        options.executionPhaseSettings.weightIOSchedule = popart.ExecutionPhaseIOSchedule.Preload
-        options.executionPhaseSettings.schedule = popart.ExecutionPhaseSchedule.Batch
+    options.enableStochasticRounding = False
+    options.constantWeights = True
+    options.outlineThreshold = 10.0
+    if ipus is not None and ipus > 1:
+        options.virtualGraphMode = popart.VirtualGraphMode.Manual
     else:
-        options.enableStochasticRounding = False
-        options.constantWeights = True
-        options.outlineThreshold = 10.0
-        if ipus is not None and ipus > 1:
-            options.virtualGraphMode = popart.VirtualGraphMode.Manual
-        else:
-            ipus = 1
+        ipus = 1
 
     for key, value in user_options.items():
         if key not in ["batchSerializationFactor", "executionPhases"]:
@@ -310,33 +277,14 @@ def copy_weights_to_torch(
         for name, w in torch_model.named_parameters():
             if name in torch_to_onnx.keys():
                 onnx_name = torch_to_onnx[name]
-                if isinstance(onnx_name, list):
-                    # To handle serialized layers where weights are split into multiple tensors for serialization. thse need to be concatenated and copied as a single tensor
-                    weights = []
-                    for phased_split_name in onnx_name:
-                        if phased_split_name in onnx_weights.keys():
-                            phased_split = onnx_weights[phased_split_name]
-                            weights.append(phased_split)
-                        else:
-                            ''' error split not found in initializers '''
-                            print("Error : "+phased_split_name+" not found")
+                if onnx_name in onnx_weights.keys():
                     if name in transform.keys():
                         onnx_tensor = torch.Tensor(transform[name](
-                            weights))
-                        # PyTorch CPU does not support float16...
-                        w.data.copy_(onnx_tensor.float())
+                            onnx_weights[onnx_name]))
                     else:
-                        # transformer required to concatenate list of weights split for embedding serialization
-                        print("Error : transformer required for concatenating weights from embedding serialization")
-                else:
-                    if onnx_name in onnx_weights.keys():
-                        if name in transform.keys():
-                            onnx_tensor = torch.Tensor(transform[name](
-                                onnx_weights[onnx_name]))
-                        else:
-                            onnx_tensor = torch.Tensor(onnx_weights[onnx_name])
-                        # PyTorch CPU does not support float16...
-                        w.data.copy_(onnx_tensor.float())
+                        onnx_tensor = torch.Tensor(onnx_weights[onnx_name])
+                    # PyTorch CPU does not support float16...
+                    w.data.copy_(onnx_tensor.float())
 
 
 def check_tensors(torch_outputs: Iterable[np.ndarray],
@@ -410,26 +358,10 @@ def check_model(torch_model: nn.Module,
         for name, w in reversed(list(torch_model.named_parameters())):
             if name in torch_to_onnx.keys():
                 onnx_name = torch_to_onnx[name]
-                if isinstance(onnx_name, list):
-                    # To handle serialized layers where weights are split into multiple tensors for serialization. thse need to be concatenated and copied as a single tensor
-                    weights = []
-                    for phased_split_name in onnx_name:
-                        if phased_split_name in onnx_weights.keys():
-                            phased_split = onnx_weights[phased_split_name]
-                            weights.append(phased_split)
-                        else:
-                            ''' error split not found in initializers '''
-                            print("Error : "+phased_split_name+" not found")
-                    if name in transform.keys():
-                        onnx_w = transform[name](weights)
-                    else:
-                        # Transformer required to concatenate list of weights split for embedding serialization
-                        print("Error : transformer required for concatenating weights from embedding serialization")
+                if name in transform.keys():
+                    onnx_w = transform[name](onnx_weights[onnx_name])
                 else:
-                    if name in transform.keys():
-                        onnx_w = transform[name](onnx_weights[onnx_name])
-                    else:
-                        onnx_w = onnx_weights[onnx_name].reshape(w.shape)
+                    onnx_w = onnx_weights[onnx_name].reshape(w.shape)
                 torch_w = w.data.detach().numpy()
                 try:
                     check_tensor(onnx_w, torch_w, margin)

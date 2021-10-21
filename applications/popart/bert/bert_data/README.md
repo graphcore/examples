@@ -106,18 +106,9 @@ and that the Bert-Base, uncased checkpoint has been downloaded from Google and i
 The Wikipedia dataset is now ready to be used in the Graphcore BERT model.
 
 **5) Create packed pretraining input data**
-Starting from the output of step **2)** we first tokenize the data using `create_pretraining_data.py`:
+Starting from the output of step **4)**
 ```
-python3 create_pretraining_data.py --input-file=cleaned/part-00* --output-file=binarized_data/part --vocab-file=path_to_the_vocab/vocab.txt --do-lower-case --sequence-length 512 --mask-tokens 76 --duplication-factor 1 --dont-rearrange-mlm-tokens-to-front --max-open-files=10
-```
-
-**NOTE:** Packing (next step) will produce a dataset with duplication factor of 1, regardless of the duplication factor of the provided un-packed pretraining dataset. It is therefore recommended to also generate the un-packed pretraining dataset (using `create_pretraining_data.py`) with a duplication factor of 1, as shown above. Any additional duplication will go unused by the packing script but would take significant time to generate through `create_pretraining_data.py`.
-
-**Note:** in order to later be able pack the dataset, the option `--dont-rearrange-mlm-tokens-to-front` must be used. This is the crucial difference with the previous use of `create_pretraining_data.py` in step **3)**
-
-The second step is to pack the sequences: 
-```
-python3 -m bert_data.pack_pretraining_data --input-glob="binarized_data/part_*" --output-dir="packed_pretraining_data" --max-sequences-per-pack=3 --mlm-tokens=76 --max-sequence-length=512 --unpacked-dataset-duplication-factor=1`
+python3 -m bert_data.pack_pretraining_data --input-glob="preprocessed_target_folder/wiki_*" --output-dir="packed_pretraining_data" --max-sequences-per-pack=3 --mlm-tokens=76 --max-sequence-length=512 --unpacked-dataset-duplication-factor=6`
 ```
 **Note:** the `pack_pretraining_data` should be run from the parent folder as a python module with no `.py` extension (see example).
 

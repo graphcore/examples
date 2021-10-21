@@ -26,14 +26,14 @@
 #include <popart/op/add.hpp>
 #include <popart/op/subtract.hpp>
 #include <popart/op/matmul.hpp>
+#include <popart/op/div.hpp>
+#include <popart/op/detach.hpp>
 #include <popart/op/transpose.hpp>
-#include <popart/op/sgd1varupdate.hpp>
+#include <popart/op/accumulate.hpp>
 #include <popart/op/collectives/replicatedallgather.hpp>
 
 #include <map>
 
-#include "sparse_accumulate.cpp"
-#include "detach.cpp"
 #include "tied_gather.cpp"
 #include "utils.cpp"
 
@@ -131,10 +131,9 @@ public:
         gather->disconnectAllOutputs();
 
         // (2)
-        auto detach_up = std::make_unique<DetachOp>(
-            CustomOperators::Detach,
-            popart::Op::Settings(graph, "TiedGatherDetach"),
-            true
+        auto detach_up = std::make_unique<popart::DetachOp>(
+            popart::Onnx::CustomOperators::Detach_1,
+            popart::Op::Settings(graph, "TiedGatherDetach")
         );
         auto detach = detach_up.get();
         transferBaseProperties(gather, detach);
@@ -331,7 +330,7 @@ public:
 
         auto update_ops = find_all_consumers<popart::VarUpdateWithUpdaterOp, popart::ExecutionContext::AccumulateOuterFragment>(root_weight);
         if (update_ops.size() < 1) {
-            // SGD1DecomposePattern has not run.
+            // OptimizerDecomposePattern has not run.
             throw popart::error("CustomOps Error: Could not find update ops for weight {}", root_weight->id);
         }
 
@@ -356,7 +355,7 @@ public:
             throw popart::error("CustomOps Error: The number of gather ops ({}) does not match the number of accumulate ops ({}).", gather_ops.size(), accumulate_ops.size());
         }
 
-        // Match up gather serial index to SGD1Accumulator's matmul index.
+        // Match up gather serial index to Accumulator's matmul index.
         // TODO: Find a more robust way than sorting input ids
         std::sort(accumulate_ops.begin(), accumulate_ops.end(),
                   [](const popart::Op *l, const popart::Op *r) {
@@ -383,14 +382,41 @@ public:
 
         // Transpose must be inplace so the accumulator is actually updated
         accl_id    = transpose_inplace(accl_id, gather_grad);
-        // weight_id  = transpose_inplace(weight_id, gather_grad);
 
         auto &graph = op->getGraph();
 
-        // TODO: Find a way to share this code between sparse_sgd1_pattern
-        // Add sparseSGD1AccumulateOp.
-        auto sparse_accl_up = std::make_unique<SparseAccumulateOp>(
-            accl_id,
+        auto accum_type = dense_accl->getAccumulationType();
+        popart::Tensor *factor = dense_accl->getFactor().isConst() ? nullptr : dense_accl->inTensor(popart::SparseAccumulateOp::getFactorInIndex());
+
+        if (factor != nullptr && accum_type == popart::AccumulationType::Mean) {
+            auto inv_counter = factor->id + "_inverse";
+            if (!graph.getTensors().contains(inv_counter)) {
+                popart::TensorInfo one_info(factor->info.dataType(), {});
+                std::vector<float> one_data(one_info.nelms(), 1);
+                const auto &one_id = graph.getIr().createIntermediateTensorId("one");
+                graph.getTensors().addConstInit(one_id, one_info, one_data.data());
+                auto inv_op = graph.createConnectedOp<popart::DivOp>(
+                    {{popart::DivOp::getArg0InIndex(), one_id},
+                    {popart::DivOp::getArg1InIndex(), factor->id}},
+                    {{popart::DivOp::getOutIndex(), inv_counter}},
+                    popart::Onnx::Operators::Div_7,
+                    popart::Op::Settings(graph, "mean_accumulate_inverse"));
+                transferBaseProperties(gather_grad, inv_op);
+
+                for (auto cons : factor->consumers.getOps()) {
+                    if (cons->isConvertibleTo<popart::AccumulateOp>() &&
+                        cons->inId(popart::AccumulateOp::getVarToUpdateInIndex()) == factor->id) {
+                        graph.topoCons->insert(cons, inv_op);
+                    }
+                }
+            }
+            accum_type = popart::AccumulationType::DampenedAdd;
+            factor = graph.getTensor(inv_counter);
+        }
+
+        // Add sparseAccumulateOp.
+        auto sparse_accl_up = std::make_unique<popart::SparseAccumulateOp>(
+            accum_type,
             dense_accl->getFactor(),
             gather_grad->getAxis(),
             popart::Op::Settings(graph, "_tiedAccumulate/" + std::to_string(serial_index)));
@@ -401,26 +427,29 @@ public:
 
         // Inputs
         // Accumulator
-        sparse_accl->connectInTensor(SparseAccumulateOp::getVarToUpdateInIndex(),
+        sparse_accl->connectInTensor(popart::SparseAccumulateOp::getVarToUpdateInIndex(),
                                      accl_id);
         // Gradients
-        sparse_accl->connectInTensor(SparseAccumulateOp::getUpdaterInIndex(),
-                                     gather_grad->inId(popart::GatherGradOp::gradInIndex()));
+        sparse_accl->connectInTensor(
+            popart::SparseAccumulateOp::getUpdaterInIndex(),
+            gather_grad->inId(popart::GatherGradOp::gradInIndex()));
         // Scale
         if (!dense_accl->getFactor().isConst()) {
-            sparse_accl->connectInTensor(
-                // the index at which the dampening scale factor is received,
-                SparseAccumulateOp::getDpsf1InIndex(),
-                // the name of the dampening scale factor
-                dense_accl->inId(popart::AccumulateOp::getFactorInIndex()));
+          sparse_accl->connectInTensor(
+              // the index at which the dampening scale factor is received,
+              popart::SparseAccumulateOp::getFactorInIndex(),
+              // the name of the dampening scale factor
+              factor->id);
         }
         // Indices
-        sparse_accl->connectInTensor(SparseAccumulateOp::getIndicesInIndex(),
-                                     gather_grad->inId(popart::GatherGradOp::indicesInIndex()));
+        sparse_accl->connectInTensor(
+            popart::SparseAccumulateOp::getIndicesInIndex(),
+            gather_grad->inId(popart::GatherGradOp::indicesInIndex()));
 
         // Original weight to be cloned
-        sparse_accl->connectInTensor(SparseAccumulateOp::getOriginalVarInIndex(),
-                                     weight_id);
+        sparse_accl->connectInTensor(
+            popart::SparseAccumulateOp::getOriginalVarToUpdateInIndex(),
+            weight_id);
 
         // Transfer TopoCons
         graph.topoCons->transfer(gather_grad, sparse_accl);
@@ -434,8 +463,10 @@ public:
         graph.eraseOp(gather_grad->id);
 
         // Outputs
-        sparse_accl->createAndConnectOutTensor(SparseAccumulateOp::getUpdatedVarOutIndex(), sparse_accl->name() + ":0");
-        
+        sparse_accl->createAndConnectOutTensor(
+            popart::SparseAccumulateOp::getUpdatedVarOutIndex(),
+            sparse_accl->name() + ":0");
+
         // remove the gatherGrad output
         graph.getTensors().remove(grad_Id);
 

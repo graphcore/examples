@@ -27,6 +27,7 @@ import re
 import numpy as np
 import six
 import tensorflow as tf
+import functools
 from tensorflow.python import ipu
 
 
@@ -48,11 +49,14 @@ class BertConfig(object):
                  max_predictions_per_seq=20,
                  use_attention_projection_bias=True,
                  use_cls_layer=False,
-                 use_qkv_bias=False,
+                 use_qkv_split=False,
                  task='pretraining',
                  matmul_serialize_factor=6,
                  static_mask=False,
                  compute_acc = False,
+                 use_prediction_bias=False,
+                 use_qkv_bias=False,
+                 glue_dropout_prob=0.1,
                  dtype=tf.float32):
         """Constructs BertConfig.
 
@@ -82,9 +86,16 @@ class BertConfig(object):
                 This is for model optimization.
             use_cls_layer: Include the CLS layer in pretraining.
                 This layer comes after the encoders but before the projection for the MLM loss.
-            use_qkv_bias: Whether to use bias in QKV calculation of attention layer.
-                This is for model optimization.
+            glue_dropout_prob: Set the dropout probability for GLUE tasks.
             dtype: Data type.
+
+            groupbert: Whether to use GroupBert model architecture
+            ffn_output_groups: Number of groups for FFN layer down projection in GroupBert
+                model architecture
+            conv_kernel_size: Size of convolution kernel in GroupBert model
+                architecture
+            conv_group_size: Size of convolution groups in GroupBert model
+                architecture
         """
         assert hidden_size % num_attention_heads == 0,\
             "The hidden size (%d) is not a multiple of the number of attention " \
@@ -108,10 +119,14 @@ class BertConfig(object):
         self.use_attention_projection_bias = use_attention_projection_bias
         self.use_cls_layer = use_cls_layer
         self.use_qkv_bias = use_qkv_bias
+        self.use_qkv_split = use_qkv_split
         self.task = task
         self.matmul_serialize_factor = matmul_serialize_factor
         self.static_mask = static_mask
         self.compute_acc = compute_acc
+        self.use_prediction_bias = use_prediction_bias
+        self.use_qkv_bias = use_qkv_bias
+        self.glue_dropout_prob = glue_dropout_prob
 
     @classmethod
     def from_json(cls, json_object):
@@ -122,9 +137,9 @@ class BertConfig(object):
         return config_json
 
     @classmethod
-    def from_dict(cls, json_object):
+    def from_dict(cls, json_object, config):
         """Constructs a `BertConfig` from a Python dictionary of parameters."""
-        config = BertConfig(vocab_size=None)
+        # config = BertConfig(vocab_size=None)
         for (key, value) in six.iteritems(json_object):
             if key in config.__dict__:
                 config.__dict__[key] = value
@@ -215,7 +230,8 @@ class BertModel(object):
         full_embeddings = tf.add(word_embeddings, position_embeddings)
         full_embeddings = tf.add(full_embeddings, segment_embeddings)
         full_embeddings = layer_norm_and_dropout(
-            full_embeddings, self.bert_config.hidden_dropout_prob)
+            full_embeddings, self.bert_config.hidden_dropout_prob,
+            is_training=self.is_training)
 
         return full_embeddings
 
@@ -270,31 +286,39 @@ class BertModel(object):
 
         input_tensor_2d = reshape_to_matrix(input_tensor)
 
-        # The query, key and value layers are created separately.
-        # each layer = [B*S, N*H]
-        head_shape = [num_attention_heads*size_per_head, num_attention_heads*size_per_head]
-        with tf.variable_scope('query'):
-            q_weight = tf.get_variable(
-                dtype=self.bert_config.dtype,
-                name="kernel",
-                shape=head_shape,
-                initializer=create_initializer(self.bert_config.initializer_range),
-                trainable=True)
-        with tf.variable_scope('key'):
-            k_weight = tf.get_variable(
-                dtype=self.bert_config.dtype,
-                name="kernel",
-                shape=head_shape,
-                initializer=create_initializer(self.bert_config.initializer_range),
-                trainable=True)
-        with tf.variable_scope('value'):
-            v_weight = tf.get_variable(
-                dtype=self.bert_config.dtype,
-                name="kernel",
-                shape=head_shape,
-                initializer=create_initializer(self.bert_config.initializer_range),
-                trainable=True)
-        qkv_weight = tf.concat([q_weight, k_weight, v_weight], axis=-1)
+        if self.bert_config.use_qkv_split:
+            head_shape = [num_attention_heads*size_per_head, num_attention_heads*size_per_head]
+            with tf.variable_scope('query'):
+                q_weight = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="kernel",
+                    shape=head_shape,
+                    initializer=create_initializer(self.bert_config.initializer_range),
+                    trainable=True)
+            with tf.variable_scope('key'):
+                k_weight = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="kernel",
+                    shape=head_shape,
+                    initializer=create_initializer(self.bert_config.initializer_range),
+                    trainable=True)
+            with tf.variable_scope('value'):
+                v_weight = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="kernel",
+                    shape=head_shape,
+                    initializer=create_initializer(self.bert_config.initializer_range),
+                    trainable=True)
+            qkv_weight = tf.concat([q_weight, k_weight, v_weight], axis=-1)
+
+        else:
+            with tf.variable_scope('kernel'):
+                qkv_weight = tf.get_variable(
+                    dtype=self.bert_config.dtype,
+                    name="qkv_weight",
+                    shape=[num_attention_heads*size_per_head, 3*num_attention_heads*size_per_head],
+                    initializer=create_initializer(self.bert_config.initializer_range),
+                    trainable=True)
 
         @ipu.outlined_function
         def inner_attention_func():
@@ -303,26 +327,25 @@ class BertModel(object):
             if self.bert_config.use_qkv_bias:
                 query_bias = tf.get_variable(
                     dtype=self.bert_config.dtype,
-                    name="query_bias",
+                    name="query/bias",
                     shape=[num_attention_heads*size_per_head],
                     initializer=tf.zeros_initializer(),
                     trainable=True
                 )
                 key_bias = tf.get_variable(
                     dtype=self.bert_config.dtype,
-                    name="key_bias",
+                    name="key/bias",
                     shape=[num_attention_heads*size_per_head],
                     initializer=tf.zeros_initializer(),
                     trainable=False
                 )
                 value_bias = tf.get_variable(
                     dtype=self.bert_config.dtype,
-                    name="value_bias",
+                    name="value/bias",
                     shape=[num_attention_heads*size_per_head],
                     initializer=tf.zeros_initializer(),
                     trainable=True
                 )
-                qkv_bias = tf.concat([query_bias, key_bias, value_bias], axis=-1)
                 qkv = tf.nn.bias_add(qkv, qkv_bias)
             # Split and transpose to [B, N, S, H]
             query_layer, key_layer, value_layer = [
@@ -427,7 +450,8 @@ class BertModel(object):
                             input_tensor, attention_output)
                     input_tensor = self.feed_forward(attention_output)
 
-        input_tensor = ipu.pipelining_ops.recomputation_checkpoint(input_tensor)
+        input_tensor = ipu.pipelining_ops.recomputation_checkpoint(
+            input_tensor)
         self.layer_count += 1
         # Reshape the last hidden layer outputs.
         if self.layer_count == self.bert_config.num_hidden_layers:
@@ -463,10 +487,13 @@ class BertModel(object):
 
     def lm_projection(self, input_tensor, masked_lm_positions):
         if self.bert_config.static_mask:
-            masked_tokens_tensor = tf.slice(input_tensor, [0, 0, 0], [-1, self.bert_config.max_predictions_per_seq, -1])
-            masked_tokens_tensor = tf.reshape(masked_tokens_tensor, [-1, masked_tokens_tensor.shape[2]])
+            masked_tokens_tensor = tf.slice(
+                input_tensor, [0, 0, 0], [-1, self.bert_config.max_predictions_per_seq, -1])
+            masked_tokens_tensor = tf.reshape(
+                masked_tokens_tensor, [-1, masked_tokens_tensor.shape[2]])
         else:
-            masked_tokens_tensor = gather_indexes(input_tensor, masked_lm_positions)
+            masked_tokens_tensor = gather_indexes(
+                input_tensor, masked_lm_positions)
 
         if self.bert_config.use_cls_layer:
             with tf.variable_scope("cls/predictions/transform"):
@@ -505,12 +532,20 @@ class BertModel(object):
                                                     serialization_factor=self.bert_config.matmul_serialize_factor,
                                                     serialization_dimension="b_rows",
                                                     transpose_b=True)
+            if self.bert_config.use_prediction_bias:
+                output_bias = tf.get_variable(
+                    "output_bias",
+                    dtype=self.bert_config.dtype,
+                    shape=[self.bert_config.vocab_size],
+                    initializer=tf.zeros_initializer())
+                logits = tf.nn.bias_add(logits, output_bias)
         return {"mlm_logits": logits}
 
     def squad_head(self, input_tensor, dtype):
         """Take linear projection on last hidden layer output."""
         with tf.variable_scope("cls/squad"):
             input_tensor = tf.cast(input_tensor, dtype=dtype)
+
             batch_size, seq_length, hidden_size = input_tensor.shape
 
             output_weights = tf.get_variable(
@@ -528,7 +563,8 @@ class BertModel(object):
             final_hidden_matrix = tf.reshape(input_tensor,
                                              [batch_size * seq_length, hidden_size])
 
-            logits = tf.matmul(final_hidden_matrix, output_weights, transpose_b=True)
+            logits = tf.matmul(final_hidden_matrix,
+                               output_weights, transpose_b=True)
             logits = tf.nn.bias_add(logits, output_bias)
 
             logits = tf.reshape(logits, [batch_size, seq_length, 2])
@@ -568,7 +604,8 @@ class BertModel(object):
             with tf.variable_scope("embeddings"):
                 _batch_size, _seq_len = word_embeddings.shape[:2]
                 if self.bert_config.static_mask:
-                    position_embeddings = self.embedding(input_position, self.bert_config.max_position_embeddings, name="position_embeddings")
+                    position_embeddings = self.embedding(
+                        input_position, self.bert_config.max_position_embeddings, name="position_embeddings")
                 else:
                     dummy_pos_index = tf.reshape(
                         tf.tile(tf.range(_seq_len), [_batch_size]), [-1, _seq_len])
@@ -589,7 +626,8 @@ class BertModel(object):
                 full_embeddings = tf.add(word_embeddings, position_embeddings)
                 full_embeddings = tf.add(full_embeddings, segment_embeddings)
                 full_embeddings = layer_norm_and_dropout(
-                    full_embeddings, self.bert_config.hidden_dropout_prob)
+                    full_embeddings, self.bert_config.hidden_dropout_prob,
+                    is_training=self.is_training)
 
                 if self.bert_config.static_mask:
                     attention_mask = attention_static_remasking(
@@ -633,14 +671,18 @@ class BertModel(object):
             if self.bert_config.compute_acc:
                 # Calculate `mlm_acc`
                 results = tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32)
-                predictions = tf.cast(tf.equal(results, label_ids), dtype=tf.float16)
-                predictions = tf.cast(predictions * label_weights, dtype=tf.float32)
+                predictions = tf.cast(
+                    tf.equal(results, label_ids), dtype=tf.float16)
+                predictions = tf.cast(
+                    predictions * label_weights, dtype=tf.float32)
 
                 mlm_acc = tf.reduce_sum(predictions)
-                total_attempted = tf.cast(tf.reduce_sum(label_weights), dtype=tf.float32)
+                total_attempted = tf.cast(tf.reduce_sum(
+                    label_weights), dtype=tf.float32)
                 mlm_acc = mlm_acc / total_attempted
             else:
-                mlm_acc = tf.get_variable('mlm_acc', initializer = -1.0, trainable = False, dtype = tf.float32)
+                mlm_acc = tf.get_variable(
+                    'mlm_acc', initializer=-1.0, trainable=False, dtype=tf.float32)
 
         # Calculate NSP loss
         with tf.variable_scope("cls/seq_relationship"):
@@ -658,21 +700,22 @@ class BertModel(object):
                     tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32),
                     next_sentence_labels), dtype=tf.float32))
             else:
-                nsp_acc = tf.get_variable('nsp_acc', initializer = -1.0, trainable = False, dtype = tf.float32)
+                nsp_acc = tf.get_variable(
+                    'nsp_acc', initializer=-1.0, trainable=False, dtype=tf.float32)
 
-        outfeed_mlm_loss = tf.cast(mlm_loss, dtype = tf.float32)
-        outfeed_nsp_loss = tf.cast(nsp_loss, dtype = tf.float32)
+        outfeed_mlm_loss = tf.cast(mlm_loss, dtype=tf.float32)
+        outfeed_nsp_loss = tf.cast(nsp_loss, dtype=tf.float32)
 
         return {"mlm_loss": outfeed_mlm_loss, "nsp_loss": outfeed_nsp_loss,
                 "mlm_acc": mlm_acc, "nsp_acc": nsp_acc}
 
     def get_loc_logic_output_layer(self,
-                                   start_positions,
-                                   end_positions,
                                    input_tensor,
+                                   start_positions=None,
+                                   end_positions=None
                                    ):
         # This is the loss and accuracy for SQuAD
-        dtype_loss = tf.float32
+        dtype_loss = self.bert_config.dtype
         start_logits, end_logits = self.squad_head(
             input_tensor, dtype_loss)
 
@@ -681,9 +724,10 @@ class BertModel(object):
 
         def compute_loss(logits, positions):
             seq_len = logits.shape[1]
-            logits_fp32 = tf.cast(logits, dtype=dtype_loss)
-            one_hot_positions = tf.one_hot(positions, depth=seq_len, dtype=tf.float32)
+            logits_fp32 = tf.cast(logits, dtype=tf.float32)
+            one_hot_positions = tf.one_hot(positions, depth=seq_len, dtype=dtype_loss)
             log_probs = tf.nn.log_softmax(logits_fp32, axis=-1)
+            log_probs = tf.cast(log_probs, dtype=dtype_loss)
             loss = -tf.reduce_mean(tf.reduce_sum(one_hot_positions * log_probs, axis=-1))
             loss = tf.cast(loss, dtype=logits.dtype)
             return loss
@@ -694,6 +738,352 @@ class BertModel(object):
         total_loss = (start_loss + end_loss) / 2.0
 
         return {'total_loss': total_loss}
+
+    def get_glue_output_layer(self, label_ids, input_tensor):
+        num_labels = self.bert_config.num_lables
+        with tf.variable_scope('glue_loss'):
+            # [batch_size, hidden_size]
+            output_layer = self.pooler(input_tensor)
+            # output_layer = tf.cast(output_layer, dtype=tf.float32)
+            hidden_size = output_layer.shape[-1].value
+
+            output_weights = tf.get_variable(
+                "output_weights", [num_labels, hidden_size],
+                initializer=tf.truncated_normal_initializer(stddev=0.02),
+                dtype=tf.float16)
+            # initializer=tf.constant_initializer(1.0))
+
+            output_bias = tf.get_variable(
+                "output_bias", [num_labels], initializer=tf.zeros_initializer(),
+                dtype=tf.float16)
+
+            if self.is_training:
+                # I.e., 0.1 dropout
+                output_layer = tf.nn.dropout(output_layer, keep_prob=1.0-self.bert_config.glue_dropout_prob)
+
+            logits = tf.matmul(output_layer, output_weights, transpose_b=True)
+            logits = tf.nn.bias_add(logits, output_bias)
+            probabilities = tf.nn.softmax(logits, axis=-1)
+            log_probs = tf.nn.log_softmax(logits, axis=-1)
+
+            one_hot_labels = tf.one_hot(
+                label_ids, depth=num_labels, dtype=tf.float16)
+
+            per_example_loss = - \
+                tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
+            loss = tf.reduce_mean(per_example_loss)
+
+            #  Calculate the `acc`
+            preds = tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32)
+            acc = tf.reduce_mean(
+                tf.cast(tf.equal(preds, label_ids), dtype=tf.float16))
+        return {'total_loss': loss, 'per_example_loss': per_example_loss,
+                'logits': logits,
+                'preds': preds, 'acc': acc
+                }
+
+    def get_glue_regression_layer(self, label_ids, input_tensor):
+        label_scores = tf.cast(label_ids, dtype=tf.float16)
+        with tf.variable_scope('glue_loss'):
+            # [batch_size, hidden_size]
+            output_layer = self.pooler(input_tensor)
+            hidden_size = output_layer.shape[-1].value
+
+            output_weights = tf.get_variable(
+                "output_weights", [1, hidden_size],
+                initializer=tf.truncated_normal_initializer(stddev=0.02),
+                dtype=tf.float16)
+
+            output_bias = tf.get_variable(
+                "output_bias", [1], initializer=tf.zeros_initializer(),
+                dtype=tf.float16)
+
+            with tf.variable_scope("loss"):
+                if self.is_training:
+                    # I.e., 0.1 dropout
+                    output_layer = tf.nn.dropout(output_layer, keep_prob=0.9)
+
+                logits = tf.matmul(
+                    output_layer, output_weights, transpose_b=True)
+                logits = tf.nn.bias_add(logits, output_bias)
+                logits = tf.squeeze(logits, [-1])
+
+                per_example_loss = tf.square(logits - label_scores)
+
+                loss = tf.reduce_mean(per_example_loss)
+
+        metrics = {'logits': logits, 'label_ids': label_scores,
+                   'total_loss': loss, 'per_example_loss': per_example_loss}
+        return metrics
+
+
+class GroupBertConfig(BertConfig):
+    """GroupBERT-specific class"""
+
+    def __init__(self,
+                 groupbert=False,
+                 groupbert_ffn_output_groups=4,
+                 groupbert_conv_kernel_size=7,
+                 groupbert_conv_group_size=16,
+                 **args):
+        super().__init__(**args)
+
+        self.groupbert = groupbert
+        self.ffn_output_groups = groupbert_ffn_output_groups
+        self.conv_kernel_size = groupbert_conv_kernel_size
+        self.conv_group_size = groupbert_conv_group_size
+
+
+class GroupBertModel(BertModel):
+    """
+    GroupBERT model builds upon BERT for a more efficient architecture.
+    This code represents the architecture described in https://arxiv.org/abs/2106.05822
+    Every encoder layer is extended to contain four modules: two ffn modules,
+    one attention and one convolutional module.
+    """
+    def __init__(self, config, is_training):
+        super().__init__(config, is_training)
+
+    def prenorm_residual(self, inputs, branch_function):
+        with tf.variable_scope("prenorm"):
+            features = layer_norm(inputs)
+        features = branch_function(features)
+        with tf.variable_scope("residual"):
+            features = dropout(features, self.bert_config.hidden_dropout_prob)
+            return features + inputs
+
+    def grouped_projection(self,
+                           input_tensor,
+                           output_size,
+                           n_groups):
+        input_size = int(input_tensor.shape[-1])
+        assert input_size % n_groups == 0, "n_groups must divide input_size exactly"
+        input_group_size = input_size // n_groups
+        filters = tf.get_variable(
+            name="dense/kernel",
+            dtype=self.bert_config.dtype,
+            shape=[input_group_size, output_size],
+            initializer=create_initializer(self.bert_config.initializer_range),
+        )
+        filters = tf.expand_dims(filters, axis=0)
+
+        bias = tf.get_variable(
+            name="dense/bias",
+            dtype=self.bert_config.dtype,
+            shape=[output_size],
+            initializer=create_initializer(self.bert_config.initializer_range),
+        )
+
+        @ipu.outlined_function
+        def inner_func():
+            return tf.nn.bias_add(tf.nn.conv1d(input_tensor,
+                                  filters,
+                                  stride=1,
+                                  padding="VALID"), bias)
+
+        return inner_func()
+
+    def conv(self, inputs, input_mask):
+        units = int(inputs.shape[-1])
+        state = inputs
+
+        @ipu.outlined_function
+        def dwconv(inputs, input_mask):
+            """The depthwise convolution from Conformer
+
+            inputs -- tensor(B, S, N)
+
+            input_mask -- tensor(B, S)
+
+            returns -- tensor(B, S, N)
+            """
+            input_size = int(inputs.shape[-1])
+            weight = tf.expand_dims(
+                tf.get_variable(
+                    "weight",
+                    dtype=self.bert_config.dtype,
+                    shape=[self.bert_config.conv_kernel_size,
+                           self.bert_config.conv_group_size, input_size]
+                ),
+                1,
+            )  # k 1 g N
+            mask = tf.expand_dims(tf.cast(input_mask, inputs.dtype), 2)
+            conv_input = tf.expand_dims(inputs * mask, 2)
+            conv_output = tf.nn.conv2d(
+                conv_input, weight, strides=[1, 1, 1, 1], padding="SAME"
+            )  # B S 1 N
+            state = tf.squeeze(conv_output, 2)
+            state = layer_norm(state)
+            # N.B. this is BatchNorm in the original paper
+            state = tf.nn.swish(state)
+            return state
+
+        with tf.variable_scope("pre"):
+            state = glu(
+                state,
+                kernel_initializer=create_initializer(self.bert_config.initializer_range),
+                bias=True
+            )
+        with tf.variable_scope("dwconv"):
+            state = dwconv(state, input_mask)
+
+        with tf.variable_scope("post"):
+            state = dense_layer(
+                state,
+                units,
+                kernel_initializer=create_initializer(self.bert_config.initializer_range),
+                use_bias=True)
+        return state
+
+    def grouped_feed_forward(self, attention_output):
+        # The activation is only applied to the "intermediate" hidden layer.
+        with tf.variable_scope("intermediate"):
+            intermediate_output = dense_layer(
+                attention_output,
+                self.bert_config.intermediate_size,
+                activation=gelu,
+                kernel_initializer=create_initializer(self.bert_config.initializer_range))
+        # Down-project back to `hidden_size` then add the residual.
+        with tf.variable_scope("output"):
+            feed_forward_output = self.grouped_projection(
+                intermediate_output,
+                self.bert_config.hidden_size,
+                self.bert_config.ffn_output_groups,
+            )
+            if self.bert_config.ffn_output_groups > 1:
+                with tf.variable_scope("mixer"):
+                    feed_forward_output = dense_layer(
+                        feed_forward_output,
+                        self.bert_config.hidden_size,
+                        kernel_initializer=create_initializer(self.bert_config.initializer_range),
+                    )
+        with tf.variable_scope("original_shape"):
+            feed_forward_output = tf.reshape(feed_forward_output, attention_output.shape)
+        return feed_forward_output
+
+    def attention_layer(self, input_tensor, attention_mask):
+        attention_heads = []
+        with tf.variable_scope("self"):
+            attention_head = self.self_attention(
+                input_tensor,
+                mask=attention_mask
+            )
+            attention_heads.append(attention_head)
+
+        if len(attention_heads) == 1:
+            attention_output = attention_heads[0]
+        else:
+            # In the case where we have other sequences, we just concatenate
+            # them to the self-attention head before the projection.
+            attention_output = tf.concat(
+                attention_heads, axis=-1)
+        with tf.variable_scope("projection"):
+            attention_output = dense_layer(
+                attention_output,
+                self.bert_config.hidden_size,
+                kernel_initializer=create_initializer(
+                    self.bert_config.initializer_range),
+                use_bias=self.bert_config.use_attention_projection_bias)
+            attention_output = tf.reshape(attention_output, input_tensor.shape)
+        return attention_output
+
+    def encoder(self, input_tensor, input_mask, input_ids,
+                masked_lm_positions=None):
+        """Encoder layer."""
+        original_input_shape = input_tensor.shape
+
+        attention_mask = create_attention_mask_from_input_mask(
+            input_ids, input_mask, self.bert_config.dtype)
+
+        with tf.variable_scope("bert"):
+            with tf.variable_scope("encoder"):
+                with tf.variable_scope("layer_%d" % self.layer_count):
+                    with tf.variable_scope("convolution"):
+                        input_tensor = self.prenorm_residual(
+                            inputs=input_tensor,
+                            branch_function=functools.partial(self.conv, input_mask=input_mask)
+                        )
+                    with tf.variable_scope("feed_forward_1"):
+                        input_tensor = self.prenorm_residual(
+                            inputs=input_tensor,
+                            branch_function=self.grouped_feed_forward
+                        )
+                    with tf.variable_scope("attention"):
+                        input_tensor = self.prenorm_residual(
+                            inputs=input_tensor,
+                            branch_function=functools.partial(self.attention_layer, attention_mask=attention_mask)
+                        )
+                    with tf.variable_scope("feed_forward_2"):
+                        input_tensor = self.prenorm_residual(
+                            inputs=input_tensor,
+                            branch_function=self.grouped_feed_forward
+                        )
+
+        input_tensor = ipu.pipelining_ops.recomputation_checkpoint(input_tensor)
+        self.layer_count += 1
+        # Reshape the last hidden layer outputs.
+        if self.layer_count == self.bert_config.num_hidden_layers:
+            # Final layer norm
+            input_tensor = layer_norm(input_tensor)
+            input_tensor = reshape_from_matrix(
+                input_tensor, original_input_shape)
+            # Return the masked tokens tensor to avoid major changes in `multi_stage_wrapper`.
+            # However this might be optimized later.
+            if self.bert_config.task.lower() == 'pretraining':
+                masked_tokens_tensor = self.lm_projection(
+                    input_tensor, masked_lm_positions)
+
+                return {
+                    'layer_output': input_tensor,
+                    'masked_tokens_tensor': masked_tokens_tensor,
+                }
+        return {
+            "input_tensor": input_tensor
+        }
+
+    def embedding_postprocessor_layer(self,
+                                      word_embeddings,
+                                      input_ids,
+                                      input_mask=None,
+                                      segment_ids=None,
+                                      input_position=None,
+                                      mask_padding_index=None,
+                                      seq_padding_index=None
+                                      ):
+        """
+        pipeline stages of embedding_postprocessor
+        """
+        with tf.variable_scope("bert"):
+            with tf.variable_scope("embeddings"):
+                _batch_size, _seq_len = word_embeddings.shape[:2]
+                if self.bert_config.static_mask:
+                    position_embeddings = self.embedding(input_position, self.bert_config.max_position_embeddings, name="position_embeddings")
+                else:
+                    dummy_pos_index = tf.reshape(
+                        tf.tile(tf.range(_seq_len), [_batch_size]), [-1, _seq_len])
+                    position_embeddings = self.embedding(
+                        dummy_pos_index, self.bert_config.max_position_embeddings, name="position_embeddings")
+
+                seg_onehot = tf.one_hot(segment_ids,
+                                        depth=self.bert_config.type_vocab_size,
+                                        dtype=self.bert_config.dtype)
+                seg_weights = tf.get_variable(dtype=self.bert_config.dtype,
+                                              name="token_type_embeddings",
+                                              shape=[self.bert_config.type_vocab_size,
+                                                     self.bert_config.hidden_size],
+                                              initializer=create_initializer(
+                                                  self.bert_config.initializer_range),
+                                              trainable=True)
+                segment_embeddings = tf.matmul(seg_onehot, seg_weights)
+                full_embeddings = tf.add(word_embeddings, position_embeddings)
+                full_embeddings = tf.add(full_embeddings, segment_embeddings)
+                full_embeddings = layer_norm_and_dropout(
+                    full_embeddings, self.bert_config.hidden_dropout_prob,
+                    is_training=self.is_training)
+
+                return {
+                    "input_tensor": full_embeddings
+                }
 
 
 def gather_indexes(sequence_tensor, positions):
@@ -817,7 +1207,7 @@ def dropout(input_tensor, dropout_prob=None):
     return output
 
 
-def layer_norm(input_tensor, name='LayerNorm'):
+def layer_norm(input_tensor, name='LayerNorm', is_training=True):
     """Run layer normalization on the last dimension of the tensor."""
 
     x_reshaped = tf.reshape(input_tensor, (-1, input_tensor.shape[-1]))
@@ -827,9 +1217,9 @@ def layer_norm(input_tensor, name='LayerNorm'):
     return tf.reshape(y, input_tensor.shape)
 
 
-def layer_norm_and_dropout(input_tensor, dropout_prob, name="LayerNorm"):
+def layer_norm_and_dropout(input_tensor, dropout_prob, name="LayerNorm", is_training=True):
     """Runs layer normalization followed by dropout."""
-    output_tensor = layer_norm(input_tensor, name)
+    output_tensor = layer_norm(input_tensor, name, is_training=is_training)
     output_tensor = dropout(output_tensor, dropout_prob)
     return output_tensor
 
@@ -1019,3 +1409,27 @@ def dense_layer(input_tensor,
                                activation=activation,
                                kernel_initializer=kernel_initializer)
     return inner_func()
+
+
+def glu(x, kernel_initializer, bias=False):
+    """
+    Gated Linear Unit funtion.
+    Originally described in https://arxiv.org/pdf/1612.08083.pdf.
+    GLU consists of two square dense projections, one represention the
+    the values to carry, and the other represents the gates. Gates are created
+    with sigmoid function, and the gate output is element-wise multiplied with
+    the value activation.
+    """
+    units = int(x.shape[-1])
+    with tf.variable_scope("glu/values"):
+        values = dense_layer(x,
+                             units,
+                             use_bias=bias,
+                             kernel_initializer=kernel_initializer)
+    with tf.variable_scope("glu/gates"):
+        gates = dense_layer(x,
+                            units,
+                            use_bias=bias,
+                            kernel_initializer=kernel_initializer)
+    gates = tf.nn.sigmoid(gates)
+    return values * gates

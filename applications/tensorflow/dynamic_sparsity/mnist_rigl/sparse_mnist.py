@@ -771,7 +771,6 @@ def run_mnist(opts):
             if opts.use_wandb:
                 wandb.run.summary["Test Loss"] = test_loss
                 wandb.run.summary["Test Accuracy"] = test_acc
-                wandb.log(commit=True)
 
 
 if __name__ == '__main__':

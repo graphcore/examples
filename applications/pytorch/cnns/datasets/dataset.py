@@ -12,8 +12,7 @@ import poptorch
 import os
 import random
 from pathlib import Path
-import sys
-sys.path.append('..')
+import import_helper
 import models
 from datasets.webdataset_format import get_webdataset, DatasetRebatch
 from datasets.tfrecord_format import get_tfrecord
@@ -145,6 +144,8 @@ def get_data(opts, model_opts, train=True, async_dataloader=False, return_remain
     worker_initialization = _WorkerInit(opts.seed, model_opts.Distributed.processId, opts.dataloader_worker) if hasattr(opts, 'seed') else None
     rebatch_size = getattr(opts, "dataloader_rebatch_size", None)
     rebatch_size = rebatch_size if rebatch_size is not None else min(1024, global_batch_size) // model_opts.Distributed.numProcesses
+    # Make sure rebatch size is smaller than global batch size
+    rebatch_size = min(rebatch_size, global_batch_size)
     dataloader = poptorch.DataLoader(model_opts,
                                      dataset,
                                      batch_size=opts.batch_size,

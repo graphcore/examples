@@ -39,7 +39,6 @@ from bert import (  # noqa: E402
     bert_config_from_args,
     bert_pretrained_initialisers,
     bert_add_inputs,
-    bert_logits_graph,
     bert_add_logit_outputs,
     get_bert_dataset,
     Iteration,
@@ -115,13 +114,11 @@ def pooled_validation_run(bert_args,
                           available_ipus=16):
     logger.info("Building Model")
     model = Bert(config,
-                 builder=popart.Builder(
-                     opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}),
                  initializers=initializers)
 
     indices, positions, segments, masks, labels = bert_add_inputs(
         bert_args, model)
-    logits = bert_logits_graph(model, indices, positions, segments, masks, bert_args.execution_mode)
+    logits = bert_logits_graph(model, indices, positions, segments, masks, bert_args.pipeline)
     inputs = [indices, positions, segments, *masks]
     outputs = bert_add_logit_outputs(model, logits)
 

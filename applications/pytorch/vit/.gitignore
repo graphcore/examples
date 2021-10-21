@@ -1,0 +1,8 @@
+!**/data
+wandb
+data/cifar10
+output
+checkpoint
+*.pvti
+*.pvti-journal
+report

@@ -54,7 +54,7 @@
     "epochs_to_cache": 1,
     "embedding_serialization_vocab_steps": 5,
     "available_memory_proportion": [0.15, 0.25, 0.25, 0.25],
-    "execution_mode": "PIPELINE",
+    "pipeline": true,
     "checkpoint_dir": "checkpoints/mk2/pretrain_large",
     "no_validation": true
 }

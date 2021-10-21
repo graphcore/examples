@@ -121,80 +121,44 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     features["masked_lm_weights"] = masked_lm_weights
     features["next_sentence_labels"] = [next_sentence_label]
 
-    if not args.dont_rearrange_mlm_tokens_to_front:
-      # -----------------------------------------
-      # Main Change to original script. This handles the re-arranging of samples to put mask_tokens at the start.
-      formatted_input = [0] * max_seq_length
-      formatted_pos = [args.pad_position_value] * max_seq_length
-      formatted_seg = [0] * max_seq_length
-      formatted_label = [0] * mask_tokens
-      current_mask_idx = 0
-      current_seq_idx = mask_tokens
-      for idx, input_id in enumerate(input_ids):
-        if input_id == 0:
-          continue
-        try:
-          masked_lm_idx = masked_lm_positions.index(idx)
-          formatted_input[current_mask_idx] = input_id
-          formatted_pos[current_mask_idx] = idx
-          formatted_seg[current_mask_idx] = segment_ids[idx]
-          formatted_label[current_mask_idx] = masked_lm_ids[masked_lm_idx]
-          current_mask_idx += 1
-        except ValueError:
-          formatted_input[current_seq_idx] = input_id
-          formatted_pos[current_seq_idx] = idx
-          formatted_seg[current_seq_idx] = segment_ids[idx]
-          current_seq_idx += 1
+    # -----------------------------------------
+    # Main Change to original script. This handles the re-arranging of samples to put mask_tokens at the start.
+    formatted_input = [0] * max_seq_length
+    formatted_pos = [args.pad_position_value] * max_seq_length
+    formatted_seg = [0] * max_seq_length
+    formatted_label = [0] * mask_tokens
+    current_mask_idx = 0
+    current_seq_idx = mask_tokens
+    for idx, input_id in enumerate(input_ids):
+      if input_id == 0:
+        continue
+      try:
+        masked_lm_idx = masked_lm_positions.index(idx)
+        formatted_input[current_mask_idx] = input_id
+        formatted_pos[current_mask_idx] = idx
+        formatted_seg[current_mask_idx] = segment_ids[idx]
+        formatted_label[current_mask_idx] = masked_lm_ids[masked_lm_idx]
+        current_mask_idx += 1
+      except ValueError:
+        formatted_input[current_seq_idx] = input_id
+        formatted_pos[current_seq_idx] = idx
+        formatted_seg[current_seq_idx] = segment_ids[idx]
+        current_seq_idx += 1
 
-      mask_tokens_padding_idx = [current_mask_idx]
-      sequence_padding_idx = [current_seq_idx]
-      nsp_label = [next_sentence_label]
+    mask_tokens_padding_idx = [current_mask_idx]
+    sequence_padding_idx = [current_seq_idx]
+    nsp_label = [next_sentence_label]
 
-      # Pack into binary format
-      line = reduce(lambda accl, i: accl + struct.pack('<I', i),
-                    chain(formatted_input,
-                          formatted_pos,
-                          formatted_seg,
-                          mask_tokens_padding_idx,
-                          sequence_padding_idx,
-                          formatted_label,
-                          nsp_label), b'')
-      writers[writer_index].write(line)
-      # -------------------------------------------
-    else:
-      #   Using the packed data format for 1 seq per pack
-      #   SEQ:
-      #   input_ids, [sequence_length]
-      #   input_mask, [sequence_length]
-      #   segment_ids, [sequence_length]
-      #   positions, [sequence_length] 
-      #   MLM:
-      #   masked_lm_positions, [mask_tokens + max_sequences_per_pack]
-      #   masked_lm_ids, [mask_tokens + max_sequences_per_pack]
-      #   masked_lm_weights, [mask_tokens + max_sequences_per_pack]
-      #   NSP:
-      #   next_sentence_positions, [max_sequences_per_pack]
-      #   next_sentence_labels, [max_sequences_per_pack]
-      #   next_sentence_weights, [max_sequences_per_pack]
-      while len(masked_lm_positions) < (mask_tokens + 1):
-        masked_lm_positions.append(0)
-        masked_lm_ids.append(0)
-        masked_lm_weights.append(0)
-
-      line = reduce(lambda accl, i: accl + struct.pack('<I', i),
-                    chain(input_ids,
-                          input_mask,
-                          segment_ids,
-                          list(range(max_seq_length)),
-                          masked_lm_positions,
-                          masked_lm_ids,
-                          masked_lm_weights,
-                          [0],
-                          [next_sentence_label],
-                          [1]), b'')
-      writers[writer_index].write(line)
-
-
+    # Pack into binary format
+    line = reduce(lambda accl, i: accl + struct.pack('<I', i),
+                  chain(formatted_input,
+                        formatted_pos,
+                        formatted_seg,
+                        mask_tokens_padding_idx,
+                        sequence_padding_idx,
+                        formatted_label,
+                        nsp_label), b'')
+    writers[writer_index].write(line)
     writer_index = (writer_index + 1) % len(writers)
     total_written += 1
 
@@ -541,7 +505,6 @@ if __name__ == "__main__":
   parser.add_argument("--pad-position-value", type=int, default=384,
                       help="Value in the positional input for [PAD] tokens")
   parser.add_argument("--do-whole-word-mask", type=bool, default=False)
-  parser.add_argument("--dont-rearrange-mlm-tokens-to-front", action="store_true")
   parser.add_argument("--max-open-files", type=int, default=1)
   args = parser.parse_args()
   main(args)

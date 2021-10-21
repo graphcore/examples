@@ -4,8 +4,7 @@ import os
 import argparse
 import webdataset as wds
 import torch
-import sys
-sys.path.append('..')
+import import_helper
 from datasets import decode_webdataset, encode_sample
 
 

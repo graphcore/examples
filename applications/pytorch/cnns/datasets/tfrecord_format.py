@@ -7,8 +7,7 @@ from PIL import Image
 from io import BytesIO
 import numpy as np
 import multiprocessing
-import sys
-sys.path.append('..')
+import import_helper
 from datasets.webdataset_format import DistributeNode
 
 

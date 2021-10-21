@@ -13,16 +13,15 @@
 
 #include <pvti/pvti.hpp>
 
-#include <boost/program_options.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/ostr.h>
 
-namespace utils {
+namespace ipu_utils {
 
 /// Return the application's shared logger object.
-std::shared_ptr<spdlog::logger> logger() {
+inline std::shared_ptr<spdlog::logger> logger() {
   static auto logger = spdlog::stdout_logger_mt("ipu_trace_logger");
   return spdlog::get("ipu_trace_logger");
 }
@@ -35,7 +34,7 @@ inline std::string makeProgramsFileName(const std::string& name) {
     return name + ".poplar.progs";
 }
 
-poplar::Executable loadExe(const std::string& name) {
+inline poplar::Executable loadExe(const std::string& name) {
   const auto exeName = makeExeFileName(name);
   logger()->info("Loading precompiled graph from: '{}'", exeName);
   try {
@@ -47,7 +46,7 @@ poplar::Executable loadExe(const std::string& name) {
   }
 }
 
-void saveExe(const poplar::Executable& exe, const std::string& name) {
+inline void saveExe(const poplar::Executable& exe, const std::string& name) {
   const auto fileName = makeExeFileName(name);
   auto outf = std::ofstream(fileName);
   exe.serialize(outf);
@@ -190,6 +189,15 @@ public:
     map.insert(std::make_pair(name, prog));
   }
 
+  /// Check the named program exists and run it.
+  void run(poplar::Engine& e, const std::string progName) const {
+    auto found = ordinals.find(progName);
+    if (found == ordinals.cend()) {
+      throw std::runtime_error("No such program: '" + progName + "'");
+    }
+    e.run(found->second);
+  }
+
   /// Get the list of programs ordered by their ordinals (e.g. pass
   /// the result to poplar::compileGraph).
   ProgramList getList() {
@@ -248,20 +256,77 @@ void connectStream(poplar::Engine& e, const std::string& handle, std::vector<T>&
   e.connectStream(handle, v.data(), v.data() + v.size());
 }
 
-/// Utility for managing Poplar data streams. (It is a stream name and handle pair).
-struct StreamRecord {
-  StreamRecord(const std::string& s) : name(s) {}
+/// Utility for managing a tensor and its IO streams. We need to retain the handle
+/// name to use when we come to execute the graph (and rebuild it when loading an
+/// exe) so this encapsulates the necessary string management, which otherwise
+/// becomes unweildy.
+struct StreamableTensor {
+  StreamableTensor(const std::string& s) : name(s) {}
 
-  void buildWriteToTensor(poplar::Graph& graph, poplar::Tensor t) {
-    stream = graph.addHostToDeviceFIFO(name, t.elementType(), t.numElements());
+  std::string getWriteHandle() const { return name + "/write_stream"; }
+  std::string getReadHandle() const { return name + "/read_stream"; }
+
+  template<typename... Args>
+  void buildTensor(poplar::Graph& graph,
+                   poplar::Type type, poplar::ArrayRef<std::size_t> shape,
+                   poplar::VariableMappingMethod mapping = poplar::VariableMappingMethod::NONE) {
+    checkedAssign(graph.addVariable(type, shape, mapping, name + "/tensor"));
   }
 
-  void buildReadFromTensor(poplar::Graph& graph, poplar::Tensor t) {
-    stream = graph.addDeviceToHostFIFO(name, t.elementType(), t.numElements());
+  const poplar::Tensor& operator = (poplar::Tensor&& t) {
+    checkedAssign(t);
+    return tensor;
+  }
+
+  // Create a host to device stream and return a copy program that writes to it.
+  poplar::program::Program buildWrite(poplar::Graph& graph, bool optmiseMemory) {
+    if (!tensor.valid()) {
+      throw std::logic_error("Tensor must be assigned before calling buildWrite().");
+    }
+    writeStream = graph.addHostToDeviceFIFO(getWriteHandle(), tensor.elementType(), tensor.numElements());
+    return poplar::program::Copy(writeStream, tensor, optmiseMemory, name + "/write");
+  }
+
+  // Create a device to host stream and return a copy program that reads from it.
+  poplar::program::Program buildRead(poplar::Graph& graph, bool optmiseMemory) {
+    if (!tensor.valid()) {
+      throw std::logic_error("Tensor must be assigned before building buildRead().");
+    }
+    readStream = graph.addDeviceToHostFIFO(getReadHandle(), tensor.elementType(), tensor.numElements());
+    return poplar::program::Copy(tensor, readStream, optmiseMemory, name + "/read");
+  }
+
+  void connectWriteStream(poplar::Engine& e, void* data) const {
+    e.connectStream(getWriteHandle(), data);
+  }
+
+  void connectReadStream(poplar::Engine& e, void* data) const {
+    e.connectStream(getReadHandle(), data);
+  }
+
+  std::size_t numElements() const { return get().numElements(); }
+  poplar::Type elementType() const { return get().elementType(); }
+  std::vector<std::size_t> shape() const { return get().shape(); }
+  operator poplar::Tensor() { return get(); } // Overload cast to poplar::Tensor
+  const poplar::Tensor& get() const {
+    if (!tensor.valid()) {
+      throw std::logic_error("Tensor must be assigned before access.");
+    }
+    return tensor;
+  }
+
+private:
+  void checkedAssign(poplar::Tensor t) {
+    if (tensor.valid()) {
+      throw std::logic_error("StreamableTensor may only assigned once.");
+    }
+    tensor = t;
   }
 
   const std::string name;
-  poplar::DataStream stream;
+  poplar::DataStream writeStream;
+  poplar::DataStream readStream;
+  poplar::Tensor tensor;
 };
 
 /// Abstract interface for graph builders. A class that implements the
@@ -299,7 +364,7 @@ public:
   /// Returns the exit code for the host program.
   int run(BuilderInterface& builder) {
     try {
-      pvti::TraceChannel traceChannel = {"utils::GraphManager"};
+      pvti::TraceChannel traceChannel = {"ipu_utils::GraphManager"};
 
       auto config = builder.getRuntimeConfig();
       auto device = builder.getDevice();
@@ -342,7 +407,7 @@ public:
         }
 
         if (config.compileOnly) {
-            utils::logger()->info("Compile only mode selected: finished.");
+            ipu_utils::logger()->info("Compile only mode selected: finished.");
             return EXIT_SUCCESS;
         }
 
@@ -351,7 +416,7 @@ public:
       }
 
     } catch (const std::exception& e) {
-      utils::logger()->error("Exception: {}", e.what());
+      ipu_utils::logger()->error("Exception: {}", e.what());
       return EXIT_FAILURE;
     }
 

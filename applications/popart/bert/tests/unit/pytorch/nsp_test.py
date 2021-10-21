@@ -17,7 +17,7 @@ import popart
 import numpy as np
 import pytest
 
-from bert_model import BertConfig, ExecutionMode, get_model
+from bert_model import Bert, BertConfig
 from tests.torch_bert import BertConfig as TorchBertConfig, BertForNextSentencePrediction
 
 from .full_graph_utils import fwd_graph, bwd_graph
@@ -26,20 +26,11 @@ from .full_graph_utils import fwd_graph, bwd_graph
 '''
 Tests the full nsp graph.
 '''
-NSP_MAPPING = {}
-
-NSP_MAPPING[ExecutionMode.DEFAULT] = {
+NSP_MAPPING = {
     "bert.pooler.dense.weight": "NSP/PoolW",
     "bert.pooler.dense.bias": "NSP/PoolB",
     "cls.seq_relationship.weight": "NSP/NspW",
     "cls.seq_relationship.bias": "NSP/NspB"
-}
-
-NSP_MAPPING[ExecutionMode.PHASED] = {
-    "bert.pooler.dense.weight": "BertModel/NSP/Pool/Dense/Weight",
-    "bert.pooler.dense.bias": "BertModel/NSP/Pool/Dense/Bias",
-    "cls.seq_relationship.weight": "BertModel/NSP/Classifier/Dense/Weight",
-    "cls.seq_relationship.bias": "BertModel/NSP/Classifier/Dense/Bias"
 }
 
 NSP_TRANSFORM = {
@@ -47,11 +38,8 @@ NSP_TRANSFORM = {
     "cls.seq_relationship.weight": np.transpose
 }
 
-test_modes = [ExecutionMode.DEFAULT, pytest.param(ExecutionMode.PHASED, marks=pytest.mark.requires_remote_buffers)]
 
-
-@pytest.mark.parametrize("mode", test_modes)
-def test_nsp_fwd(custom_ops, mode):
+def test_nsp_fwd(custom_ops):
     #  ------------------- PopART --------------------
     config = BertConfig(task="NSP",
                         vocab_length=9728,
@@ -65,10 +53,9 @@ def test_nsp_fwd(custom_ops, mode):
                         no_attn_dropout=True,
                         inference=True,
                         no_mask=True,
-                        execution_mode=mode,
                         mask_tokens=0,
                         split_qkv=False)
-    popart_model = get_model(config, mode)
+    popart_model = Bert(config)
 
 
     #  ------------------- PyTorch -------------------------
@@ -85,31 +72,18 @@ def test_nsp_fwd(custom_ops, mode):
 
     fwd_graph(popart_model,
               torch_model,
-              mode,
-              NSP_MAPPING[mode],
+              NSP_MAPPING,
               transform=NSP_TRANSFORM)
 
 
 @pytest.mark.sanity
-@pytest.mark.parametrize("mode", test_modes)
 @pytest.mark.parametrize("opt_type", ["SGD", "LAMB"])
-def test_nsp_bwd(custom_ops, mode, opt_type):
-    nsp_bwd(custom_ops, mode, opt_type, 2432, 288)
-
-
-def nsp_bwd(custom_ops, mode, opt_type, vocab_length=9728, hidden_size=768):
-    if mode == ExecutionMode.PHASED:
-        # Phased Execution requires atleast two transformer layers to ensure mlm and embedding are in the same virtual graph.
-        num_layers = 2
-    else:
-        num_layers = 1
-
+def test_nsp_bwd(custom_ops, opt_type):
     #  ------------------- PopART --------------------
     config = BertConfig(task="NSP",
-                        vocab_length=vocab_length,
-                        num_layers=num_layers,
+                        vocab_length=2432,
                         micro_batch_size=1,
-                        hidden_size=hidden_size,
+                        hidden_size=288,
                         sequence_length=128,
                         activation_type="relu",
                         popart_dtype="FLOAT",
@@ -117,10 +91,8 @@ def nsp_bwd(custom_ops, mode, opt_type, vocab_length=9728, hidden_size=768):
                         no_attn_dropout=True,
                         no_mask=True,
                         update_embedding_dict=True,
-                        phased_execution_type="single",
-                        execution_mode=mode,
                         split_qkv = (opt_type == "LAMB"))
-    popart_model = get_model(config, mode)
+    popart_model = Bert(config)
 
     #  ------------------- PyTorch -------------------------
     torch_model = BertForNextSentencePrediction(
@@ -137,16 +109,10 @@ def nsp_bwd(custom_ops, mode, opt_type, vocab_length=9728, hidden_size=768):
     l1_lambda = 0.1
 
     def popart_loss_fn(outputs):
-        if mode == ExecutionMode.PHASED:
-            with popart_model.scope_provider(popart_model.builder, popart_model.nsp_scope):
-                loss = popart_model.builder.aiGraphcore.l1loss([outputs[0]],
-                                                               l1_lambda, debugContext="l1LossVal",
-                                                               reduction=popart.ReductionType.Sum)
-        else:
-            loss = popart_model.builder.aiGraphcore.l1loss([outputs[0]], l1_lambda,
-                                                           debugContext="l1LossVal",
-                                                           reduction=popart.ReductionType.Sum)
-            popart_model.builder.virtualGraph(loss, popart_model.nsp_scope.virtualGraph)
+        loss = popart_model.builder.aiGraphcore.l1loss([outputs[0]], l1_lambda,
+                                                       debugContext="l1LossVal",
+                                                       reduction=popart.ReductionType.Sum)
+        popart_model.builder.virtualGraph(loss, popart_model.nsp_scope.virtualGraph)
         return loss
 
     def torch_loss_fn(outputs):
@@ -154,9 +120,8 @@ def nsp_bwd(custom_ops, mode, opt_type, vocab_length=9728, hidden_size=768):
 
     bwd_graph(popart_model,
               torch_model,
-              mode,
               popart_loss_fn=popart_loss_fn,
               torch_loss_fn=torch_loss_fn,
-              mapping=NSP_MAPPING[mode],
+              mapping=NSP_MAPPING,
               transform=NSP_TRANSFORM,
               opt_type=opt_type)

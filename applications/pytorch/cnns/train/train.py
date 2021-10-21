@@ -14,10 +14,10 @@ from poptorch.optim import SGD, RMSprop, AdamW
 from lr_schedule import WarmUpLRDecorator, PeriodicLRDecorator
 from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR, ExponentialLR
 from train_utils import parse_arguments
-from validate import test, validate_checkpoints, create_validation_opts
+from validate import test, validate_checkpoints, create_validation_model_opts
 import weight_avg
 import sys
-sys.path.append('..')
+import import_helper
 import models
 import models.loss
 import utils
@@ -26,44 +26,49 @@ import datasets.augmentations as augmentations
 
 
 class TrainingModelWithLoss(torch.nn.Module):
-    def __init__(self, model, label_smoothing=0.0, mixup_alpha=0.0):
+    def __init__(self, model, label_smoothing=0.0, use_mixup=False, use_cutmix=False):
         super().__init__()
         self.model = model
         self.label_smoothing = label_smoothing
-        self.mixup_alpha = mixup_alpha
-        if mixup_alpha > 0.0:
+        self.use_mixup = use_mixup
+        self.use_cutmix = use_cutmix
+        if self.use_mixup or self.use_cutmix:
             self.loss = models.loss.weighted_nll_loss
         else:
             self.loss = torch.nn.NLLLoss(reduction='mean')
+        # Use human readable names for each layer
+        models.NameScopeHook(self)
 
     def forward(self, input_data, labels=None):
-        if self.mixup_alpha > 0.0:
-            output, labels_permuted = self.model(input_data, labels)
+        if self.use_mixup or self.use_cutmix:
+            output, coeffs = self.model(input_data)
         else:
             output = self.model(input_data)
         # Calculate loss in full precision
         output = output.float()
         if labels is None:
             return output
+
+        loss_items = {}
+        log_preds = torch.nn.functional.log_softmax(output, dim=1)
+
+        if self.use_mixup or self.use_cutmix:
+            all_labels, weights = self.model.mix_labels(labels, coeffs)
+            classification_loss = self.loss(log_preds, all_labels, weights)
         else:
-            loss_items = {}
-            log_preds = torch.nn.functional.log_softmax(output, dim=1)
+            classification_loss = self.loss(log_preds, labels)
+        loss_items['classification_loss'] = (1.0 - self.label_smoothing) * classification_loss
 
-            if self.mixup_alpha > 0.0:
-                weights1 = input_data[1]
-                weights2 = 1.0 - weights1
-                classification_loss = self.loss(log_preds, [labels, labels_permuted], [weights1.float(), weights2.float()])
-            else:
-                classification_loss = self.loss(log_preds, labels)
-            loss_items['classification_loss'] = (1.0 - self.label_smoothing) * classification_loss
+        if self.label_smoothing > 0.0:
+            # cross entropy between uniform distribution and output distribution
+            loss_items["smoothing_loss"] = -torch.mean(log_preds) * self.label_smoothing
+            final_loss = loss_items["smoothing_loss"] + loss_items["classification_loss"]
+        else:
+            final_loss = loss_items["classification_loss"]
 
-            if self.label_smoothing > 0.0:
-                # cross entropy between uniform distribution and output distribution
-                loss_items["smoothing_loss"] = -torch.mean(log_preds) * self.label_smoothing
-                final_loss = loss_items["smoothing_loss"] + loss_items["classification_loss"]
-            else:
-                final_loss = loss_items["classification_loss"]
-            return output, poptorch.identity_loss(final_loss, reduction='none'), tuple(loss_items.values())
+        with torch.no_grad():
+            acc = utils.accuracy(output, labels)
+        return acc, poptorch.identity_loss(final_loss, reduction='none'), tuple(loss_items.values())
 
 
 def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, validation_function=None):
@@ -76,38 +81,47 @@ def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, 
     loss_scaling_steps = {i * (opts.epoch // num_loss_scaling_steps) + 1: opts.initial_loss_scaling * (2 ** i) for i in range(num_loss_scaling_steps)}
     new_loss_scaling = old_loss_scaling = opts.initial_loss_scaling
 
-    if opts.mixup_alpha > 0.0:
-        mixup_alpha_generator = np.random.default_rng(opts.seed)
+    if opts.mixup_enabled or opts.cutmix_enabled:
+        augmentation_generator = np.random.default_rng(opts.seed)
+
 
     for epoch in epochs:
+
         logging.info(f"Epoch {epoch}/{opts.epoch}")
+
         if opts.disable_metrics or (opts.use_popdist and not(opts.popdist_rank == 0)):
             bar = training_data
         else:
             bar = tqdm(training_data, total=iterations_per_epoch)
+
         epoch_start_time = time.time()
         total_sample = 0
         if epoch in loss_scaling_steps.keys():
             new_loss_scaling = loss_scaling_steps[epoch]
         for batch_idx, (input_data, labels) in enumerate(bar):
-            if opts.mixup_alpha > 0.0:
-                # Sample mixup coefficients in the main process on the host.
-                mixup_coefficients = augmentations.sample_mixup_coefficients(
-                    alpha=opts.mixup_alpha,
-                    batch_size=opts.batch_size * opts.gradient_accumulation * opts.replicas,
-                    np_type=np.float16 if opts.precision[:3] == "16." else np.float,
-                    random_generator=mixup_alpha_generator,
-                )
-                preds, losses, sublosses = training_model((input_data, mixup_coefficients), labels)
-            else:
-                preds, losses, sublosses = training_model(input_data, labels)
+            if opts.mixup_enabled or opts.cutmix_enabled:
+                input_data = get_augmented_samples(opts, input_data, augmentation_generator)
+
+            # Offline model call to compile and exit with sample data
+            if opts.compile_only:
+                _ = training_model.compile(input_data, labels)
+                logging.info("Graph compilation complete, --compile-only was set, exiting.")
+                sys.exit(0)
+
+            accuracy, losses, sublosses = training_model(input_data, labels)
+            if opts.profile:
+                # generate profile report for one iteration
+                sys.exit(0)
+
             epoch_num = epoch - 1 + float(batch_idx+1) / iterations_per_epoch
+
             if not opts.disable_metrics:
                 with torch.no_grad():
-                    mean_loss = torch.mean(losses).item()
-                    classification_loss = torch.mean(sublosses[0]).item()
-                    smoothing_loss = torch.mean(sublosses[1]).item() if len(sublosses) > 1 else 0.0
-                    acc = utils.accuracy(preds, labels)
+                    # Each replica returns sum of values. Need to normalize by gradient accumulation and device iteration.
+                    mean_loss = torch.mean(losses).item() / (opts.device_iterations * opts.gradient_accumulation)
+                    classification_loss = torch.mean(sublosses[0]).item() / (opts.device_iterations * opts.gradient_accumulation)
+                    smoothing_loss = torch.mean(sublosses[1]).item() / (opts.device_iterations * opts.gradient_accumulation) if len(sublosses) > 1 else 0.0
+                    acc = torch.mean(accuracy).item() / (opts.device_iterations * opts.gradient_accumulation)
                 metrics.save_value("accuracy", acc)
                 metrics.save_value("loss", mean_loss)
                 metrics.save_value("classification_loss", classification_loss)
@@ -117,7 +131,7 @@ def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, 
                 aggregated_acc = metrics.get_running_mean("accuracy")
                 if not opts.use_popdist or opts.popdist_rank == 0:
                     bar.set_description(f"Loss:{aggregated_loss:0.4f} | Accuracy:{aggregated_acc:0.2f}%")
-            total_sample += input_data.size()[0] * num_instances
+            total_sample += labels.size()[0] * num_instances
 
             if not opts.disable_metrics and ((batch_idx + 1) % (iterations_per_epoch // opts.logs_per_epoch) == 0):
                 elapsed_time = metrics.get_elapsed_time()
@@ -131,21 +145,23 @@ def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, 
                 else:
                     validation_accuracy = 0.0
                 # save metrics
-                result_dict = {"loss_avg": metrics.get_running_mean("loss"),
-                               "loss_batch": metrics.get_value("loss"),
-                               "epoch": epoch_num,
-                               "iteration": batch_idx+1+(epoch-1)*iterations_per_epoch,
-                               "train_accuracy_avg": metrics.get_running_mean("accuracy"),
-                               "train_accuracy_batch": metrics.get_value("accuracy"),
-                               "learning_rate": old_lr,
-                               "loss_scaling": old_loss_scaling,
-                               "train_img_per_sec": (num_batches * input_data.size()[0] / elapsed_time),
-                               "latency_sec": elapsed_time / (num_batches * num_instances),
-                               "validation_accuracy": validation_accuracy,
-                               "classification_loss_batch": metrics.get_value("classification_loss"),
-                               "classification_loss_avg": metrics.get_running_mean("classification_loss"),
-                               "smoothing_loss_batch:": metrics.get_value("smoothing_loss"),
-                               "smoothing_loss_avg:": metrics.get_running_mean("smoothing_loss")}
+                result_dict = {
+                    "loss_avg": metrics.get_running_mean("loss"),
+                    "loss_batch": metrics.get_value("loss"),
+                    "epoch": epoch_num,
+                    "iteration": batch_idx+1+(epoch-1)*iterations_per_epoch,
+                    "train_accuracy_avg": metrics.get_running_mean("accuracy"),
+                    "train_accuracy_batch": metrics.get_value("accuracy"),
+                    "learning_rate": old_lr,
+                    "loss_scaling": old_loss_scaling,
+                    "train_img_per_sec": (num_batches * labels.size()[0] / elapsed_time),
+                    "latency_sec": elapsed_time / (num_batches * num_instances),
+                    "validation_accuracy": validation_accuracy,
+                    "classification_loss_batch": metrics.get_value("classification_loss"),
+                    "classification_loss_avg": metrics.get_running_mean("classification_loss"),
+                    "smoothing_loss_batch:": metrics.get_value("smoothing_loss"),
+                    "smoothing_loss_avg:": metrics.get_running_mean("smoothing_loss"),
+                }
                 if opts.wandb_weight_histogram:
                     utils.Logger.log_model_histogram(training_model.model)
                 utils.Logger.log_train_results(result_dict)
@@ -182,42 +198,56 @@ def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, 
                 os.makedirs(opts.checkpoint_path)
             filename = f"{opts.model}_{opts.data}_{epoch}.pt"
             save_path = os.path.join(opts.checkpoint_path, filename)
-            if opts.mixup_alpha > 0.0:
-                assert isinstance(training_model.model.model, augmentations.MixupModel)
-                state = training_model.model.model.model.state_dict()
-            else:
-                state = training_model.model.model.state_dict()
-            optimizer_state = optimizer.state_dict()
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': state,
-                'optimizer_state_dict': optimizer_state,
+                'model_state_dict': models.get_model_state_dict(training_model),
+                'optimizer_state_dict': optimizer.state_dict(),
                 'loss': aggregated_loss,
                 'train_accuracy': aggregated_acc,
                 'opts': opts
             }, save_path)
 
 
-def create_model_opts(opts):
+def get_augmented_samples(opts, input_data, random_generator):
+    # Mixup coefficients are sampled on the host, cutmix coefficients are
+    # sampled on the device.
+    batch_and_mixup_coefficients = [input_data]
+    if opts.mixup_enabled:
+        mixup_coeffs = augmentations.sample_mixup_coefficients(
+            alpha=opts.mixup_alpha,
+            batch_size=opts.batch_size * opts.gradient_accumulation * opts.replicas * opts.device_iterations,
+            np_type=np.float16 if opts.precision[:3] == "16." else np.float,
+            random_generator=random_generator,
+        )
+        batch_and_mixup_coefficients.append(mixup_coeffs)
+    return tuple(batch_and_mixup_coefficients)
+
+
+def create_training_model_opts(opts):
     if opts.use_popdist:
         model_opts = popdist.poptorch.Options(ipus_per_replica=len(opts.pipeline_splits) + 1)
     else:
         model_opts = poptorch.Options()
         model_opts.replicationFactor(opts.replicas)
+    model_opts = utils.train_settings(opts, model_opts)
     model_opts.deviceIterations(opts.device_iterations)
     # Set mean reduction
     model_opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
-
     model_opts.Training.gradientAccumulation(opts.gradient_accumulation)
+
     if opts.seed is not None:
         model_opts.randomSeed(opts.seed)
+
+    # Use offline IPU for compilation only, needs appropriate version
+    if opts.compile_only:
+        model_opts.useOfflineIpuTarget(poptorch.ipuHardwareVersion())
+
     return model_opts
 
 
 def convert_to_ipu_model(model, opts, optimizer):
-    model_opts = create_model_opts(opts)
-    model_opts = utils.train_settings(opts, model_opts)
-    model_with_loss = TrainingModelWithLoss(model, label_smoothing=opts.label_smoothing, mixup_alpha=opts.mixup_alpha)
+    model_opts = create_training_model_opts(opts)
+    model_with_loss = TrainingModelWithLoss(model, label_smoothing=opts.label_smoothing, use_mixup=opts.mixup_enabled, use_cutmix=opts.cutmix_enabled)
     training_model = poptorch.trainingModel(model_with_loss, model_opts, optimizer=optimizer)
     return training_model
 
@@ -225,6 +255,8 @@ def convert_to_ipu_model(model, opts, optimizer):
 def get_optimizer(opts, model):
     regularized_params = []
     non_regularized_params = []
+
+    # Filter biases and norm parameters.
     for param in model.parameters():
         if param.requires_grad:
             if len(param.shape) == 1:
@@ -239,7 +271,7 @@ def get_optimizer(opts, model):
 
     optimizer = None
     if opts.optimizer == 'sgd':
-        optimizer = SGD(params, lr=opts.lr, momentum=opts.momentum, loss_scaling=opts.initial_loss_scaling)
+        optimizer = SGD(params, lr=opts.lr, momentum=opts.momentum, loss_scaling=opts.initial_loss_scaling, use_combined_accum=False)
     elif opts.optimizer == 'sgd_combined':
         optimizer = SGD(params, lr=opts.lr, momentum=opts.momentum, loss_scaling=opts.initial_loss_scaling, velocity_scaling=opts.initial_loss_scaling / opts.loss_velocity_scaling_ratio, use_combined_accum=True)
     elif opts.optimizer == 'adamw':
@@ -259,11 +291,11 @@ def get_validation_function(opts, model):
     if opts.validation_mode == "none":
         return None
 
-    if opts.mixup_alpha > 0.0:
-        assert isinstance(model, augmentations.MixupModel)
+    if opts.mixup_enabled or opts.cutmix_enabled:
+        assert isinstance(model, augmentations.AugmentationModel)
         model = model.model
 
-    inference_model_opts = create_validation_opts(opts)
+    inference_model_opts = create_validation_model_opts(opts, use_popdist=opts.use_popdist)
     test_data = datasets.get_data(opts, inference_model_opts, train=False, async_dataloader=True, return_remaining=True)
     inference_model = poptorch.inferenceModel(model, inference_model_opts)
 
@@ -298,20 +330,22 @@ if __name__ == '__main__':
     run_opts = parse_arguments()
 
     logging.info("Loading the data")
-    model_opts = create_model_opts(run_opts)
+    model_opts = create_training_model_opts(run_opts)
     train_data = datasets.get_data(run_opts, model_opts, train=True, async_dataloader=True)
 
     logging.info("Initialize the model")
-    model = models.get_model(run_opts, datasets.datasets_info[run_opts.data], pretrained=False, mixup=run_opts.mixup_alpha > 0.0)
+    model = models.get_model(run_opts, datasets.datasets_info[run_opts.data], pretrained=False, use_mixup=run_opts.mixup_enabled, use_cutmix=run_opts.cutmix_enabled)
+
     model.train()
 
     optimizer = get_optimizer(run_opts, model)
     lr_scheduler = get_lr_scheduler(run_opts, optimizer, len(train_data))
     training_model = convert_to_ipu_model(model, run_opts, optimizer)
+
     training_validation_func = get_validation_function(run_opts, model) if run_opts.validation_mode == "during" else None
     train(training_model, train_data, run_opts, lr_scheduler, range(1, run_opts.epoch+1), optimizer, training_validation_func)
 
-    # Validation and weight averaging runs on single process
+    # Weight averaging runs on single process
     if run_opts.weight_avg_strategy != 'none' and (not run_opts.use_popdist or run_opts.popdist_rank == 0):
         average_fn = weight_avg.create_average_fn(run_opts)
         weight_avg.average_model_weights(run_opts.checkpoint_path, average_fn, run_opts.weight_avg_N)
@@ -327,5 +361,6 @@ if __name__ == '__main__':
             utils.Logger.log_validate_results(result_dict)
         else:
             training_model.destroy()
-            checkpoint_files = [os.path.join(run_opts.checkpoint_path, file_name) for file_name in os.listdir(run_opts.checkpoint_path) if file_name.endswith(".pt")]
-            validate_checkpoints(checkpoint_files)
+            if not run_opts.use_popdist or run_opts.popdist_rank == 0:
+                checkpoint_files = [os.path.join(run_opts.checkpoint_path, file_name) for file_name in os.listdir(run_opts.checkpoint_path) if file_name.endswith(".pt")]
+                validate_checkpoints(checkpoint_files)

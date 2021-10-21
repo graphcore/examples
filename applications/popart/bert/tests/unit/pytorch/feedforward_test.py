@@ -20,7 +20,7 @@ import pytest
 import popart
 import onnx
 
-from bert_model import BertConfig, Bert, ExecutionMode, get_model
+from bert_model import BertConfig, Bert
 from bert import set_library_seeds
 from tests.torch_bert import BertConfig as TorchBertConfig, BertOutput, BertIntermediate
 from tests.utils import (
@@ -35,7 +35,6 @@ from tests.utils import (
 '''
 Tests the fully connected layers.
 '''
-test_modes = [ExecutionMode.DEFAULT, requires_remote_buffers(ExecutionMode.PHASED)]
 num_reps_bwd = 5
 lr = 1e-3
 
@@ -67,22 +66,12 @@ ACTIVATIONS = {
 }
 
 TORCH_TO_ONNX = {
-    ExecutionMode.DEFAULT: {
-        "intermediate.dense.weight": "1/W",
-        "intermediate.dense.bias": "1/B",
-        "output.dense.weight": "2/W",
-        "output.dense.bias": "2/B",
-        "output.LayerNorm.weight": "Gamma",
-        "output.LayerNorm.bias": "Beta"
-    },
-    ExecutionMode.PHASED: {
-        "intermediate.dense.weight": "FF/1/Dense/Weight",
-        "intermediate.dense.bias": "FF/1/Dense/Bias",
-        "output.dense.weight": "FF/2/Dense/Weight",
-        "output.dense.bias": "FF/2/Dense/Bias",
-        "output.LayerNorm.weight": "FF/Norm/Gamma",
-        "output.LayerNorm.bias": "FF/Norm/Beta"
-    }
+    "intermediate.dense.weight": "1/W",
+    "intermediate.dense.bias": "1/B",
+    "output.dense.weight": "2/W",
+    "output.dense.bias": "2/B",
+    "output.LayerNorm.weight": "Gamma",
+    "output.LayerNorm.bias": "Beta"
 }
 
 TRANSPOSE_WEIGHTS = {
@@ -95,23 +84,11 @@ def setup_function(func):
     np.random.seed(1984)
 
 
-@pytest.mark.parametrize('mode', test_modes)
-@pytest.mark.parametrize('micro_batch_size, batch_serialization_factor, phase, momentum',
-                         [sanity(4, 2, "bwd", 0.984375),
-
-                          (1, 1, "fwd", 0.0),
-                          (2, 1, "fwd", 0.0),
-                          (2, 2, "fwd", 0.0),
-                          (4, 2, "fwd", 0.0),
-                          (1, 1, "bwd", 0.0),
-                          (2, 1, "bwd", 0.0),
-                          (2, 2, "bwd", 0.0),
-                          (4, 2, "bwd", 0.0),
-                          (1, 1, "bwd", 0.984375),
-                          (2, 1, "bwd", 0.984375),
-                          (2, 2, "bwd", 0.984375),
-                          (4, 2, "bwd", 0.984375)])
-def test_activation_function(mode, phase, momentum, micro_batch_size, batch_serialization_factor):
+@pytest.mark.parametrize('micro_batch_size, phase, momentum',
+                         [sanity(4, "bwd", 0.984375),
+                          (4, "fwd", 0.0),
+                          (4, "bwd", 0.0)])
+def test_activation_function(phase, momentum, micro_batch_size):
 
     set_library_seeds(0)
 
@@ -125,7 +102,7 @@ def test_activation_function(mode, phase, momentum, micro_batch_size, batch_seri
                         activation_type=str(popart_act_function))
 
     data, outputs, proto, post_proto = popart_result_and_model(
-        config, mode, batch_serialization_factor, is_bwd=False if phase is 'fwd' else True, momentum=momentum)
+        config, is_bwd=False if phase is 'fwd' else True, momentum=momentum)
 
     inputs = [
         data.reshape(config.micro_batch_size, config.sequence_length,
@@ -145,7 +122,6 @@ def test_activation_function(mode, phase, momentum, micro_batch_size, batch_seri
         torch_config,
         inputs,
         proto,
-        mode,
         is_bwd=False if phase is 'fwd' else True,
         momentum=momentum)
 
@@ -154,13 +130,13 @@ def test_activation_function(mode, phase, momentum, micro_batch_size, batch_seri
     if phase is 'bwd':
         check_model(torch_model,
                     post_proto,
-                    TORCH_TO_ONNX[mode],
+                    TORCH_TO_ONNX,
                     transform=TRANSPOSE_WEIGHTS,
                     margin=7e-6)
 
 
-def popart_result_and_model(popart_config, mode, batch_serialization_factor, is_bwd=False, momentum=0.0):
-    popart_model = get_model(popart_config, mode, 'feedforward')
+def popart_result_and_model(popart_config, is_bwd=False, momentum=0.0):
+    popart_model = Bert(popart_config)
 
     input_info = popart.TensorInfo(popart_config.popart_dtype, [
         popart_config.micro_batch_size * popart_config.sequence_length,
@@ -174,32 +150,14 @@ def popart_result_and_model(popart_config, mode, batch_serialization_factor, is_
                          input_info.shape()).astype(popart_config.dtype)
     }
 
-    user_options = {}
-    if mode == ExecutionMode.PHASED:
-        user_options = {
-            "batchSerializationFactor": batch_serialization_factor,
-            "executionPhases": popart_model.total_execution_phases,
-        }
-        output = popart_model(input_tensor)
-    else:
-        output = popart_model.feed_forward(input_tensor)
+    output = popart_model.feed_forward(input_tensor)
 
     if is_bwd:
-        l1_lambda = 0.1
-        if mode == ExecutionMode.PHASED:
-            with popart_model.scope_provider(popart_model.builder, popart_model.norm.scope):
-                l1 = popart_model.builder.aiGraphcore.l1loss(
-                    [output],
-                    l1_lambda,
-                    debugContext="l1LossVal",
-                    reduction=popart.ReductionType.Sum)
-
-        else:
-            l1 = popart_model.builder.aiGraphcore.l1loss(
-                [output],
-                l1_lambda,
-                debugContext="l1LossVal",
-                reduction=popart.ReductionType.Sum)
+        l1 = popart_model.builder.aiGraphcore.l1loss(
+            [output],
+            0.1,
+            debugContext="l1LossVal",
+            reduction=popart.ReductionType.Sum)
         proto = popart_model.builder.getModelProto()
 
         if momentum > 0.0:
@@ -213,16 +171,12 @@ def popart_result_and_model(popart_config, mode, batch_serialization_factor, is_
                                      data, (output, l1),
                                      loss=l1,
                                      optimizer=optimizer,
-                                     user_options=user_options,
-                                     execution_mode=mode,
                                      num_reps=num_reps_bwd)
     else:
         proto = popart_model.builder.getModelProto()
         outputs, post_proto = run_py(proto,
                                      data,
-                                     output,
-                                     user_options=user_options,
-                                     execution_mode=mode)
+                                     output)
 
     return data[input_tensor], outputs, proto, post_proto
 
@@ -230,7 +184,6 @@ def popart_result_and_model(popart_config, mode, batch_serialization_factor, is_
 def pytorch_result_and_model(torch_config,
                              inputs,
                              popart_proto,
-                             mode,
                              is_bwd=False,
                              momentum=0.0):
     # Conversion of the popart model to onnx
@@ -242,7 +195,7 @@ def pytorch_result_and_model(torch_config,
 
     copy_weights_to_torch(torch_model,
                           proto,
-                          TORCH_TO_ONNX[mode],
+                          TORCH_TO_ONNX,
                           transform=TRANSPOSE_WEIGHTS)
 
     result = run_fwd_model(inputs, torch_model)

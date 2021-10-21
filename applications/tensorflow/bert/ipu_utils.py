@@ -35,6 +35,7 @@ def get_config(fp_exceptions,
                num_required_ipus,
                enable_stochastic_rounding,
                max_cross_replica_sum_buffer_size,
+               max_reduce_scatter_buffer_size,
                scheduler_selection,
                compile_only,
                ipu_id,
@@ -65,6 +66,7 @@ def get_config(fp_exceptions,
     cfg.floating_point_behaviour.esr = enable_stochastic_rounding
     cfg.optimizations.merge_remote_buffers = MergeRemoteBuffersBehaviour.MERGE
     cfg.optimizations.maximum_cross_replica_sum_buffer_size = max_cross_replica_sum_buffer_size
+    cfg.optimizations.maximum_reduce_scatter_buffer_size = max_reduce_scatter_buffer_size
     cfg.optimizations.merge_infeed_io_copies = True
     cfg.optimizations.enable_graph_outlining = not disable_graph_outlining
     cfg.optimizations.minimum_remote_tensor_size = minimum_remote_tensor_size
@@ -78,12 +80,6 @@ def get_config(fp_exceptions,
             "availableMemoryProportion": str(available_memory_proportion),
             "partialsType": partials_type
         }
-
-    # Do not acquire a device, compile only.
-    if compile_only:
-        cfg.device_connection.type = DeviceConnectionType.NEVER
-        cfg.device_connection.version = "ipu2"
-        cfg.device_connection.enable_remote_buffers = True
 
     return cfg
 
@@ -134,7 +130,7 @@ def stage_wrapper(layer_list, needed_vars, stage_input_names):
             var_list = get_var_list(func)
             outputs = func(**{name: result[name]
                               for name in var_list if name in result})
-            # assume outputs to be a bectionary
+            # assume outputs to be a dictionary
             assert isinstance(outputs, dict)
             result.update(outputs)
         # only return needed vlaues
@@ -183,5 +179,6 @@ def stages_constructor(stages_list, input_names, output_vars):
             needed_vars = needed_vars.union(set(get_var_list(func)))
         # sort needed_varss so that it won't need to recompile because of output order changing
         needed_vars = sorted(needed_vars)
+
     # reverse computational_stages, because it's generated in reverse sequence
     return computational_stages[::-1]

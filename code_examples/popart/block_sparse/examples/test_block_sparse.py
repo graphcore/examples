@@ -5,12 +5,6 @@ from functools import reduce
 from operator import mul
 import popart
 import pytest
-import ctypes
-
-
-so_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                       "../custom_ops.so")
-ctypes.cdll.LoadLibrary(so_path)
 
 # range for filling blocks
 MATRIX_LOW_VALUE = -10
@@ -583,7 +577,7 @@ test_data_infer = [
 
 
 @pytest.mark.parametrize("tag, matmul_type, lhs_dims, rhs_dims, block_size, sparsity_level, transpose_rhs, inner_group_size", test_data_infer)
-def test_bsmatmul_infer(tag, matmul_type, lhs_dims, rhs_dims, block_size, sparsity_level, transpose_rhs, inner_group_size):
+def test_bsmatmul_infer(custom_ops, tag, matmul_type, lhs_dims, rhs_dims, block_size, sparsity_level, transpose_rhs, inner_group_size):
     print("Running test_bsmatmul_infer() with tag: {}, matmul_type:{}, lhs_dims:{}, rhs_dims:{}, block_size:{}, sparsity_level:{}, transpose_rhs:{}, inner_group_size {}"
           .format(tag, "DENSE_LHS_SPARSE_RHS_DENSE_OUT" if matmul_type == g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'] else "DENSE_LHS_DENSE_RHS_SPARSE_OUT",
                   lhs_dims, rhs_dims, block_size, sparsity_level, transpose_rhs, inner_group_size))
@@ -689,7 +683,7 @@ test_data_train = [
 
 
 @pytest.mark.parametrize("tag, matmul_type, lhs_dims, rhs_dims, block_size, sparsity_level, transpose_rhs, inner_group_size", test_data_train)
-def test_bsmatmul_train(tag, matmul_type, lhs_dims, rhs_dims, block_size, sparsity_level, transpose_rhs, inner_group_size):
+def test_bsmatmul_train(custom_ops, tag, matmul_type, lhs_dims, rhs_dims, block_size, sparsity_level, transpose_rhs, inner_group_size):
     print("Running test_bsmatmul_train() with tag: {}, matmul_type:{}, lhs_dims:{}, rhs_dims:{}, block_size:{}, sparsity_level:{}, transpose_rhs:{}, inner_group_size {}"
           .format(tag, "DENSE_LHS_SPARSE_RHS_DENSE_OUT" if matmul_type == g_sparseMatMulTypeLookup['DENSE_LHS_SPARSE_RHS_DENSE_OUT'] else "DENSE_LHS_DENSE_RHS_SPARSE_OUT",
                   lhs_dims, rhs_dims, block_size, sparsity_level, transpose_rhs, inner_group_size))
@@ -723,7 +717,7 @@ test_data_softmax = [
 
 
 @pytest.mark.parametrize("tag, dims, block_size, sparsity_level, inner_group_size", test_data_softmax)
-def test_bs_softmax(tag, dims, block_size, sparsity_level, inner_group_size):
+def test_bs_softmax(custom_ops, tag, dims, block_size, sparsity_level, inner_group_size):
     print("Running test_bs_softmax() with tag: {}, dims:{}, block_size:{}, sparsity_level:{}, inner_group_size {}"
           .format(tag, dims, block_size, sparsity_level, inner_group_size))
     ipu_output, gold_output = sparse_softmax(dims,

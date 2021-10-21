@@ -51,7 +51,7 @@ class MockArgs:
         self.weight_decay = weight_decay
         self.momentum_scaling = 0
         self.pipeline_momentum_scaling = 0
-        self.execution_mode = "DEFAULT"
+        self.pipeline = False
         self.squad_lr_scale = None
         self.continuous_pipeline_optimizer_scaling = False
         self.use_half_optimizer_state = False
@@ -135,8 +135,8 @@ def test_weight_decay(weight_decay):
 
 
 def popart_result_and_model(popart_config, weight_decay=0.0, lr=0.0, l1_lambda=0.0):
-    builder = popart.Builder()
-    popart_model = Bert(popart_config, builder=builder)
+    popart_model = Bert(popart_config)
+    builder = popart_model.builder
 
     input_info = popart.TensorInfo(popart_config.popart_dtype, [
         popart_config.micro_batch_size * popart_config.sequence_length,

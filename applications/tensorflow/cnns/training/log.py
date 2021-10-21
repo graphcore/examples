@@ -26,7 +26,7 @@ import tensorflow as tf
 
 try:
     # See
-    # https://github.com/mlcommons/logging/blob/master/mlperf_logging/mllog/examples/dummy_example.py
+    # https://github.com/mlcommons/logging/blob/1.0.0/mlperf_logging/mllog/examples/dummy_example.py
     # for further details on mlperf logging configurations
     from mlperf_logging import mllog
 

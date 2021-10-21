@@ -26,6 +26,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python import ipu
 from tensorflow.python.ipu.ops import cross_replica_ops
+from tensorflow.python.framework import ops
 from math import sqrt
 from functools import reduce
 
@@ -45,7 +46,8 @@ class AdamWeightDecayOptimizer(tf.compat.v1.train.Optimizer):
                  ],
                  name="AdamWeightDecayOptimizer",
                  weights_dtype=tf.float16,
-                 add_cross_replica_sum=False):
+                 debiasing=True,
+                 outline_grad_fn=True):
         """Constructs a AdamWeightDecayOptimizer."""
         super(AdamWeightDecayOptimizer, self).__init__(False, name)
 
@@ -55,8 +57,14 @@ class AdamWeightDecayOptimizer(tf.compat.v1.train.Optimizer):
         self.beta_1 = beta_1
         self.beta_2 = beta_2
         self.epsilon = epsilon
-        self.add_cross_replica_sums = add_cross_replica_sum
         self.exclude_from_weight_decay = exclude_from_weight_decay
+        self.debiasing = debiasing
+        if self.debiasing:
+            self.step = tf.get_variable('adam_step_counter',
+                                        dtype=tf.int32,
+                                        initializer=[1],
+                                        trainable=False)
+        self.outline_grad_fn = outline_grad_fn
 
     def apply_gradients(self, grads_and_vars, global_step=None, name=None):
         """See base class."""
@@ -79,11 +87,7 @@ class AdamWeightDecayOptimizer(tf.compat.v1.train.Optimizer):
                                 trainable=False,
                                 initializer=tf.zeros_initializer())
 
-            @ipu.outlined_function(unique_sharding=True)
             def grad_fn(grad, param, m, v):
-                if self.add_cross_replica_sums:
-                    grad = cross_replica_ops.cross_replica_sum(grad)
-
                 cast_grad = tf.cast(grad, dtype=tf.float32)
                 cast_grad = cast_grad / self.loss_scaling
 
@@ -92,9 +96,24 @@ class AdamWeightDecayOptimizer(tf.compat.v1.train.Optimizer):
                           tf.multiply(1.0 - self.beta_1, cast_grad))
                 next_v = (tf.multiply(self.beta_2, v) +
                           tf.multiply(1.0 - self.beta_2, tf.square(cast_grad)))
-
+                # Beta scaling of momentum and velocity
+                if self.debiasing:
+                    beta_1_power = tf.math.pow(
+                        tf.cast(self.beta_1, tf.float32), tf.cast(self.step + 1, tf.float32))
+                    beta_2_power = tf.math.pow(
+                        self.beta_2, tf.cast(self.step + 1, tf.float32))
+                    bias_correction = tf.cast(tf.math.sqrt(
+                        1 - beta_2_power) / (1 - beta_1_power), param.dtype)
                 update = tf.cast(next_m / (tf.sqrt(next_v) + self.epsilon),
                                  param.dtype)
+
+                # Beta scaling of momentum and velocity
+                if self.debiasing:
+                    beta_1_power = tf.math.pow(tf.cast(self.beta_1, tf.float32), tf.cast(self.step + 1, tf.float32))
+                    beta_2_power = tf.math.pow(self.beta_2, tf.cast(self.step + 1, tf.float32))
+                    bias_correction = tf.cast(tf.math.sqrt(1 - beta_2_power) / (1 - beta_1_power), tf.float16)
+                else:
+                    bias_correction = tf.cast(tf.constant(1), tf.float16)
 
                 # Just adding the square of the weights to the loss function is *not*
                 # the correct way of using L2 regularization/weight decay with Adam,
@@ -106,11 +125,14 @@ class AdamWeightDecayOptimizer(tf.compat.v1.train.Optimizer):
                 if self._do_use_weight_decay(param_name):
                     update += self.weight_decay_rate * param
 
-                update_with_lr = tf.cast(self.learning_rate, param.dtype) * update
+                update_with_lr = tf.cast(self.learning_rate, param.dtype) * update * bias_correction
 
                 next_param = param - update_with_lr
 
                 return next_param, next_v, next_m
+
+            if self.outline_grad_fn:
+                grad_fn = ipu.outlined_function(grad_fn, unique_sharding=True)
 
             next_param, next_v, next_m = grad_fn(grad, param, m, v)
 
@@ -118,6 +140,138 @@ class AdamWeightDecayOptimizer(tf.compat.v1.train.Optimizer):
                 [param.assign(next_param),
                  m.assign(next_m),
                  v.assign(next_v)])
+            # We add the update for the step
+        if self.debiasing:
+            assignments.extend([self.step.assign(self.step + 1)])
+        return tf.group(*assignments, name=name)
+
+    def _do_use_weight_decay(self, param_name):
+        """Whether to use L2 weight decay for `param_name`."""
+        if not self.weight_decay_rate:
+            return False
+        if self.exclude_from_weight_decay:
+            for r in self.exclude_from_weight_decay:
+                if re.search(r, param_name) is not None:
+                    return False
+        return True
+
+    def _get_variable_name(self, param_name):
+        """Get the variable name from the tensor name."""
+        m = re.match("^(.*):\\d+$", param_name)
+        if m is not None:
+            param_name = m.group(1)
+        return param_name
+
+
+class MixedPrecisionAdamWeightDecayOptimizer(tf.train.Optimizer):
+    """A basic Adam optimizer that includes "correct" L2 weight decay."""
+    def __init__(self,
+                 learning_rate,
+                 loss_scaling,
+                 weight_decay_rate=0.01,
+                 beta_1=0.9,
+                 beta_2=0.999,
+                 epsilon=1e-6,
+                 exclude_from_weight_decay=[
+                     "GroupNorm", "Group_Norm", "LayerNorm", "Layer_Norm",
+                     "bias"
+                 ],
+                 name="AdamWeightDecayOptimizer",
+                 weights_dtype=tf.float16,
+                 debiasing=True,
+                 outline_grad_fn=True):
+        """Constructs a AdamWeightDecayOptimizer."""
+        super(MixedPrecisionAdamWeightDecayOptimizer, self).__init__(False, name)
+
+        self.learning_rate = learning_rate
+        self.loss_scaling = loss_scaling
+        self.weight_decay_rate = weight_decay_rate
+        self.beta_1 = tf.cast(beta_1, tf.float16)
+        self.beta_2 = beta_2
+        self.epsilon = epsilon * self.loss_scaling
+        self.exclude_from_weight_decay = exclude_from_weight_decay
+        self.debiasing = debiasing
+        if self.debiasing:
+            self.step = tf.get_variable('adam_step_counter',
+                                        dtype=tf.int32,
+                                        initializer=[1],
+                                        trainable=False)
+        self.outline_grad_fn = outline_grad_fn
+
+    def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+        """See base class."""
+        assignments = []
+
+        ordered_grad_and_vars = sorted(
+            grads_and_vars, key=lambda x: reduce(operator.mul, x[0].shape, 1))
+
+        for (grad, param) in ordered_grad_and_vars:
+            if grad is None or param is None:
+                continue
+
+            param_name = self._get_variable_name(param.name)
+
+            m = tf.get_variable(name=param_name + "/adam_m",
+                                shape=param.shape.as_list(),
+                                dtype=tf.float16,
+                                trainable=False,
+                                initializer=tf.zeros_initializer())
+
+            v = tf.get_variable(name=param_name + "/adam_v",
+                                shape=param.shape.as_list(),
+                                dtype=tf.float32,
+                                trainable=False,
+                                initializer=tf.zeros_initializer())
+
+            def grad_fn(grad, param, m, v):
+                param_dtype = param.dtype
+                # Standard Adam update.
+                next_m = (tf.multiply(self.beta_1, m) +
+                          tf.multiply(1.0 - self.beta_1, grad))
+
+                cast_grad = tf.cast(grad, dtype=tf.float32)
+                next_v = (tf.multiply(self.beta_2, v) +
+                          tf.multiply(1.0 - self.beta_2, tf.square(cast_grad)))
+
+                # Beta scaling of momentum and velocity
+                if self.debiasing:
+                    beta_1_power = tf.math.pow(tf.cast(self.beta_1, tf.float32), tf.cast(self.step + 1, tf.float32))
+                    beta_2_power = tf.math.pow(self.beta_2, tf.cast(self.step + 1, tf.float32))
+                    bias_correction = tf.cast(tf.math.sqrt(1 - beta_2_power) / (1 - beta_1_power), tf.float32)
+                else:
+                    bias_correction = tf.cast(tf.constant(1), tf.float32)
+
+                update = tf.cast(next_m, tf.float32) / (tf.sqrt(next_v) + self.epsilon)
+
+                # Just adding the square of the weights to the loss function is *not*
+                # the correct way of using L2 regularization/weight decay with Adam,
+                # since that will interact with the m and v parameters in strange ways.
+                #
+                # Instead we want to decay the weights in a manner that doesn't interact
+                # with the m/v parameters. This is equivalent to adding the square
+                # of the weights to the loss with plain (non-momentum) SGD.
+                param_fp32 = tf.cast(param, tf.float32)
+
+                if self._do_use_weight_decay(param_name):
+                    update += self.weight_decay_rate * param_fp32
+                lr_32 = tf.cast(self.learning_rate, tf.float32)
+                update_with_lr = lr_32 * update * bias_correction
+
+                next_param = tf.cast(param_fp32 - update_with_lr, param_dtype)
+
+                return next_param, next_v, next_m
+
+            if self.outline_grad_fn:
+                grad_fn = ipu.outlined_function(grad_fn, unique_sharding=True)
+
+            next_param, next_v, next_m = grad_fn(grad, param, m, v)
+
+            assignments.extend(
+                [param.assign(next_param),
+                 m.assign(next_m),
+                 v.assign(next_v)])
+        if self.debiasing:
+            assignments.extend([self.step.assign(self.step + 1)])
         return tf.group(*assignments, name=name)
 
     def _do_use_weight_decay(self, param_name):
@@ -161,13 +315,14 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                  beta_2=0.999,
                  epsilon=1e-4,
                  exclude_from_weight_decay=None,
+                 exclude_from_layer_adaptation=None,
                  name="LAMBOptimizer",
                  high_precision=True,
                  use_nvlamb=False,
                  debiasing=True,
                  weight_clipping=0,
                  clipping_value=1.0,
-                 add_cross_replica_sums=False):
+                 outline_grad_fn=True):
         """Constructs a LAMBOptimizer."""
         super(LAMBOptimizer, self).__init__(False, name)
 
@@ -198,6 +353,8 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
         self.learning_rate = learning_rate
 
         self.exclude_from_weight_decay = exclude_from_weight_decay
+        self.exclude_from_layer_adaptation = exclude_from_layer_adaptation
+
         # If true use the NVLAM implimentaion found:
         self.use_nvlamb = use_nvlamb
         if self.use_nvlamb:
@@ -217,7 +374,7 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
         #  https://developer.nvidia.com/blog/pretraining-bert-with-layer-wise-adaptive-learning-rates/
         # -----
         self.clipping_value = tf.cast(clipping_value, dtype=tf.float32)
-        self.add_cross_replica_sums = add_cross_replica_sums
+        self.outline_grad_fn = outline_grad_fn
 
     def clipped_norm(self, gradients_list):
         # We compute the total norm of the gradient
@@ -269,11 +426,7 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                                 initializer=tf.zeros_initializer())
 
 
-            @ipu.outlined_function(unique_sharding=True)
             def grad_fn(grad, param, m, v):
-                if self.add_cross_replica_sums:
-                    grad = cross_replica_ops.cross_replica_sum(grad)
-
                 # We convert the gradient to fp32 and we rescale it
                 cast_grad = tf.cast(grad, dtype=tf.float32)
 
@@ -318,38 +471,41 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                                       dtype=update.dtype) * tf.cast(
                                           param, dtype=update.dtype)
 
-                reshaped_param = tf.reshape(param, [-1])
                 reshaped_update = tf.reshape(update, [-1])
 
-                # Norms are then computed in fp32
-                w_norm = linalg_ops.norm(tf.cast(reshaped_param,
-                                                 dtype=tf.float32),
-                                         ord=2,
-                                         axis=-1)
-                u_norm = linalg_ops.norm(reshaped_update, ord=2, axis=-1)
+                ratio = 1.0
+                if self._do_layer_adaptation(param_name):
+                    reshaped_param = tf.reshape(param, [-1])
 
-                reshaped_update = tf.cast(reshaped_update, dtype=self.target_type)
+                    # Norms are then computed in fp32
+                    w_norm = linalg_ops.norm(tf.cast(reshaped_param,
+                                                     dtype=tf.float32),
+                                             ord=2,
+                                             axis=-1)
+                    u_norm = linalg_ops.norm(reshaped_update, ord=2, axis=-1)
 
-                if self.weight_clip:
-                    w_norm = tf.math.minimum(
-                        w_norm, tf.cast(self.weight_clip, dtype=w_norm.dtype))
+                    if self.weight_clip:
+                        w_norm = tf.math.minimum(
+                            w_norm, tf.cast(self.weight_clip, dtype=w_norm.dtype))
 
-                # We set the ratio to 1 if either the w norm and the u norms are 0
-                ratio = array_ops.where(
-                    math_ops.greater(w_norm, 0),
-                    array_ops.where(
-                        math_ops.greater(u_norm, 0),
-                        (tf.cast(w_norm, dtype=tf.float32) / u_norm),
-                        tf.constant(1.0, dtype=tf.float32, shape=w_norm.shape)),
-                    tf.constant(1.0, dtype=tf.float32, shape=w_norm.shape))
+                    # We set the ratio to 1 if either the w norm and the u norms are 0
+                    ratio = array_ops.where(
+                        math_ops.greater(w_norm, 0),
+                        array_ops.where(
+                            math_ops.greater(u_norm, 0),
+                            (tf.cast(w_norm, dtype=tf.float32) / u_norm),
+                            tf.constant(1.0, dtype=tf.float32, shape=w_norm.shape)),
+                        tf.constant(1.0, dtype=tf.float32, shape=w_norm.shape))
 
-                # We reshape the ration in order to be broadcastable
-                ratio = tf.reshape(ratio, shape=ratio.shape.as_list() + [1])
+                    # We reshape the ration in order to be broadcastable
+                    ratio = tf.reshape(ratio, shape=ratio.shape.as_list() + [1])
+
                 # We combine the learning rate and the ratio at fp32
                 ratio = ratio * self.learning_rate
                 # We now downcast to do the next operation
                 # If the scaledd is present we do not need this operation
-                ratio = tf.cast(ratio, dtype=tf.float16)
+                ratio = tf.cast(ratio, dtype=self.target_type)
+                reshaped_update = tf.cast(reshaped_update, dtype=self.target_type)
                 update_with_lr = ratio * reshaped_update
                 # Backward transform to the same as param
                 update_with_lr = tf.reshape(update_with_lr, shape=param.shape)
@@ -359,6 +515,8 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
 
                 return next_param, next_m, next_v
 
+            if self.outline_grad_fn:
+                grad_fn = ipu.outlined_function(grad_fn, unique_sharding=True)
             next_param, next_m, next_v = grad_fn(grad, param, m, v)
 
             # We add the update for the parameters and the biases
@@ -377,6 +535,15 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
             return False
         if self.exclude_from_weight_decay:
             for r in self.exclude_from_weight_decay:
+                if re.search(r, param_name) is not None:
+                    return False
+        return True
+
+    def _do_layer_adaptation(self, param_name):
+        """Whether to do layer-wise learning rate adaptation for
+        `param_name`."""
+        if self.exclude_from_layer_adaptation:
+            for r in self.exclude_from_layer_adaptation:
                 if re.search(r, param_name) is not None:
                     return False
         return True
@@ -454,15 +621,146 @@ class StageMomentumOptimizer(tf.compat.v1.train.Optimizer):
         return tf.group(ops)
 
 
+def mixed_precision_global_norm(t_list, dtype=tf.float32):
+    """Computes the global norm of multiple tensors.
+
+    Given a tuple or list of tensors `t_list`, this operation returns the
+    global norm of the elements in all tensors in `t_list`. The global norm is
+    computed as:
+
+    `global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))`
+
+    Any entries in `t_list` that are of type None are ignored.
+
+    Args:
+        t_list: A tuple or list of mixed `Tensors`
+        dtype: datatype of the norm
+
+    Returns:
+        A 0-D (scalar) `Tensor` of type `float`.
+    """
+    t_list = list(t_list)
+    squared_norms = []
+    for t in t_list:
+        with ops.colocate_with(t):
+            squared_norm = tf.reduce_sum(tf.pow(tf.cast(t, dtype), 2))
+            squared_norms.append(squared_norm)
+    return tf.sqrt(tf.reduce_sum(tf.stack(squared_norms)), name="global_norm")
+
+
+def mixed_precision_clip_by_global_norm(t_list, clip_norm):
+    """Clips values of multiple tensors by the ratio of the sum of their norms.
+
+    Given a tuple or list of tensors `t_list`, and a clipping ratio `clip_norm`,
+    this operation returns a list of clipped tensors `list_clipped`
+    and the global norm (`global_norm`) of all tensors in `t_list`.
+
+    To perform the clipping, the values `t_list[i]` are set to:
+
+        t_list[i] * clip_norm / max(global_norm, clip_norm)
+
+    where:
+
+        global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))
+
+    If `clip_norm > global_norm` then the entries in `t_list` remain as they are,
+    otherwise they are all shrunk by the global ratio.
+
+    If `global_norm == infinity` then the entries in `t_list` are all set to `NaN`
+    to signal that an error occurred.
+
+    Any of the entries of `t_list` that are of type `None` are ignored.
+
+    Args:
+        t_list: A tuple or list of mixed `Tensors`
+        clip_norm: A 0-D (scalar) `Tensor` > 0. The clipping ratio.
+
+    Returns:
+        t_list_clipped: A list of `Tensors` of the same type as `t_list`.
+        norm: A 0-D (scalar) `Tensor` representing the global norm.
+    """
+    t_list = list(t_list)
+    norm = mixed_precision_global_norm(t_list, tf.float32)
+
+    scale_for_finite = clip_norm * tf.minimum(1.0 / norm, 1.0 / clip_norm)
+    scale = tf.where(tf.is_finite(norm), scale_for_finite, float("nan"))
+    t_list_clipped = []
+    for t in t_list:
+        _scale = tf.cast(scale, t.dtype)
+        with ops.colocate_with(t):
+            t_list_clipped.append(t * _scale)
+    return t_list_clipped, norm
+
+
+class GlobalNormClippingOptimizer(optimizer.Optimizer):
+
+    def __init__(self, optimizer, clip_norm=1.0, name="GlobalNormClippingOptimizer"):
+        super(GlobalNormClippingOptimizer, self).__init__(False, name)
+        self._optimizer = optimizer
+        self._clip_norm = clip_norm
+        self._slots = optimizer._slots
+
+    def compute_gradients(self, loss, var_list=None, **kwargs):
+        """
+        Compute gradients using the underlying optimizer.
+        """
+        return self._optimizer.compute_gradients(loss, var_list=var_list, **kwargs)
+
+    def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+        """
+        Clips gradients by norm first, then applies gradients.
+        """
+        # Unzip gradients and variables
+        gradients, variables = list(zip(*grads_and_vars))
+
+        # Clip gradients by global norm
+        (gradients, _) = mixed_precision_clip_by_global_norm(gradients, clip_norm=self._clip_norm)
+
+        # Apply gradients
+        return self._optimizer.apply_gradients(list(zip(gradients, variables)), global_step=global_step, name=name)
+
+    def variables(self):
+        """
+        Forwards the variables from the underlying optimizer.
+        """
+        return self._optimizer.variables()
+
+    def get_slot_names(self):
+        """
+        Forwards the get_slot_names from the underlying optimizer.
+        """
+        return self._optimizer.get_slot_names()
+
+    def get_slot(self, var, name):
+        """
+        Forwards the get_slot from the underlying optimizer.
+        """
+        return self._optimizer.get_slot(var, name)
+
+    def _zeros_slot(self, var, slot_name, op_name):
+        """
+        Forwards the _zeros_slot from the underlying optimizer.
+        """
+        return self._optimizer._zeros_slot(var, slot_name, op_name)
+
+
 def get_optimizer(learning_rate, loss_scaling, num_replicas, opts):
     """Configure and return the optimizer"""
 
+    scale_down_grads_factor = loss_scaling
     if opts['reduction_type'] == "mean":
-        loss_scaling *= opts['gradient_accumulation_count'] * num_replicas
+        scale_down_grads_factor *= opts['gradient_accumulation_count']
+    elif opts['reduction_type'] == "sum":
+        # The cross replica optimizer will normalise by the number
+        # of replicas. We need to undo this normalising by upscaling
+        # the gradients by the number of replicas.
+        scale_down_grads_factor /= num_replicas
 
-    scaled_learning_rate = learning_rate / loss_scaling
+    scaled_learning_rate = learning_rate / scale_down_grads_factor
 
-    use_cross_replica_optimizer = True
+    # When using replicated tensor sharding, do not use outlining
+    # in the optimizer
+    outline_optimizer_grad_fn = not opts["replicated_tensor_sharding"]
 
     if opts['optimizer'].lower() == 'sgd':
         optimizer = tf.train.GradientDescentOptimizer(scaled_learning_rate)
@@ -476,28 +774,46 @@ def get_optimizer(learning_rate, loss_scaling, num_replicas, opts):
                                            beta2=opts["beta2"],
                                            epsilon=opts["epsilon"])
     elif opts['optimizer'].lower() == 'adamw':
-        optimizer = AdamWeightDecayOptimizer(learning_rate,
-                                             loss_scaling = loss_scaling,
-                                             beta_1=opts["beta1"],
-                                             beta_2=opts["beta2"],
-                                             weight_decay_rate=opts["weight_decay_rate"],
-                                             epsilon=opts["epsilon"],
-                                             add_cross_replica_sum=num_replicas > 1)
+        optimizer = AdamWeightDecayOptimizer(
+            learning_rate,
+            loss_scaling=scale_down_grads_factor,
+            beta_1=opts["beta1"],
+            beta_2=opts["beta2"],
+            weight_decay_rate=opts["weight_decay_rate"],
+            epsilon=opts["epsilon"],
+            debiasing=opts["use_debiasing"],
+            outline_grad_fn=outline_optimizer_grad_fn,
+        )
+        optimizer = GlobalNormClippingOptimizer(
+            optimizer, clip_norm=scale_down_grads_factor * num_replicas)
+    elif opts['optimizer'].lower() == 'mpadamw':
+        optimizer = MixedPrecisionAdamWeightDecayOptimizer(
+            learning_rate,
+            loss_scaling=scale_down_grads_factor,
+            beta_1=opts["beta1"],
+            beta_2=opts["beta2"],
+            weight_decay_rate=opts["weight_decay_rate"],
+            epsilon=opts["epsilon"],
+            debiasing=opts["use_debiasing"],
+            outline_grad_fn=outline_optimizer_grad_fn,
+        )
+        optimizer = GlobalNormClippingOptimizer(
+            optimizer, clip_norm=scale_down_grads_factor * num_replicas)
     elif opts['optimizer'].lower() == 'lamb':
-        optimizer = LAMBOptimizer(learning_rate,
-                                  loss_scaling=loss_scaling,
-                                  beta_1=opts["beta1"],
-                                  beta_2=opts["beta2"],
-                                  weight_decay_rate=opts["weight_decay_rate"],
-                                  high_precision=opts["increase_optimiser_precision"],
-                                  use_nvlamb=opts["use_nvlamb"],
-                                  epsilon=opts["epsilon"],
-                                  debiasing=opts["use_debiasing"],
-                                  add_cross_replica_sums=num_replicas > 1)
-
-        # The reduction over replicas is performed by the LAMB optimizer.
-        use_cross_replica_optimizer = False
-
+        optimizer = LAMBOptimizer(
+            learning_rate,
+            loss_scaling=scale_down_grads_factor,
+            beta_1=opts["beta1"],
+            beta_2=opts["beta2"],
+            weight_decay_rate=opts["weight_decay_rate"],
+            high_precision=opts["increase_optimiser_precision"],
+            use_nvlamb=opts["use_nvlamb"],
+            epsilon=opts["epsilon"],
+            debiasing=opts["use_debiasing"],
+            exclude_from_layer_adaptation=["bias", "beta", "gamma"],
+            exclude_from_weight_decay=["bias", "beta"],
+            outline_grad_fn=outline_optimizer_grad_fn,
+        )
     elif opts['optimizer'].lower() == 'custom':
         tvars = tf.trainable_variables()
         stage_weights = {}
@@ -520,7 +836,7 @@ def get_optimizer(learning_rate, loss_scaling, num_replicas, opts):
     else:
         raise ValueError(f"Optimizer {opts['optimizer']} not recognised")
 
-    if num_replicas > 1 and use_cross_replica_optimizer:
+    if num_replicas > 1:
         optimizer = ipu.optimizers.cross_replica_optimizer.CrossReplicaOptimizer(
             optimizer)
 

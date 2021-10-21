@@ -11,9 +11,9 @@ set -e
 # Example use case with the option of uploading to wandb:
 # ./run_and_time.sh 16 42 host0-ip host1-ip host2-ip host3-ip partition server-ip netmask --upload
 
-if [[ "$#" -gt 10 ||  "$#" == 0 ]]
+if [[ "$#" -gt 7 ||  "$#" == 0 ]]
 then
-    echo "Usage: $0 NUM-REPLICAS SEED HOST0 HOST1 HOST2 HOST3 PARTITION SERVER NETMASK [--upload]"
+    echo "Usage: $0 NUM-REPLICAS SEED HOST0 PARTITION SERVER NETMASK [--upload]"
     exit 1
 fi
 
@@ -23,14 +23,23 @@ SEED=$2
 
 # machine identifiers
 HOST0=$3
-HOST1=$4
-HOST2=$5
-HOST3=$6
-HOSTS=$HOST0,$HOST1,$HOST2,$HOST3
+IP1=`echo $HOST0 | cut -d "." -f 1`
+IP2=`echo $HOST0 | cut -d "." -f 2`
+IP3=`echo $HOST0 | cut -d "." -f 3`
+IP4=`echo $HOST0 | cut -d "." -f 4`
+HOST1="$IP1.$IP2.$IP3.$((IP4+1))"
+HOST2="$IP1.$IP2.$IP3.$((IP4+2))"
+HOST3="$IP1.$IP2.$IP3.$((IP4+3))"
+HOST4="$IP1.$IP2.$((IP3+1)).$IP4"
+HOST5="$IP1.$IP2.$((IP3+1)).$((IP4+1))"
+HOST6="$IP1.$IP2.$((IP3+1)).$((IP4+2))"
+HOST7="$IP1.$IP2.$((IP3+1)).$((IP4+3))"
+HOSTS_4=$HOST0,$HOST1,$HOST2,$HOST3
+HOSTS_8=$HOST0,$HOST1,$HOST2,$HOST3,$HOST4,$HOST5,$HOST6,$HOST7
 MAINHOST=$HOST0
-PARTITION=$7
-VIPU_SERVER_HOST=$8
-NETMASK=$9
+PARTITION=$4
+VIPU_SERVER_HOST=$5
+NETMASK=$6
 
 echo "CLEARING THE CACHE FOR POD ..."
 
@@ -39,12 +48,12 @@ export IPUOF_VIPU_API_TIMEOUT=300
 export TF_POPLAR_FLAGS=--executable_cache_path=/localdata/$USER/exec_cache
 export TEMP=/localdata/$USER/tmp
 export DATA_DIR=/localdata/datasets/imagenet-data
-export POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false"}'
+export POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false", "target.deterministicWorkers":"portable", "target.hostSyncTimeout":"900"}'
 export POPLAR_TARGET_OPTIONS='{"gatewayMode":"false"}'
 MPI_SETTINGS="--mpi-global-args='--tag-output --allow-run-as-root --mca oob_tcp_if_include "$NETMASK" --mca btl_tcp_if_include "$NETMASK"' \
-    --mpi-local-args=' -x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=WARN -x POPLAR_ENGINE_OPTIONS -x TF_POPLAR_FLAGS -x POPLAR_TARGET_OPTIONS' \
-    --update-partition=no --reset-partition=no --vipu-server-timeout 300 \
-    --ipus-per-replica 1 --numa-aware 1 --only-output-from-instance 0 \
+    --mpi-local-args=' -x OPAL_PREFIX -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=WARN -x POPLAR_ENGINE_OPTIONS -x TF_POPLAR_FLAGS -x POPLAR_TARGET_OPTIONS' \
+    --update-partition=no --reset-partition=no \
+    --ipus-per-replica 1 --only-output-from-instance 0 \
     --vipu-server-host "$VIPU_SERVER_HOST" --vipu-partition=$PARTITION "
 
 TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
@@ -61,32 +70,44 @@ if [[ $REPLICAS -eq "64" ]]
 then
   # POD64 through poprun
   TRAIN="POPLAR_ENGINE_OPTIONS='"$POPLAR_ENGINE_OPTIONS"' poprun \
-    -vv --host $HOSTS $MPI_SETTINGS \
+    -vv --host $HOSTS_4 $MPI_SETTINGS \
     --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
     python train.py --config mk2_resnet50_mlperf_pod64_bs20 --logs-path "$LOGS_PATH" \
-    --epochs-per-sync 20 --seed "$SEED" --data-dir "$DATA_DIR" --no-validation"
+    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" --no-validation"
   # Use less replicas (16) to exactly fit 50k validation samples (16*25*125)
   VALIDATE="POPLAR_ENGINE_OPTIONS='"$POPLAR_ENGINE_OPTIONS"' poprun \
     -vv --host $MAINHOST $MPI_SETTINGS \
     --num-instances 8 --num-replicas 16 \
     python validation.py --restore-path "$LOGS_PATH" --logs-path "$LOGS_PATH" \
     --config mk2_resnet50_mlperf_pod16 --data-dir "$DATA_DIR" --no-stochastic-rounding   \
-    --batch-size 25 --seed "$SEED" --available-memory-proportion 0.6 --epochs 45"
-elif [[ $REPLICAS -eq "16" || $REPLICAS -eq "32" ]]
+    --batch-size 25 --seed "$SEED" --available-memory-proportion 0.6 --epochs 41"
+elif [[ $REPLICAS -eq "128" ]]
 then
-  # POD16 through poprun
-  GRADIENT_ACCUMULATION=$((6/((REPLICAS/16))))
+  # POD128 through poprun
+  export POPLAR_TARGET_OPTIONS='{"gatewayMode":"true"}'
+  TRAIN=poprun \
+    -vv --host $HOSTS_8 $MPI_SETTINGS \
+    --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
+    python train.py --config mk2_resnet50_mlperf_pod128_lars --logs-path "$LOGS_PATH" \
+    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" --no-validation"
+  VALIDATE=poprun \
+    -vv --host $HOSTS_8 $MPI_SETTINGS \
+    --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
+    python validation.py --restore-path "$LOGS_PATH" --logs-path "$LOGS_PATH" \
+    --config mk2_resnet50_mlperf_pod128 --data-dir "$DATA_DIR" --no-stochastic-rounding  \
+    --batch-size 50 --seed "$SEED" --available-memory-proportion 0.6"
+elif [[ $REPLICAS -eq "16" ]]
+then
   TRAIN="POPLAR_ENGINE_OPTIONS='"$POPLAR_ENGINE_OPTIONS"' poprun \
     -vv --host $MAINHOST $MPI_SETTINGS \
     --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
-    python train.py --config mk2_resnet50_mlperf_pod16_bs20 --logs-path "$LOGS_PATH" \
-    --epochs-per-sync 20 --seed "$SEED" --data-dir "$DATA_DIR" --no-validation \
-    --gradient-accumulation-count "$GRADIENT_ACCUMULATION" --replicas "$REPLICAS" "
+    python train.py --config mk2_resnet50_mlperf_pod16_lars --logs-path "$LOGS_PATH" \
+    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" --no-validation "
   VALIDATE="POPLAR_ENGINE_OPTIONS='"$POPLAR_ENGINE_OPTIONS"' poprun \
     -vv --host $MAINHOST $MPI_SETTINGS \
     --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
     python validation.py --restore-path "$LOGS_PATH" --logs-path "$LOGS_PATH" \
-    --config mk2_resnet50_mlperf_pod16 --data-dir "$DATA_DIR" --no-stochastic-rounding  \
+    --config mk2_resnet50_mlperf_pod16_lars --data-dir "$DATA_DIR" --no-stochastic-rounding  \
     --batch-size 25 --seed "$SEED" --available-memory-proportion 0.6"
 else
   echo "Not implemented for "$REPLICAS" replicas"
@@ -109,7 +130,7 @@ result=$(( $end - $start ))
 result_name="IMAGE_CLASSIFICATION"
 echo "RESULT,$result_name,,$result,$USER,$start_fmt"
 
-if [[ $10 == "--upload" ]]
+if [[ $7 == "--upload" ]]
 then
   echo "Running wandb upload:"
   WANDB="python upload_run.py --base-folder "$LOGS_PATH" \

@@ -7,16 +7,11 @@ custom_ops.so: custom_ops/plugin_version custom_ops/*.cpp custom_ops/workarounds
 	g++ -std=c++14 -fPIC \
 		-DSTATIC_VERSION=\"${shell ./custom_ops/plugin_version}\" \
 		-DONNX_NAMESPACE=onnx \
-		custom_ops/detach.cpp \
+		custom_ops/attention_mask.cpp \
 		custom_ops/disable_attn_dropout_bwd_pattern.cpp \
-		custom_ops/sparse_accumulate.cpp \
-		custom_ops/sparse_accumulate_pattern.cpp \
-		custom_ops/embedding_gather.cpp \
 		custom_ops/tied_gather.cpp \
 		custom_ops/tied_gather_pattern.cpp \
-		custom_ops/lamb_serialised_weight_pattern.cpp \
 		custom_ops/workarounds/prevent_const_expr_folding_op.cpp \
-		custom_ops/workarounds/accumulate_priority_pattern.cpp \
 		-shared -lpopart -lpoplar -lpoplin -lpopnn -lpopops -lpoputil -lpoprand \
 		-o custom_ops.so
 

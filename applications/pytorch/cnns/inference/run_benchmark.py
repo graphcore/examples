@@ -5,10 +5,9 @@ from pathlib import Path
 import torch
 import poptorch
 import numpy as np
-import sys
+import import_helper
 import logging
 import popdist.poptorch
-sys.path.append('..')
 import models
 import datasets
 import utils
@@ -39,6 +38,10 @@ def benchmark(inference_model, test_data, opts):
                 instance_info = ""
             logging.info(f"{instance_info} Throughput: {tput} imgs/sec; Latency range: {min_latency}..{max_latency} ms")
 
+            if opts.profile:
+                # generate profile report for one iteration
+                return
+
     # Remove the first few measurements to eliminate startup overhead
     fps = fps[2:]
     # Calculate latency statistics
@@ -66,6 +69,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(parents=[common_parser], description='CNN inference in PopTorch')
     parser.add_argument('--data', choices=['real', 'synthetic', 'generated'], default='real', help="Choose data")
     parser.add_argument('--precision', choices=['16.16', '32.32'], default='16.16', help="Precision of Ops(weights/activations/gradients) and Master data types: 16.16, 32.32")
+    parser.add_argument('--random-weights', action='store_true', help="When true, weights of the model are initialized randomly")
     opts = utils.parse_with_config(parser, Path(__file__).parent.absolute().joinpath("configs.yml"))
     if opts.eight_bit_io and opts.normalization_location == 'host':
         logging.warning("for eight-bit input, please use IPU-side normalisation, setting normalisation to IPU")
@@ -85,7 +89,7 @@ if __name__ == '__main__':
     model_opts.deviceIterations(opts.device_iterations)
 
     dataloader = datasets.get_data(opts, model_opts, train=False, async_dataloader=False)
-    model = models.get_model(opts, datasets.datasets_info[opts.data], pretrained=True)
+    model = models.get_model(opts, datasets.datasets_info[opts.data], pretrained=not opts.random_weights)
     model.eval()
 
     model_opts = utils.inference_settings(opts, model_opts)

@@ -1,6 +1,7 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 import argparse
+from tensorflow.python.ipu.config import IPUConfig
 import numpy as np
 import copy
 import tensorflow.compat.v1 as tf
@@ -179,9 +180,9 @@ def bs_softmax_test(opts):
             return probs, loss
 
     # Configure the IPU:
-    cfg = ipu.utils.create_ipu_config()
-    cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    ipu.utils.configure_ipu_system(cfg)
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 1
+    cfg.configure_ipu_system()
 
     with ipu.scopes.ipu_scope("/device:IPU:0"):
         dense_softmax_fetches = ipu.ipu_compiler.compile(dense_softmax, [logits_ref])

@@ -1,0 +1,161 @@
+# Copyright (c) 2021 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#----------------------------------------------------------------------------------
+defaults: &defaults
+  random_seed: 42
+  dataloader_workers: 64
+  ipus_per_replica: 4
+  synthetic_data: False
+  optimizer: SGD
+  weight_decay: 0.0
+  recompute_checkpoint_every_layer: True
+  attention_probs_dropout_prob: 0.0
+  hidden_dropout_prob: 0.1
+  layer_norm_eps: 1e-6
+  restore: False
+  restore_epochs_and_optimizer: False
+  prefetch_depth: 2
+  precision: "16.16"
+  stochastic_rounding: True
+  wandb: False
+
+#----------------------------------------------------------------------------------
+b16_cifar10: &b16_cifar10
+  <<: *defaults
+
+  # Execution
+  batch_size: 17
+  training_steps: 2000
+  batches_per_step: 1
+  replication_factor: 4
+  gradient_accumulation: 128
+  layers_per_ipu: [3,3,3,3]
+  enable_rts: True
+  wandb_project_name: "torch-vit-cifar10"
+  checkpoint_save_steps: 500
+
+  # Model
+  hidden_size: 768
+  num_hidden_layers: 12
+  num_attention_heads: 12
+  matmul_proportion: [0.3, 0.3, 0.3, 0.3]
+  mlp_dim: 3072
+  patches_size: 16
+  num_labels: 10
+
+  # Optimizer
+  optimizer: SGD
+  warmup_steps: 500
+  lr_schedule: cosine
+  learning_rate: 0.03
+  loss_scaling: 1.0
+  weight_decay: 0.0
+  momentum : 0.9
+
+  # Dataset
+  dataset: cifar10
+  checkpoint_file: "google/vit-base-patch16-224-in21k"
+  checkpoint_dir: "./output/ckpt"
+
+#----------------------------------------------------------------------------------
+b16_cifar10_valid: &b16_cifar10_valid
+  <<: *defaults
+
+  # Execution
+  batch_size: 1
+  batches_per_step: 1
+  replication_factor: 1
+  gradient_accumulation: 8
+  layers_per_ipu: [3,3,3,3]
+
+  # Model
+  hidden_size: 768
+  num_hidden_layers: 12
+  num_attention_heads: 12
+  matmul_proportion: [0.25, 0.3, 0.3, 0.3]
+  mlp_dim: 3072
+  patches_size: 16
+  num_labels: 10
+
+  # Dataset
+  dataset: cifar10
+  input_files: "./data/cifar10"
+  checkpoint_file: "./output/ckpt/cifar10_L_12_H_768_A_12_epoch_1.pt"
+  checkpoint_dir: "./output/ckpt"
+
+#----------------------------------------------------------------------------------
+b16_imagenet1k: &b16_imagenet1k
+  <<: *defaults
+
+  # Execution
+  batch_size: 17
+  training_steps: 5000
+  batches_per_step: 1
+  replication_factor: 4
+  gradient_accumulation: 30
+  layers_per_ipu: [3,3,3,3]
+  enable_rts: True
+  wandb_project_name: "torch-vit-in1k"
+  checkpoint_save_steps: 500
+
+  # Model
+  hidden_size: 768
+  num_hidden_layers: 12
+  num_attention_heads: 12
+  matmul_proportion: [0.3, 0.3, 0.3, 0.3]
+  mlp_dim: 3072
+  patches_size: 16
+  num_labels: 1000
+
+  # Optimizer
+  optimizer: SGD
+  warmup_steps: 500
+  lr_schedule: cosine
+  learning_rate: 0.08
+  loss_scaling: 0.25
+  weight_decay: 0.00001
+  momentum : 0.9
+
+  # Dataset
+  dataset: imagenet1k
+  input_files: "./data/imagenet1k/"
+  checkpoint_file: "google/vit-base-patch16-224-in21k"
+  checkpoint_dir: "./output/ckpt"
+
+#----------------------------------------------------------------------------------
+b16_imagenet1k_valid: &b16_imagenet1k_valid
+  <<: *defaults
+
+  # Execution
+  batch_size: 8
+  batches_per_step: 1
+  replication_factor: 1
+  gradient_accumulation: 1
+  layers_per_ipu: [3,3,3,3]
+
+  # Model
+  hidden_size: 768
+  num_hidden_layers: 12
+  num_attention_heads: 12
+  matmul_proportion: [0.3, 0.3, 0.3, 0.3]
+  mlp_dim: 3072
+  patches_size: 16
+  num_labels: 1000
+
+  # Dataset
+  dataset: imagenet1k
+  input_files: "./data/imagenet1k/"
+  checkpoint_file: "./output/ckpt/imagenet1k_L_12_H_768_A_12_epoch_8.pt"
+  checkpoint_dir: "./output/ckpt"

@@ -43,3 +43,9 @@ vars.capnp
 # Virtual environments
 *virtualenv/
 .venv/
+
+# Jupyter notebook checkpoint
+**/.ipynb_checkpoints
+nohup.*
+**/wandb
+

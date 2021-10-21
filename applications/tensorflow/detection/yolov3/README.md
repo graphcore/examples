@@ -7,18 +7,18 @@ The instructions to run the model are as follows:
 
 ## 1. Prepare working environment
 
-1. Prepare the TensorFlow environment. Install the Poplar SDK following the instructions in the Getting Started guide
-   for your IPU system. Make sure to run the `enable.sh` script for Poplar and activate a Python 3 virtualenv with
-   the TensorFlow 1 wheel from the Poplar SDK installed.
-   Then install other python packages using the following command:
+1. Install requirements (Within poplarSDK TF1 environment)
 ```bashrc
 $ pip install -r requirements.txt
+$ export $DATASETS_DIR=/your/dataset/dir/
 ```
-2. In your local version of the examples repo, do
+
+2. Go to your local version of the examples repo:
 ```bashrc
-$ cd examples/applications/tensorflow/detection/yolov3
+$ cd public_examples/applications/tensorflow/detection/yolov3
 ```
-3. Download the required data:
+
+3. (Optional, not required for benchmarking/testing) Download the checkpoint data:
 ```bashrc
 $ mkdir ckpt_init
 $ cd ckpt_init
@@ -26,20 +26,17 @@ $ wget https://github.com/YunYang1994/tensorflow-yolov3/releases/download/v1.0/y
 $ tar -xvf yolov3_coco.tar.gz
 ```
 
-## 2. Train the model on the VOC dataset
-Two dataset files are required:
+## 2. Download and setup the VOC dataset
 
-- [`dataset.txt`](./data/dataset/voc_train.txt)(this file will be generated in section 2.1):
-- [`class.names`](./data/classes/voc.names)
-
-
-The VOC PASCAL training, validation and test datasets need to be downloaded:
+1. The VOC PASCAL training, validation and test datasets need to be downloaded:
 ```bashrc
+$ mkdir $DATASETS_DIR/VOC
+$ cd $DATASETS_DIR/VOC
 $ wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar
 $ wget http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar
 $ wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
 ```
-Extract all of these tars into one directory and rename them, which should have the following structure:
+Extract all of these tars into one directory, which should have the following structure:
 
 VOC
 ├── test
@@ -50,18 +47,23 @@ VOC
          └──VOC2007 (from VOCtrainval_06-Nov-2007.tar)
          └──VOC2012 (from VOCtrainval_11-May-2012.tar)
 
-generate ./data/classes/voc.names
+2. generate data reference files (voc_train.txt and voc_test.txt)
 ```
+$ cd public_examples/applications/tensorflow/detection/yolov3
 $ mkdir ./data/dataset
-$ python scripts/parse_voc_annotation.py --data_path /to/your/VOC
+$ python scripts/parse_voc_annotation.py --data_path $DATASETS_DIR/VOC
 ```
 
-Train from COCO weights, this script will also run evaluation code:
+(`tf1_yolov3_training.yml` includes args that tell the model to look into `./data/dataset/voc_train.txt` etc. to find the data in your $DATASETS_DIR)
+
+For the purposes of benchmarking/testing YoloV3 on VOC data, no further setup steps are required.
+
+3. (Optional) Train from COCO weights, this script will also run evaluation code:
 ```bashrc
 $ bash run_load_coco_weights_544.sh
 ```
 
-To see the evaluation result:
+4. (Optional) To see the evaluation result:
 ```bashrc
 $ cat mAP/mAP.log
 ```

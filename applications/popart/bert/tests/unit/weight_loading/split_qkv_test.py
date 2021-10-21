@@ -19,13 +19,13 @@ import numpy as np
 import popart
 import onnx
 
-from bert_model import BertConfig, ExecutionMode, get_model
+from bert_model import Bert, BertConfig
 from utils import load_initializers_from_onnx
 from tests.utils import check_onnx_model
 
 
 def get_model_proto(config, initializers=None):
-    model = get_model(config, ExecutionMode.PIPELINE, initializers=initializers)
+    model = Bert(config, pipeline=True, initializers=initializers)
 
     sequence_info = popart.TensorInfo("UINT32", [config.micro_batch_size * config.sequence_length])
     indices = model.builder.addInputTensor(sequence_info)

@@ -3,3 +3,5 @@ pillow
 matplotlib
 pytest==5.4.1
 pytest-pythonpath==0.7.3
+pytest-xdist
+pytest-forked

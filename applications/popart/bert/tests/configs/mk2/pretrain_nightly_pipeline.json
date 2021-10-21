@@ -44,7 +44,7 @@
     "epochs_to_cache": 1,
     "embedding_serialization_vocab_steps": 5,
     "available_memory_proportion": [0.28],
-    "execution_mode": "PIPELINE",
+    "pipeline": true,
     "no_validation": true,
     "seed":1984
 }

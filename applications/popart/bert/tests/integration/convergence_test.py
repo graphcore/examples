@@ -24,12 +24,19 @@ from tests.utils import TestFailureError, bert_root_dir
 
 configs = [
     "tests/configs/mk2/pretrain_nightly_pipeline.json",
-    # "tests/configs/mk2/pretrain_nightly_phased.json" NSP is failing for this config.
 ]
 
 
 def check_output(*args, **kwargs):
-    return subprocess.check_output(*args, cwd=bert_root_dir(), **kwargs)
+    try:
+        out = subprocess.check_output(
+            *args, cwd=bert_root_dir(), stderr=subprocess.PIPE, **kwargs)
+    except subprocess.CalledProcessError as e:
+        print(f"TEST FAILED")
+        print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
+        print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
+        raise
+    return out
 
 
 def unique_words(lines):

@@ -182,13 +182,7 @@ def parse_bert_args(args_string=None):
         "update_embedding_dict": "Include the sparse update to the word Embedding_Dict.",
         "no_cls_layer": "Don't include the CLS layer in pretraining. This layer comes after the encoders but before the projection for the MLM loss.",
         "projection_bias": "Include bias to the projection layer.",
-        "embedding_serialization_vocab_steps": "Factor by which embedding layer is serialized, only supported in phased_execution mode.",
-        "num_attention_splits": "Factor by which attention layer is serialized, only supported in phased_execution mode.",
-        "num_ffwd_splits": "Factor by which feedforward layer is serialized, only supported in phased_execution mode.",
-        "split_transformer": "Place attention and feedforward layers in separate phased_execution scope.",
-        "batch_serialize": "Factor by which a micro-batch is serialized, only supported in phased_execution mode.",
-        "layers_per_phase": "Number of encoder layers per phased execution phase. ",
-        "num_io_tiles": "The number of tiles on each IPU dedicated to doing collective communication ops with the replicated weights. Only supported in phased_execution mode.",
+        "embedding_serialization_vocab_steps": "Factor by which embedding layer is serialized along the vocab dimension.",
         "use_packed_sequence_format": "Set to true when using a packed-sequence dataset (pretraining only)",
         "max_sequences_per_pack": "When using the packed_sequence_format, this specifies the maximum number of sequences per pack to expect"
     })
@@ -215,8 +209,6 @@ def parse_bert_args(args_string=None):
                        help="Set how many gradients to accumulate before updating the weights.")
     group.add_argument("--replication-factor", type=int, default=1,
                        help="Replicates the graph by this factor across IPUs to achieve data parallel execution.")
-    group.add_argument("--batch-serialize", type=int, default=1,
-                       help="Factor by which a micro-batch is serialized, only supported in phased_execution mode.")
 
     group = parser.add_argument_group("Optimizer Config")
     group.add_argument("--optimizer", type=str, choices=['SGD', 'ADAM', 'ADAM_NO_BIAS', 'LAMB', 'LAMB_NO_BIAS'], default="SGD",
@@ -247,7 +239,7 @@ def parse_bert_args(args_string=None):
                        help="Number of epochs to run inference for")
     group.add_argument("--stochastic-rounding", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Turn on Stochastic Rounding")
-    group.add_argument("--gradient-reduction-type", type=str, choices=["Sum", "Mean"], default="Sum",
+    group.add_argument("--gradient-reduction-type", type=str, choices=["Sum", "Mean", "RunningMean"], default="Sum",
                        help="Set how gradients are reduced over the global batch size.")
     group.add_argument("--learning-rate-function", choices=['Scheduled', 'Linear'], default='Scheduled',
                        help="Specify the Learning Rate Scheduler. "
@@ -334,23 +326,9 @@ def parse_bert_args(args_string=None):
     group.add_argument("--epochs-to-cache", type=int, default=0,
                        help="Number of epochs of data to load into memory during PRETRAINING. Default is to load input files as needed.")
 
-    group = parser.add_argument_group("Execution Mode")
-    emode = group.add_mutually_exclusive_group()
-    emode.add_argument("--virtual-graph", type=str_to_bool, nargs="?", const=True, default=None,
-                       help="Build and execute the graph with only VirtualGraph annotations.")
-    emode.add_argument("--pipeline", type=str_to_bool, nargs="?", const=True, default=None,
-                       help="Build and execute the graph with Pipeline annotations.")
-    emode.add_argument("--phased-execution", type=str_to_bool, nargs="?", const=True, default=None,
-                       help="Build and execute the graph with ExecutionPhase annotations.")
-    phased_emode = group.add_mutually_exclusive_group()
-    phased_emode.add_argument("--single-device", action='store_const', const='SINGLE', dest='phased_execution_type',
-                              help="Execute on a single device per replica. Only used in phased_execution mode.")
-    phased_emode.add_argument("--dual-device", action='store_const', const='DUAL', dest='phased_execution_type',
-                              help="Execute using two devices per replica. Only used in phased_execution mode.")
-    parser.set_defaults(phased_execution_type='SINGLE')
-
-
     group = parser.add_argument_group("Execution Config")
+    group.add_argument("--pipeline", type=str_to_bool, nargs="?", const=True, default=None,
+                       help="Build and execute the graph with Pipeline annotations.")
     group.add_argument("--batches-per-step", type=int, default=250,
                        help="Set the number of batches (weight updates) to execute before returning to the Host")
     group.add_argument("--floating-point-exceptions", type=str_to_bool, nargs="?", const=True, default=False,
@@ -396,29 +374,12 @@ def parse_bert_args(args_string=None):
     group.add_argument("--optimizer-state-offchip", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Keep the optimizer state off chip. Only streaming it on when needed for the weight update.")
     group.add_argument("--replicated-tensor-sharding", type=str_to_bool, nargs="?", const=False, default=False,
-                       help="Shard tensors over the replicas. In PIPELINE execution only the optimizer state will be sharded. "
-                            "In PHASED execution the weights and optimizer state will be sharded.")
+                       help="Shard the optimizer state across replicas")
     group.add_argument("--enable-half-partials", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Enable half partials for matmuls and convolutions globally.")
     group.add_argument('--internal-exchange-optimisation-target', type=str, default=None,
                        choices=["balanced", "cycles", "memory"],
                        help="The optimisation approach for internal exchanges.")
-    group.add_argument("--activations-on-chip", type=str_to_bool, nargs="?", const=True, default=False,
-                       help="Leave activations stashed on chip, i.e don't move the activations to streaming memory.")
-    group.add_argument('--tensor-storage-onchip', type=str_to_bool, default=False,
-                       help="In phased execution mode, store weights, optimizer state and gradient accumulation tensors in  always live on-chip memory rather than remote memory.")
-    group.add_argument("--activation-io-schedule", type=str, choices=['Preload', 'OnDemand'], default="Preload",
-                       help="Set the activation IO schedule, only used in phased mode.")
-    group.add_argument("--optimizer-io-schedule", type=str, choices=['Preload', 'OnDemand'], default="Preload",
-                       help="Set the optimizer state IO schedule, only used in phased mode.")
-    group.add_argument("--weight-io-schedule", type=str, choices=['Preload', 'OnDemand'], default="Preload",
-                       help="Set the weight IO schedule, only used in phased mode.")
-    group.add_argument("--optimizer-schedule", type=str, choices=['Batch', 'Interleaving, BatchClusteredIO'], default="Interleaving",
-                       help="""Schedule for phased optimizer steps:
-                            in Batch mode process all weights together(maximises overlap between compute and exchange),
-                            in Interleaved mode process one weight at a time(reduce liveness),
-                            in BatchClusteredIO mode process all weights together and maximise stream
-                            copy merges by keeping RemoteLoad/RemoteStore operations clustered.""")
 
     group = parser.add_argument_group("Logging Config")
     group.add_argument("--report-hw-cycle-count", action="store_true",
@@ -446,6 +407,7 @@ def parse_bert_args(args_string=None):
     group.add_argument("--log-level", type=str, default='INFO',
                        choices=['NOTSET', 'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'],
                        help="Set the logging level")
+
     group = parser.add_argument_group("Device Config")
     group.add_argument("--device-id", type=int, default=None,
                        help="Select a specific IPU device.")
@@ -460,11 +422,13 @@ def parse_bert_args(args_string=None):
                        help="Set the seconds to wait for an ondemand device to become before available before exiting.")
     group.add_argument("--use-ipu-model", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Target the IPU Model.")
+    group.add_argument("--compile-only", action="store_true",
+                       help="Enable compilation only mode (with device_connection_type=offline), terminating after training graph is compiled.")
 
     # This is here only for the help message
     group.add_argument("--config", type=str,
                        help="Path to preset config")
-    defaults = dict(execution_mode="DEFAULT")
+    defaults = dict()
     if pargs.config is not None:
         with open(pargs.config, "r") as f:
             preset = json.load(f)
@@ -481,8 +445,6 @@ def parse_bert_args(args_string=None):
     parser.set_defaults(**defaults)
     args = parser.parse_args(remaining_argv)
 
-    set_execution_mode(args)
-
     set_popdist_args(args)
 
     set_batch_arguments(args)
@@ -494,10 +456,6 @@ def parse_bert_args(args_string=None):
         raise RuntimeError(f"--no-drop-remainder is only compatible with SQUAD and not with {args.task}, aborting")
     if args.host_embedding != "NONE" and args.task != "SQUAD":
         raise RuntimeError(f"--host-embedding is only compatible with SQUAD and not with {args.task}, aborting")
-    if args.batch_serialize > args.micro_batch_size:
-        raise RuntimeError("--batch-serialize cannot be > --micro-batch-size, aborting")
-    if args.split_linear_layers and args.batch_serialize > 1:
-        raise RuntimeError("--split-linear-layers is incompatible with --batch-serialize > 1, aborting")
     if args.synthetic_data and args.generated_data:
         raise RuntimeError("choose either --synthetic-data or --generated-data, not both, aborting")
     check_training_duration(args)
@@ -510,6 +468,30 @@ def parse_bert_args(args_string=None):
     args.checkpoint_dir = os.path.join(args.checkpoint_dir,
                                        datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S"))
     os.makedirs(args.checkpoint_dir, exist_ok=True)
+
+    if args.compile_only:
+        # Set device to offline (and mk2)
+        args.device_connection_type = "offline"
+        args.device_version = "ipu2"
+
+        # Enforce that an engine cache path is set
+        if not args.engine_cache:
+            default_path = "./session_cache/executable.popart"
+            logger.warning(
+                "Warning: --engine-cache path must be set for compile " +
+                "only mode. Defaulting to '{}'.".format(default_path))
+            args.engine_cache = default_path
+
+        # Enforce generated data and remove real data path
+        if not args.generated_data:
+            logger.warning(
+                "Warning: --generated-data must be set for compile only " +
+                "mode. Defaulting to using generated data. --input-files" +
+                " will be ignored for compile only model.")
+            args.generated_data = True
+            # Setting to default: empty list
+            args.input_files = []
+
     return args
 
 
@@ -543,18 +525,6 @@ def set_batch_arguments(args):
 
         args.gradient_accumulation_factor = args.global_batch_size // denom
         logger.info(f"Set Gradient Accumulation Factor to {args.gradient_accumulation_factor}")
-
-
-def set_execution_mode(args):
-    if args.pipeline:
-        args.execution_mode = "PIPELINE"
-    elif args.phased_execution:
-        args.execution_mode = "PHASED"
-    elif args.virtual_graph or \
-        args.execution_mode == "PIPELINE" and args.pipeline is False or \
-            args.execution_mode == "PHASED" and args.phased_execution is False:
-        args.execution_mode = "DEFAULT"
-    return args
 
 
 def clean_exclusive_presets(parser, preset, remaining_argv):

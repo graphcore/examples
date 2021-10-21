@@ -51,13 +51,9 @@ def run_embedding_layer(args):
     initializers = bert_pretrained_initialisers(config, args)
 
     logger.info("Building Model")
-    # Specifying ai.onnx opset9 for the slice syntax
-    # TODO: Change slice to opset10
     model = Bert(config,
-                 builder=popart.Builder(
-                     opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}),
                  initializers=initializers,
-                 execution_mode=args.execution_mode)
+                 pipeline=args.pipeline)
 
     # If config.host_embedding is enabled, indices and positions will have the matrices instead of the index vector.
     indices, positions, segments, masks, labels = bert_add_inputs(args, model)

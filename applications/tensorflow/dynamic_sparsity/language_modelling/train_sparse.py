@@ -574,8 +574,8 @@ if __name__ == '__main__':
                 target_options['syncConfiguration'] = 'ipuAndAll'
 
         # Set option to fix number of threads used for stream callbacks if user hasn't already
-        if 'target.maxStreamCallbackThreadsPerNumaNode' not in engine_options:
-            engine_options['target.maxStreamCallbackThreadsPerNumaNode'] = \
+        if 'streamCallbacks.numWorkerThreads' not in engine_options:
+            engine_options['streamCallbacks.numWorkerThreads'] = \
                 opts.extra_poplar_options_num_callback_threads
 
         # Write flags back as json after editing them

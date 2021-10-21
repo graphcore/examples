@@ -14,7 +14,7 @@
 """Create InceptionV1 graph.
 
 Follows naming convention in
-https://github.com/tensorflow/models/blob/master/research/slim/nets/inception_v1.py
+https://github.com/tensorflow/models/blob/r2.6.0/research/slim/nets/inception_v1.py
 """
 from typing import Optional, Tuple, Union
 

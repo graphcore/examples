@@ -7,14 +7,13 @@ The following models are supported using this inference harness.
 
 1. ResNet18-34-50-101-152
 2. MobileNet
-3. EfficientNet-B0..7
+3. EfficientNet-B0, B4
 4. ResNext50-101
 
 ### File structure
 
 * `run_benchmark.py` Driver script for running inference.
 * `README.md` This file.
-* `test_inference.py` Test cases for inference.
 * `configs.yml` Contains the common inference configurations.
 
 ### Benchmarking
@@ -71,8 +70,6 @@ The program has a few command-line options:
 
 `--norm-num-groups`             If group normalization is used, the number of groups can be set here.
 
-`--full-precision-norm`         Calculate the norm layers in full precision.
-
 `--enable-fast-groupnorm`       There are two implementations of the group norm layer. If the fast implementation enabled, it couldn't load checkpoints, which didn't train with this flag. The default implementation can use any checkpoint.
 
 `--efficientnet-expand-ratio`   Expand ratio of the blocks in EfficientNet.
@@ -87,6 +84,8 @@ The program has a few command-line options:
 
 `--model-cache-path`            If path is given the compiled model is cached to the provided folder.
 
+`--random-weights`              When true, weights of the model are initialized randomly.
+
 ### Model configurations
 
 Inference on single IPU.
@@ -94,4 +93,9 @@ Inference on single IPU.
 |Model   | MK1 IPU | MK2 IPU |
 |-------|----------|---------|
 |ResNet50| `python3 run_benchmark.py --config resnet50-mk1` | `python3 run_benchmark.py --config resnet50-mk2`  |
-|EfficientNet-B0| `python3 run_benchmark.py --config efficientnet-b0-mk1`  |`python3 run_benchmark.py --config efficientnet-b0-mk2`|
+|EfficientNet-B0| - | `python3 run_benchmark.py --config efficientnet-b0-mk2`  |
+|EfficientNet-B4| - | `python3 run_benchmark.py --config efficientnet-b4-mk2`  |
+|EfficientNet-B0 (Group Norm, Group Conv)| - | `python3 run_benchmark.py --config efficientnet-b0-g16-gn-mk2`  |
+|EfficientNet-B4 (Group Norm, Group Conv)| - | `python3 run_benchmark.py --config efficientnet-b4-g16-gn-mk2`  |
+|MobileNet v3 small| - | `python3 run_benchmark.py --config mobilenet-v3-small-mk2`  |
+|MobileNet v3 large| - | `python3 run_benchmark.py --config mobilenet-v3-large-mk2`  |

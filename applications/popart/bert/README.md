@@ -44,10 +44,10 @@ The following files are provided for running the BERT benchmarks.
 | --------------- | ------------------------------------------------------------ |
 | `bert.py`       | Main training loop                                           |
 | `bert_model.py` | BERT model definition                                        |
-| `utils.py`      | Utility functions                                            |
-| `bert_data/`    | Directory containing the data pipeline and training data generation <br /><br />- `dataset.py` - Dataloader and preprocessing. Loads binary files into Numpy arrays to be passed `popart.PyStepIO`, with shapes based on training options,  `--batches-per-step` & `--pipeline` <br /><br /> -`create_pretraining_data.py` - Script to generate binary files to be loaded from text data |
+| `utils/`        | Utility functions                                            |
+| `bert_data/`    | Directory containing the data pipeline and training data generation <br /><br />- `dataset.py` - Dataloader and preprocessing. Loads binary files into Numpy arrays to be passed `popart.PyStepIO`, with shapes to match the configuration <br /><br /> -`create_pretraining_data.py` - Script to generate binary files to be loaded from text data |
 | `configs/`      | Directory containing JSON configuration files to be used by the `--config` argument. |
-| `custom_ops/`   | Directory containing custom PopART operators. These are optimised parts of the graph that target Poplar/PopLibs operations directly.<br />  - `attention.cpp` - This operation is the fwd and grad implementation for multi-headed self-attention.<br/>  - `detach.cpp` - This operation is an identity with no grad implementation. This allows for the embedding dictionary to only be updated by its use in the projection.<br/>  -`embeddingGather.cpp` - This operation is a modification of the PopART Gather to ensure correct layout of the weights. |
+| `custom_ops/`   | Directory containing custom PopART operators. These are optimised parts of the graph that target Poplar/PopLibs operations directly. |
 
 
 ## Quick start guide
@@ -161,18 +161,14 @@ For the sample text a configuration has been created -  `configs/demo.json`. It 
 {
   # Two layers as our dataset does not need the capacity of the usual 12 Layer BERT Base
   "num_layers": 2,
-  "no_dropout": true,
   "popart_dtype": "FLOAT16",
-  "loss_scaling": 1.0,
-  "stochastic_rounding": true,
   # The data generation should have created 64 samples. Therefore, we will do an epoch per session.run
   "batches_per_step": 64,
-  "epochs": 150,
+  "training_steps": 500,
   # Here we specify the file we created in the previous step.
   "input_files": [
     "data/sample_text.bin"
-  ]
-  "shuffle": true,
+  ],
   "no_validation": true
 }
 ```
@@ -183,7 +179,7 @@ Run this config:
 python3 bert.py --config configs/demo.json
 ```
 
-This will compile the graph and run for 150 epochs. At end our model should have overfit to 100% test accuracy.
+This will compile the graph and run for 500 training steps. At end our model should have overfit to 100% test accuracy.
 
 ##### View the pre-training results in Tensorboard
 
@@ -235,14 +231,10 @@ How to get the SQuAD 1.1 files required for inference is described in `bert_data
 
 To run SQuAD BERT Base inference with a sequence length of 128:
 
-`python3 bert.py --config configs/{mk1,mk2}/squad_base_128_inference.json`
+`python3 bert.py --config configs/{mk1,mk2}/squad_base_128_inf.json`
 
 and for BERT Large with a sequence length of 384:
 
-`python3 bert.py --config configs/{mk1,mk2}/squad_large_384_inference.json`
+`python3 bert.py --config configs/{mk1,mk2}/squad_large_384_inf.json`
 
 View the JSON files in configs for detailed parameters.
-
-It is also possible to run inference on the pretraining graph to validate the MLM/NSP results. It requires input files to be provided, either by adding them to the config or by using the following command-line for sequence length of 128:
-
-`python3 bert.py --config configs/{mk1,mk2}/mlm_nsp_base_128_inference.json --input-files <path_to_input_file>`

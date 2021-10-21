@@ -1,0 +1,49 @@
+system:
+  num_ipus: 1
+  num_workers: 20
+model:
+  input_channels: 3
+  activation: mish
+  normalization: batch
+  anchors:
+    p3width: [13, 31, 24, 61]
+    p3height: [17, 25, 51, 45]
+    p4width: [48, 119, 97, 217]
+    p4height: [102, 96, 189, 184]
+    p5width: [171, 324, 616, 800]
+    p5height: [384, 451, 618, 800]
+  n_classes: 80
+  class_name_path: ./configs/class_name.yaml
+  strides: [8, 16, 32]
+  half: true
+  image_size: 896
+  micro_batch_size: 1
+  mode: test
+  ipu: true
+ipuopts:
+  batches_per_step: 1
+inference:
+  class_conf_threshold: 0.4
+  obj_threshold: 0.4
+  iou_threshold: 0.65
+  plot_output: false
+  plot_step: 250
+  plot_dir: plots
+dataset:
+  name: coco
+  max_bbox_per_scale: 90
+  train:
+    cache_data: false
+    file: train2017.txt
+    cache_path: ./utils/data/train
+    data_aug: false
+  test:
+    cache_data: false
+    file: val2017.txt
+    cache_path: ./utils/data/test
+    data_aug: false
+  mosaic: false
+  color: false
+eval:
+  metrics: true
+  verbose: false

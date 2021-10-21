@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import pytest
 import re
 import subprocess
@@ -32,7 +33,13 @@ def run_bert_cmdline(cmdline_args):
             for item in sublist
             if item != ""
         ])
-        out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=bert_root_dir)
+        try:
+            out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=bert_root_dir)
+        except subprocess.CalledProcessError as e:
+            print(f"TEST FAILED")
+            print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
+            print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
+            raise
         return out.stdout.decode("utf-8"), out.stderr.decode("utf-8")
 
 
@@ -84,8 +91,8 @@ def accuracy_reached_threshold(accs, threshold):
 @pytest.mark.category1
 @pytest.mark.ipus(8)
 @pytest.mark.parametrize("replication", [1, 2])
-@pytest.mark.parametrize("pred_head_transform, embedding_serialization", [(False, 3), (True, 1)])
-def test_loss_down_accuracy_up(embedding_serialization, pred_head_transform, replication):
+@pytest.mark.parametrize("embedding_serialization_factor", [3, 1])
+def test_loss_down_accuracy_up(embedding_serialization_factor, replication):
     """
     Test that for a 3 layer toy model the loss is trending downwards and the
     accuracy is trending upwards.
@@ -94,8 +101,7 @@ def test_loss_down_accuracy_up(embedding_serialization, pred_head_transform, rep
         "--config": "demo_tiny_128",
         "--training-steps": 350,
         "--replication-factor": replication,
-        "--pred-head-transform": pred_head_transform,
-        "--embedding-serialization-factor": embedding_serialization,
+        "--embedding-serialization-factor": embedding_serialization_factor,
         "--disable-progress-bar": True
     })
     losses, accs = parse_result_for_loss_accuracy(stderr)

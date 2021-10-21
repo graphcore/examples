@@ -26,7 +26,6 @@
 #include <popart/logging.hpp>
 #include <popart/opidentifier.hpp>
 
-#include "detach.cpp"
 #include "utils.cpp"
 
 // Tests have found that disabling dropout in the backwards pass of the attention, just before the softmax,

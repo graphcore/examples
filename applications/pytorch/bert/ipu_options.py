@@ -25,83 +25,104 @@ from utils import logger
 
 
 def get_options(config):
-    '''
+    """
     Set ipu specific options for the model, see documentation:
     https://docs.graphcore.ai/en/latest/
-    '''
+    """
 
     if not config.compile_only and poptorch.ipuHardwareVersion() != 2:
         raise RuntimeError("This version of BERT requires an IPU Mk2 system to run.")
 
-    # Custom ops
+    # Load custom ops
     if config.custom_ops is True:
         file_dir = os.path.dirname(os.path.realpath(__file__))
         CUSTOM_OP_PATH = os.path.join(file_dir, "custom_ops.so")
         if os.path.exists(CUSTOM_OP_PATH):
             ops_and_patterns = ctypes.cdll.LoadLibrary(CUSTOM_OP_PATH)
-            ops_and_patterns.setVocabSize(config.vocab_size)
-            ops_and_patterns.setEmbeddingSize(config.hidden_size)
-            ops_and_patterns.setHiddenSize(config.hidden_size)
         else:
             logger("Could not find custom_ops.so. Execute `make` before running this script.")
             exit()
 
-    # Numpy options
-    np.random.seed(config.random_seed)
-
     # Poptorch options
     if config.use_popdist:
+        # Use popdist.poptorch options if running in distributed mode
         opts = popdist.poptorch.Options(ipus_per_replica=config.ipus_per_replica)
     else:
         opts = poptorch.Options()
+        # Set the replication factor
         opts.replicationFactor(config.replication_factor)
 
     opts.autoRoundNumIPUs(True)
     opts.deviceIterations(config.batches_per_step)
+
+    # Set gradient accumulation factor
     opts.Training.gradientAccumulation(config.gradient_accumulation)
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
-    if config.auto_loss_scaling is True:
-        opts.Training.setAutomaticLossScaling(True)
+
+    # For efficiency return the sum of the outputs from IPU to host
     opts.anchorMode(poptorch.AnchorMode.Sum)
+
+    # Fix the random seeds
+    np.random.seed(config.random_seed)
+    opts.randomSeed(config.random_seed)
+
+    # Enable Replicated Tensor Sharding (RTS) of optimizer state
+    #  with optimizer state residing either on-chip or in DRAM
     opts.TensorLocations.setOptimizerLocation(
         poptorch.TensorLocationSettings()
+        # Optimizer state lives on- or off-chip
         .useOnChipStorage(not config.optimizer_state_offchip)
+        # Shard optimizer state between replicas with zero-redundancy
         .useReplicatedTensorSharding(config.replicated_tensor_sharding))
-    opts.randomSeed(config.random_seed)
+
+    # Use Pipelined Execution
     opts.setExecutionStrategy(
         poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
+
+    # Compile offline (no IPUs required)
     if config.compile_only:
         opts.useOfflineIpuTarget()
 
+    # Set available Transient Memory For matmuls and convolutions operations
     mem_prop = {
         f'IPU{i}': config.matmul_proportion[i]
         for i in range(config.ipus_per_replica)
     }
     opts.setAvailableMemoryProportion(mem_prop)
+
+    # Enable caching the compiled executable to disk
     if config.executable_cache_dir:
         opts.enableExecutableCaching(config.executable_cache_dir)
 
-    # Precision options
+    # Enable stochastic rounding (recommended for training with FP16)
     opts.Precision.enableStochasticRounding(True)
+
+    # Half precision partials for matmuls and convolutions
     if config.enable_half_partials:
         opts.Precision.setPartialsType(torch.float16)
 
-    # PopART options
-    opts._Popart.set("disableGradAccumulationTensorStreams", True)
-    opts._Popart.set("subgraphCopyingStrategy", int(popart.SubgraphCopyingStrategy.JustInTime))
-    opts._Popart.set("outlineThreshold", 10.0)
-    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
-                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
-    opts._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
-
+    # Enable synthetic random data generated on device (so with no I/O)
     if config.synthetic_data:
         opts.enableSyntheticData(int(popart.SyntheticDataMode.RandomNormal))
 
+    # PopART performance options #
+    # Only stream needed tensors back to host
+    opts._Popart.set("disableGradAccumulationTensorStreams", True)
+    # Parallelize optimizer step update across IPUs
+    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
+                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
+    opts._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
+    # Enable patterns for better throughput and memory reduction
+    opts._Popart.set("subgraphCopyingStrategy", int(popart.SubgraphCopyingStrategy.JustInTime))
+    opts._Popart.set("scheduleNonWeightUpdateGradientConsumersEarly", True)
+    opts._Popart.setPatterns({"TiedGather": True, "TiedGatherAccumulate": True, "UpdateInplacePrioritiesForIpu": True})
+
+    # Options for profiling with Popvision
     engine_options = {
         "opt.useAutoloader": "true",
         "target.syncReplicasIndependently": "true",
     }
-    if config.profile:
+    if config.profile_dir:
         engine_options = {
             **engine_options,
             **{

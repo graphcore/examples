@@ -40,11 +40,11 @@ python run_squad.py --help
 
 ## Running pretraining with checkpointing
 
-To enable the saving of model checkpoints on a run you need to add `--checkpoint-dir <path/to/checkpoint/dir>` to the command line. By default this will save a model checkpoint at the start and end of training.
+To enable the saving of model checkpoints on a run you need to add `--checkpoint-output-dir <path/to/checkpoint/dir>` to the command line. By default this will save a model checkpoint at the start and end of training.
 
-Additionally, for more frequent outputting of checkpoints you can add `--checkpoint-every-nsteps <nsteps>` to save a model checkpoint after every `n` training steps.
+Additionally, for more frequent outputting of checkpoints you can add `--checkpoint-steps <nsteps>` to save a model checkpoint after every `nsteps` training steps.
 
-To load model weights from a checkpoint, use the flag `--checkpoint-file <path/to/checkpoint/pickle/file.pt>`. To also restore the training and optimizer state (e.g. to resume a training run), also add the flag `--restore-steps-and-optimizer`.
+To load model weights from a checkpoint directory use the flag `--pretrained-checkpoint <path/to/checkpoint/step_N>`. (You can also pass the name of a model from HuggingFace model hub here too.) To also resume a training run from a checkpoint, also add the flag `--resume-training-from-checkpoint`.
 
 ## Run the SQuAD application
 
@@ -55,9 +55,9 @@ To run BERT-Base:
 python run_squad.py --config squad_base_384
 ```
 
-For BERT-Large there are `squad_large_384` and `squad_large_384_POD16` configs available, where `squad_large_384_POD16` is a higher performance large configuration that uses an 8 IPU pipeline, instead of the usual 4.
+For BERT-Large there is `squad_large_384`, which is a high performance large configuration that uses an 8 IPU pipeline, unlike the other configs that use 4.
 
-You will also need to specify a pretrained checkpoint file to fine-tune, which is specified with the `--checkpoint-file <FILE-PATH>` flag.
+You will also need to specify a pretrained checkpoint to fine-tune, which is specified with the `--pretrained-checkpoint <FILE-PATH/HF-model-hub-name>` flag.
 
 ## Caching executables
 
@@ -68,25 +68,25 @@ When running the application, it is possible to save/load executables to/from a 
 For Base on POD16:
 ```console
 # Phase 1 pretraining
-python run_pretraining.py --config pretrain_base_128 --checkpoint-dir checkpoints/pretrain_base_128
+python run_pretraining.py --config pretrain_base_128 --checkpoint-output-dir checkpoints/pretrain_base_128
 
 # Phase 2 pretraining
-python run_pretraining.py --config pretrain_base_384 --checkpoint-dir checkpoints/pretrain_base_384 --checkpoint-file checkpoints/pretrain_base_128/<last-pickle-file>
+python run_pretraining.py --config pretrain_base_384 --checkpoint-output-dir checkpoints/pretrain_base_384 --pretrained-checkpoint checkpoints/pretrain_base_128/step_N/
 
 # SQuAD fine-tuning
-python run_squad.py --config squad_base_384 --checkpoint-file checkpoints/pretrain_base_384/<last-pickle-file>
+python run_squad.py --config squad_base_384 --pretrained-checkpoint checkpoints/pretrain_base_384/step_N/
 ```
 
 For Large on POD16:
 ```console
 # Phase 1 pretraining
-python run_pretraining.py --config pretrain_large_128 --checkpoint-dir checkpoints/pretrain_large_128
+python run_pretraining.py --config pretrain_large_128 --checkpoint-output-dir checkpoints/pretrain_large_128
 
 # Phase 2 pretraining
-python run_pretraining.py --config pretrain_large_384 --checkpoint-dir checkpoints/pretrain_large_384 --checkpoint-file checkpoints/pretrain_large_128/<last-pickle-file>
+python run_pretraining.py --config pretrain_large_384 --checkpoint-output-dir checkpoints/pretrain_large_384 --pretrained-checkpoint checkpoints/pretrain_large_128/step_N/
 
 # SQuAD fine-tuning
-python run_squad.py --config squad_large_384 --checkpoint-file checkpoints/pretrain_large_384/<last-pickle-file>
+python run_squad.py --config squad_large_384 --pretrained-checkpoint checkpoints/pretrain_large_384/step_N/
 ```
 
 To do the same on POD64, simply append `_POD64` to the pretraining config names.

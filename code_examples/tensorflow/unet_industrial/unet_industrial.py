@@ -1,6 +1,7 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 import argparse
+from tensorflow.python.ipu.config import IPUConfig
 import numpy as np
 import tensorflow.compat.v1 as tf
 from functools import partial
@@ -246,32 +247,28 @@ class ThroughputCalcHook(tf.train.SessionRunHook):
 
 
 def create_estimator(args):
-    cfg = ipu.utils.create_ipu_config()
-    cfg = ipu.utils.set_floating_point_behaviour_options(
-        cfg, inv=True, div0=True, oflo=True, esr=args.stochastic_rounding, nanoo=True)
+    cfg = IPUConfig()
+    cfg.floating_point_behaviour.inv = True
+    cfg.floating_point_behaviour.div0 = True
+    cfg.floating_point_behaviour.oflo = True
+    cfg.floating_point_behaviour.esr = bool(args.stochastic_rounding)
+    cfg.floating_point_behaviour.nanoo = True
 
-    cfg = ipu.utils.set_optimization_options(cfg,
-                                             max_cross_replica_sum_buffer_size=20000000)
+    cfg.optimizations.maximum_cross_replica_sum_buffer_size = 20000000
 
     if args.allow_recompute:
-        cfg = ipu.utils.set_recomputation_options(
-            cfg, allow_recompute=True)
+        cfg.allow_recompute = True
 
     num_replicas = args.num_replicas_train
     num_shards = args.num_ipus_in_pipeline_train
 
-    ipu.utils.auto_select_ipus(
-        cfg, num_ipus=num_replicas * num_shards)
+    cfg.auto_select_ipus = num_replicas * num_shards
 
-    cfg = ipu.utils.set_ipu_connection_type(
-        cfg, ipu.utils.DeviceConnectionType.ALWAYS, ipu_version=2)
+    cfg.device_connection.version = 'ipu' + str(2)
+    cfg.device_connection.type = ipu.utils.DeviceConnectionType.ALWAYS
 
-    cfg = ipu.utils.set_convolution_options(cfg, {
-            "partialsType": 'half' if args.partials_type == 'float16' else 'float'
-        })
-    cfg = ipu.utils.set_matmul_options(cfg, {
-            "partialsType": 'half' if args.partials_type == 'float16' else 'float'
-        })
+    cfg.convolutions.poplar_options = {'partialsType': 'half' if args.partials_type == 'float16' else 'float'}
+    cfg.matmuls.poplar_options = {'partialsType': 'half' if args.partials_type == 'float16' else 'float'}
 
     iterations_per_loop = (args.batches_per_step *
                            args.gradient_accumulation_batches)
@@ -342,7 +339,7 @@ def train(estimator, args):
 
     # Set up hooks
     hooks = [ThroughputCalcHook(total_batch_size *
-                                args.batches_per_step, args.warmup_steps)]
+                                iterations_per_loop, args.warmup_steps)]
 
     with tf.device("cpu"):
         tf.train.get_or_create_global_step()
@@ -737,21 +734,15 @@ if __name__ == "__main__":
     if not (args.training or args.evaluation):
         # Configure IPU system for inference only
         # (no need to do this if an Estimator was already initialized)
-        cfg = ipu.utils.create_ipu_config()
+        cfg = IPUConfig()
         if args.allow_recompute:
-            cfg = ipu.utils.set_recomputation_options(
-                cfg, allow_recompute=True)
-        cfg = ipu.utils.auto_select_ipus(
-            cfg, args.num_replicas_infer * args.num_ipus_in_pipeline_infer)
-        cfg = ipu.utils.set_ipu_connection_type(
-            cfg, ipu.utils.DeviceConnectionType.ALWAYS, ipu_version=2)
-        cfg = ipu.utils.set_convolution_options(cfg, {
-            "partialsType": 'half' if args.partials_type == 'float16' else 'float'
-        })
-        cfg = ipu.utils.set_matmul_options(cfg, {
-            "partialsType": 'half' if args.partials_type == 'float16' else 'float'
-        })
-        ipu.utils.configure_ipu_system(cfg)
+            cfg.allow_recompute = True
+        cfg.auto_select_ipus = (args.num_replicas_infer * args.num_ipus_in_pipeline_infer)
+        cfg.device_connection.version = 'ipu' + str(2)
+        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ALWAYS
+        cfg.convolutions.poplar_options = {'partialsType': 'half' if args.artials_type == 'float16' else 'float'}
+        cfg.matmuls.poplar_options = {'partialsType': 'half' if args.partials_type == 'float16' else 'float'}
+        cfg.configure_ipu_system()
 
     if args.inference:
         print("\nTesting inference...")

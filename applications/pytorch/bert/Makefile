@@ -7,14 +7,7 @@ custom_ops.so: custom_ops/plugin_version custom_ops/*.cpp custom_ops/workarounds
 	g++ -std=c++14 -fPIC \
 		-DSTATIC_VERSION=\"${shell ./custom_ops/plugin_version}\" \
 		-DONNX_NAMESPACE=onnx \
-		custom_ops/params.cpp \
-		custom_ops/sparse_accumulate.cpp \
-		custom_ops/sparse_accumulate_pattern.cpp \
-		custom_ops/tied_gather.cpp \
-		custom_ops/tied_gather_pattern.cpp \
-		custom_ops/lamb_serialised_weight_pattern.cpp \
-		custom_ops/workarounds/recompute_consumer_priority_pattern.cpp \
-		custom_ops/workarounds/stash_layout_pattern.cpp \
+		custom_ops/workarounds/residual_add_inplace_pattern.cpp \
 		-shared -lpopart -lpoplar -lpoplin -lpopnn -lpopops -lpoputil -lpoprand \
 		-o custom_ops.so
 

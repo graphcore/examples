@@ -287,7 +287,7 @@ def test_no_drop_remainder(batch_size, shuffle, popdist_size, get_squad):
     def create_dataset(args):
         # a simple copy of main bert.py until the dataset creation
         config = BertConfig()
-        model = Bert(config, builder=popart.Builder())
+        model = Bert(config)
         indices, positions, segments, masks, labels = bert_add_inputs(args, model)
         inputs = [indices, positions, segments, masks, labels]
         embedding_dict, positional_dict = model.get_model_embeddings()

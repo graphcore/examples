@@ -19,7 +19,7 @@
     "epochs_to_cache": 1,
     "vocab_length": 30400,
     "shuffle": false,
-    "execution_mode": "PIPELINE",
+    "pipeline": true,
     "inference": true,
     "use_default_available_memory_proportion": true,
     "embedding_serialization_vocab_steps": 5,

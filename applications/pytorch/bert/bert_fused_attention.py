@@ -67,9 +67,6 @@ class BertFusedSelfAttention(BertSelfAttention):
         value_layer = self.transpose_for_scores(mixed_value_layer)
 
         # ------------------------------------------------
-        # Implementation below here is from
-        # https://github.com/huggingface/transformers/blob/master/src/transformers/models/bert/modeling_bert.py
-        # ::BertSelfAttention
 
         if self.is_decoder:
             # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
@@ -100,7 +97,15 @@ class BertFusedSelfAttention(BertSelfAttention):
                 relative_position_scores_key = torch.einsum("bhrd,lrd->bhlr", key_layer, positional_embedding)
                 attention_scores = attention_scores + relative_position_scores_query + relative_position_scores_key
 
-        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+        # --- Change: Use reciprocal multiply for speed ---
+
+        attention_scores = attention_scores * (1. / math.sqrt(self.attention_head_size))
+
+        # ------------------------------------------------
+        # Implementation below here is from
+        # https://github.com/huggingface/transformers/blob/master/src/transformers/models/bert/modeling_bert.py
+        # ::BertSelfAttention
+
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
             attention_scores = attention_scores + attention_mask

@@ -80,7 +80,7 @@ class TestConfig(NamedTuple):
     lr_steps_per_decay_update: int = 512
 
     # For the per-tensor learning rate
-    execution_mode: str = "PIPELINE"
+    pipeline: bool = False
     continuous_pipeline_optimizer_scaling: bool = False
 
     # Needed for iteration/optimizer integration test
@@ -373,7 +373,7 @@ def test_per_tensor_lr(steps_per_epoch, lr_schedule_by_step, layer_inputs, pipel
             if i in step_schedule:
                 step_lr = step_schedule[i]
 
-            scaled_lr = step_lr * lr_scale if config.execution_mode == "PIPELINE" else step_lr
+            scaled_lr = step_lr * lr_scale if config.pipeline else step_lr
 
             test_case.append(test_case[-1] - scaled_lr)
         return test_case
@@ -389,7 +389,7 @@ def test_per_tensor_lr(steps_per_epoch, lr_schedule_by_step, layer_inputs, pipel
 
         config = TestConfig(
             lr_schedule_by_step=step_schedule,
-            execution_mode="PIPELINE" if pipeline else "DEFAULT",
+            pipeline=pipeline,
             continuous_pipeline_optimizer_scaling=pipeline)
 
         test_case = {stage: expected_step_weights(iteration,

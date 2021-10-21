@@ -99,6 +99,13 @@ Now you have set up the data and created the model you can run the model on the 
 
 Logging data, including throughput, is written per subprocess in `logs/` and aggregated over all subprocesses in stdout. Inference results are fetched but not written to file. This can be changed in 'resnext101.py', where outputs are saved as `results`.
 
+### Run unit-tests for the Deep Voice model
+
+To run unit-tests, simply do:
+
+```
+pytest test_resnext101.py
+```
 
 ## Options
 

@@ -6,8 +6,7 @@ import time
 import argparse
 import popdist
 import horovod.torch as hvd
-import sys
-sys.path.append('..')
+import import_helper
 from datasets.dataset import datasets_info, get_data
 import utils
 
@@ -22,6 +21,8 @@ def get_args():
     parser.add_argument('--dataloader-worker', type=int, default=32, help="Number of worker for each dataloader")
     parser.add_argument('--eight-bit-io', action='store_true', help="Image transfer from host to IPU in 8-bit format, requires normalisation on the IPU")
     parser.add_argument('--dataloader-rebatch-size', type=int, help='Dataloader rebatching size. (Helps to optimise the host memory footprint)')
+    parser.add_argument('--webdataset-memory-cache-ratio', type=float, default=0.0, help="Determines the portion of the webdataset, which is cached in memory.")
+
     args = parser.parse_args()
     args.precision = "16.16"
     args.model = 'resnet50'

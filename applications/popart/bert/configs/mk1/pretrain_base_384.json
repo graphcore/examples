@@ -82,7 +82,7 @@
     "split_linear_layers": false,
     "use_default_available_memory_proportion": true,
     "shuffle": true,
-    "execution_mode": "PIPELINE",
+    "pipeline": true,
     "checkpoint_dir": "ckpts/pretrain_base_384",
     "no_validation": true,
     "no_cls_layer": true

@@ -33,20 +33,26 @@ WANDB_NAME_PHASE2="BERT $1 Phase 2"
 
 # BERT training options
 # Phase 1
-if [[ $1 != 'large' ]]; then
+if [[ $1 == 'large' ]]; then
     PHASE1_CONFIG_PATH='configs/pretrain_large_128_phase1.json'
+elif
+    PHASE1_CONFIG_PATH='configs/pretrain_base_128_phase1.json'
 else
-    PHASE1_CONFIG_PATH='configs/pretrain_base_128.json'
+    echo "Unknown model size"
+    exit 1
 fi
 PHASE1_TRAIN_FILE='data/tf_wikipedia/tokenised_128_dup5_mask20/*.tfrecord'
 
 python3 run_pretraining.py --config "${PHASE1_CONFIG_PATH}" --train-file "${PHASE1_TRAIN_FILE}" --wandb --wandb-name "${WANDB_NAME_PHASE1}" 2>&1 | tee pretrain_large_128_log.txt
 
 # Phase 2
-if [[ $1 != 'large' ]]; then
+if [[ $1 == 'large' ]]; then
     PHASE2_CONFIG_PATH='configs/pretrain_large_384_phase2.json'
+elif
+    PHASE2_CONFIG_PATH='configs/pretrain_base_384_phase2.json'
 else
-    PHASE2_CONFIG_PATH='configs/pretrain_base_384.json'
+    echo "Unknown model size"
+    exit 1
 fi
 PHASE2_TRAIN_FILE='data/tf_wikipedia/tokenised_384_dup5_mask56/*.tfrecord'
 

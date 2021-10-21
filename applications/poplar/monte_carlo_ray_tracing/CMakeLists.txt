@@ -28,7 +28,7 @@ add_custom_command(
     PRE_BUILD
     MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/codelets/codelets.cpp
     DEPENDS ${LIGHT_SRC}
-    COMMAND popc -O3 -Wdouble-promotion -I${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src/codelets/codelets.cpp -o codelets.gp
+    COMMAND popc -O3 -Werror -Wdouble-promotion -I${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src/codelets/codelets.cpp -o codelets.gp
     OUTPUT codelets.gp
     WORKING_DIRECTORY ${CMAKE_BUILD_DIR}
 )

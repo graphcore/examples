@@ -2,15 +2,14 @@
 import os
 import argparse
 import torch
-from tqdm import tqdm
 import poptorch
 import logging
-import sys
-sys.path.append('..')
+import popdist
+from tqdm import tqdm
+import import_helper
 import models
 import utils
 import datasets
-import popdist
 
 
 class DataPadder:
@@ -71,16 +70,18 @@ def load_checkpoint_weights(inference_model, file_path):
     checkpoint = torch.load(file_path)
     opts = checkpoint['opts']
     logging.info(f"Restore the {opts.model} model to epoch {checkpoint['epoch']} on {opts.data} dataset(Train loss:{checkpoint['loss']}, train accuracy:{checkpoint['train_accuracy']}%)")
-    inference_model.model.load_state_dict(checkpoint['model_state_dict'])
+    models.load_model_state_dict(inference_model, checkpoint['model_state_dict'])
     inference_model.copyWeightsToDevice()
 
 
-def create_validation_opts(opts):
-    if opts.use_popdist:
+def create_validation_model_opts(opts, use_popdist):
+    if use_popdist:
         model_opts = popdist.poptorch.Options(ipus_per_replica=len(opts.pipeline_splits) + 1)
     else:
         model_opts = poptorch.Options()
         model_opts.replicationFactor(opts.replicas)
+        model_opts.Distributed.disable()
+    model_opts = utils.inference_settings(opts, model_opts)
     model_opts.deviceIterations(max(opts.device_iterations, 1+len(opts.pipeline_splits)))
     model_opts.anchorMode(poptorch.AnchorMode.All)
     return model_opts
@@ -89,8 +90,6 @@ def create_validation_opts(opts):
 def validate_checkpoints(checkpoint_list, test_data=None):
     checkpoint = torch.load(checkpoint_list[0])
     opts = checkpoint['opts']
-    # Initialise popdist
-    utils.handle_distributed_settings(opts)
     utils.Logger.setup_logging_folder(opts)
 
     # make sure the order is ascending
@@ -101,7 +100,10 @@ def validate_checkpoints(checkpoint_list, test_data=None):
     except:
         logging.warn("Checkpoint names are changed, which may cause inconsistent order in evaluation.")
 
-    model_opts = create_validation_opts(opts)
+    # Validate in a single instance
+    model_opts = create_validation_model_opts(opts, use_popdist=False)
+    opts.use_popdist = False
+    opts.popdist_size = 1
 
     if test_data is None:
         logging.info("Loading the data")
@@ -111,7 +113,7 @@ def validate_checkpoints(checkpoint_list, test_data=None):
     model = models.get_model(opts, datasets.datasets_info[opts.data], pretrained=False)
     model.eval()
     # Load the weights of the first checkpoint for the model
-    model.load_state_dict(checkpoint['model_state_dict'])
+    models.load_model_state_dict(model, checkpoint['model_state_dict'])
     inference_model = poptorch.inferenceModel(model, model_opts)
 
     for checkpoint in checkpoint_list:

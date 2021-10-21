@@ -20,13 +20,49 @@ resnet50-mk2:
   batch_size: 90
 
 
-efficientnet-b0-mk1:
-  <<: *common
-  model: efficientnet-b0
-  batch_size: 11
-  
-
 efficientnet-b0-mk2:
   <<: *common
   model: efficientnet-b0
-  batch_size: 40
+  batch_size: 49
+
+
+efficientnet-b4-mk2:
+  <<: *common
+  model: efficientnet-b4
+  batch_size: 12
+
+
+efficientnet-g16-gn: &efficientnet-g16-gn
+  <<: *common
+  efficientnet_group_dim: 16
+  efficientnet_expand_ratio: 4
+  norm_type: group
+  norm_eps: 0.001
+  norm_num_groups: 4
+  enable_fast_groupnorm: true
+  random_weights: true
+
+
+efficientnet-b0-g16-gn-mk2:
+  <<: *efficientnet-g16-gn
+  model: efficientnet-b0
+  batch_size: 106
+
+
+efficientnet-b4-g16-gn-mk2:
+  <<: *efficientnet-g16-gn
+  model: efficientnet-b4
+  batch_size: 26
+
+
+mobilenet-v3-small-mk2:
+  <<: *common
+  model: mobilenet-v3-small
+  batch_size: 224
+  device_iterations: 64
+
+
+mobilenet-v3-large-mk2:
+  <<: *common
+  model: mobilenet-v3-large
+  batch_size: 64

@@ -9,4 +9,5 @@ get_data:
 	cd datasets && ./get_images.sh
 
 test:
-	pytest -n 10 --forked
+	cd tests && pytest -n 10 --forked
+	cd tests_serial && pytest

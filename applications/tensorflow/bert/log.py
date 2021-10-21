@@ -134,7 +134,7 @@ def make_histogram(values, bins=512):
     hist.sum_squares = float(np.sum(values**2))
 
     # Requires equal number as bins, where the first goes from -DBL_MAX to bin_edges[1]
-    # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto#L30
+    # See https://github.com/tensorflow/tensorflow/blob/v2.4.2/tensorflow/core/framework/summary.proto#L30
     # Thus, we drop the start of the first bin
     bin_edges = bin_edges[1:]
 

@@ -1,0 +1,9 @@
+fvcore==0.1.5.post20210727
+matplotlib>=3.3.0
+numpy==1.19.5
+pytest>=6.2.4
+pytest-pythonpath>=0.7.3
+requests>=2.26.0
+ruamel.yaml>=0.17.0
+torchvision @ https://download.pytorch.org/whl/cpu/torchvision-0.10.0%2Bcpu-cp36-cp36m-linux_x86_64.whl
+yacs>=0.1.8

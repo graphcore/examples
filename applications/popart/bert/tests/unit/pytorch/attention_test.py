@@ -20,7 +20,7 @@ import torch
 import popart
 import onnx
 
-from bert_model import BertConfig, ExecutionMode, get_model
+from bert_model import Bert, BertConfig
 from tests.torch_bert import BertConfig as TorchBertConfig, BertAttention
 from tests.utils import (
     run_py,
@@ -33,61 +33,32 @@ from tests.utils import (
 '''
 Tests the attention op.
 '''
-test_modes = [ExecutionMode.DEFAULT, requires_remote_buffers(ExecutionMode.PHASED)]
 
 TORCH_TO_ONNX = {
-    ExecutionMode.DEFAULT: {
-        "self.query.weight": "QKV",
-        "self.key.weight": "QKV",
-        "self.value.weight": "QKV",
-        "self.query.bias": "QKV_Bias",
-        "self.key.bias": "QKV_Bias",
-        "self.value.bias": "QKV_Bias",
-        "output.dense.weight": "Out",
-        "output.dense.bias": "Out_Bias",
-        "output.LayerNorm.weight": "Gamma",
-        "output.LayerNorm.bias": "Beta"
-    },
-    ExecutionMode.PHASED: {
-        "self.query.weight": "Attention/QKV",
-        "self.key.weight": "Attention/QKV",
-        "self.value.weight": "Attention/QKV",
-        "self.query.bias": "Attention/QKV_Bias",
-        "self.key.bias": "Attention/QKV_Bias",
-        "self.value.bias": "Attention/QKV_Bias",
-        "output.dense.weight": "Attention/Out",
-        "output.dense.bias": "Attention/Out_Bias",
-        "output.LayerNorm.weight": "Attention/Norm/Gamma",
-        "output.LayerNorm.bias": "Attention/Norm/Beta"
-    }
+    "self.query.weight": "QKV",
+    "self.key.weight": "QKV",
+    "self.value.weight": "QKV",
+    "self.query.bias": "QKV_Bias",
+    "self.key.bias": "QKV_Bias",
+    "self.value.bias": "QKV_Bias",
+    "output.dense.weight": "Out",
+    "output.dense.bias": "Out_Bias",
+    "output.LayerNorm.weight": "Gamma",
+    "output.LayerNorm.bias": "Beta"
 }
 
 
 TORCH_TO_ONNX_SPLIT_QKV = {
-    ExecutionMode.DEFAULT: {
-        "self.query.weight": "Q",
-        "self.key.weight": "K",
-        "self.value.weight": "V",
-        "self.query.bias": "Q_Bias",
-        "self.key.bias": "K_Bias",
-        "self.value.bias": "V_Bias",
-        "output.dense.weight": "Out",
-        "output.dense.bias": "Out_Bias",
-        "output.LayerNorm.weight": "Gamma",
-        "output.LayerNorm.bias": "Beta"
-    },
-    ExecutionMode.PHASED: {
-        "self.query.weight": "Attention/Q",
-        "self.key.weight": "Attention/K",
-        "self.value.weight": "Attention/V",
-        "self.query.bias": "Attention/Q_Bias",
-        "self.key.bias": "Attention/K_Bias",
-        "self.value.bias": "Attention/V_Bias",
-        "output.dense.weight": "Attention/Out",
-        "output.dense.bias": "Attention/Out_Bias",
-        "output.LayerNorm.weight": "Attention/Norm/Gamma",
-        "output.LayerNorm.bias": "Attention/Norm/Beta"
-    }
+    "self.query.weight": "Q",
+    "self.key.weight": "K",
+    "self.value.weight": "V",
+    "self.query.bias": "Q_Bias",
+    "self.key.bias": "K_Bias",
+    "self.value.bias": "V_Bias",
+    "output.dense.weight": "Out",
+    "output.dense.bias": "Out_Bias",
+    "output.LayerNorm.weight": "Gamma",
+    "output.LayerNorm.bias": "Beta"
 }
 
 
@@ -134,13 +105,11 @@ def get_torch_mask(config, masks):
 
 @pytest.mark.parametrize("split_qkv", [True, False])
 @pytest.mark.parametrize("attention_bias", [True, False])
-@pytest.mark.parametrize("mode", test_modes)
-@pytest.mark.parametrize("micro_batch_size, batch_serialisation_factor, number_attention_splits", [(1, 1, 1), (2, 2, 1), (2, 2, 2), (2, 2, 4)])
-def test_attention_fwd(mode, micro_batch_size, batch_serialisation_factor, number_attention_splits, attention_bias, split_qkv):
+def test_attention_fwd(attention_bias, split_qkv):
     #  ------------------- PopART --------------------
     config = BertConfig(task="PRETRAINING",
                         vocab_length=9728,
-                        micro_batch_size=micro_batch_size,
+                        micro_batch_size=1,
                         hidden_size=768,
                         attention_heads=4,
                         sequence_length=128,
@@ -150,9 +119,8 @@ def test_attention_fwd(mode, micro_batch_size, batch_serialisation_factor, numbe
                         no_attn_dropout=True,
                         inference=True,
                         split_qkv=split_qkv,
-                        attention_bias=attention_bias,
-                        num_attention_splits=number_attention_splits)
-    popart_model = get_model(config, mode, 'attention')
+                        attention_bias=attention_bias)
+    popart_model = Bert(config, pipeline=True)
 
     input_info = popart.TensorInfo(config.popart_dtype, [config.micro_batch_size * config.sequence_length, config.hidden_size])
     input_tensor = popart_model.builder.addInputTensor(input_info)
@@ -165,24 +133,16 @@ def test_attention_fwd(mode, micro_batch_size, batch_serialisation_factor, numbe
         smask_tensor: np.random.randint(config.mask_tokens, config.sequence_length + 1, (config.micro_batch_size, config.sequence_length, )).astype(np.uint32)
     }
 
-    user_options = {}
-    if mode == ExecutionMode.PHASED:
-        user_options = {
-            "batchSerializationFactor": batch_serialisation_factor,
-            "executionPhases": popart_model.total_execution_phases
-        }
-        output = popart_model(input_tensor, [mmask_tensor, smask_tensor])
-    else:
-        user_options = {"enableStochasticRounding": True}
-        output = popart_model.attention(input_tensor,
-                                        [mmask_tensor, smask_tensor])
+    user_options = {"enableStochasticRounding": True}
+    output = popart_model.attention(input_tensor,
+                                    [mmask_tensor, smask_tensor])
 
     proto = popart_model.builder.getModelProto()
     outputs, post_proto = run_py(proto,
                                  data,
                                  output,
                                  user_options=user_options,
-                                 execution_mode=mode)
+                                 pipeline=popart_model.pipeline)
 
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
@@ -200,9 +160,7 @@ def test_attention_fwd(mode, micro_batch_size, batch_serialisation_factor, numbe
                         layer_norm_eps=config.layer_norm_eps))
     # Turn off dropout
     torch_model.eval()
-    mapping = TORCH_TO_ONNX[mode]
-    if split_qkv:
-        mapping = TORCH_TO_ONNX_SPLIT_QKV[mode]
+    mapping = TORCH_TO_ONNX_SPLIT_QKV if split_qkv else TORCH_TO_ONNX
     copy_weights_to_torch(torch_model,
                           proto,
                           mapping,
@@ -214,31 +172,18 @@ def test_attention_fwd(mode, micro_batch_size, batch_serialisation_factor, numbe
     check_tensors(torch_outputs, outputs)
 
 
+@pytest.mark.parametrize("split_qkv", [True, False])
 @pytest.mark.parametrize("attention_bias", [True, False])
-@pytest.mark.parametrize("mode", test_modes)
-@pytest.mark.parametrize("micro_batch_size, batch_serialisation_factor, number_attention_splits, momentum",
-                         [sanity(2, 2, 1, 0.984375),
-                          sanity(2, 2, 4, 0.984375),
-
-                          (1, 1, 1, 0.0),
-                          (2, 2, 1, 0.0),
-                          (2, 2, 2, 0.0),
-                          (4, 2, 4, 0.0),
-                          (1, 1, 1, 0.984375),
-                          (2, 2, 1, 0.984375),
-                          (2, 2, 2, 0.984375),
-                          (4, 2, 4, 0.984375)])
-def test_attention_bwd(mode, momentum, micro_batch_size, batch_serialisation_factor, number_attention_splits, attention_bias):
+def test_attention_bwd(attention_bias, split_qkv):
     l1_lambda = 0.1
     num_reps = 5
     np.random.seed(1984)
     torch.manual_seed(1984)
-    split_qkv = False
 
     #  ------------------- PopART --------------------
     config = BertConfig(task="PRETRAINING",
                         vocab_length=9728,
-                        micro_batch_size=micro_batch_size,
+                        micro_batch_size=1,
                         hidden_size=768,
                         sequence_length=128,
                         activation_type='relu',
@@ -246,9 +191,8 @@ def test_attention_bwd(mode, momentum, micro_batch_size, batch_serialisation_fac
                         no_dropout=True,
                         no_attn_dropout=True,
                         split_qkv=split_qkv,
-                        attention_bias=attention_bias,
-                        num_attention_splits=number_attention_splits)
-    popart_model = get_model(config, mode, 'attention')
+                        attention_bias=attention_bias)
+    popart_model = Bert(config, pipeline=True)
 
     input_info = popart.TensorInfo(config.popart_dtype, [config.micro_batch_size * config.sequence_length, config.hidden_size])
     input_tensor = popart_model.builder.addInputTensor(input_info)
@@ -262,32 +206,13 @@ def test_attention_bwd(mode, momentum, micro_batch_size, batch_serialisation_fac
     }
 
     user_options = {}
-    if mode == ExecutionMode.PHASED:
-        user_options = {
-            "batchSerializationFactor": batch_serialisation_factor,
-            "executionPhases": popart_model.total_execution_phases
-        }
-        output = popart_model(input_tensor, [mmask_tensor, smask_tensor])
-        with popart_model.scope_provider(popart_model.builder, popart_model.norm.scope):
-            l1 = popart_model.builder.aiGraphcore.l1loss(
-                [output],
-                l1_lambda,
-                debugContext="l1LossVal",
-                reduction=popart.ReductionType.Sum)
-    else:
-        user_options = {}
-        output = popart_model.attention(input_tensor,
-                                        [mmask_tensor, smask_tensor])
-        l1 = popart_model.builder.aiGraphcore.l1loss(
-            [output], l1_lambda, reduction=popart.ReductionType.Sum)
+    output = popart_model.attention(input_tensor,
+                                    [mmask_tensor, smask_tensor])
+    l1 = popart_model.builder.aiGraphcore.l1loss(
+        [output], l1_lambda, reduction=popart.ReductionType.Sum)
 
     proto = popart_model.builder.getModelProto()
-
-    if momentum:
-        optimizer = popart.SGD({"defaultLearningRate": (0.01, True),
-                                "defaultMomentum": (momentum, True)})
-    else:
-        optimizer = popart.ConstSGD(0.01)
+    optimizer = popart.ConstSGD(0.01)
 
     outputs, post_proto = run_py(proto,
                                  data, (output, l1),
@@ -295,7 +220,7 @@ def test_attention_bwd(mode, momentum, micro_batch_size, batch_serialisation_fac
                                  optimizer=optimizer,
                                  num_reps=num_reps,
                                  user_options=user_options,
-                                 execution_mode=mode)
+                                 pipeline=popart_model.pipeline)
 
     # ----------------- PopART -> PyTorch ----------------
     proto = onnx.load_model_from_string(proto)
@@ -314,25 +239,14 @@ def test_attention_bwd(mode, momentum, micro_batch_size, batch_serialisation_fac
     # Turn off dropout
     torch_model.eval()
 
-    mapping = TORCH_TO_ONNX[mode]
-    if split_qkv:
-        mapping = TORCH_TO_ONNX_SPLIT_QKV[mode]
+    mapping = TORCH_TO_ONNX_SPLIT_QKV if split_qkv else TORCH_TO_ONNX
 
     copy_weights_to_torch(torch_model,
                           proto,
                           mapping,
                           transform=get_transform(split_qkv, config.hidden_size))
 
-    optim = torch.optim.SGD(torch_model.parameters(), 0.01,
-                            weight_decay=0.0, momentum=momentum)
-
-    if momentum:
-        for group in optim.param_groups:
-            for p in group['params']:
-                optim.state[p]['momentum_buffer'] = p.data * 0
-                optim.state[p]['exp_avg'] = p.data * 0
-                optim.state[p]['exp_avg_sq'] = p.data * 0
-                optim.state[p]['step'] = 0
+    optim = torch.optim.SGD(torch_model.parameters(), 0.01)
 
     for _ in range(num_reps):
         torch_output = torch_model(*[torch.from_numpy(t).float() for t in inputs])[0]

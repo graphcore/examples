@@ -4,11 +4,11 @@ import random
 from pathlib import Path
 import torch
 import horovod.torch as hvd
-import sys
-import weight_avg
-sys.path.append('..')
-import utils
 import logging
+import weight_avg
+import sys
+import import_helper
+import utils
 
 
 def generate_random_seed(distributed=False):
@@ -40,9 +40,9 @@ def parse_arguments():
     parser.add_argument('--wandb', action='store_true', help="Add Weights & Biases logging")
     parser.add_argument('--wandb-weight-histogram', action='store_true', help="Log the weight histogram with Weights & Biases")
     parser.add_argument('--seed', type=int, help="Set the random seed")
-    parser.add_argument('--enable-recompute', action='store_true', help='Enable the recomputation of network activations during backward pass instead '
-                        'of caching them during forward pass. This option turns on the recomputation for single-stage models. If the model is multi '
-                        'stage (pipelined) the recomputation is always enabled.')
+    parser.add_argument('--recompute-mode', default="none", choices=['none', 'auto', 'manual'], help="Select single IPU recompute mode. If the model is multi "
+                        "stage (pipelined) the recomputation is always enabled. Auto mode selects the recompute checkpoints automatically. Rest of the network will be recomputed. It is possible to extend the recompute checkpoints "
+                        " with the --recompute-checkpoints option. In manual mode no recompute checkpoint is added, they need to be determined by the user.")
     parser.add_argument('--recompute-checkpoints', type=str, nargs='+', default=[], help='List of recomputation checkpoints. List of regex rules for the layer names must be provided. (Example: Select convolutional layers: .*conv.*)')
     parser.add_argument('--disable-stable-batchnorm', action='store_true', help="There are two implementations of the batch norm layer. "
                         "The default version is numerically more stable. The less stable is faster.")
@@ -68,6 +68,11 @@ def parse_arguments():
     parser.add_argument('--webdataset-percentage-to-use', type=int, default=100, choices=range(1, 101), help="Percentage of dataset to be used for traini")
     parser.add_argument('--use-bbox-info', action='store_true', help='Use bbox information for training: reject the augmenetation, which does not overlap with the object.')
     parser.add_argument('--mixup-alpha', type=float, default=0.0, help="The first shape parameter of the beta distribution used to sample mixup coefficients. The second shape parameter is the same as the first one. Value of 0.0 means mixup is disabled.")
+    parser.add_argument('--cutmix-lambda-low', type=float, default=0.0, help="Lower bound for the cutmix lambda coefficient (lambda is sampled uniformly from [low, high)). If both bounds are set to 0.0 or 1.0, cutmix is disabled. If both bounds are equal, lambda always equals that value.")
+    parser.add_argument('--cutmix-lambda-high', type=float, default=0.0, help="Higher bound for the cutmix lambda coefficient (lambda is sampled uniformly from [low, high)). If both bounds are set to 0.0 or 1.0, cutmix is disabled. If both bounds are equal, lambda always equals that value.")
+    parser.add_argument('--cutmix-disable-prob', type=float, default=0.0, help="Probability that cutmix is disabled for a particular batch.")
+    parser.add_argument("--compile-only", action="store_true", help="Create an offline IPU target that can only be used for offline compilation.")
+
     # weight averaging params
     weight_avg.add_parser_arguments(parser)
 
@@ -86,8 +91,8 @@ def parse_arguments():
     num_stages = len(opts.pipeline_splits)+1
     num_amps = len(opts.available_memory_proportion)
     if num_stages > 1 and num_amps > 0 and num_amps != num_stages and num_amps != 1:
-            logging.error(f'--available-memory-proportion number of elements should be either 1 or equal to the number of pipeline stages: {num_stages}')
-            sys.exit()
+        logging.error(f'--available-memory-proportion number of elements should be either 1 or equal to the number of pipeline stages: {num_stages}')
+        sys.exit()
 
     if opts.weight_avg_strategy != 'none' and opts.checkpoint_path == '':
         logging.error('Please provide a --checkpoint-path folder to apply weight averaging to.')
@@ -99,7 +104,7 @@ def parse_arguments():
     if num_stages > 1:
         logging.info("Recomputation is always enabled when using pipelining.")
 
-    if not opts.enable_recompute and len(opts.recompute_checkpoints) > 0:
+    if opts.recompute_mode == "none" and len(opts.recompute_checkpoints) > 0 and num_stages == 1:
         logging.warning("Recomputation is not enabled, while recomputation checkpoints are provided.")
 
     if opts.eight_bit_io and opts.normalization_location == 'host':
@@ -109,12 +114,32 @@ def parse_arguments():
     if opts.wandb_weight_histogram:
         assert opts.wandb, "Need to enable W&B with --wandb to log the histogram of the weights"
 
-    if opts.mixup_alpha < 0.0:
-        logging.error('--mixup-alpha must be >= 0.0')
+    assert opts.mixup_alpha >= 0.0, "Mixup alpha must be >= 0.0"
+    opts.mixup_enabled = opts.mixup_alpha > 0.0
+
+    assert opts.cutmix_lambda_low >= 0.0, "Lower bound for cutmix lambda must be >= 0.0"
+    assert opts.cutmix_lambda_high <= 1.0, "Higher bound for cutmix lambda must be <= 1.0"
+    assert opts.cutmix_lambda_low <= opts.cutmix_lambda_high, "Lower bound for cutmix lambda must be <= higher bound"
+    assert 0.0 <= opts.cutmix_disable_prob <= 1.0, "Probability for disabling cutmix must be in [0, 1]"
+    opts.cutmix_enabled = (opts.cutmix_lambda_low, opts.cutmix_lambda_high) not in ((0.0, 0.0), (1.0, 1.0))
+
+    if opts.mixup_enabled and opts.cutmix_enabled and opts.batch_size < 4:
+        logging.error('Using mixup and cutmix together requires at least batch size 4')
+        sys.exit()
+    elif opts.mixup_enabled and opts.batch_size < 2:
+        logging.error('Using mixup requires at least batch size 2')
+        sys.exit()
+    elif opts.cutmix_enabled and opts.batch_size < 3:
+        logging.error('Using cutmix requires at least batch size 3')
         sys.exit()
 
-    if opts.mixup_alpha > 0.0 and opts.batch_size < 2:
-        logging.error('Mixup requires batch size of at least 2')
-        sys.exit()
+    if opts.compile_only and (opts.data != "generated"):
+        logging.warning(
+              "Warning: --generated-data must be set for compile only " +
+              "mode. Defaulting to using generated data. --input-files" +
+              " will be ignored for compile only mode.")
+        opts.data = "generated"
+        # Removing real data path
+        opts.imagenet_data_path = None
 
     return opts

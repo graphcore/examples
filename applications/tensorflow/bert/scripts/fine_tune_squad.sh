@@ -18,6 +18,12 @@ if [[ $1 != "base" ]]&&[[ $1 != "large" ]]; then
     exit 1
 fi
 
+if [[ $2 != "v1" ]]&&[[ $2 != "v2" ]]; then
+    echo "Expecting SQuAD version to be given."
+    echo "Specify 'v1' or 'v2'"
+    exit 1
+fi
+
 export TF_POPLAR_FLAGS="--executable_cache_path=/localdata/$USER/exec_cache"
 export POPLAR_LOG_LEVEL=INFO
 
@@ -25,13 +31,27 @@ export POPLAR_LOG_LEVEL=INFO
 LAST_PHASE2_CKPT_FILE=$(find "checkpoint/phase2/" -name "ckpt-2098*" | tail -1)
 PHASE2_CKPT_DIR=$(dirname "${LAST_PHASE2_CKPT_FILE}")
 PHASE2_CKPT_FILE="${PHASE2_CKPT_DIR}/ckpt-2098"
-WANDB_NAME="SQuAD $1 fine tuning"
+
+WANDB_NAME="SQuAD $1 fine tuning $2"
 echo "Using pretrained checkpoint: ${PHASE2_CKPT_FILE}"
 
+
 if [[ $1 == 'large' ]]; then
-	CONFIG_PATH='configs/squad_large.json'
+	if [[ $2 == 'v1' ]]; then
+		CONFIG_PATH='configs/squad_large.json'
+	elif [[ $2 == 'v2' ]]; then
+		CONFIG_PATH='configs/squad_large_V2.json'
+	else
+		exit -1
+	fi
 elif [[ $1 == 'base' ]]; then
-	CONFIG_PATH='configs/squad_base.json'
+	if [[ $2 == 'v1' ]]; then
+		CONFIG_PATH='configs/squad_base.json'
+	elif [[ $2 == 'v2' ]]; then
+		CONFIG_PATH='configs/squad_base_V2.json'
+	else
+		exit -1
+	fi
 else 
 	exit -1
 fi

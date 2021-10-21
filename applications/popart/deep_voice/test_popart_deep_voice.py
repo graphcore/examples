@@ -13,7 +13,7 @@ from deep_voice_train import create_inputs_for_training
 from deep_voice_model import PopartDeepVoice
 
 
-def get_test_conf(batch_size, replication_factor, num_ipus):
+def get_test_conf(batch_size, replication_factor, num_ipus, num_io_tiles):
     conf = Mock()
     conf.dataset = 'VCTK'
     conf.precision = np.float32
@@ -24,6 +24,7 @@ def get_test_conf(batch_size, replication_factor, num_ipus):
     conf.simulation = False
     conf.select_ipu = 'AUTO'
     conf.num_ipus = num_ipus
+    conf.num_io_tiles = num_io_tiles
     return conf
 
 
@@ -32,12 +33,11 @@ def assert_lists_equal(alist, blist):
 
 
 @pytest.mark.ipus(2)
-@pytest.mark.category1
-@pytest.mark.parametrize("batch_size,replication_factor,num_ipus", [(2, 1, 1), (4, 2, 2)])
-def test_train_graph_build(batch_size, replication_factor, num_ipus):
+@pytest.mark.parametrize("batch_size,replication_factor,num_ipus,num_io_tiles", [(2, 1, 1, 0), (4, 2, 2, 0), (8, 1, 1, 32)])
+def test_train_graph_build(batch_size, replication_factor, num_ipus, num_io_tiles):
     """ testing build for deep-voice training graph for different batch sizes and replication factors """
     builder = popart.Builder()
-    conf = get_test_conf(batch_size=batch_size, replication_factor=replication_factor, num_ipus=num_ipus)
+    conf = get_test_conf(batch_size=batch_size, replication_factor=replication_factor, num_ipus=num_ipus, num_io_tiles=num_io_tiles)
     conf = conf_utils.set_model_conf(conf, print_model_conf=False)
 
     deep_voice_model_inputs = create_inputs_for_training(builder, conf)
@@ -80,20 +80,33 @@ def test_train_graph_build(batch_size, replication_factor, num_ipus):
 
 
 @pytest.mark.ipus(2)
-@pytest.mark.category2
-@pytest.mark.parametrize("batch_size,replication_factor,num_ipus", [(2, 1, 1), (4, 2, 2)])
-def test_deep_voice_train(batch_size, replication_factor, num_ipus):
+@pytest.mark.parametrize("batch_size,replication_factor,num_ipus,num_io_tiles", [(2, 1, 1, 0), (4, 2, 2, 0), (8, 1, 1, 32)])
+@pytest.mark.ipu_version("ipu2")
+def test_deep_voice_train(batch_size, replication_factor, num_ipus, num_io_tiles):
 
     with TemporaryDirectory() as tmp_dir:
         cmd = ["python3", "deep_voice_train.py"]
         args = "--data_dir {} --model_dir {} --generated_data --num_epochs 1 " \
-               "--batch_size {} --replication_factor {} --num_ipus {}".format(tmp_dir, tmp_dir,
-                                                                              batch_size,
-                                                                              replication_factor,
-                                                                              num_ipus)
+               "--batch_size {} --replication_factor {} --num_ipus {} " \
+               "--num_io_tiles {}".format(tmp_dir, tmp_dir,
+                                          batch_size,
+                                          replication_factor,
+                                          num_ipus,
+                                          num_io_tiles,
+                                          )
         args = args.split(" ")
         cmd.extend(args)
-        output = subprocess.check_output(cmd, cwd=os.path.dirname(__file__)).decode("utf-8")
+
+        try:
+            output = subprocess.check_output(
+                cmd, cwd=os.path.dirname(__file__), stderr=subprocess.PIPE
+            ).decode("utf-8")
+        except subprocess.CalledProcessError as e:
+            print(f"TEST FAILED")
+            print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
+            print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
+            raise
+
         strings_to_match = ["Training throughput", "Queries/Sec"]
         regexes = [re.compile(s) for s in strings_to_match]
         for i, r in enumerate(regexes):

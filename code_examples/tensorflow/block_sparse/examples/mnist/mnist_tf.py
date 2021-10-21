@@ -1,6 +1,7 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 import numpy as np
+from tensorflow.python.ipu.config import IPUConfig
 from tqdm import tqdm
 from functools import partial
 import tensorflow.compat.v1 as tf
@@ -223,9 +224,9 @@ def run_model(opts):
         saver = tf.train.Saver()
 
     # Setup and acquire an IPU device:
-    config = ipu_utils.create_ipu_config()
-    config = ipu_utils.auto_select_ipus(config, 1)
-    ipu_utils.configure_ipu_system(config)
+    config = IPUConfig()
+    config.auto_select_ipus = 1
+    config.configure_ipu_system()
 
     # These allow us to retrieve the results of IPU feeds:
     if training:

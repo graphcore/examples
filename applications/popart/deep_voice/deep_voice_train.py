@@ -38,35 +38,45 @@ def _get_popart_type(np_type):
 def create_inputs_for_training(builder, conf):
     """ defines the input tensors for the deep voice model """
 
+    if conf.num_io_tiles > 0:
+        exchange_strategy = popart.ExchangeStrategy.OverlapInnerLoop
+    else:
+        exchange_strategy = popart.ExchangeStrategy.JustInTime
     inputs = dict()
 
     inputs["text_input"] = builder.addInputTensor(
-        popart.TensorInfo("INT32",
-                          [conf.samples_per_device,
-                           conf.max_text_sequence_length])
+        popart.TensorInfo("INT32", [conf.samples_per_device, conf.max_text_sequence_length]),
+        popart.InputSettings(popart.TileSet.IO, exchange_strategy),
+        "text_input"
     )
     inputs["mel_spec_input"] = builder.addInputTensor(
         popart.TensorInfo(_get_popart_type(conf.precision),
                           [conf.samples_per_device,
-                           conf.mel_bands * conf.n_frames_per_pred,
-                           conf.max_spectrogram_length])
+                          conf.mel_bands * conf.n_frames_per_pred,
+                          conf.max_spectrogram_length]),
+        popart.InputSettings(popart.TileSet.IO, exchange_strategy),
+        "mel_spec_input"
     )
 
     inputs["speaker_id"] = builder.addInputTensor(
-        popart.TensorInfo("INT32",
-                          [conf.samples_per_device, 1])
+        popart.TensorInfo("INT32", [conf.samples_per_device, 1]),
+        popart.InputSettings(popart.TileSet.IO, exchange_strategy),
+        "speaker_id"
     )
 
     inputs["mag_spec_input"] = builder.addInputTensor(
         popart.TensorInfo(_get_popart_type(conf.precision),
                           [conf.samples_per_device,
-                           (conf.n_fft//2 + 1) * conf.n_frames_per_pred,
-                           conf.max_spectrogram_length])
+                          (conf.n_fft//2 + 1) * conf.n_frames_per_pred,
+                          conf.max_spectrogram_length]),
+        popart.InputSettings(popart.TileSet.IO, exchange_strategy),
+        "mag_spec_input"
     )
 
     inputs["done_labels"] = builder.addInputTensor(
-        popart.TensorInfo("INT32",
-                          [conf.samples_per_device, 1, conf.max_spectrogram_length])
+        popart.TensorInfo("INT32", [conf.samples_per_device, 1, conf.max_spectrogram_length]),
+        popart.InputSettings(popart.TileSet.IO, exchange_strategy),
+        "done_labels"
     )
 
     return inputs

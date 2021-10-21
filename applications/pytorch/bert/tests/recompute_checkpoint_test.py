@@ -18,7 +18,7 @@ import pytest
 import json
 from transformers import BertConfig
 from modeling import PipelinedBertForPretraining
-from utils import parse_bert_args
+from args import parse_bert_args
 from ipu_options import get_options
 from optimization import get_optimizer
 from pretraining_data import get_generated_datum
@@ -45,7 +45,7 @@ def test_recompute_checkpoint_in_ir():
 
     # Execution parameters
     opts = get_options(config)
-    model = PipelinedBertForPretraining(config).half().train()
+    model = PipelinedBertForPretraining(config).parallelize().half().train()
     optimizer = get_optimizer(config, model)
     poptorch_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
 
@@ -86,7 +86,7 @@ def test_recompute_checkpoint_not_in_ir():
 
     # Execution parameters
     opts = get_options(config)
-    model = PipelinedBertForPretraining(config).half().train()
+    model = PipelinedBertForPretraining(config).parallelize().half().train()
     optimizer = get_optimizer(config, model)
     poptorch_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
 

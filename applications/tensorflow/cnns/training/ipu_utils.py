@@ -15,8 +15,13 @@
 import os
 import subprocess
 import re
-from tensorflow.python.ipu.config import IPUConfig, SchedulingAlgorithm
+from tensorflow.python.ipu.config import (
+    IPUConfig,
+    SchedulingAlgorithm,
+    DeviceConnectionType
+)
 from tensorflow.python.ipu import utils
+
 
 
 def get_ipu_arch():
@@ -52,7 +57,8 @@ def get_config(prng=False,
                min_remote_tensor_size=128,
                compile_only=False,
                nanoo=True,
-               scheduling_algorithm=SchedulingAlgorithm.CHOOSE_BEST
+               scheduling_algorithm=SchedulingAlgorithm.CHOOSE_BEST,
+               max_reduce_many_buffer_size=0
                ):
     """Builds ipu_options"""
     config = IPUConfig()
@@ -69,6 +75,8 @@ def get_config(prng=False,
     config.optimizations.minimum_remote_tensor_size = min_remote_tensor_size
     config.optimizations.maximum_cross_replica_sum_buffer_size = (
         max_cross_replica_buffer_size)
+    config.optimizations.maximum_reduce_many_buffer_size = (
+        max_reduce_many_buffer_size)
 
     if ipu_id == -1:
         config.auto_select_ipus = number_of_replicas * shards
@@ -103,6 +111,22 @@ def get_config(prng=False,
     if enable_recomputation:
         config.allow_recompute = True
 
+    if compile_only:
+        config.device_connection.version = 'ipu2'
+        config.device_connection.enable_remote_buffers = True
+        # PRE_COMPILE allows for runing execuatables on graph without being online
+        config.device_connection.type = DeviceConnectionType.PRE_COMPILE
+
+        # Enforce using a exe cache path, defaulting if it doesnt exist
+        tf_poplar_flags = os.environ.get("TF_POPLAR_FLAGS") or ''
+
+        if '--executable_cache_path' not in tf_poplar_flags:
+            print("Warning: --executable_cache_path not set. " +
+                  "Defaulting to '/tmp/tf_cache'.")
+
+            tf_poplar_flags = f"{tf_poplar_flags} --executable_cache_path=/tmp/tf_cache"
+            os.environ["TF_POPLAR_FLAGS"] = tf_poplar_flags
+
     config.floating_point_behaviour.inv = fp_exceptions
     config.floating_point_behaviour.div0 = fp_exceptions
     config.floating_point_behaviour.oflo = fp_exceptions
@@ -111,10 +135,5 @@ def get_config(prng=False,
 
     config.norms.experimental.distributed_batch_norm_replica_group_size = (
         number_of_distributed_batch_norm_replicas)
-
-    if compile_only:
-        config.device_connection.version = 'ipu2'
-        config.device_connection.enable_remote_buffers = True
-        config.device_connection.type = utils.DeviceConnectionType.NEVER
 
     return config

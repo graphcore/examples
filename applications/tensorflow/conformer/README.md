@@ -88,5 +88,5 @@ This application leverages the Kaldi-ASR framework and ESPNet.
 
 Kaldi-ASR is licensed under Apache 2.0: https://github.com/kaldi-asr/kaldi/blob/master/COPYING
 
-ESPNet is also licensed under Apache 2.0: https://github.com/espnet/espnet/blob/master/LICENSE
+ESPNet is also licensed under Apache 2.0: https://github.com/espnet/espnet/blob/v.0.10.0/LICENSE
 

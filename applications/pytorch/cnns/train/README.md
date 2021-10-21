@@ -9,7 +9,6 @@ Image Classification Training Example using PyTorch
 * `README.md` This file.
 * `lr_schedule.py` Collection of learning rate schedulers.
 * `train_utils.py` Collection of functions which parse the training configuration.
-* `test_train.py` Test cases for training.
 * `weight_avg.py` Create a weight averaged model from checkpints.
 * `configs.yml` Contains the common train configurations.
 
@@ -42,15 +41,17 @@ The ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 100
 ### Training examples
 
 NOTE: It is suggested to generate the webdataset format of the ImageNet dataset to avoid host side bottlenecks.
-The following training configurations using 16 IPUs.
 
 #### ImageNet
 
 |IPU configuration|Model  | Config name| Note |
 |-------|----------|---------|---------|
-|Mk2 POD16|ResNet50| `resnet50_mk2_pipelined`| 4 pipipeline stages, 4 replicas |
-|Mk2 POD16|ResNet50| `resnet50-16ipu-mk2-recompute`| single ipu, 16 replicas |
-|Mk2 POD16|EfficientNet-B0| `efficientnet-b0-16ipu-mk2`|4 pipipeline stages, 4 replicas |
+|Mk2 IPU-POD16|ResNet50| `resnet50_mk2`| single IPU, 16 replicas |
+|Mk2 IPU-POD64|ResNet50| `resnet50_mk2_pod64`| single IPU, 64 replicas |
+|Mk2 IPU-POD16|EfficientNet-B0 (Group Norm, Group Conv)| `efficientnet-b0-g16-gn-16ipu-mk2`| 2 IPUs, 8 replicas |
+|Mk2 IPU-POD16|EfficientNet-B4 (Group Norm, Group Conv)| `efficientnet-b4-g16-gn-16ipu-mk2`| 4 IPUs, 4 replicas |
+|Mk2 IPU-POD4|MobileNet v3 small | `mobilenet-v3-small-pod4`| single IPU, 4 replicas |
+|Mk2 IPU-POD16|MobileNet v3 large | `mobilenet-v3-large-pod16`| single IPU, 16 replicas |
 
 
 ```console
@@ -95,9 +96,9 @@ The program has a few command line options:
 
 `--norm-type`                   Select the used normlayer from the following list: `batch`, `group`, `none`
 
-`--norm-num-groups`             If group normalization is used, the number of groups can be set here
+`--norm-eps`                    Set normalization layers epsilon
 
-`--full-precision-norm`         Calculate the norm layers in full precision.
+`--norm-num-groups`             If group normalization is used, the number of groups can be set here
 
 `--enable-fast-groupnorm`       There are two implementations of the group norm layer. If the fast implementation enabled, it couldn't load checkpoints, which didn't train with this flag. The default implementation can use any checkpoint.
 
@@ -175,6 +176,21 @@ The program has a few command line options:
 
 `--model-cache-path`            If path is given the compiled model is cached to the provided folder.
 
+`--mixup-alpha`                 The first shape parameter of the beta distribution used to sample mixup coefficients. The second shape parameter is the same as the first one. Value of 0.0 means mixup is disabled.
+
+`--cutmix-lambda-low`           Lower bound for the cutmix lambda coefficient (lambda is sampled uniformly from [low, high)). If both bounds are set to 0.0 or 1.0, cutmix is disabled. If both bounds are equal, lambda always equals that value.
+
+`--cutmix-lambda-high`          Higher bound for the cutmix lambda coefficient (lambda is sampled uniformly from [low, high)). If both bounds are set to 0.0 or 1.0, cutmix is disabled. If both bounds are equal, lambda always equals that value.
+
+`--cutmix-disable-prob`         Probability that cutmix is disabled for a particular batch.
+
+`--webdataset-memory-cache-ratio` Determines the portion of the webdataset, which is cached in memory.
+
+`--input-image-padding`        Pad input images to be 4 channel images. This could speed up the model.
+
+`--exchange-memory-target`     Exchange memory optimisation target: balanced/cycles/memory. In case of cycles it uses more memory, but runs faster.
+
+
 ### How to use the checkpoints
 
 A given checkpoint file can be used to restore the training and continue from there, with the following command:
@@ -198,7 +214,7 @@ Weight average is available with the following command:
 If the provided path is a file: The validation accuracy is calculated for the given file.
 If the path is a folder, then the validation accuracy is calculated for every single checkpoint in the folder.
 
-### How to use poprun to make train distributed
+### How to use poprun to make training distributed
 
 ```
 poprun --num-instances=<number of instances> --numa-aware=yes --num-replicas=<Total number of repicas> ...
@@ -209,14 +225,21 @@ poprun --num-instances=<number of instances> --numa-aware=yes --num-replicas=<To
 These settings use poprun, to provide the maximal throughput.
 The following scripts support the previously defined arguments too.
 
-ResNet50 POD16 reference
+ResNet50 IPU-POD16 reference
 
 ```
 ./rn50_pod16.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet> 
 ```
 
-ResNet50 POD64 reference
+ResNet50 IPU-POD64 reference
 
 ```
 ./rn50_pod64.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet> 
+```
+
+In case the script is unable to select the right partition or VIPU server, you can set them by running the following lines.
+
+```
+export VIPU_SERVER=<vipu server IP address>
+export PARTITION=<name of the selected partition>
 ```

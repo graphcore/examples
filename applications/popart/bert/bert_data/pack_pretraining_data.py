@@ -24,7 +24,7 @@ from itertools import repeat, chain
 from functools import lru_cache, reduce
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
-from .pretraining_dataset import CachedDataLoader, packed_data_file_format
+from .pretraining_dataset import BinaryDataLoader, data_file_format
 
 
 @lru_cache(maxsize=None)
@@ -45,20 +45,20 @@ def get_packing_strategies(start_length, minimum_increment, target_length, depth
 
     Parameters
     ----------
-    start_length : int
+    start_length:int
       The current cumulative number of tokens in the pack.
       Typically initalized to 0.
-    minimum_increment : int
+    minimum_increment:int
       The minimum length of the next sequence can be added to the pack.
       Typically initialized to 1.
-    target_length : int
+    target_length:int
       The target_length for a pack of sequences (e.g. 512).
-    depth : int
+    depth:int
       Remaining depth in the recursion (must be > 0).
 
     Returns
     -------
-    strategies : list[list[int]]
+    strategies:list[list[int]]
       A list of strategies where each strategy is a list of integers
       representing sequence lengths of the components in the pack. Each
       strategy should have at most "depth" entries and sum up to "target_length".
@@ -100,14 +100,14 @@ def get_packing_matrix(strategy_set, max_sequence_length):
 
     Parameters
     ----------
-    strategy_set : list[list[int]]
+    strategy_set:list[list[int]]
         A list of unique strategies as returned by get_packing_strategies.
-    max_sequence_length : int
+    max_sequence_length:int
         The target or maximum sequence length of the packing problem.
 
     Returns
     -------
-    A : np.array of shape [max_sequence_length, len(strategy_set)]
+    A:np.array of shape [max_sequence_length, len(strategy_set)]
         The packing matrix for the provided strategy set.
     """
     num_strategies = len(strategy_set)
@@ -129,27 +129,27 @@ def get_packing_recipe(args, sequence_lengths):
 
     Parameters
     ----------
-    args : namedtuple containing the following attributes
-        max_sequence_length : int
+    args:namedtuple containing the following attributes
+        max_sequence_length:int
             The maximum sequence length to which the sequences will be packed. Used to generate the
             appropriate packing strategies.
-        max_sequences_per_pack : int
+        max_sequences_per_pack:int
             The maximum number of sequences that can ever be put into a pack. Used to generate the
             appropriate packing strategies.
-        drop_unpacked_remainder : bool
+        drop_unpacked_remainder:bool
             Whether to drop the sequences that could not be packed (usually a very small percentage)
             If false, then the unpacked sequences will be padded instead.
-    sequence_lengths : list[int]
+    sequence_lengths:list[int]
         A list containing the sequence length of each example in the un-packed dataset.
     Returns
     -------
-    strategy_set : list[list[int]]
+    strategy_set:list[list[int]]
         The list of unique packing strategies with which the packing problem
         was solved.
-    mixture : list[int] pf shape [len(strategy_set)]
+    mixture:list[int] pf shape [len(strategy_set)]
         States how many times each of the strategies from the strategy set
         should be repeated to cover the entire dataset.
-    padding : list[int] pf shape [max_sequence_length]
+    padding:list[int] pf shape [max_sequence_length]
         For each sequence length how many padding sequence of that length
         need to be created to realize the packing mixture.
     """
@@ -250,131 +250,99 @@ def get_packing_recipe(args, sequence_lengths):
     return strategy_set, mixture, padding
 
 
-def get_example_slicing(strategy_set, mixture, max_sequence_length):
-    """
-    Slice the bins of examples such that the strategies can be filled
-    and written to disk in parallel. In essence this calculates of a
-    cumulative sum of how many sequences of a given length are used by
-    strategies that occur earlier in the strategy_set
-
-    Returns
-    -------
-    slicing : np.array of shape [num_strategies, max_sequence_length]
-        Provides the starting index for slicing a particular sequence length
-        to fill a given strategy.
-    """
-    A = get_packing_matrix(strategy_set, max_sequence_length)
-
-    # The first strategy should start its slice at 0, and all
-    # other strategies should start at the cumulative sum of
-    # sequences used up strategies which come earlier in the
-    # strategy set
-    slicing = np.zeros_like(A)
-    slicing[:, 1:] = np.cumsum(A * mixture, axis=1)[:, :-1]
-    slicing = slicing.T  # transposing [max_sequence_length, num_strategies]
-    return slicing
-
-
-def slice_examples(examples_by_length, slicing, strategy_set, mixture):
-    """Divide the examples between strategies to enable parallel processing.
+def slice_examples(examples_by_length, strategy_set, mixture):
+    """Divide the examples between strategies in order to (partially) fulfill the mixture
 
     Parameters
     ----------
-    examples_by_length : dict
+    examples_by_length:dict
         A dictionary mapping from sequence_length to the bin of examples of that
         sequence length.
-    slicing : np.array
-        The slicing information obtained using get_example_slicing
-    strategy_set : list[list[int]]
+    strategy_set:list[list[int]]
         The list of unique packing strategies with which the packing problem
         was solved.
-    mixture : list[int] pf shape [len(strategy_set)]
+    mixture:list[int] pf shape [len(strategy_set)]
         States how many times each of the strategies from the strategy set
-        should be repeated to cover the entire dataset.
+        should still be repeated to cover the entire dataset.
 
     Returns
     -------
-    example_slices : list[multi_sequence]
+    example_slices:list[multi_sequence]
         Each component of the list is a list of multiple sequences i.e. specifically sequences which
         are to be combined together to form a pack according to a strategy.
-    strategies : list[int]
+    strategies:list[int]
         A list containing the strategy for each slice i.e. strategy will appear multiple times if it the
         work to fill the strategy has been split into multiple parts. The repetition of strategies is
         the main difference with strategy_set, which is unique.
-    part_idx : int
-        Used to ensure uniqueness of output filenames i.e. if a strategy contains many examples
-        the work is split into multiple parts and processed in parallel. Each process receives a
-        different part_idx such that they write to different files.
+    new_mixture:list[int] pf shape [len(strategy_set)]
+        States how many times each of the strategies from the strategy set
+        should still be repeated to cover the entire dataset.
     """
 
-    chunk_limit = 50000
+    total_packs_to_be_written = 0
     example_slices = []
     strategies = []
-    part_idx = []
-    for strategy, slice_offsets, repeat_count in zip(strategy_set, slicing, mixture):
-        if repeat_count == 0:
+    for i, (strategy, target_repeat_count) in enumerate(zip(strategy_set, mixture)):
+        # Determine how much of the mixture can be fulfilled given the (partial)
+        # examples by length
+        feasible_repeat_count = target_repeat_count
+        for k in set(strategy):
+            feasible_repeat_count = min(feasible_repeat_count, len(examples_by_length[k])//strategy.count(k))
+
+        # IF nothing to do
+        if feasible_repeat_count == 0:
             continue
-        # Slice out the sequences allocated to this strategy in increments of 50k
-        num_parts = repeat_count // chunk_limit
-        num_parts = num_parts + int(repeat_count != num_parts * chunk_limit)
-        subcounts = (min(chunk_limit, repeat_count - chunk_limit * (i - 1)) for i in range(1, num_parts + 1))
-        for part_id, part_count in enumerate(subcounts):
-            examples = []
-            for k, seq_len in enumerate(strategy):
-                slice_start = int(slice_offsets[seq_len - 1])
-                slice_end = slice_start + int(part_count)
-                slice_offsets[seq_len - 1] = slice_end
-                examples.append(examples_by_length[seq_len][slice_start:slice_end])
 
-            example_slices.append(examples)
-            strategies.append(strategy)
-            part_idx.append(part_id)
+        examples = []
+        for k, seq_len in enumerate(strategy):
+            examples.append(examples_by_length[seq_len][-feasible_repeat_count:])
+            del examples_by_length[seq_len][-feasible_repeat_count:]
+        example_slices.append(examples)
+        strategies.append(strategy)
+        total_packs_to_be_written += feasible_repeat_count
+        mixture[i] -= feasible_repeat_count
 
-    return example_slices, strategies, part_idx
+    print(f"Currently loaded examples suffice for writing {total_packs_to_be_written} packs.")
+    return example_slices, strategies, mixture
 
 
-def parallel_pack_according_to_strategy(args, part_idx, strategy, example_slices):
+def pack_according_to_strategy(args, file_handle, strategy, example_slices):
     """Pack "examples" according to "strategy" and write them to disk
 
     Parameters
     ----------
-    args : namedtuple containing the following attributes
-        output_dir : str
+    args:namedtuple containing the following attributes
+        output_dir:str
             The destination folder to which examples will be written. This
             directory should already exist.
-        mlm_tokens : int
+        mlm_tokens:int
             The maximum number of masked lm predictions in each unpacked sequence.
-        max_sequence_length : int
+        max_sequence_length:int
             The maximum sequence length to which the sequences will be packed. Used to generate the
             appropriate packing strategies.
-        max_sequences_per_pack : int
+        max_sequences_per_pack:int
             The maximum number of sequences that can ever be put into a pack. Used to generate the
             appropriate packing strategies.
-    part_idx : int
-        Used to ensure uniqueness of output filenames i.e. if a strategy contains many examples
-        the work is split into multiple parts and processed in parallel. Each process receives a
-        different part_idx such that they write to different files.
-    strategy : list[int]
+    file_handle:File
+        Handle to a file open for binary writing.
+    strategy:list[int]
         A strategy is a list of integers representing the sequence lengths of the components
         in the pack.
-    example_slices : list[multi_sequence]
+    example_slices:list[multi_sequence]
         Each component of the list is a list of multiple sequences i.e. specifically sequences which
         are to be combined together to form a pack according to the provided strategy.
 
     Returns
     -------
-    This function does not return anything, instead it writes its output directly to a file. This
-    facilities packing different strategies in parallel.
+    This function does not return anything, instead it writes its output directly to the file.
     """
-    base_filename = os.path.join(args.output_dir, "strategy_" + "_".join(map(str, strategy)))
-    filename = base_filename + f"_part_{part_idx}"
     lines = []
-    for i, multi_sequence in enumerate(zip(*example_slices)):
-        lines.append(create_multi_sequence_example(multi_sequence, args.mlm_tokens,
-                                                   args.max_sequence_length, args.max_sequences_per_pack))
-    # Write to file
-    with open(filename, "wb") as f:
-        f.writelines(lines)
+    with ProcessPoolExecutor(12) as executor:
+        work = zip(*example_slices), repeat(args.mlm_tokens), repeat(args.max_sequence_length), repeat(args.max_sequences_per_pack)
+        for line, is_usable in executor.map(create_multi_sequence_example, *work, chunksize=100000):
+            if is_usable:
+                lines.append(line)
+    file_handle.writelines(lines)
 
 
 def create_multi_sequence_example(multi_sequence, mlm_tokens, max_sequence_length, max_sequences_per_pack):
@@ -382,21 +350,21 @@ def create_multi_sequence_example(multi_sequence, mlm_tokens, max_sequence_lengt
 
     Parameters
     ----------
-    multi_sequence : list of sequences, each sequence is a tuple of numpy arrays
+    multi_sequence:list of sequences, each sequence is a tuple of numpy arrays
         The incoming sequences are also in the "packed" pretraining data format,
         contain just 1 sequence per pack. Entries which are "None" represent
         padding sequences.
-    mlm_tokens : int
+    mlm_tokens:int
         The maximum number of masked lm predictions in each unpacked sequence.
-    max_sequence_length : int
+    max_sequence_length:int
         The sequence length to which sequence in the multi_sequence will be packed.
-    max_sequence_per_pack : int
+    max_sequence_per_pack:int
         This value must be the same for all packs in the dataset as it determines the
         data format. Represents the maximum number of sequences that a pack may contain.
 
     Returns
     -------
-    line : binary str
+    line:binary str
         The binary representation of the packed sequences, ready to be written to a file.
     """
     # SEQ
@@ -411,64 +379,80 @@ def create_multi_sequence_example(multi_sequence, mlm_tokens, max_sequence_lengt
     # e.g in a pack of sequence lengths [ 17  37 458], 15% represents [2.55 5.55 68.7] which is
     # then rounded to  [3 6 69] or 78 tokens in total. This is equivalent to
     # (mlm_tokens + max_sequences_per_pack - 1 = 76 + 3 - 1).
-    # The "-1" term is omitted in implementation to provide a small margin for other effects.
-    packed_masked_lm_positions = np.zeros(mlm_tokens + max_sequences_per_pack, dtype=np.int32)
-    packed_masked_lm_ids = np.zeros(mlm_tokens + max_sequences_per_pack, dtype=np.int32)
-    packed_masked_lm_weights = np.zeros(mlm_tokens + max_sequences_per_pack, dtype=np.int32)
+    packed_masked_lm_ids = np.zeros(mlm_tokens + max_sequences_per_pack - 1, dtype=np.int32)
+    packed_masked_lm_weights = np.zeros(mlm_tokens + max_sequences_per_pack - 1, dtype=np.int32)
 
     # NSP
-    packed_next_sentence_positions = np.zeros(max_sequences_per_pack, dtype=np.int32)
     packed_next_sentence_labels = np.zeros(max_sequences_per_pack, dtype=np.int32)
     packed_next_sentence_weights = np.zeros(max_sequences_per_pack, dtype=np.int32)
 
-    offset = 0
+    # Determine the total number of MLM tokens in all sequences to be packed
+    # this is used as an offset of where to start writing the non-MLM tokens
+    seq_offset = 0
+    for sequence in multi_sequence:
+        # Padding sequences are denoted with None
+        if sequence is not None:
+            mask_tokens_mask_idx = sequence[3]
+            seq_offset += int(mask_tokens_mask_idx)
+
+    # Very rarely, (1/10M) it can occur that a multi-sequence has more than the allowed
+    # number of cumulative mlm_tokens, such multi-sequences are thrown away
+    if seq_offset > (mlm_tokens + max_sequences_per_pack - 1):
+        return b"", False
+
+
+    # Where to write the next MLM token
     mlm_offset = 0
     sequence_index = 1  # used in the input mask
     for sequence in multi_sequence:
         # Padding sequences are denoted with None
         if sequence is not None:
-            input_ids, input_mask, segment_ids, positions, *sequence = sequence
-            masked_lm_positions, masked_lm_ids, masked_lm_weights, *sequence = sequence
-            next_sentence_positions, next_sentence_labels, next_sentence_weights = sequence
-            seq_len = input_mask.sum()
+            input_ids, positions, segment_ids, mask_tokens_mask_idx, *sequence = sequence
+            sequence_mask_idx, mask_labels, nsp_labels = sequence
+            real_tokens = input_ids != 0
+            seq_len = real_tokens.sum()
+            sequence_mask_idx = int(sequence_mask_idx)
+            mask_tokens_mask_idx = int(mask_tokens_mask_idx)
 
             # SEQ
-            packed_input_ids[offset:offset + seq_len] = input_ids[:seq_len]
-            packed_input_mask[offset:offset + seq_len] = sequence_index
-            packed_segment_ids[offset:offset + seq_len] = segment_ids[:seq_len]
-            packed_positions[offset:offset + seq_len] = np.arange(0, seq_len)
+            # this writes all the normal sequence tokens
+            # we also do not write the NSP token or the MLM tokens
+            num_seq_tokens = seq_len - mask_tokens_mask_idx - 1  # the number of tokens written in this step
+            packed_input_ids[seq_offset:seq_offset + num_seq_tokens] = input_ids[real_tokens][mask_tokens_mask_idx+1:]
+            packed_input_mask[seq_offset:seq_offset + num_seq_tokens] = sequence_index
+            packed_segment_ids[seq_offset:seq_offset + num_seq_tokens] = segment_ids[real_tokens][mask_tokens_mask_idx+1:]
+            packed_positions[seq_offset:seq_offset + num_seq_tokens] = positions[real_tokens][mask_tokens_mask_idx+1:]
 
             # MLM
-            mlm_len = int(masked_lm_weights.sum())
-            assert mlm_offset + mlm_len < mlm_tokens + max_sequences_per_pack, "Too many LM predictions per sequences"
-            max_mlm = mlm_offset + mlm_len
-            packed_masked_lm_positions[mlm_offset:max_mlm] = offset + masked_lm_positions[:mlm_len]
-            packed_masked_lm_ids[mlm_offset:max_mlm] = masked_lm_ids[:mlm_len]
+            # the MLM tokens are re-arranged to the front
+            max_mlm = mlm_offset + mask_tokens_mask_idx
+            packed_input_ids[mlm_offset:max_mlm] = input_ids[real_tokens][:mask_tokens_mask_idx]
+            packed_positions[mlm_offset:max_mlm] = positions[real_tokens][:mask_tokens_mask_idx]
+            packed_input_mask[mlm_offset:max_mlm] = sequence_index
+            packed_segment_ids[mlm_offset:max_mlm] = segment_ids[real_tokens][:mask_tokens_mask_idx]
+            packed_masked_lm_ids[mlm_offset:max_mlm] = mask_labels[:mask_tokens_mask_idx]
             packed_masked_lm_weights[mlm_offset:max_mlm] = sequence_index
 
             # NSP
-            packed_next_sentence_positions[sequence_index - 1] = offset
-            packed_next_sentence_labels[sequence_index - 1] = next_sentence_labels
-            packed_next_sentence_weights[sequence_index - 1] = 1
+            # the NSP tokens are packed at the end of the sequence to enable slicing
+            packed_input_ids[-sequence_index] = input_ids[real_tokens][mask_tokens_mask_idx]
+            packed_positions[-sequence_index] = positions[real_tokens][mask_tokens_mask_idx]
+            packed_input_mask[-sequence_index] = sequence_index
+            packed_segment_ids[-sequence_index] = segment_ids[real_tokens][mask_tokens_mask_idx]
+            packed_next_sentence_labels[-sequence_index] = nsp_labels
+            packed_next_sentence_weights[-sequence_index] = 1
 
             # Update offsets
             sequence_index += 1
-            offset += seq_len
+            seq_offset += num_seq_tokens
             mlm_offset = max_mlm
 
     # Pack into binary format and write it
-    line = reduce(lambda accl, i: accl + struct.pack('<I', i),
-                  chain(packed_input_ids,
-                        packed_input_mask,
-                        packed_segment_ids,
-                        packed_positions,
-                        packed_masked_lm_positions,
-                        packed_masked_lm_ids,
-                        packed_masked_lm_weights,
-                        packed_next_sentence_positions,
-                        packed_next_sentence_labels,
-                        packed_next_sentence_weights), b'')
-    return line
+    to_write = chain(packed_input_ids, packed_input_mask, packed_segment_ids, packed_positions,
+                     packed_masked_lm_ids, packed_masked_lm_weights,
+                     packed_next_sentence_labels, packed_next_sentence_weights)
+    line = reduce(lambda accl, i: accl + struct.pack('<I', i), to_write, b'')
+    return line, any([seq is not None for seq in multi_sequence])
 
 
 if __name__ == "__main__":
@@ -483,59 +467,77 @@ if __name__ == "__main__":
     parser.add_argument("--max-sequence-length", help="The maximum number of tokens in an example", default=512, type=int)
     parser.add_argument("--mlm-tokens", help="The maximum number of masked tokens in an un-packed example", default=76, type=int)
     parser.add_argument("--max-sequences-per-pack", help="The maximum number of sequences per packed example.", choices=[2, 3], default=3, type=int)
+    parser.add_argument("--load-batch-size", help="The number of sequences to load at a time, set it to 1 to avoid"
+                        " dropping any sequences when loading the dataset (for eval)", default=1000, type=int)
     args = parser.parse_args()
+    random.seed(args.random_seed)
 
     # Input files
     input_files = glob.glob(args.input_glob)
     assert len(input_files) > 0
 
     # Load un-packed dataset (1 sequence per pack)
-    load_batch_size = 1024
-    sample_sizes = packed_data_file_format(args.max_sequence_length, args.mlm_tokens, 1)
-    dataset = CachedDataLoader(input_files, sample_sizes, duplication_factor=args.unpacked_dataset_duplication_factor, batch_size=load_batch_size)
+    sample_sizes = data_file_format(args.max_sequence_length, args.mlm_tokens)
+    dataset = BinaryDataLoader(input_files, sample_sizes, duplication_factor=args.unpacked_dataset_duplication_factor, batch_size=args.load_batch_size, shuffle=False)
 
     # Put examples into bins depending on their sequence lengths and extract the sequence length
-    # as an array
-    sequence_lengths = []
-    examples_by_length = defaultdict(list)
+    # as an array.
+    # Each duplication is treated as a separate
+    sequence_lengths = defaultdict(list)
     print("Looping through dataset to collect sequence length information...")
-    for data in dataset:
-        input_mask = data[1]
-        batch_of_lengths = input_mask.sum(1).tolist()
-        for i, length in enumerate(batch_of_lengths):
-            examples_by_length[length].append([d[i] for d in data])
-        sequence_lengths.extend(batch_of_lengths)
-    sequence_lengths = np.array(sequence_lengths)
-    assert len(sequence_lengths) > 1
+    start = time.time()
+    for duplication in range(args.unpacked_dataset_duplication_factor):
+        for data in dataset:
+            real_tokens = (data[0] != 0).sum(1).tolist()
+            sequence_lengths[duplication].extend(real_tokens)
 
-    # Run the packing algorithm on these sequence lengths
-    strategy_set, mixture, padding = get_packing_recipe(args, sequence_lengths)
+    del dataset
 
-    # Add the required number of padding (i.e. empty) sequences
-    # The padding is added explicitly to enable parallel processing
-    # while make sure that the probability of a padding sequence occuring
-    # is equal across all strategies
-    for i in range(1, args.max_sequence_length + 1):
-        examples_by_length[i].extend([None] * int(padding[i - 1]))
-    # Shuffle the data to fairly redistribute the padding among all
-    # strategies that will slice the data
-    random.seed(args.random_seed)
-    for key in examples_by_length:
-        random.shuffle(examples_by_length[key])
+    print(f"Done looping through dataset. Took {time.time() - start:3.3f} seconds to read {len(sequence_lengths)} sequences")
 
+    # To handle large datasets, the number of examples being read into RAM at any given time
+    # should be limited.
+    dataset = BinaryDataLoader(input_files, sample_sizes, duplication_factor=args.unpacked_dataset_duplication_factor, batch_size=args.load_batch_size, shuffle=False)
+
+    # Use the strategy_set and mixture to pack the dataset
     print(f"\nPacking and writing packed dataset to {args.output_dir}.")
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
-    # Slice the data into chunks of max 50k packed examples
-    slicing = get_example_slicing(strategy_set, mixture, args.max_sequence_length)
-    example_slices, strategies, part_idx = slice_examples(examples_by_length, slicing, strategy_set, mixture)
-    print(f"Splitting work into {len(part_idx)} parts.")
+    for duplication_idx in range(args.unpacked_dataset_duplication_factor):
+        print(f"Processing duplication  {duplication_idx}")
+        start = time.time()
 
-    # Parallel packing and write of examples to disk
-    start = time.time()
-    with ProcessPoolExecutor() as executor:
-        work = repeat(args), part_idx, strategies, example_slices
-        for partial_result in executor.map(parallel_pack_according_to_strategy, *work):
-            pass
-    print(f"\nDone. Took: {time.time() - start:3.2f} seconds to pack and write dataset.")
+        # Convert seq len info to np array
+        READ_MAX = min(9e6, len(sequence_lengths[duplication_idx])//args.unpacked_dataset_duplication_factor)
+        sequence_lengths[duplication_idx] = np.array(sequence_lengths[duplication_idx])
+        assert len(sequence_lengths[duplication_idx]) > 1
+        assert max(sequence_lengths[duplication_idx]) <= args.max_sequence_length
+
+        # Run the packing algorithm on these sequence lengths
+        strategy_set, mixture, padding = get_packing_recipe(args, sequence_lengths[duplication_idx])
+
+        # File to write dataset to (binary format)
+        examples_by_length = defaultdict(list)
+        print("Adding padding sequence to pack the remainder of sequences.")
+        for i in range(1, args.max_sequence_length + 1):
+            examples_by_length[i].extend([None] * int(padding[i - 1]))
+
+        filename = os.path.join(args.output_dir, f"duplication_{duplication_idx}")
+        with open(filename, "wb") as f:
+            # Each loop through the dataset is a different duplication
+            for data in dataset:
+                real_tokens = (data[0] != 0).sum(1).tolist()
+                for i, length in enumerate(real_tokens):
+                    examples_by_length[length].append([d[i] for d in data])
+
+                if sum([len(v) for k, v in examples_by_length.items()]) >= READ_MAX:
+                    # Shuffle the data
+                    for key in examples_by_length:
+                        random.shuffle(examples_by_length[key])
+                    example_slices, strategies, mixture = slice_examples(examples_by_length, strategy_set, mixture)
+                    for s, e in zip(strategies, example_slices):
+                        pack_according_to_strategy(args, f, s, e)
+
+        print(f"Packing duplication {duplication_idx} took: {time.time() - start:3.2f} seconds.",
+              f"{mixture.sum()} packs left to fill.\n")

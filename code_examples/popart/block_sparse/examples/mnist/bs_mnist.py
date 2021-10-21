@@ -87,7 +87,7 @@ class MNIST_model(object):
                                        "sparsity_mask": sparsity_mask.tolist(),
                                        "bsmatmul_type": sparse_mm_type,
                                        "transpose_rhs": transpose_rhs,
-                                       "memory_cycle_ratio": opts.memory_cycle_ratio,
+                                       "memory_cycle_ratio": 0.2,
                                        "in_type": self.data_type,
                                        "out_type": self.data_type,
                                        "pp_type": self.data_type
@@ -123,7 +123,7 @@ class MNIST_model(object):
                                        "sparsity_mask": sparsity_mask2.tolist(),
                                        "bsmatmul_type": sparse_mm_type,
                                        "transpose_rhs": transpose_rhs2,
-                                       "memory_cycle_ratio": opts.memory_cycle_ratio,
+                                       "memory_cycle_ratio": 0.2,
                                        "in_type": self.data_type,
                                        "out_type": self.data_type,
                                        "pp_type": self.data_type
@@ -326,8 +326,6 @@ if __name__ == "__main__":
                         help = 'The number of neurons in the hidden layer')
     parser.add_argument('--sparsity-level', type = float, default = 0.2,
                         help = 'The level of sparsity (0 = fully dense, 1 = fully sparse)')
-    parser.add_argument('--memory-cycle-ratio', type = float, default = 0.0,
-                        help='Memory cycle ratio to use in partitioning algorithm')
     parser.add_argument('data_folder', type = str,
                         help = 'Path to mnist data')
     opts = parser.parse_args()

@@ -13,3 +13,4 @@ pytest-pythonpath==0.7.3
 pytest-xdist==2.1.0
 pyyaml==5.4
 filelock==3.0.12
+numba

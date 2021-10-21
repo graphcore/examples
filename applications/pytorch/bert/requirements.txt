@@ -1,9 +1,9 @@
-transformers==4.7.0
+transformers==4.10.2
 datasets>=1.7.0
 tokenizers>=0.10.3
 scipy>=1.5.4
 pyyaml>=5.4.1
-wandb==0.9.7 # Sync Issue with more recent versions
+wandb==0.12.1
 pytest>=6.2.4
 pytest-pythonpath>=0.7.3
 tfrecord>=1.13

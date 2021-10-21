@@ -45,9 +45,6 @@ def pytest_collection_modifyitems(config, items):
         if "requires_remote_buffers" in item.keywords and not remote_buffers_available():
             item.add_marker(pytest.mark.skip(
                 reason="Requires remote buffers to be enabled on this system."))
-        if "PHASED" in item.name:
-            item.add_marker(pytest.mark.skip(
-                reason="Skipping phased execution tests."))
 
 
 def pytest_addoption(parser):

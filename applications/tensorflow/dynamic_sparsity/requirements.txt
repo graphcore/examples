@@ -10,4 +10,4 @@ scipy
 tensorboard
 jax
 jaxlib
-wandb==0.9.7
+wandb==0.12.1

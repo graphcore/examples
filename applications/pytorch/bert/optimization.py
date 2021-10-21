@@ -40,19 +40,18 @@ def get_lr_scheduler(optimizer,
 def get_optimizer(config, model):
 
     # Do not apply weight_decay for one-dimensional parameters
-    regularized_params = []
-    non_regularized_params = []
-    for param in model.parameters():
+    # Additionally, do not apply LAMB update for biases
+    params = [{"params": [], "weight_decay": 0, "max_weight_norm": 0},
+              {"params": [], "weight_decay": 0},
+              {"params": [], "weight_decay": config.weight_decay}]
+    for name, param in model.named_parameters():
         if param.requires_grad:
-            if len(param.shape) == 1:
-                non_regularized_params.append(param)
+            if "bias" in name:
+                params[0]["params"].append(param)
+            elif len(param.shape) == 1:
+                params[1]["params"].append(param)
             else:
-                regularized_params.append(param)
-
-    params = [
-        {"params": regularized_params, "weight_decay": config.weight_decay},
-        {"params": non_regularized_params, "weight_decay": 0}
-    ]
+                params[2]["params"].append(param)
 
     first_order_type = float16 if config.enable_half_first_order_momentum else float32
 
@@ -66,7 +65,7 @@ def get_optimizer(config, model):
                           accum_type=float16,
                           first_order_momentum_accum_type=first_order_type,
                           second_order_momentum_accum_type=float32)
-    elif config.optimizer == "LAMBNoBiasCorrection":
+    elif config.optimizer in ("LAMBNoBiasCorrection", "LAMB"):
         optimizer = LAMB(params,
                          lr=config.learning_rate,
                          weight_decay=0,
@@ -76,20 +75,12 @@ def get_optimizer(config, model):
                          accum_type=float16,
                          first_order_momentum_accum_type=first_order_type,
                          second_order_momentum_accum_type=float32,
-                         bias_correction=False)
-    elif config.optimizer == "LAMB":
-        optimizer = LAMB(params,
-                         lr=config.learning_rate,
-                         weight_decay=0,
-                         eps=1e-6,
-                         loss_scaling=config.loss_scaling,
-                         max_weight_norm=None,
-                         accum_type=float16,
-                         first_order_momentum_accum_type=first_order_type,
-                         second_order_momentum_accum_type=float32,
-                         bias_correction=True)
+                         bias_correction=config.optimizer == "LAMB")
+        optimizer.variable_attrs.markAsConstant("max_weight_norm")
     else:
         raise ValueError("Unknown Optimizer:", config.optimizer)
+
+    optimizer.variable_attrs.markAsConstant("weight_decay")
 
     # Make optimizers distributed
     if config.use_popdist:

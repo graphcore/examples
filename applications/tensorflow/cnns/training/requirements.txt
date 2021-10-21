@@ -2,7 +2,7 @@ portpicker==1.3.1
 pytest==5.4.1
 pytest-pythonpath==0.7.3
 pyyaml>=5.4.1
-wandb==0.9.7
+wandb==0.12.1
 pandas>=1.1.4
 -e git+https://github.com/mlcommons/logging.git#egg=mlperf-logging
 scipy

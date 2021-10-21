@@ -95,6 +95,8 @@ def get_weights(save_dir: Path, model_name: str, dtype: str) -> str:
             InceptionV3(weights='imagenet')
             saver = tf.train.Saver()
         elif model_name in ("googlenet", "inceptionv1"):
+            # This download can cause issues on the CI, as it needs to create ~/.keras directory
+            # One way to solve that is to copy ~/.keras on the CI
             tar_file = get_file(fname='inceptionv1_tar.gz',
                                 origin='http://download.tensorflow.org/models/inception_v1_2016_08_28.tar.gz')
             tar_file_reader = tarfile.open(tar_file)

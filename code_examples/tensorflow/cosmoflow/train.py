@@ -160,22 +160,11 @@ def print_training_summary(output_dir, print_fom):
 
 
 def get_ipu_options(cosmoflow_config):
+    ipu_options = ipu.config.IPUConfig()
 
-    if cosmoflow_config['ipu_config']['num_ipus'] > 1:
-        ipu_options = ipu.utils.create_ipu_config(
-            use_poplar_text_report=False,
-        )
-    else:
-        ipu_options = ipu.utils.create_ipu_config(
-            use_poplar_text_report=False,
-        )
+    ipu_options.ipu_model.compile_ipu_code = True
 
-    ipu_options = ipu.utils.set_ipu_model_options(
-        ipu_options, compile_ipu_code=True)
-
-    ipu_options = ipu.utils.auto_select_ipus(
-        ipu_options,
-        num_ipus=cosmoflow_config['ipu_config']['num_ipus'])
+    ipu_options.auto_select_ipus = cosmoflow_config['ipu_config']['num_ipus']
 
     return ipu_options
 
@@ -352,7 +341,7 @@ def train_with_session(input_fn, cosmoflow_config):
 
     ipu_options = get_ipu_options(cosmoflow_config)
 
-    ipu.utils.configure_ipu_system(ipu_options)
+    ipu_options.configure_ipu_system()
     ipu.utils.move_variable_initialization_to_cpu()
 
     data_config = cosmoflow_config['data']

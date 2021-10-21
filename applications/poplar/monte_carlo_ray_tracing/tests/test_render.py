@@ -30,7 +30,7 @@ class TestBuildAndRun(SubProcessChecker):
     @pytest.mark.category1
     def test_compile_and_load(self):
         compile_command = "./ipu_trace -w 640 -h 636 --tile-width 16 --tile-height 12 " \
-            "--ipus 2 --samples-per-step 200 --defer-attach -o test2.png " \
+            "--ipus 2 --samples-per-step 200 --defer-attach --use-simd -o test2.png " \
             "--compile-only --save-exe tracer_graph"
         self.run_command(compile_command, build_dir, [])
         run_command = "./ipu_trace -w 640 -h 636 --tile-width 16 --tile-height 12 " \

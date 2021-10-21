@@ -113,7 +113,7 @@
 	"embedding_serialization_vocab_steps": 5,
 	"available_memory_proportion": [0.23],
 	"shuffle": true,
-	"execution_mode": "PIPELINE",
+	"pipeline": true,
 	"checkpoint_dir": "checkpoints/pretrain_large",
 	"no_validation": true
 }

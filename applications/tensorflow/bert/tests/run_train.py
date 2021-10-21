@@ -35,6 +35,50 @@ def run_train(**kwargs):
 
 
 @pytest.mark.category1
+def run_fine_tune_squad(**kwargs):
+    os.chdir(os.path.dirname(os.path.realpath(__file__)))
+    os.chdir('..')
+    cmd = ['python3', 'run_squad.py']
+    args = [str(item) for sublist in kwargs.items() for item
+            in sublist if item != '']
+    cmd.extend(args)
+    completed = subprocess.run(args=cmd,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT,
+                               )
+    return completed
+
+
+@pytest.mark.category1
+def run_embedded_runtime_squad(**kwargs):
+    os.chdir(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..'))
+    cmd = ['python3', 'run_squad_runtime.py']
+    args = [str(item) for sublist in kwargs.items() for item
+            in sublist if item != '']
+    cmd.extend(args)
+    completed = subprocess.run(args=cmd,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT,
+                               )
+    return completed
+
+
+@pytest.mark.category1
+def run_fine_tune_glue(**kwargs):
+    os.chdir(os.path.dirname(os.path.realpath(__file__)))
+    os.chdir('..')
+    cmd = ['python3', 'run_classifier.py']
+    args = [str(item) for sublist in kwargs.items() for item
+            in sublist if item != '']
+    cmd.extend(args)
+    completed = subprocess.run(args=cmd,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT,
+                               )
+    return completed
+
+
+@pytest.mark.category1
 def run_popdist_train(**kwargs):
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('..')

@@ -40,7 +40,7 @@
     "do_lower_case": true,
     "shuffle": true,
     "available_memory_proportion": [0.1,0.3,0.32,0.34,0.36,0.38,0.4,0.32],
-    "execution_mode": "PIPELINE",
+    "pipeline": true,
     "checkpoint_dir": "ckpts/mk2/squad_large",
     "engine_cache": "engine_cache",
     "validation_config": {

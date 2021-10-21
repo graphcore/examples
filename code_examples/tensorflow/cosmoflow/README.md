@@ -46,5 +46,5 @@ This README describes how to run a conv3D based model called CosmoFlow on IPU ha
 The code for this example is based on code published at https://github.com/sparticlesteve/cosmoflow-benchmark/
 Its license is retained and reproduced here as LICENSE. 
 
-models/resnet.py was derived by the original author from https://github.com/keras-team/keras-applications/blob/master/keras_applications/resnet_common.py.
+models/resnet.py was derived by the original author from https://github.com/keras-team/keras-applications/blob/1.0.8/keras_applications/resnet_common.py.
 The original license for that code is preserved at the start of the file, and is compatible with the license for the modifications, and the rest of this example. 

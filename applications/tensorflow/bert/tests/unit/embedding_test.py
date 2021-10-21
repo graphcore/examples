@@ -72,7 +72,8 @@ test_config = TestConfig()
 
 
 @pytest.mark.parametrize("config", [(test_config)])
-@pytest.mark.parametrize("phase", ["fwd"])
+@pytest.mark.parametrize("phase", ["fwd", "bwd"])
+@pytest.mark.ipu_version("ipu2")
 def test_embedding(config, phase):
     # define input
     indices = np.random.randint(0, test_config.vocab_size,
@@ -164,9 +165,6 @@ def test_embedding(config, phase):
             *[torch.from_numpy(t).long() for t in inputs])
         # pytorch backward
         torch_loss = l1_lambda * torch.norm(torch_output, 1)
-        torch_loss.backward()   # calculate gradients
-        optim.step()    # update gradients
-        torch_outputs = [torch_output.detach().numpy()]
 
         # TF
         with tf.Graph().as_default():
@@ -201,13 +199,16 @@ def test_embedding(config, phase):
                     torch_model, tf_model, TF_TO_TORCH, {}, sess)
                 sess.run(var_and_init)
                 tvars = sess.run({v.name: v for v in tf.trainable_variables()})
-                print(tvars)
-                tf_outputs, tf_loss = sess.run(
-                    opt, {input_ids: indices, position_ids: positions, segment_ids: segments})
-                # sess.run(opt, {input_ids: indices, position_ids: positions, segment_ids: segments})
+
                 # Compare the farward output
                 check_tf_torch_model(
                     sess, torch_model, TF_TO_TORCH, margin=1e-4)
+                tf_outputs, tf_loss = sess.run(
+                    opt, {input_ids: indices, position_ids: positions, segment_ids: segments})
+
+            torch_loss.backward()   # calculate gradients
+            optim.step()    # update gradients
+            torch_outputs = [torch_output.detach().numpy()]
             check_tensors(torch_outputs, tf_outputs, margin=1e-4)
     else:
         raise ValueError(

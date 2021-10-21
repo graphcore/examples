@@ -57,40 +57,33 @@ class TFRecordPretrainingDataset(IterableDataset):
     - masked_lm_labels           : label of masked tokens with padding as 0
     - next_sentence_label        : 1 if next sentence, 0 otherwise
 
-    Dataset internally loads `file_buffer_size` number of files into an
-    internal buffer for shuffling. The first iteration of this dataset
-    may take a few minutes while this internal buffer is loading.
-
-    This Dataset is also compatible with multiprocessing. Each Dataloader worker
+    This Dataset is compatible with multiprocessing. Each Dataloader worker
     will only read a shard of each TFRecord file, which will speed up the Dataloader
-    and ensure no worker loads the same data as another worker.
+    and ensure no worker loads the same data as another worker. You are strongly
+    advised to use a large number (e.g. 64) of dataloader workers because firstly,
+    more workers could support high throughput, and secondly, more workers could
+    give us more stochasticity and thus better convergence.
+
 
     Parameters
     ----------
     files: List of TFRecord files containing the preprocessed pretraining data
-    file_buffer_size: The number of files to read into the internal shuffle buffer
     shuffle: Shuffle the data?
     """
     def __init__(self,
                  input_files,
-                 file_buffer_size=100,
                  shuffle=True):
         self.files = expand_glob_files(input_files)
-        self.file_buffer_size = file_buffer_size
         self.shuffle = shuffle
         self.reset()
 
     def reset(self):
         self.file_index = 0
-        self.data_index = 0
+        self.reader = iter([])
 
     def samples_per_file(self, filename):
-        reader = tfrecord_loader(filename,
-                                 None,
-                                 list(TFRECORD_KEYS))
-        count = 0
-        for _ in reader:
-            count += 1
+        index_filename = filename.replace(".tfrecord", ".index")
+        count = sum(1 for _ in open(index_filename))
         return count
 
     def __len__(self):
@@ -117,40 +110,22 @@ class TFRecordPretrainingDataset(IterableDataset):
         self.reset()
         if self.shuffle:
             np.random.shuffle(self.files)
-        self.load_data()
         return self
 
     def __next__(self):
-        if self.data_index >= len(self.data):
-            self.load_data()
-        data = self.data[self.data_index]
-        self.data_index += 1
-        return data
-
-    def load_data(self):
-        # This drops the remainder
-        if self.file_index >= len(self.files):
-            raise StopIteration
-        self.data = []
-        # Load multiple files into the data buffer at a time
-        for _ in range(self.file_buffer_size):
-            self.data += self.load_file()
-            self.file_index += 1
+        try:
+            datum = next(self.reader)
+        except StopIteration:
             if self.file_index >= len(self.files):
-                break
-        if self.shuffle:
-            np.random.shuffle(self.data)
-        self.data_index = 0
-
-    def load_file(self):
-        reader = tfrecord_loader(self.files[self.file_index],
-                                 self.files[self.file_index].replace(".tfrecord", ".index"),
-                                 list(TFRECORD_KEYS),
-                                 self.shard)
-        data = []
-        for datum in reader:
-            data.append([datum[key] for key in TFRECORD_KEYS])
-        return data
+                raise StopIteration
+            self.reader = tfrecord_loader(self.files[self.file_index],
+                                          self.files[self.file_index].replace(".tfrecord", ".index"),
+                                          list(TFRECORD_KEYS),
+                                          self.shard)
+            self.file_index += 1
+            datum = next(self.reader)
+        datum = [datum[key] for key in TFRECORD_KEYS]
+        return datum
 
 
 class GeneratedPretrainingDataset(Dataset):
@@ -232,8 +207,7 @@ def get_dataloader(config, opts):
                                               config.samples_per_step,
                                               config.random_seed)
     elif config.dataset == 'pretraining':
-        dataset = TFRecordPretrainingDataset(config.input_files,
-                                             file_buffer_size=config.file_buffer_size)
+        dataset = TFRecordPretrainingDataset(config.input_files)
     else:
         raise RuntimeError(f"Unknown dataset '{config.dataset}', aborting.")
 

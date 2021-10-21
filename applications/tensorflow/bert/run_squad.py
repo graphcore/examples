@@ -45,14 +45,13 @@ from ipu_utils import get_config, stages_constructor
 from log import logger
 from lr_schedules import make_lr_schedule
 from options import make_global_options
+from evaluate_squad import evaluate_squad
+
+from poplar_options import set_poplar_engine_options
 
 from typing import List
 from itertools import chain
 
-
-# Paths to external SQuAD files
-SQUADV11_TRUTH_PATH = 'data/squad/dev-v1.1.json'
-SQUADV11_EVAL_SCRIPT_PATH = 'data/squad/evaluate-v1.1.py'
 
 # Graph data structure
 GraphOps = namedtuple(
@@ -103,7 +102,7 @@ def build_squad_pipeline_stages(model, bert_config, opts, is_training):
             stage_layer_list, ['learning_rate'], ['learning_rate', 'total_loss'])
     else:
         computational_stages = stages_constructor(
-            stage_layer_list, [], ['unique_ids', 'start_logits', 'end_logits'])
+            stage_layer_list, ['unique_ids'], ['unique_ids', 'start_logits', 'end_logits'])
 
     return computational_stages
 
@@ -116,8 +115,11 @@ def build_network(infeed,
                   learning_rate=None,
                   is_training=True):
     # build model
-    pipeline_model = bert_ipu.BertModel(bert_config,
-                                        is_training=is_training)
+    if opts["groupbert"]:
+        logger.info(f"************* Using GroupBERT model architecture *************")
+        pipeline_model = bert_ipu.GroupBertModel(bert_config, is_training=is_training)
+    else:
+        pipeline_model = bert_ipu.BertModel(bert_config, is_training=is_training)
 
     # build stages & device mapping
     computational_stages = build_squad_pipeline_stages(
@@ -131,21 +133,24 @@ def build_network(infeed,
         available_memory_proportion_list = [
             str(opts['available_memory_proportion'])
         ] * len(device_mapping)
+    elif isinstance(opts['available_memory_proportion'], list) and len(opts['available_memory_proportion']) != len(device_mapping):
+        available_memory_proportion_list = opts['available_memory_proportion']
     else:
         available_memory_proportion_list = [
             str(opts['available_memory_proportion'][device]) for device in device_mapping
         ]
-
+    logger.info(f"************* available_memory_proportion_list: *************\n{available_memory_proportion_list}")
     if len(available_memory_proportion_list) != len(device_mapping):
         raise ValueError(
             "The available_memory_proportion list must be the same length as the number of stages in the pipeline."
         )
 
     options = [ipu.pipelining_ops.PipelineStageOptions(
-        matmul_options={"availableMemoryProportion": str(
-            opts["available_memory_proportion"]), "partialsType": opts["partials_type"]},
-        convolution_options={"partialsType": opts["partials_type"]})] * len(computational_stages)
-
+        matmul_options={
+            "availableMemoryProportion": amp,
+            "partialsType": opts["partials_type"]
+        }) for amp in available_memory_proportion_list
+    ]
     if is_training:
         # define optimizer
         def optimizer_function(learning_rate, total_loss):
@@ -185,7 +190,7 @@ def build_network(infeed,
 
 def should_be_pipeline_when_inference(opts: dict):
     return not (len(set(opts["device_mapping"])) == 1 and
-                opts["do_training"] is False and opts["do_predict"] is True)
+                opts["do_predict"] is True)
 
 
 def merge_compute_stages(model, opts: dict):
@@ -230,8 +235,7 @@ def build_squad_infer_stages(model, opts):
         stage_layer_list.append(func_list)
 
     computational_stages = stages_constructor(
-        stage_layer_list, ["unique_ids", "input_ids", "input_mask",
-                           "segment_ids", "start_positions", "end_positions"],
+        stage_layer_list, [],
                           ['unique_ids', 'start_logits', 'end_logits'])
 
     return computational_stages
@@ -281,7 +285,12 @@ def build_graph(opts, iterations_per_step=1, is_training=True, feed_name=None):
 
     train_graph = tf.Graph()
     with train_graph.as_default():
-        bert_config = bert_ipu.BertConfig.from_dict(opts)
+        if opts["groupbert"]:
+            bert_config = bert_ipu.BertConfig.from_dict(
+                opts, config=bert_ipu.GroupBertConfig(vocab_size=None))
+        else:
+            bert_config = bert_ipu.BertConfig.from_dict(
+                opts, config=bert_ipu.BertConfig(vocab_size=None))
         bert_config.dtype = tf.float32 if opts["precision"] == '32' else tf.float16
         placeholders = dict()
 
@@ -317,8 +326,6 @@ def build_graph(opts, iterations_per_step=1, is_training=True, feed_name=None):
 
         outfeed = outfeed_queue.dequeue()
 
-        log.print_trainable_variables(opts)
-
         restore = tf.train.Saver(var_list=tf.global_variables())
         train_saver = tf.train.Saver(max_to_keep=5)
 
@@ -331,28 +338,17 @@ def build_graph(opts, iterations_per_step=1, is_training=True, feed_name=None):
     # The number of acquired IPUs must be the power of 2.
     if num_ipus & (num_ipus - 1) != 0:
         num_ipus = 2**int(math.ceil(math.log(num_ipus) / math.log(2)))
-    if should_be_pipeline_when_inference(opts):
-        ipu_config = get_config(fp_exceptions=opts["fp_exceptions"],
-                                enable_recomputation=opts["enable_recomputation"],
-                                disable_graph_outlining=False,
-                                num_required_ipus=num_ipus,
-                                enable_stochastic_rounding=opts['stochastic_rounding'],
-                                max_cross_replica_sum_buffer_size=opts['max_cross_replica_sum_buffer_size'],
-                                scheduler_selection='CLUSTERING',
-                                compile_only=False,
-                                ipu_id=None)
-    else:
-        ipu_config = get_config(fp_exceptions=opts["fp_exceptions"],
-                                enable_recomputation=opts["enable_recomputation"],
-                                disable_graph_outlining=False,
-                                num_required_ipus=num_ipus,
-                                enable_stochastic_rounding=opts['stochastic_rounding'],
-                                max_cross_replica_sum_buffer_size=opts['max_cross_replica_sum_buffer_size'],
-                                scheduler_selection='CLUSTERING',
-                                compile_only=False,
-                                ipu_id=None,
-                                available_memory_proportion=opts["available_memory_proportion"],
-                                partials_type=opts["partials_type"])
+    ipu_config = get_config(fp_exceptions=opts["fp_exceptions"],
+                            enable_recomputation=opts["enable_recomputation"],
+                            disable_graph_outlining=False,
+                            num_required_ipus=num_ipus,
+                            enable_stochastic_rounding=opts['stochastic_rounding'],
+                            max_cross_replica_sum_buffer_size=opts['max_cross_replica_sum_buffer_size'],
+                            max_reduce_scatter_buffer_size=opts['max_reduce_scatter_buffer_size'],
+                            scheduler_selection='CLUSTERING',
+                            compile_only=False,
+                            ipu_id=None,
+                            partials_type=opts["partials_type"])
 
     ipu_config.configure_ipu_system()
 
@@ -384,9 +380,27 @@ def predict_step(predict):
 
 
 def training_loop(opts):
+
     consume_time = None
-    train_examples = squad_data.read_squad_examples(opts['train_file'], opts, is_training=True)
-    total_samples = len(train_examples)
+
+    if opts["version_2_with_negative"]:
+        base_name_train = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}_SQuAD20"
+    else:
+        base_name_train = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}_SQuAD11"
+
+    train_metafile = os.path.join(opts["tfrecord_dir"],
+                                  "train_"+base_name_train+".metadata")
+    if os.path.exists(train_metafile):
+        with open(train_metafile) as f:
+            total_samples = int(f.readline())
+    else:
+        if opts["version_2_with_negative"]:
+            logger.info(f"SQUAD 2.0 DATASET SIZE 131944 (based on no. of features).")
+            total_samples = 131944
+        else:
+            logger.info(f"SQUAD 1.1 DATASET SIZE 88641 (based on no. of features).")
+            total_samples = 88641
+
     logger.info(f"Total samples {total_samples}")
     iterations_per_epoch = total_samples // opts["total_batch_size"]
     log_iterations = opts['batches_per_step'] * opts["steps_per_logs"]
@@ -431,6 +445,13 @@ def training_loop(opts):
             init_checkpoint_path = os.path.splitext(init_checkpoint_path)[0]
 
         (assignment_map, initialized_variable_names) = bert_ipu.get_assignment_map_from_checkpoint(train.tvars, init_checkpoint_path)
+
+        for var in train.tvars:
+            if var.name in initialized_variable_names:
+                mark = "*"
+            else:
+                mark = " "
+            logger.info("%-60s [%s]\t%s (%s)", var.name, mark, var.shape, var.dtype.name)
 
         reader = tf.train.NewCheckpointReader(init_checkpoint_path)
         load_vars = reader.get_variable_to_shape_map()
@@ -591,8 +612,11 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
         assert len(assignment_map) >= 127
 
     all_results = []
-    iterations = len(eval_features) // (opts['batch_size'] * opts['gradient_accumulation_count']) + 1
-
+    if (opts['batch_size'] * opts['gradient_accumulation_count']) == 1:
+            iterations = len(eval_features) // (opts['batch_size'] * opts['gradient_accumulation_count'])
+    else:
+            iterations = len(eval_features) // (opts['batch_size'] * opts['gradient_accumulation_count']) + 1
+    logger.info(f"Total iterations: {iterations}")
     all_time_consumption = []
     while i < iterations:
         try:
@@ -641,8 +665,12 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
     # Done predictions
 
     output_dir = opts['output_dir']
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    if output_dir is None:
+        if 'adamw' in finetuned_checkpoint_path:
+            output_dir = finetuned_checkpoint_path.split('/ckpt')[0]
+    else:
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
     output_prediction_file = os.path.join(output_dir, "predictions.json")
     output_nbest_file = os.path.join(output_dir, "best_predictions.json")
     output_null_log_odds_file = os.path.join(output_dir, "null_odds.json")
@@ -655,12 +683,7 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
     predict.session.close()
 
     if opts['do_evaluation']:
-        stdout = subprocess.check_output(['python3', SQUADV11_EVAL_SCRIPT_PATH, SQUADV11_TRUTH_PATH, output_prediction_file])
-        em_f1_results = json.loads(stdout)
-        logger.info(f"Evaluation results: Exact Match: {em_f1_results['exact_match']:5.2f}, F1: {em_f1_results['f1']:5.2f}")
-        if opts['wandb']:
-            for k, v in em_f1_results.items():
-                wandb.run.summary[k] = v
+        evaluate_squad(output_prediction_file, opts)
 
 
 def set_training_defaults(opts):
@@ -674,6 +697,15 @@ def set_ipu_defaults(opts):
 
     if opts['seed']:
         seed = int(opts['seed'])
+        random.seed(seed)
+        # tensorflow seed
+        tf.set_random_seed(random.randint(0, 2 ** 32 - 1))
+        # numpy seed
+        np.random.seed(random.randint(0, 2 ** 32 - 1))
+        # ipu seed
+        reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
+    else:
+        seed = random.randint(0, 2 ** 32 - 1)
         random.seed(seed)
         # tensorflow seed
         tf.set_random_seed(random.randint(0, 2 ** 32 - 1))
@@ -722,12 +754,18 @@ def add_squad_options(parser: argparse.ArgumentParser):
     group.add_argument('--vocab-file', type=str,
                        help="The vocabulary file that the BERT model was trained on.")
     group.add_argument('--tfrecord-dir', type=str,
-                       help= """Path to the cache directory that will contain the intermediate TFRecord datasets converted from the JSON input file.""")
+                       help="""Path to the cache directory that will contain the intermediate TFRecord datasets converted from the JSON input file.""")
+    group.add_argument('--num-synthetic-dataset-samples', type=int, default=1000000,
+                       help="""Number of samples generated in the synthetic dataset""")
     return parser
 
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.ERROR)
+
+    xla_flags = os.environ.get('XLA_FLAGS', '')
+    xla_flags = f'--xla_disable_hlo_passes=embeddings-gradient-optimizer {xla_flags} '
+    os.environ['XLA_FLAGS'] = xla_flags
 
     opts = make_global_options([add_squad_options])
 
@@ -736,10 +774,18 @@ if __name__ == '__main__':
     opts['distributed_worker_index'] = 0
 
     poplar_options = os.getenv('POPLAR_ENGINE_OPTIONS', 'unset')
+
     logger.info(f"Poplar options: {poplar_options}")
     logger.info("Command line: " + ' '.join(sys.argv))
     logger.info("Options:\n" + json.dumps(
             OrderedDict(sorted(opts.items())), indent=1))
+
+    set_poplar_engine_options(execution_profile=opts['execution_profile'],
+                              memory_profile=opts['memory_profile'],
+                              profile_dir=str(opts['profile_dir']),
+                              sync_replicas_independently=opts['replicas'] > 1 and opts['sync_replicas_independently'],
+                              synthetic_data=opts['synthetic_data'],
+                              tensorflow_progress_bar=opts['progress_bar'])
 
     # Initialise Weights & Biases if available
     if opts['wandb']:

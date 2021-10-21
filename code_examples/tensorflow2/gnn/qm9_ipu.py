@@ -7,6 +7,7 @@ This example shows how to perform regression of molecular properties with the
 QM9 database, using a GNN based on edge-conditioned convolutions in batch mode.
 """
 import time
+from tensorflow.python.ipu.config import IPUConfig
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
@@ -32,13 +33,9 @@ gradient_accumulation_count, epochs = (1, 2) if args.profile else (6, args.epoch
 ################################################################################
 # CONFIGURE THE DEVICE
 ################################################################################
-cfg = ipu.utils.create_ipu_config(profiling=args.profile,
-                                  use_poplar_cbor_report=args.profile,
-                                  profile_execution=ipu.utils.ExecutionProfileType.IPU_PROFILE if args.profile else False,
-                                  report_directory=args.profile_dir if args.profile else '',
-                                  max_report_size=int(5e9))
-cfg = ipu.utils.auto_select_ipus(cfg, args.num_ipus)
-ipu.utils.configure_ipu_system(cfg)
+cfg = IPUConfig()
+cfg.auto_select_ipus = args.num_ipus
+cfg.configure_ipu_system()
 
 # Mixed precision support
 tf.keras.backend.set_floatx('float16')
@@ -104,20 +101,20 @@ with strategy.scope():
                            outputs=output)
 
     model.set_gradient_accumulation_options(
-        gradient_accumulation_steps_per_replica=gradient_accumulation_count
+        gradient_accumulation_count=gradient_accumulation_count
     )
     optimizer = Adam(lr=args.learning_rate)
 
-    steps_per_execution = args.num_ipus * gradient_accumulation_count
-
-    model.compile(optimizer=optimizer, loss='mse', steps_per_execution=steps_per_execution)
+    # `steps_per_execution` must divide the gradient accumulation count and the number of replicas
+    # so we use the lowest common denominator, which is the product divided by the greatest
+    #     common divisor
+    model.compile(optimizer=optimizer, loss='mse', steps_per_execution=args.num_ipus)
     model.summary()
 
     ############################################################################
     # FIT MODEL
     ############################################################################
-
-    train_steps_per_epoch = steps_per_execution if args.profile else train_data_len - train_data_len % steps_per_execution
+    train_steps_per_epoch = args.num_ipus if args.profile else (train_data_len - train_data_len % args.num_ipus)
 
     tic = time.perf_counter()
     model.fit(train_dataset, batch_size=args.batch_size, epochs=epochs, steps_per_epoch=train_steps_per_epoch)
@@ -131,11 +128,9 @@ with strategy.scope():
         ############################################################################
 
         print('Testing model')
-        model.compile(steps_per_execution=args.num_ipus)
         test_steps = test_data_len - test_data_len % args.num_ipus
 
         tic = time.perf_counter()
-
         model_loss = model.evaluate(test_dataset, batch_size=1, steps=test_steps)
         print(f"Done. Test loss {model_loss}")
 

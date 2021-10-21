@@ -18,7 +18,9 @@ def get_preprocessing_pipeline(train, input_size=224, half_precision=False, norm
     if train:
         pipeline_steps.append(RandomResizedFlipCrop(input_size, **use_bbox_info_config[use_bbox_info]))
     else:
-        pipeline_steps = [transforms.Resize(256), transforms.CenterCrop(input_size)]
+        # 'resize_size' is scaled by the specified 'input_size' to allow for arbitrary-sized images.
+        resize_size = int(input_size * 256.0 / 224.0)
+        pipeline_steps = [transforms.Resize(resize_size), transforms.CenterCrop(input_size)]
 
     if normalize:
         pipeline_steps.append(NormalizeToTensor(mean=normalization_parameters["mean"], std=normalization_parameters["std"]))

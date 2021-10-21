@@ -91,13 +91,11 @@ def run_fine_tuning_store_ckpt(bert_args,
 def training_run(bert_args, config, initializers, checkpoint_paths):
     logger.info("Building Model")
     model = Bert(config,
-                 builder=popart.Builder(
-                     opsets={"ai.onnx": 9, "ai.onnx.ml": 1, "ai.graphcore": 1}),
                  initializers=initializers,
-                 execution_mode=bert_args.execution_mode)
+                 pipeline=bert_args.pipeline)
 
     indices, positions, segments, masks, labels = bert_add_inputs(bert_args, model)
-    logits = bert_logits_graph(model, indices, positions, segments, masks, bert_args.execution_mode)
+    logits = bert_logits_graph(model, indices, positions, segments, masks, bert_args.pipeline)
 
     predictions, probs = bert_infer_graph(model, logits)
     losses = bert_loss_graph(model, probs, labels)

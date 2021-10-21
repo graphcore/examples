@@ -15,6 +15,7 @@ PyTorch CNN dataset & data handling
 * `distributed_webdataset.py` Create a repartition of the webdataset for the distributed training.
 * `tfrecord_format.py` Helper functions for TF Record format
 * `raw_imagenet.py` Helper functions for raw ImageNet dataset, which uses bounding boxes too.
+* `augmentation.py` Contains custom augmentations, such as cutmix.
 
 ### Validate the correctness of the dataset
 
@@ -56,6 +57,8 @@ Options:
 `--train-preprocess-steps`      Provide the preprocessing steps for training. Options: [Resize(<size>), CenterCrop(<size>)
 
 `--validation-preprocess-steps` Provide the preprocessing steps for validation. Options: [Resize(<size>), CenterCrop(<size>)
+
+`--image-quality`               Quality of the saved images, range 0..100. Default 95. See Pillow save method.
 
 Note `img` use less disk space as it is compressed for storing, but requires more compute than the `tensor` version. The optimal format depends on the actual system configuration, whether IO (or host memory) is the bottleneck or the CPU. It is recommended to generate both versions of the dataset and benchmark it with `host_benchmark.py` script.
 
