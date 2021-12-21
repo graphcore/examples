@@ -11,7 +11,7 @@ repository. If you are actively using this repository and want to report any iss
 
 The latest version of the documentation for the Poplar software stack, and other developer resources, is available at https://www.graphcore.ai/developer.
 
->  The code presented here requires using Poplar SDK 2.3.x
+>  The code presented here requires using Poplar SDK 2.4.x
 
 Please install and enable the Poplar SDK following the instructions in the Getting Started guide for your IPU system.
 
@@ -19,32 +19,42 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 
 ## Repository contents
 
-### Notable examples
-
-| Example | Link |
-| ------- | ---- |
-| BERT (PopART) | [code](applications/popart/bert) |
-| BERT (TensorFlow) | [code](applications/tensorflow/bert) |
-| BERT (PyTorch) | [code](applications/pytorch/bert) |
-| DeepVoice3 speech synthesis (PopART) | [code](applications/popart/deep_voice) |
-| Conformer speech recognition (PopART) | [code](applications/popart/conformer_asr) |
-| CNN Training including ResNet, ResNeXt & EfficientNet (TensorFlow) | [code](applications/tensorflow/cnns/training) |
-| CNN Inference including ResNet, MobileNet & EfficientNet (TensorFlow) | [code](applications/tensorflow/cnns/inference) |
-| CNN Training & Inference including ResNet, ResNeXt & EfficientNet (PyTorch) | [code](applications/pytorch/cnns) |
-| Yolo v3 Object Detection (TensorFlow) | [code](applications/tensorflow/detection) |
-| ResNext Inference (PopART) | [code](applications/popart/resnext_inference) |
-| Recommendation using Autoencoders (TensorFlow) | [code](applications/tensorflow/autoencoder) |
-| Sales forecasting example (TensorFlow) | [code](applications/tensorflow/sales_forecasting) |
-| Contrastive Divergence VAE using MCMC methods (TensorFlow) | [code](applications/tensorflow/contrastive_divergence_vae) |
-| Example reinforcement learning policy model (TensorFlow)| [code](applications/tensorflow/reinforcement_learning) |
-| Click through rate: Deep Interest Network (TensorFlow) | [code](applications/tensorflow/click_through_rate) |
-| Click through rate: Deep Interest Evolution Network (TensorFlow) | [code](applications/tensorflow/click_through_rate) |
-| Dynamic Sparsity: MNIST RigL (TensorFlow) | [code](applications/tensorflow/dynamic_sparsity/mnist_rigl) |
-| Dynamic Sparsity: Autoregressive Language Modelling (TensorFlow) | [code](applications/tensorflow/dynamic_sparsity/language_modelling) |
-
 ### Application examples
 
 The [applications/](applications) folder contains example applications written in different frameworks targeting the IPU. See the READMEs in each folder for details on how to use these applications.
+
+| Model | Domain | Type |Links |
+| ------- | ------- |------- | ------- |
+| ResNet  | Image Classifcation | Training & Inference | [TensorFlow 1](applications/tensorflow/cnns/) , [TensorFlow 2](applications/tensorflow/cnns/), [PyTorch](applications/pytorch/cnns/)|
+| ResNeXt  | Image Classifcation | Training & Inference | [TensorFlow 1](applications/tensorflow/cnns/) , [PopART (Inference)](applications/popart/resnext_inference)
+| EfficientNet | Image Classifcation | Training & Inference | [TensorFlow 1](applications/tensorflow/cnns/) , [PyTorch](applications/pytorch/cnns/)|
+| MobileNet | Image Classifcation | Inference | [TensorFlow 1](applications/tensorflow/cnns/inference) |
+| MobileNetv2 | Image Classifcation | Inference | [TensorFlow 1](applications/tensorflow/cnns/inference) |
+| MobileNetv3 | Image Classifcation | Training & Inference | [PyTorch](applications/tensorflow/cnns/) |
+| ViT(Vision Transformer) | Image Classifcation | Training| [PyTorch](applications/pytorch/vit) |
+| Yolov3 | Object Detection | Training & Inference | [TensorFlow 1](applications/tensorflow/detection/yolov3) |
+| Yolov4-P5 | Object Detection | Inference | [PyTorch](applications/pytorch/detection) |
+| Faster RCNN | Object Detection | Training & Inference | [PopART](applications/popart/faster-rcnn) |
+| UNet (Medical) | Image segmentation | Training & Inference | [TensorFlow 2](applications/tensorflow2/unet/)  |
+| miniDALL-E | Generative model in Vision | Training & Inference | [PyTorch](applications/pytorch/miniDALL-E) |
+| BERT | NLP | Training & Inference |[TensorFlow 1](applications/tensorflow/bert) , [PyTorch](applications/pytorch/bert) , [PopART](applications/popart/bert), [TensorFlow 2](applications/tensorflow2/bert)|
+| DeepVoice3 | TTS (TextToSpeech) | Training & Inference |[PopART](applications/popart/deep_voice) |
+| FastSpeech2 | TTS(TextToSpeech) | Training & Inference | [TensorFlow 2](applications/tensorflow2/fastspeech2/) |
+| Conformer | STT(SpeechToText) | Training & Inference | [PopART](applications/popart/conformer_asr) |
+| Conformer with Transformer | STT(SpeechToText) | Training & Inference | [TensorFlow 1](applications/tensorflow/conformer) |
+| Transfomer Transducer | STT(SpeechToText) | Training & Inference | [PopART](applications/popart/transformer_transducer) |
+| TGN (Temporal Graph Network) | GNN | Training & Inference | [TensorFlow 1](applications/tensorflow/tgn/) |
+| MPNN (Message Passing Neural Networks) | GNN | Training & Inference | [TensorFlow 2](code_examples/tensorflow2/message_passing_neural_network) |
+| Deep AutoEncoders for Collaborative Filtering | Recommender Systems | Training & Inference | [TensorFlow 1](applications/tensorflow/autoencoder) |
+| Click through rate: Deep Interest Network | Recommender Systems | Training & Inference | [TensorFlow 1](applications/tensorflow/click_through_rate) |
+| Click through rate: Deep Interest Evolution Network | Recommender Systems | Training & Inference | [TensorFlow 1](applications/tensorflow/click_through_rate) |
+| RL Policy model | Reinforcement Learning | Training | [TensorFlow 1](applications/tensorflow/reinforcement_learning) |
+| MNIST RigL | Dynamic Sparsity | Training | [TensorFlow 1](applications/tensorflow/dynamic_sparsity/mnist_rigl) |
+| Autoregressive Language Modelling | Dynamic Sparsity | Training | [TensorFlow 1](applications/tensorflow/dynamic_sparsity/language_modelling) |
+| Sales forecasting | MLP (Multi-Layer Perceptron) | Training | [TensorFlow 1](applications/tensorflow/dynamic_sparsity/language_modelling) |
+| Contrastive Divergence VAE using MCMC methods  | Generative Model | Training | [TensorFlow 1](applications/tensorflow/contrastive_divergence_vae) |
+| Monte Carlo Ray Tracing  | Vision | Inference | [Poplar](applications/poplar/monte_carlo_ray_tracing) |
+
 
 ### Code examples
 
@@ -60,3 +70,15 @@ The [utils/](utils) folder contains utilities libraries and scripts that are use
 
 * [utils/examples_tests](utils/examples_tests) - Common Python helper functions for the repository's unit tests.
 * [utils/benchmarks](utils/benchmarks) - Common Python helper functions for running benchmarks on the IPU in different frameworks.
+
+
+## Changelog
+
+December 2021:
+- Added those models below to reference models
+    - Vision : miniDALL-E(PyTorch), Faster RCNN(PopART), UNet(TensorFlow 2), ResNet50(TensorFlow 2)
+    - NLP : BERT(TensorFlow 2)
+    - TTS/STT : FastSpeech2(TensorFlow 2), Transfomer Transducer(PopART), Conformer with Transformer(PyTorch)
+    - GNN : TGN(TensorFlow1), MPNN(TensorFlow 2)
+
+
