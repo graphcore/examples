@@ -47,7 +47,7 @@ def parse_args():
     add_arg('--data-dir', help='Override the path to input files')
     add_arg('--n-train', type=int, help='Override number of training samples')
     add_arg('--n-valid', type=int, help='Override number of validation samples')
-    add_arg('--batch-size', type=int, help='Override the batch size')
+    add_arg('--micro-batch-size', type=int, help='Override the batch size')
     add_arg('--n-epochs', type=int, help='Override number of epochs')
     add_arg('--apply-log', type=int, choices=[0, 1], help='Apply log transform to data')
     add_arg('--staged-files', type=int, choices=[0, 1],
@@ -101,8 +101,8 @@ def load_config(args):
         config['data']['n_train'] = args.n_train
     if args.n_valid is not None:
         config['data']['n_valid'] = args.n_valid
-    if args.batch_size is not None:
-        config['data']['batch_size'] = args.batch_size
+    if args.micro_batch_size is not None:
+        config['data']['micro_batch_size'] = args.micro_batch_size
     if args.n_epochs is not None:
         config['data']['n_epochs'] = args.n_epochs
     if args.apply_log is not None:
@@ -231,10 +231,10 @@ def get_input_fn(data_config):
 
 
 class PerformanceHook(tf.train.StepCounterHook):
-    def __init__(self, perf_fp, every_n_steps, batch_size):
+    def __init__(self, perf_fp, every_n_steps, micro_batch_size):
         self.perf_fp = perf_fp
         self.average_batches_per_sec = []
-        self.batch_size = batch_size
+        self.micro_batch_size = micro_batch_size
         super(PerformanceHook, self).__init__(every_n_steps=every_n_steps)
 
     def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
@@ -247,7 +247,7 @@ class PerformanceHook(tf.train.StepCounterHook):
             f.write(header_string + '\n')
             print(header_string)
             for loop_idx, bps in enumerate(self.average_batches_per_sec):
-                out_string = '{}, {}, {}'.format(loop_idx, bps, bps * self.batch_size)
+                out_string = '{}, {}, {}'.format(loop_idx, bps, bps * self.micro_batch_size)
                 f.write(out_string + '\n')
                 print(out_string)
 
@@ -271,8 +271,8 @@ def train_with_ipu_estimator(input_fn, cosmoflow_config):
     data_config = cosmoflow_config['data']
 
     perf_fp = os.path.join(cosmoflow_config['output_dir'], 'estimator_throughput.txt')
-    effective_bs = data_config["batch_size"] * cosmoflow_config['ipu_config']['num_ipus']
-    hooks = [PerformanceHook(perf_fp=perf_fp, every_n_steps=1, batch_size=effective_bs)]
+    effective_bs = data_config["micro_batch_size"] * cosmoflow_config['ipu_config']['num_ipus']
+    hooks = [PerformanceHook(perf_fp=perf_fp, every_n_steps=1, micro_batch_size=effective_bs)]
 
     # remember that effective batch-size is batch-size X num_ipus
     num_steps = ((data_config["n_epochs"] * data_config["n_train"]) // effective_bs)
@@ -290,7 +290,7 @@ def train_with_ipu_estimator(input_fn, cosmoflow_config):
     print("Took {:.2f} minutes, i.e. {:.0f} samples per second for batch-size {} and no. IPUs = {}".format(
         duration_seconds / 60,
         samples_per_second,
-        cosmoflow_config['data']['batch_size'],
+        cosmoflow_config['data']['micro_batch_size'],
         cosmoflow_config['ipu_config']['num_ipus']))
 
     # Finalize
@@ -302,12 +302,9 @@ def train_with_ipu_estimator(input_fn, cosmoflow_config):
 def train_with_session(input_fn, cosmoflow_config):
 
     with tf.device('cpu'):
-        infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(input_fn(),  # difference in tf.dataset construction changes throughput
-                                                           feed_name="training_infeed",
-                                                           replication_factor=cosmoflow_config['ipu_config']['num_ipus'])
+        infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(input_fn())  # difference in tf.dataset construction changes throughput
 
-    outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue('outfeed',
-                                                          replication_factor=cosmoflow_config['ipu_config']['num_ipus'])
+    outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
 
     def cosmoflow_training_loop():
 
@@ -348,7 +345,7 @@ def train_with_session(input_fn, cosmoflow_config):
     # remember that effective batch-size is batch-size X num_ipus
     # also note that num_loops is different from num_steps given to IPUEstimator
     num_loops = ((data_config["n_epochs"] * data_config["n_train"]) //
-                 (data_config["batch_size"] * cosmoflow_config['ipu_config']['num_ipus'] *
+                 (data_config["micro_batch_size"] * cosmoflow_config['ipu_config']['num_ipus'] *
                   cosmoflow_config['ipu_config']['iterations_per_loop']))
 
     with tf.Session() as sess:
@@ -382,13 +379,13 @@ def train_with_session(input_fn, cosmoflow_config):
         print('Iteration, Batches/Second, Samples/Second')
         for loop_idx, bps in enumerate(average_batches_per_sec):
             print('{}, {}, {}'.format(loop_idx, bps,
-                                      bps * data_config["batch_size"] * cosmoflow_config['ipu_config']['num_ipus']))
+                                      bps * data_config["micro_batch_size"] * cosmoflow_config['ipu_config']['num_ipus']))
 
-        samples_per_second = np.mean(average_batches_per_sec) * data_config["batch_size"] * cosmoflow_config['ipu_config']['num_ipus']
+        samples_per_second = np.mean(average_batches_per_sec) * data_config["micro_batch_size"] * cosmoflow_config['ipu_config']['num_ipus']
         print("Took {:.2f} minutes, i.e. {:.0f} samples per second for batch-size {} and no. IPUs = {}".format(
             duration_seconds / 60,
             samples_per_second,
-            cosmoflow_config['data']['batch_size'],
+            cosmoflow_config['data']['micro_batch_size'],
             cosmoflow_config['ipu_config']['num_ipus']))
 
         # Finalize

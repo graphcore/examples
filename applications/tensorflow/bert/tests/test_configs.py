@@ -26,7 +26,7 @@ THIS_MODULE_PATH = os.path.dirname(__file__)
 
 
 
-parameters_to_check = ['batch_size', 'gradient_accumulation_count',
+parameters_to_check = ['micro_batch_size', 'gradient_accumulation_count',
                        'base_learning_rate']
 
 parameters_to_exclude = ["num_hidden_layers", "do_training", "pipeline_stages",

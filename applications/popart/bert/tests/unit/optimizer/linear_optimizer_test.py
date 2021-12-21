@@ -48,7 +48,6 @@ def run_linear_optimizer_factory_case(config, iteration, epoch_truth=None, step_
             iteration.count += 1
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "warmup, steps_per_decay, learning_rate",
     [(0, 16, 1), (10, 2, 3e-2), (30, 50, 8e-4)])
@@ -73,7 +72,6 @@ def test_linear_optimizer_factory(warmup, steps_per_decay, learning_rate):
     run_linear_optimizer_factory_case(config, iteration, step_truth=step_truth)
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "start_epoch, warmup, steps_per_decay, learning_rate",
     [

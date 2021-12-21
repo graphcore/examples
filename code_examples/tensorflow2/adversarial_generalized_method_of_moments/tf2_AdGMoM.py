@@ -615,9 +615,7 @@ if __name__ == "__main__":
         if conf.use_ipu:
             ipu.utils.move_variable_initialization_to_cpu()
             # IPU input data setup
-            infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(
-                full_dataset, feed_name="adgmm_infeed",
-                replication_factor=conf.replication_factor)
+            infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(full_dataset)
             infeed_queue.initializer
         else:
             # CPU input data setup

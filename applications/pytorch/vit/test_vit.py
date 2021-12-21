@@ -22,7 +22,7 @@ import pytest
 
 def run_vit_cifar10(**kwargs):
     cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
-    cmd = ["python", "train.py", "--config", "b16_cifar10", "--training-steps", "300"]
+    cmd = ["python", "train.py", "--config", "b16_cifar10", "--training-steps", "150", "--replication-factor", "2", "--warmup-steps", "20"]
     try:
         out = subprocess.check_output(
             cmd, cwd=cwd, stderr=subprocess.PIPE).decode("utf-8")
@@ -36,14 +36,15 @@ def run_vit_cifar10(**kwargs):
 
 class TestViT(unittest.TestCase):
 
-    @pytest.mark.ipus(1)
+    @pytest.mark.ipus(8)
     def test_final_training_loss(self):
         out = run_vit_cifar10()
         loss = 100.0
 
         for line in out.split("\n"):
-            if line.find("Step: 199/") != -1:
-                loss = float(re.findall(r"[-+]?\d*\.\d+|\d+", line)[-2])
+            if line.find("Step: 149/") != -1:
+                split = re.findall(r"[-+]?\d*\.\d+|\d+", line)
+                loss, acc = float(split[-3]), float(split[-2])
                 break
-        self.assertGreater(loss, 0.1)
-        self.assertLess(loss, 0.91)
+        self.assertGreater(acc, 0.9)
+        self.assertLess(loss, 0.30)

@@ -88,7 +88,6 @@ def generated_sample_input_file():
         yield input_file
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize("config", configs)
 def test_pretraining(custom_ops, generated_sample_input_file, config):
     args = ["python", "bert.py", "--config",

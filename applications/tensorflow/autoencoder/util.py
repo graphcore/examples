@@ -1,9 +1,8 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-from tensorflow.python.ipu import utils
 from tensorflow.python.ipu.config import IPUConfig
 
 
-def get_config(opts, training=True, profiling=False):
+def get_config(opts, training=True):
     """Builds ipu_options
     """
     config = IPUConfig()

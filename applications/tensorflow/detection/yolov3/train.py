@@ -37,7 +37,7 @@ from tensorflow.python.distribute.reduce_util import ReduceOp
 from tensorflow.python.ipu import horovod as hvd
 from tensorflow.python.ipu import internal_ops, ipu_compiler, ipu_infeed_queue, ipu_outfeed_queue, loops, \
     pipelining_ops, scopes
-from tensorflow.python.ipu.horovod import ipu_multi_replica_strategy
+from tensorflow.python.ipu.horovod import popdist_strategy
 
 threads = 2
 os.environ["OMP_NUM_THREADS"] = str(threads)
@@ -477,13 +477,13 @@ def create_popdist_strategy():
     """
 
     from tensorflow.python.ipu import horovod as hvd
-    from tensorflow.python.ipu.horovod import ipu_multi_replica_strategy
+    from tensorflow.python.ipu.horovod import popdist_strategy
 
     hvd.init()
 
     # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
     # so disable them in the IPUMultiReplicaStrategy.
-    return ipu_multi_replica_strategy.IPUMultiReplicaStrategy(
+    return popdist_strategy.IPUMultiReplicaStrategy(
         add_ipu_cross_replica_reductions=False)
 
 

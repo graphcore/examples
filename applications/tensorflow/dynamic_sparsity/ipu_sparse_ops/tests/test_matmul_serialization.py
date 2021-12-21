@@ -16,17 +16,14 @@ class Testmatmul_serialization(SubProcessChecker):
         env.update(extra_env)
         self.run_command(cmd_args, build_dir, ["All results match."], env=env)
 
-    @pytest.mark.category1
     def test_matmul_serialization_dim_0(self):
         # Test default parameters:
         self._run_test_matmul("./ipu_sparse_ops/tests/test_matmul_serialization 32 16 8 2 1")
 
-    @pytest.mark.category1
     def test_matmul_serialization_dim_1(self):
         # Test default parameters:
         self._run_test_matmul("./ipu_sparse_ops/tests/test_matmul_serialization 32 16 8 1 2")
 
-    @pytest.mark.category1
     def test_matmul_serialization_2D(self):
         # Test default parameters:
         self._run_test_matmul("./ipu_sparse_ops/tests/test_matmul_serialization 32 16 8 2 2")

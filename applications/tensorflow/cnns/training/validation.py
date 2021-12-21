@@ -92,7 +92,7 @@ class LatencyThread:
             self.latency_sum += latencies.sum()
 
     def get_latency(self):
-        return self.latency_sum/self.total_batches if self.total_batches != 0 else -0.001
+        return self.latency_sum / self.total_batches if self.total_batches != 0 else -0.001
 
 
 def validation_graph_builder(model, data_dict, opts):
@@ -105,8 +105,8 @@ def validation_graph_builder(model, data_dict, opts):
 
 
 def validation_graph(model, opts):
-
-    if opts['use_popdist']:
+    reconfigure = not opts.get('reuse_IPUs', False)
+    if opts['use_popdist'] and reconfigure:
         hvd.init()
 
     valid_graph = tf.Graph()
@@ -132,8 +132,8 @@ def validation_graph(model, opts):
                         return total_accuracy + (tf.cast(accuracy, tf.float32) / opts["validation_batches_per_step"])
                 accuracy = loops.repeat(int(opts["validation_batches_per_step"]),
                                         body, [tf.constant(0, tf.float32)], valid_iterator)
-                if opts['total_replicas']*opts['shards'] > 1 and not opts.get('inference', False):
-                    accuracy = cross_replica_ops.cross_replica_sum(accuracy) / (opts['total_replicas']*opts['shards'])
+                if opts['total_replicas'] * opts['shards'] > 1 and not opts.get('inference', False):
+                    accuracy = cross_replica_ops.cross_replica_sum(accuracy) / (opts['total_replicas'] * opts['shards'])
                 return accuracy
 
             (accuracy,) = xla.compile(comp_fn, [])
@@ -156,15 +156,15 @@ def validation_graph(model, opts):
             broadcast_weights = []
             for var in tf.global_variables():
                 broadcast_weights.append(var.assign(hvd.broadcast(var, root_rank=0)))
-            total_batch_size_ph = tf.placeholder(dtype=tf.int32, shape=())
-            broadcast_total_batch_size = hvd.broadcast(total_batch_size_ph, root_rank=0)
+            global_batch_size_ph = tf.placeholder(dtype=tf.int32, shape=())
+            broadcast_global_batch_size = hvd.broadcast(global_batch_size_ph, root_rank=0)
             num_files_ph = tf.placeholder(dtype=tf.int32, shape=())
             broadcast_num_files = hvd.broadcast(num_files_ph, root_rank=0)
             iteration_ph = tf.placeholder(dtype=tf.int32, shape=())
             broadcast_iteration = hvd.broadcast(iteration_ph, root_rank=0)
         else:
             broadcast_weights = None
-            broadcast_total_batch_size, total_batch_size_ph = None, None
+            broadcast_global_batch_size, global_batch_size_ph = None, None
             broadcast_num_files, num_files_ph = None, None
             broadcast_iteration, iteration_ph = None, None
 
@@ -173,7 +173,7 @@ def validation_graph(model, opts):
         globalAMP = opts["available_memory_proportion"][0]
 
     ipu_options = get_config(ipu_id=opts["select_ipu"],
-                             prng=not opts["no_stochastic_rounding"],
+                             prng=False,  # disable Stochastic Rounding for validation
                              shards=opts['shards'],
                              number_of_replicas=opts['total_replicas'],
                              max_cross_replica_buffer_size=opts["max_cross_replica_buffer_size"],
@@ -193,25 +193,26 @@ def validation_graph(model, opts):
                              nanoo=not opts["saturate_on_overflow"],
                              )
 
-    if opts['use_popdist']:
+    if opts['use_popdist'] and reconfigure:
         ipu_options = popdist.tensorflow.set_ipu_config(ipu_options, opts['shards'], configure_device=False)
 
-    if opts['on_demand']:
+    if opts['on_demand'] and reconfigure:
         ipu_options.device_connection.enable_remote_buffers = True
         ipu_options.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
 
-    ipu_options.configure_ipu_system()
+    if reconfigure:
+        ipu_options.configure_ipu_system()
 
     valid_sess = tf.Session(graph=valid_graph, config=tf.ConfigProto())
 
     ops = {'accuracy': accuracy,
            'broadcast_weights': broadcast_weights,
-           'broadcast_total_batch_size': broadcast_total_batch_size,
+           'broadcast_global_batch_size': broadcast_global_batch_size,
            'broadcast_num_files': broadcast_num_files,
            'broadcast_iteration': broadcast_iteration,
            'latency_per_batch': latency_per_batch}
 
-    placeholders = {'total_batch_size': total_batch_size_ph,
+    placeholders = {'global_batch_size': global_batch_size_ph,
                     'num_files': num_files_ph,
                     'iteration': iteration_ph}
 
@@ -273,17 +274,24 @@ def validation_run(valid, filepath, i, epoch, first_run, opts, latency_thread):
 
         valid_format = (
             "Validation top-1 accuracy [{name}] (iteration: {iteration:6d}, epoch: {epoch:6.2f}, img/sec: {img_per_sec:6.2f},"
-            " time: {val_time:8.6f}, latency (ms): {latency:8.4f}: {val_acc:6.3f}%")
+            " time: {val_time:8.6f}, latency (ms): {latency:8.4f}): {val_acc:6.3f}%")
 
         val_size = (opts["validation_iterations"] *
                     opts["validation_batches_per_step"] *
-                    opts["validation_total_batch_size"])
+                    opts["validation_global_batch_size"])
+
+        count = int(DATASET_CONSTANTS[opts['dataset']]['NUM_VALIDATION_IMAGES'])
+
+        raw_accuracy = accuracy
+        if count < val_size:
+            accuracy = accuracy * val_size / count
 
         stats = OrderedDict([
                     ('name', name),
                     ('iteration', i),
                     ('epoch', epoch),
                     ('val_acc', accuracy),
+                    ('raw_acc', raw_accuracy),
                     ('val_time', val_time),
                     ('val_size', val_size),
                     ('img_per_sec', val_size / val_time),
@@ -296,7 +304,7 @@ def validation_run(valid, filepath, i, epoch, first_run, opts, latency_thread):
         logging.mlperf_logging(key="EVAL_STOP", log_type="stop",
                                metadata={"epoch_num": round(epoch)})
         logging.mlperf_logging(
-            key="EVAL_ACCURACY", value=float(stats["val_acc"])/100,
+            key="EVAL_ACCURACY", value=float(stats["val_acc"]) / 100,
             metadata={"epoch_num": round(epoch)})
         return stats
 
@@ -322,7 +330,7 @@ def validation_only_process(model, opts):
         if os.path.isdir(opts["restore_path"]):
             # search to a maximum depth of 1
             ckpts = glob(os.path.join(opts["restore_path"], '*.index')) \
-                    + glob(os.path.join(opts["restore_path"], 'ckpt', '*.index'))
+                + glob(os.path.join(opts["restore_path"], 'ckpt', '*.index'))
 
             training_ckpts = sorted([c for c in ckpts if ckpt_pattern_idx.match(c)],
                                     key=lambda x: int(ckpt_pattern_idx.match(x).groups()[0]))
@@ -334,29 +342,31 @@ def validation_only_process(model, opts):
             filenames = sorted([f[:-len(".index")] for f in glob(opts['restore_path'] + '*.index')])
 
         possible_args = os.path.join(opts["restore_path"], 'arguments.json')
-        if os.path.isfile(possible_args):
+        if 'global_batch_size' in opts.keys():
+            global_batch_size = opts['global_batch_size']
+        elif os.path.isfile(possible_args):
             with open(os.path.join(opts["restore_path"], 'arguments.json'), 'r') as fp:
                 try:
-                    total_batch_size = json.load(fp)['total_batch_size']
+                    global_batch_size = json.load(fp)['global_batch_size']
                 except KeyError:
-                    total_batch_size = opts['batch_size']
+                    global_batch_size = opts['micro_batch_size']
         else:
-            total_batch_size = opts['batch_size']
+            global_batch_size = opts['micro_batch_size']
     else:
         filenames = [None]
-        total_batch_size = opts['batch_size']
+        global_batch_size = opts['micro_batch_size']
 
     num_files = len(filenames)
 
     if opts['use_popdist']:
-        total_batch_size, num_files = valid.session.run(
-                                            [valid.ops['broadcast_total_batch_size'],
-                                             valid.ops['broadcast_num_files']],
-                                            feed_dict={valid.placeholders['total_batch_size']: total_batch_size,
-                                                       valid.placeholders['num_files']: num_files}
-                                            )
+        global_batch_size, num_files = valid.session.run(
+            [valid.ops['broadcast_global_batch_size'],
+             valid.ops['broadcast_num_files']],
+            feed_dict={valid.placeholders['global_batch_size']: global_batch_size,
+                       valid.placeholders['num_files']: num_files}
+        )
 
-    if opts['distributed_worker_index'] == 0:
+    if opts['distributed_worker_index'] == 0 and not opts['generated_data']:
         print(filenames)
 
     total_samples = (opts['replicas'] *
@@ -376,8 +386,8 @@ def validation_only_process(model, opts):
     for i in range(num_files):
         if opts['distributed_worker_index'] == 0:
             filename = filenames[i]
-            print(filename)
             if filename:
+                print(filename)
                 valid.saver.restore(valid.session, filename)
                 pattern_match = ckpt_pattern.match(filename)
                 if pattern_match:
@@ -395,7 +405,7 @@ def validation_only_process(model, opts):
             iteration = valid.session.run(valid.ops['broadcast_iteration'],
                                           feed_dict={valid.placeholders['iteration']: iteration})
 
-        epoch = float(total_batch_size * iteration) / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
+        epoch = float(global_batch_size * iteration) / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
         for r in range(opts["repeat"]):
             stats = validation_run(valid, None, iteration, epoch, i == 0, opts, latency_thread)
             # Handle skipped case
@@ -422,6 +432,8 @@ def add_main_arguments(parser):
     group.add_argument('--inference', type=bool, default=False,
                        help="""Run in inference mode, disabling accuracy all-reduce between replicas.
                                Useful for benchmarking.""")
+    group.add_argument('--total-batch-size', type=int, default=None,
+                       help="""When not specified global_batch_size becomes micro_batch_size.""")
     group.add_argument('--help', action='store_true', help='Show help information')
     return parser
 
@@ -434,14 +446,16 @@ def set_validation_defaults(opts):
     if not opts['validation']:
         opts['summary_str'] += "No Validation\n"
     else:
-        opts['validation_total_batch_size'] = opts['batch_size']*opts['shards']*opts['replicas']*opts['distributed_worker_count']
-        opts['summary_str'] += "Validation\n Batch Size: {}\n".format("{validation_total_batch_size}")
-        opts["validation_iterations"] = int(DATASET_CONSTANTS[opts['dataset']]['NUM_VALIDATION_IMAGES'] //
-                                            opts["validation_total_batch_size"])
+        opts['validation_global_batch_size'] = opts['micro_batch_size']*opts['shards']*opts['replicas']*opts['distributed_worker_count']
+        opts['summary_str'] += "Validation\n Batch Size: {}\n".format("{validation_global_batch_size}")
+        opts["validation_iterations"] = (
+            (int(DATASET_CONSTANTS[opts['dataset']]['NUM_VALIDATION_IMAGES']) + 128) //
+            opts["validation_global_batch_size"]) + 1
         if opts["batches_per_step"] < opts["validation_iterations"]:
             opts["validation_batches_per_step"] = int(opts["validation_iterations"] //
                                                       int(round(opts["validation_iterations"] / opts['batches_per_step'])))
-            opts["validation_iterations"] = int(opts["validation_iterations"] / opts["validation_batches_per_step"])
+            opts["validation_iterations"] = int((opts["validation_iterations"] +
+                                                 opts["validation_batches_per_step"] - 1) / opts["validation_batches_per_step"])
         else:
             opts["validation_batches_per_step"] = opts["validation_iterations"]
             opts["validation_iterations"] = 1
@@ -498,11 +512,18 @@ if __name__ == '__main__':
     opts = parser.parse_args()
     opts = configurations.parse_config(opts, parser)
     opts = vars(opts)
-    print(opts)
 
     if args['help']:
         parser.print_help()
     else:
+        # backwards compatibility
+        if opts['batch_size'] and opts['micro_batch_size']:
+            raise ValueError('Both --batch-size and --micro-batch-size arguments were given, '
+                             'use --micro-batch-size, as --batch-size is deprecated and kept '
+                             'for backwards compatibility.')
+        elif opts['batch_size']:
+            opts['micro_batch_size'] = opts['batch_size']
+
         if popdist.isPopdistEnvSet():
             opts['use_popdist'] = True
             opts['replicas'] = popdist.getNumLocalReplicas()

@@ -1,16 +1,18 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
+
 from typing import Dict, Tuple
+from yacs.config import CfgNode
 
 import torch
 import torch.nn as nn
-from yacs.config import CfgNode
-from utils.anchors import AnchorBoxes
 
 from models.backbone.yolov4_p5 import Yolov4P5BackBone
 from models.detector import Detector
 from models.head.yolov4_head import Yolov4Head
 from models.neck.yolov4_p5 import Yolov4P5Neck
 from models.layers import Mish
+from utils.anchors import AnchorBoxes
+from utils.postprocessing import PredictionsPostProcessing
 
 
 class PreprocessTargets(nn.Module):
@@ -140,7 +142,7 @@ class PreprocessTargets(nn.Module):
 
         # This return is used when we want to get the maximum number of labels
         # after preprocessing
-        if self.auto_anchors and not self.training:
+        if self.auto_anchors:
             return torch.sum(cxywh_added.bool())
 
         # We have lots of padding in the mask so we reduce some by taking the maximum
@@ -191,6 +193,19 @@ class Yolov4P5(Detector):
 
     def __init__(self, cfg: CfgNode, backbone: nn.Module = Yolov4P5BackBone, neck: nn.Module = Yolov4P5Neck, detector_head: nn.Module = Yolov4Head):
         super().__init__(backbone, neck, detector_head)
+        self.cpu_mode = not cfg.model.ipu
+
+        # We storage the specific paremeters of training or inference,
+        # for example for inference we have nms, and it's hyperparameters.
+        if cfg.model.mode == "train":
+            specific_mode_parameters = cfg.training
+            self.nms = False
+        else:
+            specific_mode_parameters = cfg.inference
+            self.nms = specific_mode_parameters.nms
+            self.ipu_post_process = PredictionsPostProcessing(specific_mode_parameters, self.cpu_mode)
+
+        cfg = cfg.model
 
         if cfg.activation == "relu":
             activation = nn.ReLU()
@@ -200,7 +215,6 @@ class Yolov4P5(Detector):
             activation = nn.Linear()
 
         self.precision = (torch.float16 if cfg.half else torch.float32)
-        self.cpu_mode = not cfg.ipu
 
         self.anchors = {"p3": AnchorBoxes(widths=torch.tensor(cfg.anchors.p3width, requires_grad=False),
                                           heights=torch.tensor(cfg.anchors.p3height, requires_grad=False)),
@@ -213,9 +227,9 @@ class Yolov4P5(Detector):
         self.n_classes = cfg.n_classes
         self.strides = cfg.strides
 
-        self.uint = cfg.uint_io
+        self.uint_io = cfg.uint_io
 
-        if not cfg.ipu or not cfg.half:
+        if self.cpu_mode or not cfg.half:
             self.model_dtype = "float"
         else:
             self.model_dtype = "half"
@@ -229,19 +243,29 @@ class Yolov4P5(Detector):
         self.headp4 = detector_head(self.anchors["p4"], 512, self.n_classes, self.strides[1], precision=self.precision, cpu_mode=self.cpu_mode)
         self.headp5 = detector_head(self.anchors["p5"], 1024, self.n_classes, self.strides[2], precision=self.precision, cpu_mode=self.cpu_mode)
 
-    def forward(self, x: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], y: Tuple[torch.Tensor, ...] = None) -> Tuple[torch.Tensor, ...]:
-        if self.uint:
+    def change_input_type(self, x: torch.Tensor) -> torch.Tensor:
+        if self.uint_io:
             if self.model_dtype == "float":
                 x = x.float() / 255.
             else:
                 x = x.half() / 255.
+        return x
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor = None) -> Tuple[torch.Tensor, ...]:
+        x = self.change_input_type(x)
+
         x = self.backbone(x)
         p5, p4, p3 = self.neck(x)
         p3 = self.headp3(p3)
         p4 = self.headp4(p4)
         p5 = self.headp5(p5)
 
-        return (p3, p4, p5)
+        predictions = (p3, p4, p5)
+
+        if self.nms:
+            return self.ipu_post_process(torch.cat(predictions, axis=1))
+        else:
+            return predictions
 
     def output_shape(self, input_shape: Tuple[int, int]) -> Dict[str, Tuple[int, ...]]:
         if len(input_shape) != 2:

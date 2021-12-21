@@ -218,7 +218,7 @@ def compile_graph(opts, graph):
 
 def train_process(opts, training_data, valid_data):
     # Metric calculation and init
-    opts.iterations_per_epoch = training_data._size / (opts.batch_size * opts.batches_per_step)
+    opts.iterations_per_epoch = training_data._size / (opts.micro_batch_size * opts.batches_per_step)
     opts.steps_per_valid_log = math.ceil(opts.iterations_per_epoch / opts.valid_per_epoch)
     opts.iterations = math.ceil(opts.epochs * opts.iterations_per_epoch)
     assert opts.mov_mean_window < opts.iterations, "Choose a moving mean window smaller than the number of iterations. To do all iterations, set to 0"
@@ -327,7 +327,7 @@ def preprocess_options(opts):
 
     # Create checkpoint and log paths
     cur_time = time.strftime('%Y%m%d_%H%M%S')
-    name = f"bs{opts.batch_size}-{cur_time}"
+    name = f"bs{opts.micro_batch_size}-{cur_time}"
     opts.logs_path = os.path.join(opts.log_dir, f'logs-{name}')
     opts.checkpoint_path = os.path.join(opts.log_dir, f'weights-{name}/ckpt')
     opts.init_path = os.path.join(opts.log_dir, f'init-weights-rn{cur_time}/ckpt')
@@ -343,7 +343,7 @@ def preprocess_options(opts):
     assert opts.batches_per_step >= opts.replication_factor, "There must be enough batches (N) to split when replicating across N graphs."
 
     # Set learning rate based on base
-    opts.learning_rate = (2**opts.base_learning_rate) * opts.batch_size
+    opts.learning_rate = (2**opts.base_learning_rate) * opts.micro_batch_size
     return opts
 
 
@@ -384,8 +384,8 @@ def get_options():
 
     # --------------- MODEL ------------------
     group = parser.add_argument_group('Model')
-    group.add_argument('--batch-size',              type=int,   default=100,
-                       help="Set batch-size for training graph")
+    group.add_argument('--micro-batch-size',              type=int,   default=100,
+                       help="Set micro-batch-size for training graph")
     group.add_argument('--validation-batch-size',   type=int,   default=100,
                        help="Batch-size for validation graph")
     group.add_argument('--precision',               type=str,   default="32.32",
@@ -449,7 +449,7 @@ if __name__ == '__main__':
                " Stochastic Rounding {prng}\n"
                "Training Graph.\n"
                " Dataset {training_data}\n"
-               " Batch Size {batch_size}.\n"
+               " Micro Batch Size {micro_batch_size}.\n"
                " Epochs {epochs}\n"
                " Base Learning Rate 2^{base_learning_rate}\n"
                "  Learning Rate {learning_rate}\n"
@@ -458,7 +458,7 @@ if __name__ == '__main__':
     if not opts.no_validation:
         log_str += ("Validation Graph.\n"
                     " Dataset {validation_data}\n"
-                    " Batch Size {validation_batch_size}\n")
+                    " Validation Batch Size {validation_batch_size}\n")
     log_str += "Checkpoint Path {checkpoint_path}\n"
 
     print(log_str.format(**vars(opts)))

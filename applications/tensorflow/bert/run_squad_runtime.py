@@ -65,12 +65,12 @@ GraphOps = namedtuple(
                  'exec_path'])
 
 
-def get_exec_path(seq_length, batch_size, device_mapping, pipelined):
-    poplar_exec_filepath = f"./bert.poplar_exec_{str(seq_length)}_{str(batch_size)}_model_per_ipu_{str(max(device_mapping) + 1 if pipelined else 1)}"
+def get_exec_path(seq_length, micro_batch_size, device_mapping, pipelined):
+    poplar_exec_filepath = f"./bert.poplar_exec_{str(seq_length)}_{str(micro_batch_size)}_model_per_ipu_{str(max(device_mapping) + 1 if pipelined else 1)}"
     return poplar_exec_filepath
 
 
-def build_graph(opts, iterations_per_step=1, is_training=True, feed_name=None):
+def build_graph(opts, iterations_per_step=1, is_training=True):
 
     train_graph = tf.Graph()
     with train_graph.as_default():
@@ -112,7 +112,7 @@ def build_graph(opts, iterations_per_step=1, is_training=True, feed_name=None):
 
         exec_path = None
         compile_op = None
-        poplar_exec_filepath = get_exec_path(opts['seq_length'], opts['batch_size'], opts['device_mapping'], should_be_pipeline_when_inference(opts))
+        poplar_exec_filepath = get_exec_path(opts['seq_length'], opts['micro_batch_size'], opts['device_mapping'], should_be_pipeline_when_inference(opts))
         exec_path = os.path.join(poplar_exec_filepath)
         compile_op = application_compile_op.experimental_application_compile_op(
             bert_net, output_path=exec_path, freeze_variables=True)
@@ -207,9 +207,9 @@ def synthetic_feed_dict(placeholders, bs, seq_length):
 
 
 def run_time(opts, dataset_list=None):
-    bs = opts['batch_size']
+    bs = opts['micro_batch_size']
     seq_length = opts['seq_length']
-    poplar_exec_filepath = get_exec_path(opts['seq_length'], opts['batch_size'], opts['device_mapping'], should_be_pipeline_when_inference(opts))
+    poplar_exec_filepath = get_exec_path(opts['seq_length'], opts['micro_batch_size'], opts['device_mapping'], should_be_pipeline_when_inference(opts))
     logger.info(f"POPLAR FILE PATH FOR EXEC: {poplar_exec_filepath}<------------------------------------------")
     inputs = []
     engine_name = "my_engine"
@@ -239,7 +239,7 @@ def run_time(opts, dataset_list=None):
         logger.debug(f"Number of threads: {opts['num_inference_thread']}")
         logger.debug(f"Data Type: {opts['generated_data']}")
         if opts['generated_data']:
-            feed_dict = synthetic_feed_dict(placeholders, opts['batch_size'], opts['seq_length'])
+            feed_dict = synthetic_feed_dict(placeholders, opts['micro_batch_size'], opts['seq_length'])
         else:
             feed_dict = parse_feed_dict(placeholders, dataset_list, bs, seq_length, i=0)
 
@@ -247,7 +247,7 @@ def run_time(opts, dataset_list=None):
         def runner(feed_dict, session):
             for step in range(number_of_steps):
                 if opts['generated_data']:
-                    feed_dict = synthetic_feed_dict(placeholders, opts['batch_size'], opts['seq_length'])
+                    feed_dict = synthetic_feed_dict(placeholders, opts['micro_batch_size'], opts['seq_length'])
                 else:
                     feed_dict = parse_feed_dict(placeholders, dataset_list, bs, seq_length, i=step)
 
@@ -351,7 +351,7 @@ def predict_loop(opts):
         dataset_list = [_input_ids_array, _input_mask_array, _segment_ids_array, _unique_ids_array]
 
     iterations_per_step = 1
-    predict, ipu_config = build_graph(opts, iterations_per_step, is_training=False, feed_name="evalfeed")
+    predict, ipu_config = build_graph(opts, iterations_per_step, is_training=False)
 
     if predict.exec_path is not None:
         all_results = run_time(opts, dataset_list)
@@ -377,7 +377,7 @@ def predict_loop(opts):
 
 
 def set_training_defaults(opts):
-    opts['total_batch_size'] = opts['batch_size'] * opts['gradient_accumulation_count']
+    opts['total_batch_size'] = opts['micro_batch_size'] * opts['gradient_accumulation_count']
 
 
 def set_defaults(opts):

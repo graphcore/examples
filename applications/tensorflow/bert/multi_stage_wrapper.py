@@ -173,7 +173,7 @@ def staged_matmul_wrapper(embedding,
     return stage_func_list
 
 
-def staged_embedding_lookup_wrapper(embedding, split_count, batch_size, seq_length):
+def staged_embedding_lookup_wrapper(embedding, split_count, micro_batch_size, seq_length):
     stage_func_list = list()
 
     def get_stage_func(embedding, index):
@@ -194,7 +194,7 @@ def staged_embedding_lookup_wrapper(embedding, split_count, batch_size, seq_leng
                         masked_lm_weights, dtype=embedding.dtype)
                     if index == split_count - 1:
                         output = tf.reshape(
-                            output, [batch_size, seq_length, -1])
+                            output, [micro_batch_size, seq_length, -1])
                         return {
                             "word_embeddings": output,
                             "masked_lm_weights": masked_lm_weights}
@@ -215,11 +215,11 @@ def staged_embedding_lookup_wrapper(embedding, split_count, batch_size, seq_leng
     return stage_func_list
 
 
-def get_split_embedding_stages(embedding, split_count, bert_config, batch_size, seq_length):
+def get_split_embedding_stages(embedding, split_count, bert_config, micro_batch_size, seq_length):
     with tf.variable_scope("bert", reuse=tf.AUTO_REUSE, use_resource=True):
         with tf.variable_scope("embeddings", reuse=tf.AUTO_REUSE, use_resource=True):
             embedding_stages_func = staged_embedding_lookup_wrapper(
-                embedding=embedding, split_count=split_count, batch_size=batch_size, seq_length=seq_length)
+                embedding=embedding, split_count=split_count, micro_batch_size=micro_batch_size, seq_length=seq_length)
             return embedding_stages_func
 
 

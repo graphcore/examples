@@ -20,7 +20,7 @@ import onnx
 
 from bert_model import Bert, BertConfig
 from tests.torch_bert import BertConfig as TorchBertConfig, BertEmbeddings
-from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tensors, check_model, requires_remote_buffers, sanity
+from tests.utils import run_py, copy_weights_to_torch, run_fwd_model, check_tensors, check_model
 
 
 '''

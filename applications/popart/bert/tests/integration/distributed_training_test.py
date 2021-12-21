@@ -39,7 +39,6 @@ class TestBuildAndRun(SubProcessChecker):
         self.run_command("make", bert_root_dir(), [])
 
     @pytest.mark.ipus(4)
-    @pytest.mark.category2
     def test_poprun_complete(self):
         cmd = self._get_bert_command()
         self.run_command(cmd,

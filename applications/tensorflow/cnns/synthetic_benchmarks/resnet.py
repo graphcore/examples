@@ -22,11 +22,7 @@ models_path = Path(Path(__file__).absolute().parent.parent, 'inference')
 sys.path.append(str(models_path))
 from models.resnet import TensorflowResNet  # noqa
 
-# Add utils module to path
-bench_path = Path(Path(__file__).absolute().parent.parent.parent.parent.parent,
-                  'utils')
-sys.path.append(str(bench_path))
-from benchmarks.tensorflow.benchmark import Benchmark, parse_opts, run  # noqa
+from benchmark import Benchmark, parse_opts, run  # noqa
 
 
 class OptimizedResNet(TensorflowResNet):

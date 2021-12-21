@@ -1,7 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import pytest
 import os
-import subprocess
 import torch
 import numpy as np
 import poptorch
@@ -11,14 +10,13 @@ import shutil
 import random
 import import_helper
 from datasets.augmentations import AugmentationModel
-from datasets.preprocess import NormalizeToTensor, RandomResizedFlipCrop, get_preprocessing_pipeline
+from datasets.preprocess import IgnoreBboxIfPresent, NormalizeToTensor, RandomResizedFlipCrop, get_preprocessing_pipeline
 from datasets.webdataset_format import DistributeNode, match_preprocess
 from datasets.dataset import get_data, _WorkerInit
 from datasets.create_webdataset import parse_transforms
 import models
 from models.models import NormalizeInputModel
-from utils import run_script
-
+from utils import run_script, get_current_interpreter_executable
 
 
 class TestCustomAugmentations():
@@ -35,7 +33,6 @@ class TestCustomAugmentations():
         tensor = to_tensor(img) * 255.0  # Make sure the image is the same
         return img, tensor
 
-    @pytest.mark.category1
     def test_custom_flip(self):
         """
         Compares original and fast flip.
@@ -45,7 +42,6 @@ class TestCustomAugmentations():
         correct = transforms.functional.hflip(tensor)
         assert torch.allclose(custom, correct, atol=1e-06)
 
-    @pytest.mark.category1
     def test_NormalizeToTensor_pil(self):
         """
         Check the fused normalise+ToTensor steps against the original.
@@ -57,7 +53,6 @@ class TestCustomAugmentations():
         correct = correct_pipeline(img)
         assert torch.allclose(custom, correct, atol=1e-06)
 
-    @pytest.mark.category1
     def test_RandomResizedFlipCrop_pil(self):
         """
         Check the fused RandomResizedCrop+RandomFlip steps against the separate one.
@@ -73,17 +68,17 @@ class TestCustomAugmentations():
         correct = correct_pipeline(img)
         assert torch.allclose(custom, correct, atol=1e-06)
 
-    @pytest.mark.category1
     def test_inference_pipeline(self):
         """
         Compare original validation pipeline against the optimised one.
         """
         img, tensor = TestCustomAugmentations._generate_img(256)
-        ground_truth_preprocess = transforms.Compose([transforms.Resize(256),
-                                                      transforms.CenterCrop(224),
-                                                      transforms.ToTensor(),
-                                                      transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                                                      ])
+        ground_truth_preprocess = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
         preprocess = get_preprocessing_pipeline(train=False, input_size=224, half_precision=False, normalize=True)
         result_img = preprocess(img)
         result_tensor = preprocess(tensor)
@@ -91,7 +86,17 @@ class TestCustomAugmentations():
         assert torch.allclose(result_img, ground_truth, atol=1e-06)  # reference vs custom(img)
         assert torch.allclose(result_img, result_tensor, atol=1e-06)  # custom(img) vs custom(tensor)
 
-    @pytest.mark.category1
+    def test_fine_tuning_pipeline_ignores_bbox_if_present(self):
+        preprocess = get_preprocessing_pipeline(train=True, fine_tuning=True)
+        assert isinstance(preprocess.transforms[0], IgnoreBboxIfPresent)
+        img, tensor = TestCustomAugmentations._generate_img(256)
+        # Just make sure processing with bbox doesn't result in an error.
+        preprocess((img, "bbox"))
+        preprocess(img)
+        preprocess((tensor, "bbox"))
+        preprocess(tensor)
+
+
     def test_RandomResizedFlipCrop_tensor(self):
         img = torch.randint(low=0, high=255, size=(3, 256, 256), dtype=torch.uint8)
         correct_pipeline = transforms.Compose([transforms.ToPILImage(),
@@ -108,7 +113,6 @@ class TestCustomAugmentations():
         correct = correct_pipeline(img)
         assert torch.allclose(custom, correct, atol=1e-06)
 
-    @pytest.mark.category1
     def test_ipu_side_normalization(self):
         img_host = torch.rand(3, 100, 100) * 255.0
         img_ipu = img_host.clone()
@@ -118,7 +122,6 @@ class TestCustomAugmentations():
         ipu_result = model(img_ipu)
         assert torch.allclose(host_result, ipu_result, atol=1e-06)
 
-    @pytest.mark.category2
     def test_mixup(self):
         class Model(torch.nn.Module):
             def forward(self, batch):
@@ -164,7 +167,6 @@ class TestCustomAugmentations():
         torch.testing.assert_allclose(weights[0], mixup_coeffs)
         torch.testing.assert_allclose(weights[1], 1.0 - mixup_coeffs)
 
-    @pytest.mark.category2
     def test_cutmix(self):
         class Model(torch.nn.Module):
             def forward(self, batch):
@@ -177,19 +179,19 @@ class TestCustomAugmentations():
         ]).to(torch.float)
         labels = torch.tensor([1, 2, 3])
 
-        class Opts: pass
-        opts = Opts()
+        class args: pass
+        args = args()
         # 0.75 should result in 5x5 cut boxes.
-        opts.cutmix_lambda_low = 0.75
-        opts.cutmix_lambda_high = 0.75
-        opts.cutmix_disable_prob = 0.0
-        opts.precision = "32.32"
+        args.cutmix_lambda_low = 0.75
+        args.cutmix_lambda_high = 0.75
+        args.cutmix_disable_prob = 0.0
+        args.precision = "32.32"
 
         model = poptorch.inferenceModel(AugmentationModel(
             Model(),
             use_mixup=False,
             use_cutmix=True,
-            opts=opts,
+            args=args,
         ))
         cutmixed_images, all_coeffs = model((images, ()))
 
@@ -237,7 +239,6 @@ class TestCustomAugmentations():
         torch.testing.assert_allclose(weights[0], torch.tensor(0.75))
         torch.testing.assert_allclose(weights[1], 1.0 - torch.tensor(0.75))
 
-    @pytest.mark.category2
     def test_cutmix_disabled_with_coefficient(self):
         class Model(torch.nn.Module):
             def forward(self, batch):
@@ -249,19 +250,19 @@ class TestCustomAugmentations():
             torch.ones(1, 10, 10) * 3,
         ]).to(torch.float)
 
-        class Opts: pass
-        opts = Opts()
+        class args: pass
+        args = args()
         # Value of 1.0 for lambda disables cutmix.
-        opts.cutmix_lambda_low = 1.0
-        opts.cutmix_lambda_high = 1.0
-        opts.cutmix_disable_prob = 0.0
-        opts.precision = "32.32"
+        args.cutmix_lambda_low = 1.0
+        args.cutmix_lambda_high = 1.0
+        args.cutmix_disable_prob = 0.0
+        args.precision = "32.32"
 
         model = poptorch.inferenceModel(AugmentationModel(
             Model(),
             use_mixup=False,
             use_cutmix=True,
-            opts=opts,
+            args=args,
         ))
         cutmixed_images, all_coeff = model((images, ()))
 
@@ -270,19 +271,16 @@ class TestCustomAugmentations():
 
 
 class TestHostBenchmark:
-    @pytest.mark.category2
     def test_host_benchmark_cifar10(self):
         output = run_script("datasets/host_benchmark.py", "--data cifar10 --batch-size 256")
-        assert "Throughput of the epoch" in output
+        assert "Throughput of the iteration" in output
 
-
-    @pytest.mark.category2
     def test_poprun_host_benchmark(self):
-        output = run_script("poprun", "--mpi-global-args='--allow-run-as-root' --num-instances=2 --numa-aware=yes --offline-mode=1 --num-replicas=2 python datasets/host_benchmark.py --data cifar10 --batch-size 256", python=False)
-        assert "Throughput of the epoch" in output
+        executable = get_current_interpreter_executable()
+        output = run_script("poprun", f"--mpi-global-args='--allow-run-as-root' --num-instances=2 --numa-aware=yes --offline-mode=1 --num-replicas=2 {executable} datasets/host_benchmark.py --data cifar10 --batch-size 256", python=False)
+        assert "Throughput of the iteration" in output
 
 
-@pytest.mark.category2
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize("dataset", ["real", "generated"])
 @pytest.mark.parametrize("precision", ["16.16", "32.32"])
@@ -297,33 +295,31 @@ def test_input_8bit(dataset, precision):
         model = NormalizeInputModel(MyModel(), mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], output_cast=cast_op) if eight_bit_io else MyModel()
         poptorch_model = poptorch.inferenceModel(model, poptorch.Options())
         input_data = next(iter(dl))[0]
-        with torch.no_grad():
-            return poptorch_model(input_data)
+        return poptorch_model(input_data)
 
     class HelperClass:
         def __init__(self):
             pass
-    opts = HelperClass()
-    model_opts = poptorch.Options()
-    opts.batch_size = 1
-    opts.dataloader_worker = 4
-    opts.data = dataset
-    opts.model = "resnet18"
-    opts.precision = precision
-    opts.eight_bit_io = False
-    opts.normalization_location = "host"
-    dataloader = get_data(opts, model_opts, train=False)
+    args = HelperClass()
+    opts = poptorch.Options()
+    args.batch_size = 1
+    args.dataloader_worker = 4
+    args.data = dataset
+    args.model = "resnet18"
+    args.precision = precision
+    args.eight_bit_io = False
+    args.normalization_location = "host"
+    dataloader = get_data(args, opts, train=False)
     result_normal = run_model(dataloader, eight_bit_io=False)
-    opts.eight_bit_io = True
-    opts.normalization_location = "ipu"
-    dataloader8 = get_data(opts, model_opts, train=False)
+    args.eight_bit_io = True
+    args.normalization_location = "ipu"
+    dataloader8 = get_data(args, opts, train=False)
     result_8bit = run_model(dataloader8, eight_bit_io=True)
     if not dataset == "generated":
         assert torch.allclose(result_8bit, result_normal, atol=4e-03, rtol=1e-03)
     assert result_normal.type() == result_8bit.type()
 
 
-@pytest.mark.category1
 def test_chunk_distribution():
     """ Test the distributed webdataset, whether all the chunks are used.
     """
@@ -345,7 +341,6 @@ def test_chunk_distribution():
 
 
 class TestWebDataset:
-    @pytest.mark.category2
     def test_webdataset_creation(self):
         raw_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_raw")
         converted_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("test_cifar10_webdata_creation")
@@ -360,7 +355,6 @@ class TestWebDataset:
         assert "Dataset OK." in out
         assert num_files == 2 * 50 + 1
 
-    @pytest.mark.category1
     def test_webdataset_preprocess(self):
         pipeline = parse_transforms(["Resize(200)", "CenterCrop(100)"])
         assert len(pipeline) == 2
@@ -370,7 +364,6 @@ class TestWebDataset:
         assert vars(pipeline[1]) == vars(transforms.CenterCrop(100))
 
 
-    @pytest.mark.category2
     def test_webdataset_distribution(self):
         """Smoke test for distributed webdataset generation.
         """
@@ -386,37 +379,33 @@ class TestWebDataset:
         assert num_files == 2 * 8
 
 
-    @pytest.mark.category2
     def test_webdata_cache(self):
         """Test cache for webdata
         """
         class HelperClass:
             def __init__(self):
                 pass
-        opts = HelperClass()
-        opts.precision = "16.16"
-        opts.model = 'resnet50'
-        opts.device_iterations = 1
-        opts.replicas = 1
-        opts.batch_size = 31
-        opts.dataloader_worker = 8
-        opts.normalization_location = 'ipu'
-        opts.eight_bit_io = False
-        opts.webdataset_percentage_to_use = 100
-        opts.data = "imagenet"
-        opts.webdataset_memory_cache_ratio = 0.8
-        opts.imagenet_data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_webdata")
+        args = HelperClass()
+        args.precision = "16.16"
+        args.model = 'resnet50'
+        args.device_iterations = 1
+        args.replicas = 1
+        args.batch_size = 31
+        args.dataloader_worker = 8
+        args.normalization_location = 'ipu'
+        args.eight_bit_io = False
+        args.webdataset_percentage_to_use = 100
+        args.data = "imagenet"
+        args.webdataset_memory_cache_ratio = 0.8
+        args.imagenet_data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_webdata")
 
-        dataloader = get_data(opts, poptorch.Options(), train=False, async_dataloader=True, return_remaining=True)
+        dataloader = get_data(args, poptorch.Options(), train=False, async_dataloader=True, return_remaining=True)
         total_samples = 0
         for data, label in dataloader:
             total_samples += label.size()[0]
         assert total_samples == 10000
 
 
-
-
-@pytest.mark.category1
 @pytest.mark.parametrize("first_step", ["", "Resize(200)", "Resize(256)"])
 @pytest.mark.parametrize("second_step", ["", "CenterCrop(224)"])
 def test_preprocess_match(first_step, second_step):
@@ -438,7 +427,6 @@ def test_preprocess_match(first_step, second_step):
             assert len_pipeline - 2 == len(modified_pipeline.transforms)
 
 
-@pytest.mark.category2
 @pytest.mark.parametrize("async_dataloader", [True, False])
 @pytest.mark.parametrize("return_remaining", [True, False])
 @pytest.mark.parametrize("data_type", ["raw", "webdata"])
@@ -447,31 +435,30 @@ def test_get_data(async_dataloader, return_remaining, data_type, num_instances):
     """
     Check whether all the samples are used.
     """
-    model_opts = poptorch.Options()
-
     class HelperClass:
         def __init__(self):
             pass
-    opts = HelperClass()
-    opts.precision = "16.16"
-    opts.model = 'resnet50'
-    opts.device_iterations = 1
-    opts.replicas = 1
-    opts.batch_size = 31
-    opts.dataloader_worker = 8
-    opts.normalization_location = 'ipu'
-    opts.eight_bit_io = False
-    opts.webdataset_percentage_to_use = 100
+    args = HelperClass()
+    args.precision = "16.16"
+    args.model = 'resnet50'
+    args.device_iterations = 1
+    args.replicas = 1
+    args.batch_size = 31
+    args.dataloader_worker = 8
+    args.normalization_location = 'ipu'
+    args.eight_bit_io = False
+    args.webdataset_percentage_to_use = 100
     if data_type == "webdata":
-        opts.data = "imagenet"
-        opts.imagenet_data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_webdata")
+        args.data = "imagenet"
+        args.imagenet_data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_webdata")
     else:
-        opts.data = 'cifar10'
+        args.data = 'cifar10'
     lengths = []
     for instance_id in range(num_instances):
+        opts = poptorch.Options()
         if num_instances > 1:
-            model_opts.Distributed.configureProcessId(instance_id, num_instances)
-        dataloader = get_data(opts, model_opts, train=False, async_dataloader=async_dataloader, return_remaining=return_remaining)
+            opts.Distributed.configureProcessId(instance_id, num_instances)
+        dataloader = get_data(args, opts, train=False, async_dataloader=async_dataloader, return_remaining=return_remaining)
         length = 0
         for x, y in dataloader:
             length += x.size()[0]
@@ -485,7 +472,6 @@ def test_get_data(async_dataloader, return_remaining, data_type, num_instances):
         assert len(dataloader) == expected_batch_count
 
 
-@pytest.mark.category2
 @pytest.mark.parametrize("random_generator", ["numpy", "torch", "python"])
 @pytest.mark.parametrize("instances", [1, 2])
 def test_random_raw(random_generator, instances):
@@ -512,15 +498,15 @@ def test_random_raw(random_generator, instances):
             return float(index) + augment
 
     ds = DummyDataset(transform=random_generator)
-    model_opts = poptorch.Options()
     augments = []
     elements = []
     for instance_id in range(instances):
+        opts = poptorch.Options()
         worker_init = _WorkerInit(42, instance_id, 5)
         if instances > 1:
-            model_opts.Distributed.configureProcessId(instance_id, instances)
-        model_opts = model_opts.randomSeed(42)
-        data_loader = poptorch.DataLoader(model_opts, ds, batch_size=1, num_workers=5, shuffle=True, worker_init_fn=worker_init)
+            opts.Distributed.configureProcessId(instance_id, instances)
+        opts = opts.randomSeed(42)
+        data_loader = poptorch.DataLoader(opts, ds, batch_size=1, num_workers=5, shuffle=True, worker_init_fn=worker_init)
         for item in data_loader:
             frac = item[0].numpy().tolist() % 1  # Get fraction(augmentation)
             frac = int(10000 * frac)  # avoid rounding error

@@ -17,7 +17,6 @@ class Test(SubProcessChecker):
         super(Test, self).setUpClass()
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
     def test_sales_forecasting_one_ipu(self):
         """Test that the model runs on one IPU for one epoch."""
         with TemporaryDirectory() as temp_dir:
@@ -34,7 +33,6 @@ class Test(SubProcessChecker):
             )
 
     @pytest.mark.ipus(2)
-    @pytest.mark.category1
     def test_sales_forecasting_two_ipus(self):
         """Test that the model runs when replicated over two IPUs for
            one epoch."""
@@ -53,7 +51,6 @@ class Test(SubProcessChecker):
             )
 
     @pytest.mark.ipus(2)
-    @pytest.mark.category1
     def test_sales_forecasting_multiprocessing(self):
         """Test that the model runs with multiprocessing enabled."""
         with TemporaryDirectory() as temp_dir:

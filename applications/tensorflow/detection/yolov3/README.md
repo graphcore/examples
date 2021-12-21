@@ -37,7 +37,7 @@ $ wget http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.ta
 $ wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
 ```
 Extract all of these tars into one directory, which should have the following structure:
-
+```
 VOC
 ├── test
 |    └──VOCdevkit
@@ -46,7 +46,7 @@ VOC
      └──VOCdevkit
          └──VOC2007 (from VOCtrainval_06-Nov-2007.tar)
          └──VOC2012 (from VOCtrainval_11-May-2012.tar)
-
+```
 2. generate data reference files (voc_train.txt and voc_test.txt)
 ```
 $ cd public_examples/applications/tensorflow/detection/yolov3

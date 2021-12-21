@@ -137,7 +137,6 @@ def run_scheduled_optimizer_factory_case(config, iteration, epoch_truth=None, st
             assert lr == epoch_truth[iteration.epoch]
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "config, epoch_truth, step_truth",
     [
@@ -156,7 +155,6 @@ def test_scheduled_optimizer_factory_constant_lr(config, epoch_truth, step_truth
                                          step_truth=step_truth)
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "mode, option_name, sched, manual_truth",
     [
@@ -194,7 +192,6 @@ def test_scheduled_optimizer_factory_epochwise(mode, option_name, sched, manual_
     run_scheduled_optimizer_factory_case(config, iteration, epoch_truth=epoch_truth, step_truth=step_truth, option_name=option_name)
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "mode, option_name, sched, manual_truth",
     [
@@ -233,7 +230,6 @@ def test_scheduled_optimizer_factory_stepwise(mode, option_name, sched, manual_t
     run_scheduled_optimizer_factory_case(config, iteration, epoch_truth=epoch_truth, step_truth=step_truth, option_name=option_name)
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "manual_truth, option_name",
     [
@@ -259,7 +255,6 @@ def test_scheduled_optimizer_factory_multiple_schedules(manual_truth, option_nam
     run_scheduled_optimizer_factory_case(config, iteration, epoch_truth=epoch_truth, step_truth=step_truth, option_name=option_name)
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "config",
     [
@@ -286,7 +281,6 @@ def test_scheduled_optimiser_params_const_flag(config):
         assert not value[1] if key in expected_non_const else value[1]
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "schedule, expected",
     [
@@ -317,7 +311,6 @@ def test_schedule_key_parsing(schedule, expected):
     assert step_schedule.schedule == expected
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "start_epoch, steps_per_epoch, num_epochs, lr_schedule, expected",
     [
@@ -348,7 +341,6 @@ def test_schedule_with_continue_from_epoch(start_epoch, steps_per_epoch, num_epo
     assert lr == expected
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize(
     "steps_per_epoch, lr_schedule_by_step, layer_inputs, pipeline",

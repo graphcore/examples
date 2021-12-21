@@ -11,7 +11,6 @@ from examples_tests.test_util import SubProcessChecker
 
 class TestReadmeCommands(SubProcessChecker):
 
-    @pytest.mark.category2
     @pytest.mark.ipus(4)
     def test_edge_convolutional_network(self, args=""):
         """Run Edge Conditioned Graph Convolutional Neural Network on 133,000 molecules from the QM9 dataset

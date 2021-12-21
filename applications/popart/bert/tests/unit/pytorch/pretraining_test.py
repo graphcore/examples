@@ -19,7 +19,6 @@ import numpy as np
 
 from bert_model import Bert, BertConfig
 from tests.torch_bert import BertConfig as TorchBertConfig, BertForMaskedLM
-from tests.utils import sanity
 from tests.unit.pytorch.full_graph_utils import fwd_graph, bwd_graph
 
 
@@ -77,7 +76,7 @@ def test_pretraining_fwd(custom_ops):
     fwd_graph(popart_model, torch_model, mapping=ONNX_TORCH_MAPPING, transform=onnx_torch_tform)
 
 
-@pytest.mark.parametrize("opt_type", [sanity("SGD"), "LAMB"])
+@pytest.mark.parametrize("opt_type", ["SGD", "LAMB"])
 def test_pretraining_bwd(custom_ops, opt_type):
     #  ------------------- PopART --------------------
     config = BertConfig(task="PRETRAINING",

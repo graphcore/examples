@@ -32,7 +32,6 @@ tf.disable_v2_behavior()
 tf.disable_eager_execution()
 
 
-@pytest.mark.category1
 def test_upsample():
     input_value = np.random.random((2, 224, 224, 3)).astype(np.float16)
     # nearest_neighborhood function that run on cpu:

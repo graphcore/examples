@@ -48,7 +48,7 @@ CIFAR-100 dataset is available here https://www.cs.toronto.edu/~kriz/cifar-100-b
 | File / Subdirectory | Description               |
 |---------------------|---------------------------|
 | `train.py`          | The main training program |
-| `validation.py`     | Contains the validation code used in `train.py` but also can be run to perform validation on     previously generated checkpoints. The options should be set to be the same as those used for training, with the `--restore-path` option pointing to the log directory of the previously generated checkpoints |
+| `validation.py`     | Contains the validation code used in `train.py` but also can be run to perform validation on previously generated checkpoints. The options available in validation should be set to be the same as in training - note that not all options used in training are available in validation (e.g. learning rate or pipelining related options are ignored when parsed through a config file or throw an error when parsed from the terminal). If training was performed using `--config`, the same configuration can be given and relevant parameters will be parsed. The `--restore-path` option can either point to the log directory of the previously generated checkpoints (if arguments.json is present, `global_batch_size` is extracted from the file), or a specific checkpoint (then `global_batch_size` becomes `--micro-batch-size`) |
 | `restore.py`        | Used for restoring a training run from a previously saved checkpoint. For example: `python restore.py --restore-path logs/RN20_bs32_BN_16.16_v0.9.115_3S9/` |
 | `ipu_optimizer.py`  | Custom optimizer |
 | `ipu_utils.py`      | IPU specific utilities |
@@ -78,6 +78,17 @@ change the number of training epochs of a configuration with:
     python3 train.py --config my_config --epochs 50
 
 We provide reference configurations for the models described below.
+
+## Selecting checkpoints for validation
+
+With `validation.py` either a single or all generated checkpoints can be evaluated. To evaluate a single checkout specify its name `--restore-path`:
+
+    python3 validation.py --config my_config --data-dir <path-to-dataset> --restore-path logs/<training-dir>/<ckpt-id>
+
+To evaluate all generated checkpoints specify the directory that contains them:
+
+    python3 validation.py --config my_config --data-dir <path-to-dataset> --restore-path logs/<training-dir>
+
 
 ## PopDist and PopRun - distributed training on IPU-PODs
 
@@ -178,15 +189,15 @@ The example uses PopDist with 8 instances to maximize throughput.
     --num-instances 8 --num-replicas 16 python train.py --config mk2_resnet50_mlperf_pod16_bs20 --epochs-per-sync 20 \
     --data-dir your_dataset_path --no-validation
 
-After training is complete, you can validate the previously saved checkpoints. As above, each IPU runs one replica of the model and 
+After training is complete, you can validate the previously saved checkpoints. As above, each IPU runs one replica of the model and
 the model is replicated over the 16 IPUs. To make sure there are no validation samples discarded when sharding the validation dataset across 8 instances, a batch size of 25 is used.
 
     POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false"}' poprun -vv --mpi-global-args='--tag-output --allow-run-as-root' \
     --mpi-local-args='-x POPLAR_ENGINE_OPTIONS' --ipus-per-replica 1 --numa-aware 1 \
     --num-instances 8 --num-replicas 16 python validation.py --config mk2_resnet50_mlperf_pod16_bs20 --no-stochastic-rounding \
-    --batch-size 25 --available-memory-proportion 0.6 --data-dir your_dataset_path --restore-path generated_checkpoints_dir_path
+    --micro-batch-size 25 --available-memory-proportion 0.6 --data-dir your_dataset_path --restore-path generated_checkpoints_dir_path
 
-For POD64 systems, a similar configuration is used. Again each IPU runs a single replica of the model with a micro-batch size of 20. To maintain a similar total batch size we use a gradient accumulation count of 2 and 64 replicas for a total batch size of 2560. We also use 32 instances to maximize throughput. The optimiser, partials, activations recomputation and distributed batch norm setting are the same as for POD16 systems.
+For POD64 systems, a similar configuration is used. Again each IPU runs a single replica of the model with a micro-batch size of 20. To maintain a similar global batch size we use a gradient accumulation count of 2 and 64 replicas for a global batch size of 2560. We also use 32 instances to maximize throughput. The optimiser, partials, activations recomputation and distributed batch norm setting are the same as for POD16 systems.
 
     POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false"}' POPLAR_TARGET_OPTIONS='{"gatewayMode":"false"}' \
     poprun -vv --host xxx.xxx.1.1,xxx.xxx.1.2,xxx.xxx.1.3,xxx.xxx.1.4 \
@@ -210,7 +221,7 @@ the IPU. This example uses the SGD-M optimizer with group normalisation, cosine 
 validation accuracy in 65 epochs.
 
     python train.py --model resnet --model-size 50 --dataset imagenet --data-dir .../imagenet-data \
-    --shards 4 --replicas 4 --batch-size 4 --gradient-accumulation-count 64 --epochs 65 \
+    --shards 4 --replicas 4 --micro-batch-size 4 --gradient-accumulation-count 64 --epochs 65 \
     --pipeline --pipeline-splits b1/2/relu b2/3/relu b3/5/relu --pipeline-schedule Grouped \
     --enable-recomputation --optimiser momentum --momentum 0.90 --ckpts-per-epoch 1 \
     --max-cross-replica-buffer-size 100000000 --available-memory-proportion 0.6 0.6 0.6 0.6 0.6 0.6 0.16 0.2 \
@@ -236,7 +247,7 @@ As above, you can run validation after training:
 
 ### ImageNet - EfficientNet
 
-The following configuration trains EfficientNet-B4 to ~82% using 16 Mk2 IPUs. Each model is pipelined across 4 IPUs with a micro-batch size of 3. We use a gradient accumulation count of 64, and 4 replicas in total for a global batch size of 768 (3 * 64 * 4). 
+The following configuration trains EfficientNet-B4 to ~82% using 16 Mk2 IPUs. Each model is pipelined across 4 IPUs with a micro-batch size of 3. We use a gradient accumulation count of 64, and 4 replicas in total for a global batch size of 768 (3 * 64 * 4).
 
     poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --num-replicas 4 --num-instances 4 --ipus-per-replica 4 \ python3 train.py --config mk2_efficientnet_b4_g1_16ipus --data-dir your_dataset_path --no-validation
 
@@ -250,17 +261,28 @@ Changing the dimension of the group convolutions can make the model more efficie
 number of parameters approximately the same, you can reduce the expansion ratio. For example a modified
 EfficientNet-B4 model, with a similar number of trainable parameters can be trained using:
 
-    poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --num-replicas 4 --num-instances 4 --ipus-per-replica 4 \ python3 train.py --config mk2_efficientnet_b4_g16_16ipus --data-dir your_dataset_path --no-validation
+    poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --num-replicas 8 --num-instances 8 --ipus-per-replica 2 \ python3 train.py --config mk2_efficientnet_b4_g16_16ipus --data-dir your_dataset_path --no-validation --identical-replica-seeding
 
-This should give a similar validation accuracy as the standard model but with improved training throughput.
+This configuration trains EfficientNet-B4 to ~82.6% validation accuracy with improved training throughput, achieved by using half-precision arithmetic throughput and by pipelining across just 2 IPUs. The global batch size is 6144, enabled by using the LARS optimizer and polynomial decay learning rate, in addition to other hyperparameter tuning. This makes the configuration appropriate for a range of different sized systems. For example, to train over 256 IPUs, simply change the `--config` argument in the above argument to `mk2_efficientnet_b4_g1_256ipus` and `--num-replicas 128`.
+
 
 ### ImageNet - EfficientNet - Inference
 
 The training harness can also be used to demonstrate inference performance using the `validation.py` script.
 For example, to check inference for EfficientNet use:
 
-    python validation.py --model efficientnet --model-size B0 --dataset imagenet --batch-size 8 \
+    python validation.py --model efficientnet --model-size B0 --dataset imagenet --micro-batch-size 8 \
     --generated-data --repeat 10 --batch-norm
+
+There is also a possibility to run inference using the [embedded application runtime](https://docs.graphcore.ai/projects/tensorflow1-user-guide/en/latest/embedded_application_runtime.html#ipu-embedded-application-runtime) which allows us to save a
+precompiled graph to a file and skip the compilation in the subsequent runs. It can be tested
+using the `inference_embedded.py` script. Each time the script is executed it looks for the
+precompiled graph in the working directory, then loads it and executes for the given number of
+iterations. If the graph is not found, then it is constructed, compiled and saved to a file.
+For example, to test the performance of EfficientNet inference use:
+
+    python inference_embedded.py --model efficientnet --model-size B0 --dataset imagenet --micro-batch-size 1 \
+    --iterations 1000 --batches-per-step 100 --eight-bit-io --no-dataset-cache --generated-data
 
 
 # View the results in Weights & Biases
@@ -290,7 +312,7 @@ ranges.
 `--batch-norm` : Batch normalisation is recommended for medium and larger batch sizes that will typically be used
 training with Cifar data on the IPU (and is the default for Cifar).
 For ImageNet data smaller batch sizes are usually used and group normalisation is recommended (and is the default for ImageNet).
-For a distributed batch norm across multiple replicas, 
+For a distributed batch norm across multiple replicas,
 the `--BN-span` option can be used to specify the number of replicas.
 
 `--group-norm` : Group normalisation can be used for small batch sizes (including 1) when batch normalisation would be
@@ -312,8 +334,8 @@ Use `python train.py --model efficientnet --help` to see other model options.
 
 ## Major options
 
-`--batch-size` : The batch size used for training. When training on IPUs the batch size will typically be smaller than batch
-sizes used on GPUs. A batch size of four or less is often used, but in these cases using group normalisation is
+`--micro-batch-size` : The micro batch size used for training. When training on IPUs the batch size will typically be smaller than batch
+sizes used on GPUs. A micro batch size of four or less is often used, but in these cases using group normalisation is
 recommended instead of batch normalisation (see `--group-norm`).
 
 `--base-learning-rate-exponent` : The base learning rate exponent, N, is used to set the value of the base learning rate, which is 2<sup>N</sup>. The base learning rate is scaled by the batch size to obtain the final learning rate. This
@@ -327,6 +349,8 @@ if `--data-dir` is omitted.
 
 `--dataset` : The dataset to use. Must be one of `imagenet`, `cifar-10` or `cifar-100`. This can often be inferred from
 the `--data-dir` option.
+
+`--ckpts-per-epoch` : How often a checkpoint would be saved in `logs/<run>/`. By default it's 1.
 
 `--lr-schedule` : The learning rate schedule function to use. The default is `stepped` which is configured using
 `--learning-rate-decay` and `--learning-rate-schedule`. You can also select `cosine` for a cosine learning rate.
@@ -360,20 +384,20 @@ if omitted then the list of available splits will be output. The splits should b
 the memory use across the IPUs. The weights will be updated after each pipeline stage is executed
 the number of times specified by the `--gradient-accumulation-count` option.
 It is also possible to pipeline the model on a single IPU in order to make use of recomputation.
-You can use `--pipeline --shards 1 --pipeline-schedule Sequential --enable-recompute` 
+You can use `--pipeline --shards 1 --pipeline-schedule Sequential --enable-recompute`
 and the respective `--pipeline-splits`
 to define the recomputation points.
 
-`--pipeline-schedule`: There are three options. 
+`--pipeline-schedule`: There are three options.
 In the `Grouped` configuration (default), forward passes are grouped together
 and the backward passes are grouped together.
 This makes the pipeline more balanced, especially when the forward passes have similar processing duration
-and the backward passes. 
-Otherwise, the pipeline has to wait for the slowest processing step. 
-In the `Interleaved` scheme, backward and forward passes are interleaved. 
-The `Sequential` option is mainly used for debugging 
+and the backward passes.
+Otherwise, the pipeline has to wait for the slowest processing step.
+In the `Interleaved` scheme, backward and forward passes are interleaved.
+The `Sequential` option is mainly used for debugging
 but is required when pipelining a model on a single IPU (in order to make use of recomputation).
-It distributes the processing over multiple IPUs but processes samples sequentially, one after the other. 
+It distributes the processing over multiple IPUs but processes samples sequentially, one after the other.
 
 `--precision` : Specifies the data types to use for calculations. The default, `16.16` uses half-precision
 floating-point arithmetic throughout. This lowers the required memory which allows larger models to train, or larger
@@ -413,11 +437,8 @@ Multiple values may be specified when using pipelining. In this case two values 
 
 `--no-validation` : Turns off validation.
 
-`--valid-batch-size` : The batch size to use for validation.
-
 Note that the `validation.py` script can be run to validate previously generated checkpoints. Use the `--restore-path`
-option to point to the checkpoints and set up the model the same way as in training.
-
+option to point to the checkpoints, and either select the same configuration file as used in training with `--config` or pass `--model`, `--model-size`, `--dataset` matching those used in the training. If arguments.json is present the directory given in `--restore-path`, global_batch_size is extracted from that file, but it can be overwritten with `--global-batch-size` argument. If neither the argument nor the file are available, then global_batch_size becomes `--micro-batch-size`)
 
 ## Other options
 

@@ -113,7 +113,6 @@ def run_embedding_layer(args):
 
 
 @pytest.mark.ipus(2)
-@pytest.mark.category1
 def test_host_embedding(custom_ops):
     args_string = ["--config",
                    os.path.join(bert_root_dir(), 'configs/mk1/squad_base_128_inference.json'),

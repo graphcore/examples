@@ -12,7 +12,6 @@ from poptorch import inferenceModel, trainingModel
 
 class TestYolov4P5Neck:
     """Tests for training and inference of Yolov4 P5 neck."""
-    @pytest.mark.category2
     @pytest.mark.ipus(1)
     def test_training(self):
         model = Yolov4P5Neck(nn.ReLU(), calculate_loss=True)
@@ -23,7 +22,6 @@ class TestYolov4P5Neck:
         _, _, _, loss = model(x)
         assert torch.numel(loss) == 1
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_inference(self):
         model = Yolov4P5Neck(nn.ReLU())

@@ -60,7 +60,6 @@ def mock_pooled_validation_run(checkpoint_paths,
     return results
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "multiple_log_lines, correct_output, expectation",
     [
@@ -90,7 +89,6 @@ def test_run_inference_extract_result(monkeypatch, multiple_log_lines, correct_o
         assert j["exact_match"] == em
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "root_path, ckpt_suffix, gt_indices",
     [
@@ -127,7 +125,6 @@ def test_result_into_recursive_path(root_path, ckpt_suffix, gt_indices):
     assert reduce(getitem, gt_indices, dict(result_dict)) == result
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "num_experiments, num_runs, num_processes",
     [
@@ -174,7 +171,6 @@ def test_perform_validations(monkeypatch, num_experiments, num_runs, num_process
             getitem, Path(relpath).parts, dict(pooled_results))
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "num_processes,num_sweeps,num_repeats",
     [

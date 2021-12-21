@@ -11,8 +11,8 @@ import datasets
 
 def load_model(checkpoint_file):
     checkpoint = torch.load(checkpoint_file)
-    opts = checkpoint['opts']
-    model = models.get_model(opts, datasets.datasets_info[opts.data], pretrained=False)
+    args = checkpoint['args']
+    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False)
     models.load_model_state_dict(model, checkpoint['model_state_dict'])
     model.double()
     return model
@@ -42,11 +42,11 @@ def average_model_weights(checkpoint_path, average_fn, checkpoint_N):
         averaged_model.update_parameters(model)
 
     last_checkpoint = torch.load(checkpoint_files[-1])
-    opts = last_checkpoint['opts']
-    filename = f'{opts.model}_{opts.data}_{last_checkpoint["epoch"]}_averaged.pt'
+    args = last_checkpoint['args']
+    filename = f'{args.model}_{args.data}_{last_checkpoint["epoch"]}_averaged.pt'
     save_path = os.path.join(checkpoint_path, filename)
 
-    if opts.precision[-3:] == ".16":
+    if args.precision[-3:] == ".16":
         model.half()
     else:
         model.float()
@@ -56,16 +56,16 @@ def average_model_weights(checkpoint_path, average_fn, checkpoint_N):
         'model_state_dict': models.get_model_state_dict(averaged_model),
         'loss': 0,  # dummy just to work with validate script
         'train_accuracy': 0,  # dummy just to work with validate script
-        'opts': opts
+        'args': args
     }, save_path)
 
     return averaged_model
 
 
-def create_average_fn(opts):
-    if opts.weight_avg_strategy == 'exponential':
+def create_average_fn(args):
+    if args.weight_avg_strategy == 'exponential':
         return lambda averaged_model_parameter, model_parameter, num_averaged:\
-            opts.weight_avg_exp_decay * averaged_model_parameter + (1-opts.weight_avg_exp_decay) * model_parameter
+            args.weight_avg_exp_decay * averaged_model_parameter + (1-args.weight_avg_exp_decay) * model_parameter
     else:  # mean strategy
         return None
 

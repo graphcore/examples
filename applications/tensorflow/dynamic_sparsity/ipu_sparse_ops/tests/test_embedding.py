@@ -16,25 +16,21 @@ class TestBuildAndRun(SubProcessChecker):
         env.update(extra_env)
         self.run_command(cmd_args, build_dir, ["Results match."], env=env)
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_sparse_embedding_default_projection_only(self):
         # Test default parameters:
         self._run_test_embed("python3 ipu_sparse_ops/tools/sparse_embedding.py --check-projection-grads-only")
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_sparse_embedding_default(self):
         # Test default parameters:
         self._run_test_embed("python3 ipu_sparse_ops/tools/sparse_embedding.py")
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_sparse_embedding_default_fp16(self):
         # Test default parameters:
         self._run_test_embed("python3 ipu_sparse_ops/tools/sparse_embedding.py --data-type fp16")
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_sparse_gpt2_xl_s128_fp16(self):
         # Test default parameters:

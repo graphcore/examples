@@ -17,7 +17,6 @@ class TestMCMC(SubProcessChecker):
                          ["Unpacking returns_and_features_for_mcmc.tar.gz"])
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category2
     def test_mcmc_model(self):
         self.run_command("python3 mcmc_tfp.py",
                          working_path,

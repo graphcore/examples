@@ -2,14 +2,18 @@
 import argparse
 import collections
 import numpy as np
+import os
 from ruamel import yaml
+from scipy.cluster.vq import kmeans
 import torchvision
 import time
 from typing import Dict, List, Tuple, Union
+from tqdm import tqdm
 from yacs.config import CfgNode
 
 import torch
 
+from utils.anchors import AnchorBoxes
 from utils.visualization import scale_boxes_to_orig
 
 
@@ -32,7 +36,7 @@ class StatRecorder:
         self.eval_stats = []
         self.image_count = cfg.model.micro_batch_size * cfg.ipuopts.batches_per_step
         self.cfg = cfg
-        self.class_names = yaml.safe_load(open(cfg.model.class_name_path))['class_names']
+        self.class_names = yaml.safe_load(open(os.environ['PYTORCH_APPS_DETECTION_PATH'] + "/" + cfg.model.class_name_path))['class_names']
         self.seen = 0
         self.iou_values = torch.linspace(0.5, 0.95, 10)
         self.num_ious = self.iou_values.numel()
@@ -45,9 +49,6 @@ class StatRecorder:
             predictions (np.array): M X 85 array of predictions
             image_size (torch.Tensor): contains the original image size
         """
-        labels = torch.from_numpy(labels)
-        predictions = torch.from_numpy(predictions)
-
         num_labels = len(labels)
         target_cls = labels[:, 0].tolist() if num_labels else []
         self.seen = self.seen + 1
@@ -81,7 +82,7 @@ class StatRecorder:
                     # Search for detections
                     if pred_indx.shape[0]:
                         # Prediction to target ious
-                        best_ious, best_indxs = iou(predictions[pred_indx, :4], target_box[target_indx]).max(1)  # best ious, indices
+                        best_ious, best_indxs = iou(bboxes[pred_indx, :4], target_box[target_indx]).max(1)  # best ious, indices
                         # Appended detections
                         detected_set = set()
                         for iou_indx in (best_ious > self.iou_values[0]).nonzero(as_tuple=False):
@@ -93,85 +94,224 @@ class StatRecorder:
                                 if len(detected) == num_labels:  # all targets already located in image
                                     break
 
-            self.eval_stats.append((correct.cpu(), scores.cpu(), class_pred.cpu(), target_cls))
+            self.eval_stats.append((correct.cpu().detach().numpy(), scores.cpu().detach().numpy(), class_pred.cpu().detach().numpy(), target_cls))
 
-    def compute_and_print_eval_metrics(self):
+    def compute_and_print_eval_metrics(self, output_function):
         """
         Computes and prints the evaluation metrics
         """
         s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
-        precision, recall, f1, mean_precision, mean_recall, map50, map = 0., 0., 0., 0., 0., 0., 0.
+        precision, recall, f1, mean_precision, mean_recall, m_ap50, m_ap = 0., 0., 0., 0., 0., 0., 0.
         ap = []
         eval_stats = [np.concatenate(x, 0) for x in zip(*self.eval_stats)]
         if len(eval_stats) and eval_stats[0].any():
             precision, recall, ap, f1, ap_class = ap_per_class(*eval_stats)
             precision, recall, ap50, ap = precision[:, 0], recall[:, 0], ap[:, 0], ap.mean(1)
-            mean_precision, mean_recall, map50, map = precision.mean(), recall.mean(), ap50.mean(), ap.mean()
+            mean_precision, mean_recall, m_ap50, m_ap = precision.mean(), recall.mean(), ap50.mean(), ap.mean()
             nt = np.bincount(eval_stats[3].astype(np.int64), minlength=len(self.class_names))  # number of targets per class
         else:
             nt = np.zeros(1)
 
         pf = '%20s' + '%12.5g' * 6  # print format
-        print("\n EVALUTAION \n")
-        print(s)
-        print(pf % ('all', self.seen, nt.sum(), mean_precision, mean_recall, map50, map))
+        output_function("\n EVALUATION \n")
+        output_function(s)
+        output_function(pf % ('all', self.seen, nt.sum(), mean_precision, mean_recall, m_ap50, m_ap))
         if self.cfg.eval.verbose:
             for indx, cls in enumerate(ap_class):
-                print(pf % (self.class_names[cls], self.seen, nt[cls], precision[indx], recall[indx], ap50[indx], ap[indx]))
+                output_function(pf % (self.class_names[cls], self.seen, nt[cls], precision[indx], recall[indx], ap50[indx], ap[indx]))
 
-    def record_inference_stats(self, nms_step_time: float, inference_round_trip_time: Tuple[float, float, float], inference_step_time: float):
+        return self.seen, nt.sum(), mean_precision, mean_recall, m_ap50, m_ap
+
+    def record_inference_stats(self, inference_round_trip_time: Tuple[float, float, float], inference_step_time: float):
         """Storages in the class the latency, inference time and postprocessing time of a model
             Parameters:
                 inference_round_trip_time (Tuple): Latency tuple with (Min, Max, Avg) Latencies. This is the round trip time from host -> device -> host for a single batch
                 inference_step_time (float): Inference time of a step
                 nms_step_time (float): Postprocessing time of a step
         """
-
         # inference_round_trip_time is an average time needed for a step
         self.inference_times.append(inference_round_trip_time)
+
         # inference_step_time is the time taken to complete the step, and used to calculate the throughput
         inference_throughput = self.image_count/inference_step_time
         self.inference_throughputs.append(inference_throughput)
 
-        self.nms_times.append(nms_step_time)
-
-        total_step_time = inference_step_time + nms_step_time
-        self.total_times.append(total_step_time)
-
-        total_throughput = self.image_count/total_step_time
-        self.total_throughputs.append(total_throughput)
-
-    def logging(self, function):
-        """Prints using the "function" given the average of the times recorded during the call to record_inference_stats()
+    def logging(self, output_function):
+        """Prints using the "output_function" given the average of the times recorded during the call to record_inference_stats()
             Parameters:
-                function (function): function used to print the stats recorded
+                output_function (function): function used to print the stats recorded
         """
-        avg_nms_time_per_step = sum(self.nms_times)/len(self.nms_times)
-        avg_total_time_per_step = sum(self.total_times)/len(self.total_times)
-
         avg_min_latency = [x[0] for x in self.inference_times]
         avg_max_latency = [x[1] for x in self.inference_times]
         avg_latency = [x[2] for x in self.inference_times]
 
-        function("Inference stats: image size {}x{}, batches per step {}, batch size {}, {} steps".format(
+        output_function("Inference stats: image size {}x{}, batches per step {}, batch size {}, {} steps".format(
             self.cfg.model.image_size, self.cfg.model.image_size, self.cfg.ipuopts.batches_per_step, self.cfg.model.micro_batch_size, len(self.total_times)
         ))
-        function("--------------------------------------------------")
-        function("Inference")
-        function("Average Min Latency per Batch: {:.3f} ms".format(1000 * sum(avg_min_latency)/len(self.inference_times)))
-        function("Average Max Latency per Batch: {:.3f} ms".format(1000 * sum(avg_max_latency)/len(self.inference_times)))
-        function("Average Latency per Batch: {:.3f} ms".format(1000 * sum(avg_latency)/len(self.inference_times)))
-        function("Average Inference Throughput: {:.3f} img/s".format(sum(self.inference_throughputs)/len(self.inference_throughputs)))
-        function("--------------------------------------------------")
-        # TODO remove the NMS and end-to-end time report once NMS is on device
-        function("End-to-end")
-        function("Average NMS Latency per Batch: {:.3f} ms".format(1000 * avg_nms_time_per_step/self.cfg.ipuopts.batches_per_step))
-        function("Average End-to-end Latency per Batch: {:.3f} ms".format(1000 * avg_total_time_per_step/self.cfg.ipuopts.batches_per_step))
-        function("End-to-end Throughput: {:.3f} img/s".format(sum(self.total_throughputs)/len(self.total_throughputs)))
-        function("==================================================")
+        output_function("--------------------------------------------------")
+        output_function("Inference")
+        output_function("Average Min Latency per Batch: {:.3f} ms".format(1000 * sum(avg_min_latency)/len(self.inference_times)))
+        output_function("Average Max Latency per Batch: {:.3f} ms".format(1000 * sum(avg_max_latency)/len(self.inference_times)))
+        output_function("Average Latency per Batch: {:.3f} ms".format(1000 * sum(avg_latency)/len(self.inference_times)))
+        output_function("Average Inference Throughput: {:.3f} img/s".format(sum(self.inference_throughputs)/len(self.inference_throughputs)))
+        output_function("--------------------------------------------------")
 
         if self.cfg.eval.metrics:
-            self.compute_and_print_eval_metrics()
+            self.compute_and_print_eval_metrics(output_function)
+
+
+class AutoAnchors:
+    """
+    Class to calculate the best set of anchors for a dataset with a given image size
+    """
+    def __init__(self, dataset, cfg, gen):
+        self.dataset = dataset
+        self.image_size = cfg.image_size
+        self.anchor_threshold = cfg.anchor_threshold
+        self.anchors = torch.stack((torch.stack((torch.tensor(cfg.anchors.p3width, requires_grad=False), torch.tensor(cfg.anchors.p3height, requires_grad=False)), dim=1),
+                                    torch.stack((torch.tensor(cfg.anchors.p4width, requires_grad=False), torch.tensor(cfg.anchors.p4height, requires_grad=False)), dim=1),
+                                    torch.stack((torch.tensor(cfg.anchors.p5width, requires_grad=False), torch.tensor(cfg.anchors.p5height, requires_grad=False)), dim=1))).view(3 * 4, 2)
+        self.n_anchors = self.anchors.shape[0]
+        self.n_generations = gen
+
+    def best_ratio_metric(self, k_points: Union[torch.Tensor, np.array], width_height: torch.Tensor):
+        """
+        Computes the best match and ratio of k points with a given width and height
+        Parameters:
+            k_points (Union[torch.Tensor, np.array]): k points, in this case anchors
+            width_height (torch.Tensor): a width and height to compare to
+        Returns:
+            best_ratio_in_dim (torch.Tensor): best ratio for each anchor per label
+            best (torch.Tensor): best anchor ratio for each label
+        """
+        k_points = torch.tensor(k_points).float()
+        ratio = width_height[:, None] / k_points[None]
+        best_ratio_in_dim = torch.min(ratio, 1. / ratio).min(2)[0]
+        best = best_ratio_in_dim.max(1)[0]
+        return best_ratio_in_dim, best
+
+    def metric(self, k_points: np.array, width_height: torch.Tensor):  # compute metric
+        """
+        Computes the best possible recall and the anchors above the specified threshold
+        Parameters:
+            k_points (np.array): anchor box sizes
+            width_height (torch.Tensor): width height of all labels
+        Returns:
+            best possible recall
+            anchors above threshold
+        """
+
+        best_ratio_in_dim, best = self.best_ratio_metric(k_points, width_height)
+        anchors_above_threshold = (best_ratio_in_dim > 1. / self.anchor_threshold).float().sum(1).mean()
+        best_possible_recall = (best > (1. / self.anchor_threshold)).float().mean()
+        return best_possible_recall, anchors_above_threshold
+
+    def fitness(self, k_points: np.array, width_height: torch.Tensor):  # mutation fitness
+        """
+        Computes the fitness of k points with width and height
+        Parameters:
+            k_points (np.array): k points, in this case anchors
+            width_height (torch.Tensor): a width and height to compare to
+        Returns:
+            fitness
+        """
+        _, best = self.best_ratio_metric(k_points, width_height)
+        return (best * (best > (1. / self.anchor_threshold)).float()).mean()
+
+    def mutate(self, population: np.array, mutation_prob: float = 0.9, sigma: float = 0.1):
+        """
+        Computes a new population scaling the original population randomly
+        Parameters:
+            population (np.array): original population
+            mutation_prob (float): probability of mutation of the population
+            sigma (float): the step of the change in the mutation
+        Returns:
+            a new mutated population
+        """
+        while (population == 1).all():
+            population = ((np.random.random(population.shape) < mutation_prob) * np.random.random() * np.random.randn(*population.shape) * sigma + 1).clip(0.3, 3.0)
+        return population
+
+    def kmean_anchors(self, labels_wh: np.array):
+        """
+        Computes a new set of anchors using k-means and evolving mutation to find the best fit
+        Parameters:
+            labels_wh (np.array): labels width and height
+        Returns:
+            best population (set of anchors)
+        """
+        # Small object detection
+        n_small_objects = (labels_wh < 3.0).any(1).sum()
+        if n_small_objects > 0:
+            print("WARNING: Small objects found in the dataset")
+            print(str(n_small_objects) + " label boxes are < 3 pixels in width or height out of " + str(len(labels_wh)))
+        labels_wh_filtered = labels_wh[(labels_wh >= 2.0).any(1)]  # filter > 2 pixels
+
+        print("Running kmeans for %g anchors on %g points" % (self.n_anchors, len(labels_wh_filtered)))
+
+        # Kmeans calculation
+        sigma = labels_wh_filtered.std(0)
+        k_points, dist = kmeans(labels_wh_filtered / sigma, self.n_anchors, iter=30)
+        k_points *= sigma
+        labels_wh_filtered = torch.tensor(labels_wh_filtered, dtype=torch.float32)
+        k_points = k_points[np.argsort(k_points.prod(1))]
+
+        # Evolve
+        fitness_value = self.fitness(k_points, labels_wh_filtered)
+        population_size = k_points.shape
+
+        pbar = tqdm(range(self.n_generations), desc='Evlolving anchors with Genetic Algorithm')
+        for _ in pbar:
+            new_population = self.mutate(np.ones(population_size))
+            possible_new_kpoints = (k_points.copy() * new_population).clip(min=2.0)
+            new_fitness_value = self.fitness(possible_new_kpoints, labels_wh_filtered)
+            if new_fitness_value > fitness_value:
+                fitness_value, k_points = new_fitness_value, possible_new_kpoints.copy()
+                pbar.desc = "Evolving anchors with Genetic Algorithm, fitness: {:.3f}".format(fitness_value)
+
+        return k_points[np.argsort(k_points.prod(1))]
+
+    def __call__(self) -> List[AnchorBoxes]:
+        """
+        Computes the best set of anchors for the dataset
+        Returns:
+            best anchors
+        """
+        images_shapes = np.asarray(self.dataset.images_shapes)
+        shapes = self.image_size * images_shapes / images_shapes.max(1, keepdims=True)
+        center, shift = 1.0, 0.1
+        scales = np.random.uniform(center-shift, center+shift, size=(shapes.shape[0], 1))
+        wh_array = np.concatenate([l[:, 3:5] * s for s, l in zip(shapes * scales, self.dataset.labels)])
+        wh_tensor = torch.tensor(wh_array).float()
+        wh = np.concatenate([l[:, 3:5] * s for s, l in zip(shapes, self.dataset.labels)])
+
+        best_possible_recall, anchors_above_threshold = self.metric(self.anchors, wh_tensor)
+        print("Anchors/Target: {:.3f}, Best Possible Recall: {:.3f}".format(anchors_above_threshold, best_possible_recall))
+
+        if best_possible_recall < 0.98:
+            print("Attempting to generate improved anchors.")
+
+            new_anchors = self.kmean_anchors(wh)
+            new_best_possible_recall, _ = self.metric(new_anchors.reshape(-1, 2), wh_tensor)
+
+            if new_best_possible_recall > best_possible_recall:
+                new_anchors = torch.from_numpy(new_anchors).int().view(3, -1, 2)
+                new_anchors.requires_grad = False
+                new_anchors = [AnchorBoxes(widths=new_anchors[0, :, 0], heights=new_anchors[0, :, 1]),
+                               AnchorBoxes(widths=new_anchors[1, :, 0], heights=new_anchors[1, :, 1]),
+                               AnchorBoxes(widths=new_anchors[2, :, 0], heights=new_anchors[2, :, 1])]
+            else:
+                print('Kmean was not able to find better anchors than the originals')
+                new_anchors = [AnchorBoxes(widths=self.anchors[0:4, 0], heights=self.anchors[0:4, 1]),
+                               AnchorBoxes(widths=self.anchors[4:8, 0], heights=self.anchors[4:8, 1]),
+                               AnchorBoxes(widths=self.anchors[8:12, 0], heights=self.anchors[8:12, 1])]
+        else:
+            print("Current anchors are good enough. Using the original anchors.")
+            new_anchors = [AnchorBoxes(widths=self.anchors[0:4, 0], heights=self.anchors[0:4, 1]),
+                           AnchorBoxes(widths=self.anchors[4:8, 0], heights=self.anchors[4:8, 1]),
+                           AnchorBoxes(widths=self.anchors[8:12, 0], heights=self.anchors[8:12, 1])]
+
+        return new_anchors
 
 
 def load_weights(weight_path: str) -> List[Tuple[str, torch.Tensor]]:
@@ -257,7 +397,7 @@ def ioa(boxes1: np.array, boxes2: np.array) -> np.array:
         boxes1 (np.array): M x 4 representing xmin, ymin, xmax, ymax of bounding box
         boxes2 (np.array): N x 4 representing xmin, ymin, xmax, ymax of bounding box
     Returns:
-         (M x N) IoA between boxes1 and boxes2.
+         (M x N) IoA between boxes1 and boxes2
     """
 
     inter = intersection(boxes1, boxes2)
@@ -269,7 +409,7 @@ def ioa(boxes1: np.array, boxes2: np.array) -> np.array:
 def iou(boxes1: torch.Tensor, boxes2: torch.Tensor):
     """
     Return intersection-over-union of boxes.
-    Both sets of boxes are expected to be in (xmin, ymin, xmax, ymax) format.
+    Both sets of boxes are expected to be in (xmin, ymin, xmax, ymax) format
     Arguments:
         boxes1 (torch.Tensor): a NX4 tensor of boxes
         boxes2 (torch.Tensor): a MX4 tensor of boxes
@@ -286,7 +426,7 @@ def iou(boxes1: torch.Tensor, boxes2: torch.Tensor):
 
 def nms(predictions: torch.Tensor, iou_threshold: float, score_threshold: float, max_detections: int = 300) -> List[torch.Tensor]:
     """
-    Perform non maximum suppression on predictions.
+    Perform non maximum suppression on predictions
     Parameters:
         predictions (torch.Tensor): Nx85 representing xmin, ymin, xmax, ymax, obj_scores, cls_scores
         iou_threshold (float):  Predictions that overlap by more than this threshold will be discarded
@@ -342,13 +482,10 @@ def post_processing(
         Tuple[Tuple[List[np.array], List[np.array]], float]: a tuple of processed predictions, processed labels
         and the time taken to compute the post-processing
     """
-    post_processing_start_time = time.time()
     pruned_preds_batch = post_process_prediction(y, orig_img_size, cfg)
-    post_processing_end_time = time.time()
     processed_labels_batch = post_process_labels(transformed_labels, orig_img_size, cfg)
 
-    return (pruned_preds_batch, processed_labels_batch), (post_processing_end_time - post_processing_start_time)
-
+    return pruned_preds_batch, processed_labels_batch
 
 
 def post_process_prediction(y: torch.Tensor, orig_img_sizes: torch.Tensor, cfg: CfgNode) -> List[np.array]:
@@ -364,16 +501,15 @@ def post_process_prediction(y: torch.Tensor, orig_img_sizes: torch.Tensor, cfg: 
         List[np.array]: an array of processed bounding boxes, associated class score
         and class prediction of each bounding box
     """
-    output = torch.cat(y, axis=1).float()
-    predictions = nms(output, cfg.inference.iou_threshold, cfg.inference.class_conf_threshold)
+    predictions, max_n_predictions = y
     scaled_preds = []
-    for i, pred in enumerate(predictions):
+    for i, (pred, max_n) in enumerate(zip(predictions, max_n_predictions)):
         if pred is None:
             continue
-        pred = pred.detach().numpy()
+        max_n = -1 if max_n == 0 else max_n
+        pred = pred[:max_n]
         pred = xyxy_to_xywh(pred)
-        orig_img_size = orig_img_sizes[i]
-        scaled_pred = scale_boxes_to_orig(pred, orig_img_size[1], orig_img_size[0], cfg.model.image_size)
+        scaled_pred = scale_boxes_to_orig(pred, orig_img_sizes[i], cfg.model.image_size)
         scaled_preds.append(scaled_pred)
     return scaled_preds
 
@@ -388,16 +524,12 @@ def post_process_labels(labels: torch.Tensor, orig_img_sizes: torch.Tensor, cfg:
     Returns:
         List[np.array]: a list of processed labels
     """
-
-    labels = labels.detach().numpy()
-
     processed_labels = []
     for i, label in enumerate(labels):
         # Remove label padding
-        label = label[np.abs(label.sum(axis=1)) != 0.]
+        label = label[torch.abs(label.sum(axis=1)) != 0.]
         label = standardize_labels(label, cfg.model.image_size, cfg.model.image_size)
-        orig_img_size = orig_img_sizes[i]
-        scaled_boxes = scale_boxes_to_orig(label[:, 1:], orig_img_size[1], orig_img_size[0], cfg.model.image_size)
+        scaled_boxes = scale_boxes_to_orig(label[:, 1:], orig_img_sizes[i], cfg.model.image_size)
         label[:, 1:] = scaled_boxes
         processed_labels.append(label)
     return processed_labels
@@ -405,7 +537,7 @@ def post_process_labels(labels: torch.Tensor, orig_img_sizes: torch.Tensor, cfg:
 
 def standardize_labels(labels: np.array, width: int, height: int) -> np.array:
     """
-    Convert normalized label (as the ratio of image size) to the pixel scale of the image size.
+    Convert normalized label (as the ratio of image size) to the pixel scale of the image size
     Parameters:
         labels (np.array): NX5 array of labels
         width (int): image width
@@ -418,34 +550,71 @@ def standardize_labels(labels: np.array, width: int, height: int) -> np.array:
     return labels
 
 
-def xyxy_to_xywh(boxes: np.array) -> np.array:
+def normalize_labels(labels: np.array, width: int, height: int) -> np.array:
+    """
+    Convert standardized label (as the absolute pixels) to normalized scale (as a ratio) of the image size
+    Parameters:
+        labels (np.array): NX5 array of labels
+        width (int): image width
+        height (int): image height
+    Returns:
+        (np.array): an NX5 array of normalized labels
+    """
+    labels[:, [1, 3]] /= width
+    labels[:, [2, 4]] /= height
+    return labels
+
+
+def xyxy_to_xywh(boxes: Union[np.array, torch.Tensor]) -> Union[np.array, torch.Tensor]:
     """
     Convert xmin, ymin, xmax, ymax to centerx, centery, width, height
     Parameters:
-        boxes (np.array): boxes in the xmin, ymin, xmax, ymax format
+        boxes (np.array or torch.Tensor): boxes in the xmin, ymin, xmax, ymax format
     Returns:
-        np.array: boxes in the centerx, centery, width, height format
+        np.array or torch.Tensor: boxes in the centerx, centery, width, height format
     """
-    boxes[..., 2] = boxes[..., 2] - boxes[..., 0]
-    boxes[..., 3] = boxes[..., 3] - boxes[..., 1]
-    boxes[..., 0] = boxes[..., 0] + boxes[..., 2]/2
-    boxes[..., 1] = boxes[..., 1] + boxes[..., 3]/2
-    return boxes
+    width = boxes[..., 2] - boxes[..., 0]
+    height = boxes[..., 3] - boxes[..., 1]
+
+    x = boxes[..., 0] + width / 2
+    y = boxes[..., 1] + height / 2
+
+    if type(boxes).__module__ == np.__name__:
+        new_boxes = np.stack((x, y, width, height), axis=-1)
+        if boxes.shape[-1] != 4:
+            new_boxes = np.concatenate((new_boxes, boxes[..., 4:]), axis=-1)
+        return new_boxes
+    else:
+        new_boxes = torch.stack((x, y, width, height), axis=-1)
+        if boxes.shape[-1] != 4:
+            new_boxes = torch.cat((new_boxes, boxes[..., 4:]), axis=-1)
+        return new_boxes
 
 
-def xywh_to_xyxy(boxes: np.array) -> np.array:
+def xywh_to_xyxy(boxes: Union[np.array, torch.Tensor]) -> Union[np.array, torch.Tensor]:
     """
     Convert centerx, centery, width, height to xmin, ymin, xmax, ymax
     Parameters:
-        boxes (np.array): boxes in the centerx, centery, width, height format
+        boxes (torch.Tensor or np.array): boxes in the centerx, centery, width, height format
     Returns:
-        np.array: boxes in the xmin, ymin, xmax, ymax format
+        torch.Tensor or np.array: boxes in the xmin, ymin, xmax, ymax format
     """
-    boxes[..., 0] = boxes[..., 0] - boxes[..., 2]/2
-    boxes[..., 1] = boxes[..., 1] - boxes[..., 3]/2
-    boxes[..., 2] = boxes[..., 0] + boxes[..., 2]
-    boxes[..., 3] = boxes[..., 1] + boxes[..., 3]
-    return boxes
+    xmin = boxes[..., 0] - boxes[..., 2] / 2
+    ymin = boxes[..., 1] - boxes[..., 3] / 2
+
+    xmax = xmin + boxes[..., 2]
+    ymax = ymin + boxes[..., 3]
+
+    if type(boxes).__module__ == np.__name__:
+        new_boxes = np.stack((xmin, ymin, xmax, ymax), axis=-1)
+        if boxes.shape[-1] != 4:
+            new_boxes = np.concatenate((new_boxes, boxes[..., 4:]), axis=-1)
+        return new_boxes
+    else:
+        new_boxes = torch.stack((xmin, ymin, xmax, ymax), axis=-1)
+        if boxes.shape[-1] != 4:
+            new_boxes = torch.cat((new_boxes, boxes[..., 4:]), axis=-1)
+        return new_boxes
 
 
 def ap_per_class(

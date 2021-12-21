@@ -16,7 +16,6 @@ def assert_equal(a, b):
 @pytest.mark.usefixtures("ipu_sparse_ops")
 class TestBuildAndRun(SubProcessChecker):
 
-    @pytest.mark.category1
     def test_pruning_simple(self):
         from ipu_sparse_ops import sparse_training
         rows = np.array([1, 2, 3, 4, 5])
@@ -29,7 +28,6 @@ class TestBuildAndRun(SubProcessChecker):
         assert_equal(t[2], [30, 40, 50])
         assert m == {}
 
-    @pytest.mark.category1
     def test_pruning_momentum(self):
         from ipu_sparse_ops import sparse_training
         rows = np.array([1, 2, 3, 4, 5])
@@ -42,7 +40,6 @@ class TestBuildAndRun(SubProcessChecker):
         assert_equal(t[2], [20, 40])
         assert_equal(m['momentum'], [0.2, 0.4])
 
-    @pytest.mark.category1
     def test_regrow_rigl(self):
         from ipu_sparse_ops import sparse, sparse_training
         dense = np.array(
@@ -58,7 +55,6 @@ class TestBuildAndRun(SubProcessChecker):
         assert_equal(t[1], [4, 2])  # col indices
         assert_equal(t[2], [0, 0])  # New values are 0 from the generator
 
-    @pytest.mark.category1
     def test_regrow_rigl_zero_grad(self):
         from ipu_sparse_ops import sparse, sparse_training
         dense = np.array(
@@ -76,13 +72,11 @@ class TestBuildAndRun(SubProcessChecker):
         assert t[1][0] == 3
         assert_equal(t[2], [0, 0])  # New values are 0 from the generator
 
-    @pytest.mark.category1
     def test_zeros(self):
         from ipu_sparse_ops import sparse_training
         assert_equal([0, 0, 0, 0], sparse_training.zero_values_generator(4))
         assert_equal([0], sparse_training.zero_values_generator())
 
-    @pytest.mark.category1
     def test_join(self):
         from ipu_sparse_ops import sparse_training
         a = (
@@ -102,7 +96,6 @@ class TestBuildAndRun(SubProcessChecker):
         assert_equal(g[2], [0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
         assert_equal(m['momentum'], [1.4, 1.5, 1.6, 0, 0, 0])
 
-    @pytest.mark.category1
     def test_join_no_momentum(self):
         from ipu_sparse_ops import sparse_training
         a = (

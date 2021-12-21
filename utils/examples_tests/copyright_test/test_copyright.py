@@ -30,6 +30,40 @@ EXCLUDED = ['applications/tensorflow/cnns/training/Datasets/imagenet_preprocessi
             'applications/tensorflow/detection/yolov3/tests/original_model/config.py',
             'applications/tensorflow/detection/yolov3/tests/original_model/yolov3.py'
             ]
+EXCLUDED.extend(['applications/popart/transformer_transducer/training/utils/preprocessing_utils.py',
+                 'applications/popart/transformer_transducer/training/utils/download_librispeech.py',
+                 'applications/popart/transformer_transducer/training/utils/download_utils.py',
+                 'applications/popart/transformer_transducer/training/utils/convert_librispeech.py',
+                 'applications/popart/transformer_transducer/training/common/metrics.py',
+                 'applications/popart/transformer_transducer/training/common/rnn.py',
+                 'applications/popart/transformer_transducer/training/common/helpers.py',
+                 'applications/popart/transformer_transducer/training/common/data/features.py',
+                 'applications/popart/transformer_transducer/training/common/data/helpers.py',
+                 'applications/popart/transformer_transducer/training/common/data/text.py',
+                 'applications/popart/transformer_transducer/training/common/data/__init__.py',
+                 'applications/popart/transformer_transducer/training/common/data/dali/pipeline.py',
+                 'applications/popart/transformer_transducer/training/common/data/dali/iterator.py',
+                 'applications/popart/transformer_transducer/training/common/data/dali/sampler.py',
+                 'applications/popart/transformer_transducer/training/common/data/dali/data_loader.py',
+                 'applications/popart/transformer_transducer/training/common/data/dali/__init__.py',
+                 'applications/popart/transformer_transducer/training/common/text/cleaners.py',
+                 'applications/popart/transformer_transducer/training/common/text/numbers.py',
+                 'applications/popart/transformer_transducer/training/common/text/symbols.py',
+                 'applications/popart/transformer_transducer/training/common/text/__init__.py',
+                 'applications/popart/transformer_transducer/training/rnnt_reference/model.py',
+                 'applications/popart/transformer_transducer/training/rnnt_reference/config.py',
+                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/torch_random.h',
+                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/np_fp16_convert.hpp',
+                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/np_fp16_convert.cpp',
+                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/torch_random.cpp',
+                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/MT19937RNGEngine.h',
+                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/transducer.py',
+                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/setup.py',
+                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/transducer.cpp',
+                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/ref_transduce.py',
+                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/test.py',
+                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/test/transducer.py'])
+
 
 
 def check_file(path, language, amend):

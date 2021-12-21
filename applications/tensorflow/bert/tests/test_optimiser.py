@@ -23,7 +23,6 @@ import re
                                    'momentum',
                                    'adamw',
                                    'lamb'])
-@pytest.mark.category1
 def test_regression_optimiser(optim):
 
     cmd = f"python3 regression_optimiser.py --optimiser {optim}"

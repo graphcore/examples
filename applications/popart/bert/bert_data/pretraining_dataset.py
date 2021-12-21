@@ -22,11 +22,11 @@ import os
 from tqdm import tqdm
 from logging import getLogger
 from functools import reduce
-
+import popdist.popart
 from .dataset import DataSet
 from .data_sampler import DistributedDataSampler, SampleGenerator
 from utils.distributed import distributed_barrier
-import popdist.popart
+
 logger = getLogger(__name__)
 
 

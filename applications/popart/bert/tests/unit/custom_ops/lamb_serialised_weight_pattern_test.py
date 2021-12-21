@@ -66,8 +66,6 @@ def session(splits=1):
         skip_execution=False)
 
 
-@pytest.mark.sanity
-@pytest.mark.requires_remote_buffers
 @pytest.mark.parametrize('splits', (2, 4))
 def test_lamb_serialised_pattern_correctness(splits, custom_ops):
     outputs_1, proto_1 = session(splits=1)

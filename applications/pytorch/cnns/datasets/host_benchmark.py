@@ -1,6 +1,5 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 from tqdm import tqdm
-import torch
 import poptorch
 import time
 import argparse
@@ -35,28 +34,29 @@ def get_args():
 
 
 def benchmark_throughput(dataloader, iteration=2):
-    for it in range(iteration):
-        total_sample = 0
-        start_time = time.time()
-        iterations_per_epoch = len(dataloader)
-        bar = tqdm(dataloader, total=iterations_per_epoch)
-        for input_data, label in bar:
-            total_sample += input_data.size()[0]
-        end_time = time.time()
-        epoch_throughput = total_sample / (end_time-start_time)
+    for _ in range(iteration):
+        total_sample_size = 0
+        start_time = time.perf_counter()
+        for input_data, _ in tqdm(dataloader, total=len(dataloader)):
+            total_sample_size += input_data.size()[0]
+        elapsed_time = time.perf_counter() - start_time
+
         if popdist.isPopdistEnvSet():
-            if it == iteration - 1:
-                hvd.init()
-                epoch_throughput = utils.sync_metrics(epoch_throughput)
-            epoch_throughput *= popdist.getNumInstances()
-        print(f"Throughput of the epoch:{epoch_throughput:0.1f} img/sec")
+            elapsed_time, total_sample_size = utils.synchronize_throughput_values(
+                elapsed_time,
+                total_sample_size,
+            )
+
+        iteration_throughput = total_sample_size / elapsed_time
+        print(f"Throughput of the iteration:{iteration_throughput:0.1f} img/sec")
 
 
 if __name__ == '__main__':
-    opts = get_args()
-    model_opts = poptorch.Options()
+    args = get_args()
+    opts = poptorch.Options()
     if popdist.isPopdistEnvSet():
-        model_opts.Distributed.configureProcessId(popdist.getInstanceIndex(), popdist.getNumInstances())
-    model_opts.randomSeed(0)
-    dataloader = get_data(opts, model_opts, train=True, async_dataloader=not(opts.disable_async_loading))
+        hvd.init()
+        opts.Distributed.configureProcessId(popdist.getInstanceIndex(), popdist.getNumInstances())
+    opts.randomSeed(0)
+    dataloader = get_data(args, opts, train=True, async_dataloader=not(args.disable_async_loading))
     benchmark_throughput(dataloader)

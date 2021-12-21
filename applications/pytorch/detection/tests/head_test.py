@@ -15,7 +15,6 @@ class TestYolov4Head:
     input_tensor = torch.Tensor(np.random.randn(1, 32, 13, 13))
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
     def test_training(self):
         model = Yolov4Head(self.anchors, num_input_channels=32,
                            num_classes=3, stride=8, calculate_loss=True, precision=torch.half)
@@ -26,7 +25,6 @@ class TestYolov4Head:
         assert torch.numel(loss) == 1
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
     def test_inference(self):
         model = Yolov4Head(self.anchors, num_input_channels=32,
                            num_classes=3, stride=8, calculate_loss=False, precision=torch.half)

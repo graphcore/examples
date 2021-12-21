@@ -2,7 +2,6 @@
 import torch
 from torchvision import transforms
 
-
 normalization_parameters = {"mean": [0.485, 0.456, 0.406],
                             "std": [0.229, 0.224, 0.225]}
 
@@ -10,17 +9,21 @@ use_bbox_info_config = {False: {"max_trial": 1, "minimum_bbox_interlap": 0.0},
                         True: {"max_trial": 10, "minimum_bbox_interlap": 0.1}}
 
 
-def get_preprocessing_pipeline(train, input_size=224, half_precision=False, normalize=True, eightbit=False, use_bbox_info=False):
+def get_preprocessing_pipeline(train, input_size=224, half_precision=False, normalize=True, eightbit=False, use_bbox_info=False, fine_tuning=False):
     """
     Return optimized pipeline, which contains fused transformations.
     """
-    pipeline_steps = []
-    if train:
-        pipeline_steps.append(RandomResizedFlipCrop(input_size, **use_bbox_info_config[use_bbox_info]))
+    if train and not fine_tuning:
+        pipeline_steps = [RandomResizedFlipCrop(input_size, **use_bbox_info_config[use_bbox_info])]
     else:
+        # Validation or training with fine_tuning=True.
+        if fine_tuning:
+            pipeline_steps = [IgnoreBboxIfPresent()]
+        else:
+            pipeline_steps = []
         # 'resize_size' is scaled by the specified 'input_size' to allow for arbitrary-sized images.
         resize_size = int(input_size * 256.0 / 224.0)
-        pipeline_steps = [transforms.Resize(resize_size), transforms.CenterCrop(input_size)]
+        pipeline_steps += [transforms.Resize(resize_size), transforms.CenterCrop(input_size)]
 
     if normalize:
         pipeline_steps.append(NormalizeToTensor(mean=normalization_parameters["mean"], std=normalization_parameters["std"]))
@@ -69,7 +72,7 @@ class RandomResizedFlipCrop(transforms.RandomResizedCrop):
             return self.get_params(img, self.scale, self.ratio)
         trial_nr = 1
         # adjust bbox with image sizes
-        w, h = transforms.functional._get_image_size(img)
+        w, h = transforms.functional.get_image_size(img)
         bbox = bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h
         while trial_nr < self.max_trial:
             i, j, h, w = self.get_params(img, self.scale, self.ratio)
@@ -141,4 +144,11 @@ class NormalizeToTensor(torch.nn.Module):
         img = img.view(pic.size[1], pic.size[0], len(pic.getbands()))
         # put it from HWC to CHW format
         img = img.permute((2, 0, 1)).contiguous()
+        return img
+
+
+class IgnoreBboxIfPresent(torch.nn.Module):
+    def forward(self, img):
+        if isinstance(img, tuple):
+            return img[0]
         return img

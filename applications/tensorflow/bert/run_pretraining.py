@@ -69,13 +69,13 @@ def create_popdist_strategy():
     might not always be available.
     """
 
-    from tensorflow.python.ipu.horovod import ipu_multi_replica_strategy
+    from tensorflow.python.ipu.horovod import popdist_strategy
 
     hvd.init()
 
     # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
     # so disable them in the IPUMultiReplicaStrategy.
-    return ipu_multi_replica_strategy.IPUMultiReplicaStrategy(
+    return popdist_strategy.IPUMultiReplicaStrategy(
         add_ipu_cross_replica_reductions=False)
 
 
@@ -105,7 +105,7 @@ def build_pretrain_pipeline_stages(model, bert_config, opts):
                                         matmul_serialize_factor=opts["matmul_serialize_factor"],
                                         dtype=bert_config.dtype)
         embedding_stages = get_split_embedding_stages(
-            embedding=embedding, split_count=layer_counter['emb'], bert_config=bert_config, batch_size=opts["batch_size"], seq_length=opts['seq_length'])
+            embedding=embedding, split_count=layer_counter['emb'], bert_config=bert_config, micro_batch_size=opts["micro_batch_size"], seq_length=opts['seq_length'])
         # masked lm better be on same ipu with embedding layer for saving storage
         masked_lm_output_post_stages = get_split_matmul_stages(
             embedding=embedding, split_count=layer_counter['emb'], bert_config=bert_config)
@@ -273,7 +273,7 @@ def training_step_with_infeeds_and_outfeeds(train_iterator, outfeed_queue, bert_
     return ipu.ipu_compiler.compile(training_step, [])
 
 
-def build_graph(opts, is_training=True, feed_name=None):
+def build_graph(opts, is_training=True):
     train_graph = tf.Graph()
     strategy = None
 
@@ -457,7 +457,7 @@ def train(opts):
 
     # -------------- BUILD TRAINING GRAPH ----------------
     train = build_graph(opts,
-                        is_training=True, feed_name="trainfeed")
+                        is_training=True)
     train.session.run(train.init)
     train.session.run(train.iterator.initializer)
 
@@ -630,7 +630,7 @@ def set_distribution_defaults(opts):
 def set_training_defaults(opts):
     # Automatic pipeline depth counter
     if opts["global_batch_size"]:
-        gradients_to_accumulate = opts["global_batch_size"] // (opts["total_replicas"] * opts['batch_size'])
+        gradients_to_accumulate = opts["global_batch_size"] // (opts["total_replicas"] * opts['micro_batch_size'])
         divisor = len(opts['pipeline_stages']) * 2
         # We need then to fix the gradient_to_accumulate according to the pipeline
         gradients_to_accumulate = divisor * (1 + gradients_to_accumulate // divisor)
@@ -639,12 +639,12 @@ def set_training_defaults(opts):
             sys.exit(os.EX_OK)
         opts['gradient_accumulation_count'] = gradients_to_accumulate
         # We update the global_batch_size
-        proposed_global_batch_size = opts['gradient_accumulation_count'] * opts["total_replicas"] * opts["batch_size"]
+        proposed_global_batch_size = opts['gradient_accumulation_count'] * opts["total_replicas"] * opts["micro_batch_size"]
         if proposed_global_batch_size != opts['global_batch_size']:
             logger.info("Changing the global batch size to match the pipeline requirements.")
             opts['global_batch_size'] = proposed_global_batch_size
     else:
-        opts['global_batch_size'] = opts['batch_size'] * opts['gradient_accumulation_count']*opts['total_replicas']
+        opts['global_batch_size'] = opts['micro_batch_size'] * opts['gradient_accumulation_count']*opts['total_replicas']
 
     opts['compute_acc'] = not opts['disable_acc']
     if opts['disable_acc']:

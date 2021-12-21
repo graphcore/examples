@@ -6,17 +6,17 @@ import logging
 from .logger import Logger
 
 
-def inference_settings(opts, model_opts):
-    if hasattr(opts, "model_cache_path") and opts.model_cache_path is not None:
-        model_opts.enableExecutableCaching(opts.model_cache_path)
-    if opts.data == "synthetic":
-        model_opts.enableSyntheticData(int(popart.SyntheticDataMode.RandomNormal))
-    partial_type = torch.float16 if opts.half_partial else torch.float32
-    model_opts.Precision.setPartialsType(partial_type)
+def inference_settings(args, opts):
+    if hasattr(args, "model_cache_path") and args.model_cache_path is not None:
+        opts.enableExecutableCaching(args.model_cache_path)
+    if args.data == "synthetic":
+        opts.enableSyntheticData(int(popart.SyntheticDataMode.RandomNormal))
+    partial_type = torch.float16 if args.half_partial else torch.float32
+    opts.Precision.setPartialsType(partial_type)
     # Use the faster GroupNorm implementation or compatible version.
-    model_opts._Popart.set("groupNormStridedChannelGrouping", opts.enable_fast_groupnorm)
+    opts._Popart.set("groupNormStridedChannelGrouping", args.enable_fast_groupnorm)
     engine_options = {"target.deterministicWorkers": "portable"}  # avoid replica weight drift
-    if opts.profile and (not(hasattr(opts, "popdist_rank")) or opts.popdist_rank == 0):
+    if args.profile and (not(hasattr(args, "popdist_rank")) or args.popdist_rank == 0):
         logging.info(f"Profile files will be available in {Logger.logdirname}.")
         engine_options = {
                 "debug.allowOutOfMemory": "true",
@@ -24,40 +24,44 @@ def inference_settings(opts, model_opts):
                 "profiler.format": "v3",
                 "autoReport.all": "true",
         }
-    if opts.exchange_memory_target is not None:
-        engine_options["opt.internalExchangeOptimisationTarget"] = opts.exchange_memory_target
+    if args.exchange_memory_target is not None:
+        engine_options["opt.internalExchangeOptimisationTarget"] = args.exchange_memory_target
     if len(engine_options) > 0:
-        model_opts._Popart.set("engineOptions", engine_options)
-    return model_opts
+        opts._Popart.set("engineOptions", engine_options)
+    if args.num_io_tiles > 0:
+        opts.setExecutionStrategy(poptorch.ShardedExecution())
+        opts._Popart.set("defaultPrefetchBufferingDepth", 3)
+        opts.TensorLocations.numIOTiles(args.num_io_tiles)
+    return opts
 
 
-def train_settings(opts, model_opts):
-    model_opts = inference_settings(opts, model_opts)
-    model_opts._Popart.set("scheduleNonWeightUpdateGradientConsumersEarly", True)
-    model_opts.Precision.enableStochasticRounding(opts.enable_stochastic_rounding)
+def train_settings(args, opts):
+    opts = inference_settings(args, opts)
+    opts._Popart.set("scheduleNonWeightUpdateGradientConsumersEarly", True)
+    opts.Precision.enableStochasticRounding(args.enable_stochastic_rounding)
 
-    model_opts.enableStableNorm(not opts.disable_stable_batchnorm)
-    if opts.enable_fp_exceptions:
-        model_opts._Popart.set("enableFloatingPointChecks", True)
+    opts.enableStableNorm(not args.disable_stable_batchnorm)
+    if args.enable_fp_exceptions:
+        opts._Popart.set("enableFloatingPointChecks", True)
 
-    if not(opts.recompute_mode == "none") and len(opts.pipeline_splits) == 0:
-        model_opts._Popart.set("explicitRecomputation", True)
-        if opts.recompute_mode == "auto":
-            model_opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
-        elif opts.recompute_mode == "manual":
-            model_opts._Popart.set("autoRecomputation", int(popart.RecomputationType.RecomputeAll))
+    if not(args.recompute_mode == "none") and len(args.pipeline_splits) == 0:
+        opts._Popart.set("explicitRecomputation", True)
+        if args.recompute_mode == "auto":
+            opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
+        elif args.recompute_mode == "manual":
+            opts._Popart.set("autoRecomputation", int(popart.RecomputationType.RecomputeAll))
 
-    if opts.offload_optimizer:
+    if args.offload_optimizer:
         tensor_location = poptorch.TensorLocationSettings().useOnChipStorage(False)
-        model_opts.TensorLocations.setOptimizerLocation(tensor_location)
+        opts.TensorLocations.setOptimizerLocation(tensor_location)
 
-    model_opts._Popart.set("disableGradAccumulationTensorStreams", True)
+    opts._Popart.set("disableGradAccumulationTensorStreams", True)
 
-    num_stages = len(opts.pipeline_splits)+1
-    if len(opts.available_memory_proportion) == 1:
-        model_opts.setAvailableMemoryProportion({f'IPU{i}': opts.available_memory_proportion[0] for i in range(num_stages)})
-    elif len(opts.available_memory_proportion) > 1:
-            model_opts.setAvailableMemoryProportion({f'IPU{i}': amp for i, amp in enumerate(opts.available_memory_proportion)})
+    num_stages = len(args.pipeline_splits)+1
+    if len(args.available_memory_proportion) == 1:
+        opts.setAvailableMemoryProportion({f'IPU{i}': args.available_memory_proportion[0] for i in range(num_stages)})
+    elif len(args.available_memory_proportion) > 1:
+            opts.setAvailableMemoryProportion({f'IPU{i}': amp for i, amp in enumerate(args.available_memory_proportion)})
 
-    model_opts.anchorMode(poptorch.AnchorMode.Sum)
-    return model_opts
+    opts.outputMode(poptorch.OutputMode.Sum)
+    return opts

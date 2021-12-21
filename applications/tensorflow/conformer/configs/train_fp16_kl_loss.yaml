@@ -22,7 +22,7 @@ mtlalpha: 0.0
 lsm_weight: 0.0
 
 # minibatch related
-batch_size: 1
+batch_size: 6
 fbank_size: 83
 maxlen_in: 768
 maxlen_tgt: 46      # sos + valid_word + eos
@@ -42,7 +42,12 @@ kernel_size: 31
 loss_scale: 1024
 
 # number of ipus
-num_ipus_per_replica: 2
 is_training: true
 replica: 1
-global_batch_size: 60
+gradient_accumulation_count: 8
+
+# if use ipu specific dropout
+use_ipu_dropout: True
+
+# kernel initializer's max value
+initializer_range: 0.083

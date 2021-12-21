@@ -12,7 +12,6 @@ build_dir = root_dir.joinpath('test_cmake_build')
 class TestBuildAndRun(SubProcessChecker):
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category1
     def test_pathtracer(self):
         cmd = "./ipu_trace -w 480 -h 480 --tile-width 16 --tile-height 12 " \
               "--ipus 1 --refractive-index 1.5 --roulette-depth 5 " \
@@ -27,7 +26,6 @@ class TestBuildAndRun(SubProcessChecker):
         self.run_command(check_2, build_dir, ["test.png.exr EXR 480x480"])
 
     @pytest.mark.ipus(2)
-    @pytest.mark.category1
     def test_compile_and_load(self):
         compile_command = "./ipu_trace -w 640 -h 636 --tile-width 16 --tile-height 12 " \
             "--ipus 2 --samples-per-step 200 --defer-attach --use-simd -o test2.png " \

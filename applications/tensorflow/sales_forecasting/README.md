@@ -76,13 +76,13 @@ The dynamic scheduler has two features:
 * Reduction on plateau - where learning rate is reduced if training is stagnating. Set `--lr-plateau-patience` and `--lr-schedule-plateau-factor` for the responsiveness to training stagnation and rate of reduction of this mechanism.
 * A LR warmup at the start of training, off by default - where learning rate is gradually increased to its initial value at the start of training over a number of epochs. Set `--lr-warmup` to enable this mechanism and `--lr-warmup-epochs` to set the number of epochs the learning rate is warmed up over. The former mechanism doesn't apply when learning rate is being warmed up.
 
-`--base-learning-rate` specifies the exponent of the base learning rate. The learning rate is set by `lr = 2^blr * batch-size`. See <https://arxiv.org/abs/1804.07612> for more details.
+`--base-learning-rate` specifies the exponent of the base learning rate. The learning rate is set by `lr = 2^blr * micro-batch-size`. See <https://arxiv.org/abs/1804.07612> for more details.
 
 `--d`/`--datafolder` sets the directory of the data folder. This should contain a preprocessed Rossmann dataset of `train.csv` and `val.csv`. Alternatively use `--use-synthetic-data` to use random data generated directly on the IPU as needed by the program, removing any host <-> IPU data transfers.
 
 `--log-dir` sets the directory for model logs. The model will log summaries and checkpoints.
 
-`--batch-size` and `--validation-batch-size` set the batch sizes of the training and validation graphs respectively.
+`--micro-batch-size` and `--validation-batch-size` set the batch sizes of the training and validation graphs respectively.
 
 `--precision` sets the precision of the variables and calculations respectively. Supply as a dot separated list e.g. `32.32` or `16.16`
 

@@ -7,7 +7,7 @@ data:
     shard: True
     sample_shape: [64, 64, 64, 4]
     target_shape: [4]
-    batch_size: 1 # no. of samples per IPU
+    micro_batch_size: 1 # no. of samples per IPU
     n_epochs: 30
 
 model:

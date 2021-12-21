@@ -12,20 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import datetime
-import os
 import time
 import warnings
 from math import ceil
+from pathlib import Path
 import poptorch
 import torch
 
 from args import parse_args
-from checkpoint import restore_checkpoint, save_checkpoint
+from checkpoint import save_checkpoint
 from datasets import dataset
 from ipu_options import get_options
 from metrics import accuracy
-from log import Logger
+from log import logger
 from model import PipelinedViTForImageClassification
 from optimization import get_lr_scheduler, get_optimizer
 import transformers
@@ -38,19 +37,13 @@ if __name__ == "__main__":
 
     # Build config from args
     config = transformers.ViTConfig(**vars(parse_args()))
-
-    # Check output dir
-    abs_pathd = os.path.abspath(config.checkpoint_dir)
-    os.makedirs(abs_pathd, exist_ok=True)
-
-    log = Logger(abs_pathd+"/"+datetime.datetime.now().strftime('%Y.%m.%d-%H:%M:%S')+'.log',
-                 level='INFO')
+    logger.info(f"Running config: {config.config}")
 
     # W&B
     if config.wandb:
         import wandb
         proj_name = config.wandb_project_name
-        wandb.init(project=proj_name, settings=wandb.Settings(console='off'))
+        wandb.init(project=proj_name, settings=wandb.Settings(console="wrap"))
         wandb.config.update(vars(config))
 
     # Execution parameters
@@ -58,49 +51,56 @@ if __name__ == "__main__":
 
     # Dataloader
     train_loader = dataset.get_data(config, opts, train=True, async_dataloader=True)
-    test_loader = dataset.get_data(config, opts, train=False, async_dataloader=True)
 
     steps_per_epoch = len(train_loader)
     if steps_per_epoch < 1:
         raise RuntimeError("Not enough data in input_files for current configuration")
 
     # IPU Model and Optimizer
-    model = PipelinedViTForImageClassification.from_pretrained(config.checkpoint_file, config=config).train()
+    model = PipelinedViTForImageClassification.from_pretrained(config.pretrained_checkpoint, config=config).parallelize().train()
+    model.print_device_allocation()
     if config.precision.startswith("16."):
         model.half()
     optimizer = get_optimizer(config, model)
     scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
                                  config.warmup_steps, config.training_steps)
 
-    epochs_finished = 0
-    if config.restore:
-        # Retrieve relevant checkpoint
-        checkpoint = restore_checkpoint(config)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        if config.restore_epochs_and_optimizer:
-            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            epochs_finished = checkpoint["epoch"]
-            scheduler = get_lr_scheduler(optimizer, config.lr_schedule, config.warmup_steps,
-                                         config.training_steps, epochs_finished*steps_per_epoch)
-            optimizer._step_count = epochs_finished * steps_per_epoch
-            checkpoint_metrics = checkpoint["metrics"]
+    # Restore model from checkpoint
+    steps_finished = 0
+    if config.pretrained_checkpoint:
+        # Load from checkpoint
+        model = PipelinedViTForImageClassification.from_pretrained(config.pretrained_checkpoint, config=config).parallelize().half().train()
+        optimizer = get_optimizer(config, model)
+        scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
+                                     config.warmup_steps, config.training_steps)
+
+        if config.resume_training_from_checkpoint:
+            training_state = torch.load(Path(config.pretrained_checkpoint) / "training_state.pt")
+            scheduler.last_epoch = steps_finished = training_state["step"]
+            checkpoint_metrics = training_state["metrics"]
     else:
-        log.logger.info("Training from scratch")
+        # Train model from scratch
+        logger.info("Training from scratch")
+        model = PipelinedViTForImageClassification(config).parallelize().half().train()
+        optimizer = get_optimizer(config, model)
+        scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
+                                     config.lr_warmup, config.training_steps)
 
     train_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
 
     # Compile model
-    log.logger.info("---------- Compilation Started ---------")
+    logger.info("---------- Compilation Started ---------")
     start_compile = time.perf_counter()
-    datum = dataset.get_random_datum(config)
+    datum = next(iter(train_loader))
     train_model.compile(*datum)
     duration_compilation = time.perf_counter() - start_compile
-    log.logger.info(f"Compiled model in {duration_compilation} secs")
-    log.logger.info("---------------------------------------")
+    logger.info(f"Compiled model in {duration_compilation} secs")
+    logger.info("---------------------------------------")
 
     # Training loop
-    log.logger.info("---------- Training Started -----------")
+    logger.info("---------- Training Started -----------")
 
+    epochs_finished = steps_finished // steps_per_epoch
     epochs = ceil(config.training_steps / steps_per_epoch)
     training_steps = config.training_steps
     start_train = time.perf_counter()
@@ -108,14 +108,18 @@ if __name__ == "__main__":
     for epoch in range(epochs_finished, epochs):
         for step, (input_data, labels) in enumerate(train_loader):
             current_step = step + epoch * steps_per_epoch
+
+            start_step = time.perf_counter()
             losses, logits = train_model(input_data, labels)
+            step_length = time.perf_counter() - start_step
+
             scheduler.step()
             train_model.setOptimizer(optimizer)
-            step_length = time.perf_counter() - start_step
             mean_loss = losses.mean().item()
             preds = torch.argmax(logits, dim=-1)
             acc = accuracy(preds, labels)
             step_throughput = config.samples_per_step / step_length
+
             msg = ("Epoch: {:.2f}/{} "
                    "Step: {}/{} "
                    "Lr: {:.6f} "
@@ -128,36 +132,36 @@ if __name__ == "__main__":
                             mean_loss,
                             acc,
                             step_throughput)
-            log.logger.info(msg)
+            logger.info(msg)
             if config.wandb:
                 wandb.log({"LR": scheduler.get_last_lr()[0],
                            "Throughput": step_throughput,
                            "Loss": mean_loss,
                            "Accuracy": acc})
 
-            start_step = time.perf_counter()
             if current_step + 1 == training_steps:
                 break  # Training finished mid-epoch
-            save_every = current_step % config.checkpoint_save_steps == 0
+            save_every = current_step % config.checkpoint_steps == 0
             not_finished = (current_step + 1 != training_steps)
-            if save_every and not_finished:
-                filename = save_checkpoint(config, model, optimizer, epoch + 1,
-                                           metrics={"Loss": mean_loss})
-                log.logger.info("Save checkpoint path: {}".format(filename))
+            if config.checkpoint_output_dir and save_every and not_finished:
+                model.deparallelize()
+                save_checkpoint(config, model, optimizer, current_step,
+                                metrics={"Loss": mean_loss})
+                model.parallelize()
 
     stop_train = time.perf_counter()
-    # Checkpoint at end of run
-    save_path = save_checkpoint(config, model, optimizer, epoch + 1,
-                                metrics={"Loss": mean_loss})
-    log.logger.info("Save checkpoint path: {}".format(save_path))
-    log.logger.info("---------------------------------------")
 
-    log.logger.info("---------- Training Metrics -----------")
-    log.logger.info(f"global_batch_size: {config.global_batch_size}")
-    log.logger.info(f"batches_per_step: {config.batches_per_step}")
-    log.logger.info(f"training_steps: {training_steps}")
+    if config.checkpoint_output_dir:
+        # Checkpoint at end of run
+        model.deparallelize()
+        save_checkpoint(config, model, optimizer, training_steps)
+    logger.info("---------------------------------------")
+
+    logger.info("---------- Training Metrics -----------")
+    logger.info(f"global_batch_size: {config.global_batch_size}")
+    logger.info(f"batches_per_step: {config.batches_per_step}")
+    logger.info(f"training_steps: {training_steps}")
     duration_run = stop_train - start_train
-    num_samples = config.samples_per_step * training_steps
-    log.logger.info(f"Training time: {duration_run:.3f} secs")
-    log.logger.info("Throughput: {:5f} samples/sec.".format(num_samples / duration_run))
-    log.logger.info("---------------------------------------")
+    num_samples = config.samples_per_step * (training_steps - steps_finished)
+    logger.info(f"Training time: {duration_run:.3f} secs")
+    logger.info("---------------------------------------")

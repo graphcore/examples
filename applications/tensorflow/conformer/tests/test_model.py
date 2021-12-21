@@ -54,7 +54,6 @@ class TestModel:
         model = ConformerAM(config)
         model._build_dataset()
         model._build_computational_stages()
-        assert model.get_pipeline_depth() == 36
 
     @pytest.mark.parametrize("maxlen, dmodel", [(32, 100), (33, 200), (200, 256)])
     def test_pos_embedding_build(self, maxlen, dmodel):
@@ -82,6 +81,7 @@ class TestModel:
         from model import ConformerAM
         config_file = 'configs/train_fp32_kl_loss.yaml'
         config = AMConfig.from_yaml(config_file)
+        config['use_ipu_dropout'] = False
         model = ConformerAM(config)
         from util import get_config
         cfg = get_config(1)
@@ -107,6 +107,7 @@ class TestModel:
         cfg.configure_ipu_system()
         config_file = 'configs/train_fp32_kl_loss.yaml'
         config = AMConfig.from_yaml(config_file)
+        config['use_ipu_dropout'] = False
         model = ConformerAM(config)
         query = tf.random_normal(shape=(batch_size, lq, model.config['adim']))
         key = tf.random_normal(shape=(batch_size, lv, model.config['adim']))
@@ -129,6 +130,7 @@ class TestModel:
         cfg.configure_ipu_system()
         config_file = 'configs/train_fp32_kl_loss.yaml'
         config = AMConfig.from_yaml(config_file)
+        config['use_ipu_dropout'] = False
         model = ConformerAM(config)
         input = tf.random_normal(shape=(batch_size, length, model.config['adim']))
         conv = model._build_conv_module(input, scope_name)
@@ -148,6 +150,7 @@ class TestModel:
         cfg.configure_ipu_system()
         config_file = 'configs/train_fp32_kl_loss.yaml'
         config = AMConfig.from_yaml(config_file)
+        config['use_ipu_dropout'] = False
         model = ConformerAM(config)
         input = tf.ones(shape=(batch_size, n_head, length_q, length_v))
         shift = model._relative_shift(input)
@@ -167,6 +170,7 @@ class TestModel:
         cfg.configure_ipu_system()
         config_file = 'configs/train_fp32_kl_loss.yaml'
         config = AMConfig.from_yaml(config_file)
+        config['use_ipu_dropout'] = False
         model = ConformerAM(config)
         x = tf.random_normal(shape=(batch_size, model.config['maxlen_in'], model.config['adim']))
         mask_adder = tf.random_normal(shape=(batch_size, 1, 1, model.config['maxlen_in']))
@@ -188,6 +192,7 @@ class TestModel:
         cfg.configure_ipu_system()
         config_file = 'configs/train_fp32_kl_loss.yaml'
         config = AMConfig.from_yaml(config_file)
+        config['use_ipu_dropout'] = False
         model = ConformerAM(config)
         tgt = tf.ones(shape=(batch_size, model.config['maxlen_tgt'], model.config['adim']))
         tgt_mask = tf.random_normal(shape=(batch_size, 1, model.config['maxlen_tgt'], model.config['maxlen_tgt']))

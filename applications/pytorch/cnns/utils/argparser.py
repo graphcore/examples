@@ -61,6 +61,7 @@ def get_common_parser():
     parser.add_argument('--profile', action='store_true', help='Create PopVision Graph Analyzer report')
     parser.add_argument('--model-cache-path', type=str, help='Load the precompiled model from the given path. If the given path is empty / not existing the compiled model is saved to the given folder')
     parser.add_argument('--input-image-padding', action='store_true', help='Pad input images to be 4 channel images. This could speed up the model.')
+    parser.add_argument('--num-io-tiles', type=int, default=0, help='Number of IO tiles. Minimum 32. Default 0 (no overlap)')
     # EfficientNet parameters
     parser.add_argument('--efficientnet-expand-ratio', type=int, default=6, help='Expand ratio of the blocks in EfficientNet')
     parser.add_argument('--efficientnet-group-dim', type=int, default=1, help='Group dimensionality of depthwise convolution in EfficientNet')

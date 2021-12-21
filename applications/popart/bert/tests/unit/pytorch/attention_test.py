@@ -27,9 +27,7 @@ from tests.utils import (
     copy_weights_to_torch,
     run_fwd_model,
     check_tensors,
-    check_model,
-    requires_remote_buffers,
-    sanity)
+    check_model)
 '''
 Tests the attention op.
 '''

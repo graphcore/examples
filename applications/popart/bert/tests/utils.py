@@ -56,14 +56,6 @@ def _append_marks(*args, marks=None):
     return pytest.param(*args, marks=marks)
 
 
-def requires_remote_buffers(*args):
-    return _append_marks(*args, marks=[pytest.mark.requires_remote_buffers])
-
-
-def sanity(*args):
-    return _append_marks(*args, marks=[pytest.mark.sanity])
-
-
 class TestFailureError(Exception):
     __test__ = False
 

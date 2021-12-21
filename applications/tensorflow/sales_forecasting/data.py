@@ -63,7 +63,7 @@ class MLPData:
     def get_dataset(self, opts, mode):
         ''' Create a tf Dataset with buffering, stats, etc. '''
         dtype = getattr(np, opts.dtypes[0])
-        batch_size = opts.batch_size if mode == util.Modes.TRAIN else opts.validation_batch_size
+        batch_size = opts.micro_batch_size if mode == util.Modes.TRAIN else opts.validation_batch_size
 
         # Create tf Dataset from the numpy array
         dataset = tf.data.Dataset.from_tensor_slices((self._data))

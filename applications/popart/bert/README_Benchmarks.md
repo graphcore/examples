@@ -150,7 +150,10 @@ python bert.py --config configs/mk2/pretrain_base_384.json --input-files=$DATASE
 
 Command:
 ```console
-python run_squad.py --squad-do-validation False --config squad_large_384_POD16 --num-epochs 1
+python3 run_squad.py \
+   --squad-do-validation False \
+   --config squad_large_384_POD16 \
+   --num-epochs 1
 ```
 
 ## Inference
@@ -168,9 +171,21 @@ Run the following command lines from inside the applications/popart/bert directo
 
 This benchmark spawns multiple replicas using mpirun. To obtain the total throughput, sum the reported throughputs for each iteration.
 
+export POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch": false}'
+
 Command:
 ```console
-mpirun --tag-output --np 4 --allow-run-as-root python bert.py --config configs/mk2/squad_large_128_inf.json           --micro-batch-size {batchsize} --generated-data=true --epochs-inference 20 --input-files=$DATASETS_DIR/squad/dev-v1.1.json
+   mpirun \
+      --tag-output \
+      --np 4 \
+      --allow-run-as-root \
+      python bert.py \
+      --config configs/mk2/squad_large_128_inf.json \
+      --micro-batch-size {batchsize} \
+      --generated-data=true \
+      --epochs-inference 20 \
+      --input-files=$DATASETS_DIR/squad/dev-v1.1.json \
+      --minimum-latency-inference
 ```
 
 Set --micro-batch-size to 1, 2 or 3.
@@ -181,9 +196,21 @@ Set --micro-batch-size to 1, 2 or 3.
 
 This benchmark spawns multiple replicas using mpirun. To obtain the total throughput, sum the reported throughputs for each iteration.
 
+export POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch": false}'
+
 Command:
 ```console
-mpirun --tag-output --np 4 --allow-run-as-root python bert.py --config configs/mk2/squad_base_128_inf.json --micro-batch-size {batchsize} --generated-data=true --epochs-inference 10 --input-files=$DATASETS_DIR/squad/dev-v1.1.json
+    mpirun \
+       --tag-output \
+       --np 4 \
+       --allow-run-as-root \
+    python bert.py \
+       --config configs/mk2/squad_base_128_inf.json \
+       --micro-batch-size {batchsize} \
+       --generated-data=true \
+       --epochs-inference 10 \
+       --minimum-latency-inference \
+       --input-files=$DATASETS_DIR/squad/dev-v1.1.json
 ```
 
 Set --micro-batch-size to 1, 2, 4, 8, 16, 32, 64, or 80 

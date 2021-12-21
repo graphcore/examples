@@ -43,7 +43,7 @@ from tensorflow.python.ipu import loops, ipu_infeed_queue, ipu_outfeed_queue, ip
 from tensorflow.python.ipu.utils import reset_ipu_seed
 from tensorflow.python.ipu.ops import pipelining_ops
 from tensorflow.python.ipu import horovod as hvd
-from tensorflow.python.ipu.horovod import ipu_multi_replica_strategy
+from tensorflow.python.ipu.horovod import popdist_strategy
 from ipu_optimizer import IPUOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope
 import Datasets.data as dataset
@@ -188,6 +188,18 @@ def get_optimizer(opts, lr):
                       'epsilon': opts['lars_epsilon'],
                       'momentum': opts['momentum'],
                       'skip_list': opts['lars_skip_list']}
+        logging.mlperf_logging(key="LARS_OPT_BASE_LEARNING_RATE",
+                               value=opts.get("abs_learning_rate", 0))
+        logging.mlperf_logging(key="LARS_OPT_END_LEARNING_RATE",
+                               value=opts.get("abs_end_learning_rate", 0))
+        logging.mlperf_logging(key="LARS_OPT_LR_DECAY_POLY_POWER",
+                               value=opts.get("poly_lr_decay_power", 2))
+        logging.mlperf_logging(key="LARS_OPT_LR_DECAY_STEPS", value=opts['epochs'])
+        logging.mlperf_logging(key="LARS_EPSILON", value=opts['lars_epsilon'])
+        logging.mlperf_logging(key="LARS_OPT_MOMENTUM", value=opts['momentum'])
+        logging.mlperf_logging(key="LARS_OPT_LEARNING_RATE_WARMUP_EPOCHS", value=opts['warmup_epochs'])
+        logging.mlperf_logging(key="LARS_OPT_WEIGHT_DECAY",
+                               value=opts['lars_weight_decay'])
     else:
         raise ValueError("Optimizer {} not recognised".format(opts['optimiser']))
 
@@ -367,6 +379,7 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
                                    pipeline_schedule=next(p for p in list(pipelining_ops.PipelineSchedule)
                                                           if opts["pipeline_schedule"] == str(p).split(".")[-1]),
                                    offload_weight_update_variables=not opts['disable_variable_offloading'],
+                                   replicated_optimizer_state_sharding=opts['rts'],
                                    name="Pipeline")
 
 
@@ -451,7 +464,7 @@ def create_popdist_strategy():
     """
     # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
     # so disable them in the IPUMultiReplicaStrategy.
-    return ipu_multi_replica_strategy.IPUMultiReplicaStrategy(
+    return popdist_strategy.IPUMultiReplicaStrategy(
         add_ipu_cross_replica_reductions=False)
 
 
@@ -478,7 +491,10 @@ def training_graph(model, opts, iterations_per_step=1):
         # datasets must be defined outside the ipu device scope
         train_iterator = ipu_infeed_queue.IPUInfeedQueue(training_dataset,
                                                          prefetch_depth=opts['prefetch_depth'])
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+        if opts['prefetch_depth']:
+            outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(buffer_depth=opts['prefetch_depth'])
+        else:
+            outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         with ipu_scope('/device:IPU:0'):
             train = training_step_with_infeeds_and_outfeeds(train_iterator, outfeed_queue, model,
@@ -584,7 +600,7 @@ def train_process(model, LR_Class, opts):
 
     # --------------- OPTIONS --------------------
     epochs = opts['epochs']
-    iterations_per_epoch = DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES'] // opts['total_batch_size']
+    iterations_per_epoch = DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES'] // opts['global_batch_size']
 
     logging.mlperf_logging(
         key="TRAIN_SAMPLES",
@@ -594,13 +610,13 @@ def train_process(model, LR_Class, opts):
         value=DATASET_CONSTANTS[opts['dataset']]['NUM_VALIDATION_IMAGES'])
 
     if not opts['iterations']:
-        iterations = DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']*epochs // opts['total_batch_size']
+        iterations = DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']*epochs // opts['global_batch_size']
         log_freq = iterations_per_epoch // opts['logs_per_epoch']
     else:
         iterations = opts['iterations']
         log_freq = opts['log_freq']
         if not opts['epochs']:
-            opts['epochs'] = 1.0 * iterations * opts['total_batch_size'] / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
+            opts['epochs'] = 1.0 * iterations * opts['global_batch_size'] / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
 
     if log_freq < opts['batches_per_step']:
         iterations_per_step = log_freq
@@ -646,7 +662,7 @@ def train_process(model, LR_Class, opts):
     train_iterations = (iterations_per_step if opts['pipeline'] else
                         iterations_per_step * opts['gradient_accumulation_count'])
     train = training_graph(model, opts, train_iterations)
-    logging.mlperf_logging(key="WEIGHTS_INITIALIZATION")
+    logging.mlperf_logging(key="WEIGHTS_INITIALIZATION", metadata=dict(tensor="all"))
     train.session.run(train.init)
     train.session.run(train.iterator.initializer)
 
@@ -670,7 +686,7 @@ def train_process(model, LR_Class, opts):
 
             # restore list of saved checkpoints
             for j, f in filenames:
-                epoch = float(opts['total_batch_size'] * j) / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
+                epoch = float(opts['global_batch_size'] * j) / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
                 if j != 0:
                     ckpts.append((j, epoch, False, f))
 
@@ -730,7 +746,7 @@ def train_process(model, LR_Class, opts):
                            metadata={"epoch_num": 1})
     log_epoch = 1
     while i < iterations:
-        epoch = float(opts['total_batch_size'] * (i + iterations_per_step)) / DATASET_CONSTANTS[opts['dataset']][
+        epoch = float(opts['global_batch_size'] * (i + iterations_per_step)) / DATASET_CONSTANTS[opts['dataset']][
             'NUM_IMAGES']
         if not opts['pipeline']:
             step += opts['gradient_accumulation_count']
@@ -748,9 +764,7 @@ def train_process(model, LR_Class, opts):
                 (i + iterations_per_step) < iterations):
             ckpt_this_step = False
 
-        valid_this_step = (opts['validation'] and
-                           ((i // iterations_per_valid) < ((i + iterations_per_step) // iterations_per_valid) or
-                           ((i + iterations_per_step) >= iterations)))
+        valid_this_step = (opts['validation'] and ckpt_this_step)
         sync_this_step = (opts['syncs_per_epoch'] and
                           ((i // iterations_per_sync) < (
                               (i + iterations_per_step) // iterations_per_sync)))
@@ -766,7 +780,9 @@ def train_process(model, LR_Class, opts):
 
         # Run Training
         try:
-            batch_loss, batch_acc, batch_time, current_lr = training_step(train, i + 1, LR.feed_dict_lr(i))
+            batch_loss, batch_acc, batch_time, current_lr = training_step(train,
+                                                                          i + 1,
+                                                                          LR.feed_dict_lr(i + iterations_per_step // 2))
             if opts['pipeline']:
                 current_lr *= opts['lr_scale']
         except tf.errors.OpError as e:
@@ -806,7 +822,7 @@ def train_process(model, LR_Class, opts):
                 ('train_acc_batch', batch_acc),
                 ('train_acc_avg', train_acc),
                 ('it_time', avg_batch_time),
-                ('img_per_sec', opts['total_batch_size'] / avg_batch_time),
+                ('img_per_sec', opts['global_batch_size'] / avg_batch_time),
                 ('total_time', total_time),
             ])
 
@@ -840,7 +856,9 @@ def train_process(model, LR_Class, opts):
 
         # Eval
         # only instance 0 loads checkpoints from disk during validation
-        if valid_this_step and opts['validation'] and opts['distributed_worker_index'] == 0:
+        if valid_this_step and opts['validation']:
+            if opts['distributed_worker_index'] != 0:
+                filepath = None
             validation_points.append((i + iterations_per_step, epoch, i <= iterations_per_valid, filepath))
 
         i += iterations_per_step
@@ -881,12 +899,16 @@ def train_process(model, LR_Class, opts):
                                          "epoch_count": opts['epochs']}
                                )
         # -------------- BUILD VALIDATION GRAPH ----------------
+        opts["reuse_IPUs"] = True
         valid = validation.initialise_validation(model, opts)
 
         total_samples = 0  # disable latency calculation
         latency_thread = validation.LatencyThread(valid, total_samples)
 
         # ------------ RUN VALIDATION ------------
+        first = list(validation_points[0])
+        first[2] = True
+        validation_points[0] = tuple(first)
         for iteration, epoch, first_run, filepath in validation_points:
             stats = validation.validation_run(valid, filepath, iteration, epoch, first_run, opts, latency_thread)
             # Handle skipped case
@@ -898,7 +920,7 @@ def train_process(model, LR_Class, opts):
                                )
         logging.mlperf_logging(key="RUN_STOP",
                                value={"success": success},
-                               metadata={"epoch_num": epoch,
+                               metadata={"epoch_num": round(epoch),
                                          "status": "success" if success else "aborted"})
 
     # --------------- CLEANUP ----------------
@@ -926,7 +948,13 @@ def set_main_defaults(opts):
 def add_training_arguments(parser):
     tr_group = parser.add_argument_group('Training')
     tr_group.add_argument('--batch-size', type=int,
-                          help="Set batch-size for training graph")
+                          help="Set micro-batch-size for training graph. "
+                               "This argument is deprecated yet kept for backwards compatibility, "
+                               "use --micro-batch-size instead.")
+    tr_group.add_argument('--micro-batch-size', type=int,
+                          help="Set micro-batch-size for training graph")
+    tr_group.add_argument('--rts', action='store_true',
+                          help="Enable replicated optimiser state sharding.", default=False)
     tr_group.add_argument('--gradient-accumulation-count', type=int, default=1,
                           help="""Number of gradients to accumulate before doing a weight update.
                                 When using pipelining this is the number of times each pipeline stage
@@ -980,7 +1008,7 @@ def add_training_arguments(parser):
     tr_group.add_argument('--rmsprop-decay', type=float,
                           help="RMSprop decay coefficient")
     tr_group.add_argument('--rmsprop-base-decay-exp', type=float,
-                          help="Linearly scale RMSprop decay coefficient as 1-(total_batch_size*2**rmsprop_base_decay_exp) ")
+                          help="Linearly scale RMSprop decay coefficient as 1-(global_batch_size*2**rmsprop_base_decay_exp) ")
     tr_group.add_argument('--rmsprop-epsilon', type=float, default=0.001,
                           help="RMSprop epsilon coefficient")
     tr_group.add_argument('--offload-fp32-weight-copy', action="store_true",
@@ -1019,10 +1047,10 @@ def add_training_arguments(parser):
 
 
 def set_training_defaults(opts):
-    opts['total_batch_size'] = opts['batch_size'] * opts['gradient_accumulation_count'] * opts['replicas'] * opts[
+    opts['global_batch_size'] = opts['micro_batch_size'] * opts['gradient_accumulation_count'] * opts['replicas'] * opts[
         'distributed_worker_count']
     opts['summary_str'] += "Training\n"
-    opts['summary_str'] += " Batch Size: {total_batch_size}\n"
+    opts['summary_str'] += " Batch Size: {global_batch_size}\n"
     if opts['pipeline']:
         opts['summary_str'] += "  Pipelined over {shards} stages\n"
     elif opts['shards'] > 1:
@@ -1040,11 +1068,11 @@ def set_training_defaults(opts):
         opts['summary_str'] += " Epochs: {epochs}\n"
 
     if opts['abs_learning_rate'] is not None:
-        opts['base_learning_rate_exponent'] = math.log(opts['abs_learning_rate'] / opts['total_batch_size'], 2.0)
+        opts['base_learning_rate_exponent'] = math.log(opts['abs_learning_rate'] / opts['global_batch_size'], 2.0)
 
     if opts['rmsprop_base_decay_exp'] is not None:
         if opts['rmsprop_decay'] is None:
-            opts['rmsprop_decay'] = 1 - ((2 ** opts['rmsprop_base_decay_exp']) * opts['total_batch_size'])
+            opts['rmsprop_decay'] = 1 - ((2 ** opts['rmsprop_base_decay_exp']) * opts['global_batch_size'])
         else:
             print("'rmsprop_base_decay_exp' ignored as `rmsprop_decay' is already specified.")
 
@@ -1121,7 +1149,7 @@ def add_ipu_arguments(parser):
     group.add_argument('--compile-only', action="store_true", default=False,
                        help="Configure TensorFlow to only compile the graph. This will not acquire any IPUs and thus "
                        "facilitates profiling without using hardware resources.")
-    group.add_argument('--on-demand', action="store_true", default=False,
+    group.add_argument('--on-demand', action="store_true", default=True,
                        help="Configure TensorFlow to attach to IPU only after graph has been compiled.")
     group.add_argument('--prefetch-depth', type=int, default=None,
                        help="Set prefetch depth (default None)")
@@ -1281,6 +1309,13 @@ if __name__ == '__main__':
     if opts['help']:
         parser.print_help()
     else:
+        if opts['batch_size'] and opts['micro_batch_size']:
+            raise ValueError('Both --batch-size and --micro-batch-size arguments were given, '
+                             'use --micro-batch-size, as --batch-size is deprecated and kept '
+                             'for backwards compatibility.')
+        elif opts['batch_size']:
+            opts['micro_batch_size'] = opts['batch_size']
+
         amps = opts['available_memory_proportion']
         if amps and len(amps) > 1:
             if not opts['pipeline']:
@@ -1331,7 +1366,7 @@ if __name__ == '__main__':
             logging.mlperf_logging("SEED", opts['seed'])
 
         logging.mlperf_logging(key="GLOBAL_BATCH_SIZE",
-                               value=opts['total_batch_size'])
+                               value=opts['global_batch_size'])
         logging.mlperf_logging(key="GRADIENT_ACCUMULATION_STEPS",
                                value=opts['gradient_accumulation_count'])
         logging.mlperf_logging(key="OPT_WEIGHT_DECAY",
@@ -1339,7 +1374,7 @@ if __name__ == '__main__':
         logging.mlperf_logging(key="OPT_LR_WARMUP_EPOCHS",
                                value=opts['warmup_epochs'])
         logging.mlperf_logging(key="MODEL_BN_SPAN",
-                               value=opts['BN_span']*opts['batch_size'])
+                               value=opts['BN_span']*opts['micro_batch_size'])
 
         if opts['dataset'] == 'imagenet':
             if opts['image_size'] is None:
@@ -1364,8 +1399,8 @@ if __name__ == '__main__':
                 json_string = sess.run(benchmark_op)
             json_string = json.loads(json_string[0].decode('utf-8'))
             for i in range(len(json_string['epochs'])):
-                json_string['epochs'][i]['elements_per_second'] *= opts['batch_size']
-                json_string['epochs'][i]['elements_processed'] *= opts['batch_size']
+                json_string['epochs'][i]['elements_per_second'] *= opts['micro_batch_size']
+                json_string['epochs'][i]['elements_processed'] *= opts['micro_batch_size']
             mean_throughput = np.mean([epoch['elements_per_second'] for epoch in json_string['epochs']])
             print(f'mean throughput: {mean_throughput} imgs/sec')
         else:

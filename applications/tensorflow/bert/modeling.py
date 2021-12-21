@@ -210,9 +210,9 @@ class BertModel(object):
             self.bert_config.vocab_size,
             name="word_embeddings",
             num_splits=self.bert_config.matmul_serialize_factor)
-        _batch_size, _seq_len = word_embeddings.shape[:2]
+        _micro_batch_size, _seq_len = word_embeddings.shape[:2]
         dummy_pos_index = tf.reshape(
-            tf.tile(tf.range(_seq_len), [_batch_size]), [-1, _seq_len])
+            tf.tile(tf.range(_seq_len), [_micro_batch_size]), [-1, _seq_len])
         position_embeddings = self.embedding(
             dummy_pos_index, self.bert_config.max_position_embeddings, name="position_embeddings")
         seg_onehot = tf.one_hot(segment_ids,
@@ -245,7 +245,7 @@ class BertModel(object):
         This function first projects `input_tensor` into a "query" tensor and
         `input_tensor` into "key" and "value" tensors. These are (effectively) a list
         of tensors of length `num_attention_heads`, where each tensor is of shape
-        [batch_size, seq_length, size_per_head].
+        [micro_batch_size, seq_length, size_per_head].
 
         Then, the query and key tensors are dot-producted and scaled. These are
         softmaxed to obtain attention probabilities. The value tensors are then
@@ -256,15 +256,15 @@ class BertModel(object):
         reshapes rather than actual separate tensors.
 
         Args:
-            input_tensor: float Tensor of shape [batch_size, seq_length,
+            input_tensor: float Tensor of shape [micro_batch_size, seq_length,
                 hidden_size].
-            mask: (optional) float32 Tensor of shape [batch_size,
+            mask: (optional) float32 Tensor of shape [micro_batch_size,
                 seq_length, seq_length]. The values should be -1000 or 0. The
                 attention scores will effectively be set to -infinity for any positions in
                 the mask that are 0, and will be unchanged for positions that are 1.
 
         Returns:
-            float Tensor of shape [batch_size * seq_length,
+            float Tensor of shape [micro_batch_size * seq_length,
                 num_attention_heads * size_per_head]
 
         Raises:
@@ -272,8 +272,8 @@ class BertModel(object):
         """
         input_shape = get_shape_list(input_tensor, expected_rank=[2, 3])
         assert len(input_shape) in [2, 3], \
-            f"Input shape of attention moduler should be `[batch_size, seq_length]` or `[batch_size, seq_length, seq_length]`."
-        batch_size, seq_length = input_shape[:2]
+            f"Input shape of attention moduler should be `[micro_batch_size, seq_length]` or `[micro_batch_size, seq_length, seq_length]`."
+        micro_batch_size, seq_length = input_shape[:2]
 
         # Scalar dimensions referenced here:
         #   B = batch size (number of sequences)
@@ -349,7 +349,7 @@ class BertModel(object):
                 qkv = tf.nn.bias_add(qkv, qkv_bias)
             # Split and transpose to [B, N, S, H]
             query_layer, key_layer, value_layer = [
-                transpose_for_scores(layer, int(batch_size), int(
+                transpose_for_scores(layer, int(micro_batch_size), int(
                     num_attention_heads), int(seq_length), int(size_per_head))
                 for layer in tf.split(qkv, [int(num_attention_heads*size_per_head)]*3, axis=-1, name='qkv_split')
             ]
@@ -380,7 +380,7 @@ class BertModel(object):
             # `context_layer` = [B*S, N*H]
             context_layer = tf.reshape(
                 context_layer,
-                [batch_size * seq_length, self.bert_config.hidden_size])
+                [micro_batch_size * seq_length, self.bert_config.hidden_size])
 
             return context_layer
         context_layer = inner_attention_func()
@@ -477,7 +477,7 @@ class BertModel(object):
             if self.bert_config.static_mask:
                 cls_position = self.bert_config.max_predictions_per_seq
             cls_token_tensor = tf.squeeze(
-                input_tensor[:, cls_position:cls_position+1, :], axis=1)  # [batch_size, hidden_size]
+                input_tensor[:, cls_position:cls_position+1, :], axis=1)  # [micro_batch_size, hidden_size]
             pooled_output = tf.layers.dense(
                 cls_token_tensor,
                 self.bert_config.hidden_size,
@@ -546,7 +546,7 @@ class BertModel(object):
         with tf.variable_scope("cls/squad"):
             input_tensor = tf.cast(input_tensor, dtype=dtype)
 
-            batch_size, seq_length, hidden_size = input_tensor.shape
+            micro_batch_size, seq_length, hidden_size = input_tensor.shape
 
             output_weights = tf.get_variable(
                 name="output_weights",
@@ -561,13 +561,13 @@ class BertModel(object):
                 initializer=tf.zeros_initializer())
 
             final_hidden_matrix = tf.reshape(input_tensor,
-                                             [batch_size * seq_length, hidden_size])
+                                             [micro_batch_size * seq_length, hidden_size])
 
             logits = tf.matmul(final_hidden_matrix,
                                output_weights, transpose_b=True)
             logits = tf.nn.bias_add(logits, output_bias)
 
-            logits = tf.reshape(logits, [batch_size, seq_length, 2])
+            logits = tf.reshape(logits, [micro_batch_size, seq_length, 2])
             logits = tf.transpose(logits, [2, 0, 1])
 
             start_logits, end_logits = tf.unstack(logits, axis=0)
@@ -602,13 +602,13 @@ class BertModel(object):
         """
         with tf.variable_scope("bert"):
             with tf.variable_scope("embeddings"):
-                _batch_size, _seq_len = word_embeddings.shape[:2]
+                _micro_batch_size, _seq_len = word_embeddings.shape[:2]
                 if self.bert_config.static_mask:
                     position_embeddings = self.embedding(
                         input_position, self.bert_config.max_position_embeddings, name="position_embeddings")
                 else:
                     dummy_pos_index = tf.reshape(
-                        tf.tile(tf.range(_seq_len), [_batch_size]), [-1, _seq_len])
+                        tf.tile(tf.range(_seq_len), [_micro_batch_size]), [-1, _seq_len])
                     position_embeddings = self.embedding(
                         dummy_pos_index, self.bert_config.max_position_embeddings, name="position_embeddings")
 
@@ -742,7 +742,7 @@ class BertModel(object):
     def get_glue_output_layer(self, label_ids, input_tensor):
         num_labels = self.bert_config.num_lables
         with tf.variable_scope('glue_loss'):
-            # [batch_size, hidden_size]
+            # [micro_batch_size, hidden_size]
             output_layer = self.pooler(input_tensor)
             # output_layer = tf.cast(output_layer, dtype=tf.float32)
             hidden_size = output_layer.shape[-1].value
@@ -785,7 +785,7 @@ class BertModel(object):
     def get_glue_regression_layer(self, label_ids, input_tensor):
         label_scores = tf.cast(label_ids, dtype=tf.float16)
         with tf.variable_scope('glue_loss'):
-            # [batch_size, hidden_size]
+            # [micro_batch_size, hidden_size]
             output_layer = self.pooler(input_tensor)
             hidden_size = output_layer.shape[-1].value
 
@@ -1055,12 +1055,12 @@ class GroupBertModel(BertModel):
         """
         with tf.variable_scope("bert"):
             with tf.variable_scope("embeddings"):
-                _batch_size, _seq_len = word_embeddings.shape[:2]
+                _micro_batch_size, _seq_len = word_embeddings.shape[:2]
                 if self.bert_config.static_mask:
                     position_embeddings = self.embedding(input_position, self.bert_config.max_position_embeddings, name="position_embeddings")
                 else:
                     dummy_pos_index = tf.reshape(
-                        tf.tile(tf.range(_seq_len), [_batch_size]), [-1, _seq_len])
+                        tf.tile(tf.range(_seq_len), [_micro_batch_size]), [-1, _seq_len])
                     position_embeddings = self.embedding(
                         dummy_pos_index, self.bert_config.max_position_embeddings, name="position_embeddings")
 
@@ -1088,24 +1088,24 @@ class GroupBertModel(BertModel):
 
 def gather_indexes(sequence_tensor, positions):
     """Gathers the vectors at the specific positions over a minibatch."""
-    batch_size, seq_length, width = get_shape_list(
+    micro_batch_size, seq_length, width = get_shape_list(
         sequence_tensor, expected_rank=3)
 
     flat_offsets = tf.reshape(
-        tf.range(0, batch_size, dtype=tf.int32) * seq_length, [-1, 1])
+        tf.range(0, micro_batch_size, dtype=tf.int32) * seq_length, [-1, 1])
     flat_positions = tf.reshape(positions + flat_offsets, [-1])
     flat_sequence_tensor = tf.reshape(sequence_tensor,
-                                      [batch_size * seq_length, width])
+                                      [micro_batch_size * seq_length, width])
     output_tensor = ipu.ops.embedding_ops.embedding_lookup(
         flat_sequence_tensor, flat_positions, serialization_factor=1)
     output_tensor = tf.reshape(output_tensor, [-1, width])
     return output_tensor
 
 
-def transpose_for_scores(input_tensor, batch_size, num_attention_heads,
+def transpose_for_scores(input_tensor, micro_batch_size, num_attention_heads,
                          seq_length, width):
     output_tensor = tf.reshape(
-        input_tensor, [batch_size, seq_length, num_attention_heads, width])
+        input_tensor, [micro_batch_size, seq_length, num_attention_heads, width])
 
     output_tensor = tf.transpose(output_tensor, [0, 2, 1, 3])
     return output_tensor
@@ -1233,28 +1233,28 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask, dtype):
     """Create 3D attention mask from a 2D tensor mask.
 
     Args:
-        from_tensor: 2D or 3D Tensor of shape [batch_size, from_seq_length, ...].
-        to_mask: int32 Tensor of shape [batch_size, to_seq_length].
+        from_tensor: 2D or 3D Tensor of shape [micro_batch_size, from_seq_length, ...].
+        to_mask: int32 Tensor of shape [micro_batch_size, to_seq_length].
 
     Returns:
-        float Tensor of shape [batch_size, from_seq_length, to_seq_length].
+        float Tensor of shape [micro_batch_size, from_seq_length, to_seq_length].
     """
     from_shape = get_shape_list(from_tensor, expected_rank=[2, 3])
-    batch_size, from_seq_length = from_shape[:2]
+    micro_batch_size, from_seq_length = from_shape[:2]
 
     to_shape = get_shape_list(to_mask, expected_rank=2)
     to_seq_length = to_shape[1]
 
     to_mask = tf.cast(
-        tf.reshape(to_mask, [batch_size, 1, to_seq_length]), dtype=dtype)
+        tf.reshape(to_mask, [micro_batch_size, 1, to_seq_length]), dtype=dtype)
 
     # We don't assume that `from_tensor` is a mask (although it could be). We
     # don't actually care if we attend *from* padding tokens (only *to* padding)
     # tokens so we create a tensor of all ones.
     #
-    # `broadcast_ones` = [batch_size, from_seq_length, 1]
+    # `broadcast_ones` = [micro_batch_size, from_seq_length, 1]
     broadcast_ones = tf.ones(
-        shape=[batch_size, from_seq_length, 1], dtype=dtype)
+        shape=[micro_batch_size, from_seq_length, 1], dtype=dtype)
 
     # Here we broadcast along two dimensions to create the mask.
     mask = broadcast_ones * to_mask
@@ -1365,7 +1365,7 @@ def attention_static_remasking(mask_padding_index, seq_length,
     masked. This function handles variable number of predicted tokens
     and sequence lengths.
     """
-    batch_size = int(mask_padding_index.shape[0])
+    micro_batch_size = int(mask_padding_index.shape[0])
     base_value = np.arange(seq_length)
     base = tf.constant(base_value, dtype=tf.int32)
 
@@ -1378,7 +1378,7 @@ def attention_static_remasking(mask_padding_index, seq_length,
     # Sequence mask
     smask = tf.less(base, seq_padding_index)
     final_mask = tf.logical_and(mmask, smask)
-    final_mask = tf.reshape(final_mask, [batch_size, 1, seq_length])
+    final_mask = tf.reshape(final_mask, [micro_batch_size, 1, seq_length])
 
     final_mask = (1.0 - tf.cast(final_mask, data_dtype)) * -1000.0
 

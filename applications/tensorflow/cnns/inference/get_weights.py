@@ -98,7 +98,8 @@ def get_weights(save_dir: Path, model_name: str, dtype: str) -> str:
             # This download can cause issues on the CI, as it needs to create ~/.keras directory
             # One way to solve that is to copy ~/.keras on the CI
             tar_file = get_file(fname='inceptionv1_tar.gz',
-                                origin='http://download.tensorflow.org/models/inception_v1_2016_08_28.tar.gz')
+                                origin='http://download.tensorflow.org/models/inception_v1_2016_08_28.tar.gz',
+                                cache_dir=save_dir)
             tar_file_reader = tarfile.open(tar_file)
             tar_file_reader.extractall(save_dir)
             if dtype == 'float16':

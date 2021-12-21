@@ -28,7 +28,7 @@
      ["glu"]
     ],
     "device_mapping":[0,1,2,3,4,5,6,7,1],
-    "batch_size": 1,
+    "micro_batch_size": 1,
     "batches_per_step": 1,
     "epochs": 3,
     "epsilon": 0.000001,

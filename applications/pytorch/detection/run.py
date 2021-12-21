@@ -9,14 +9,12 @@ import poptorch
 from poptorch import trainingModel, inferenceModel, DataLoader, DataLoaderMode
 import torch
 from torch.utils.data import DataLoader as torchDataLoader
-from torchvision.transforms import Compose
 
 from models.detector import Detector
 from models.yolov4_p5 import Yolov4P5
 from utils.config import get_cfg_defaults, override_cfg, save_cfg
 from utils.dataset import Dataset
 from utils.parse_args import parse_args
-from utils.preprocessing import ResizetoNumpy, Pad, ToTensor
 from utils.tools import load_and_fuse_pretrained_weights, post_processing, StatRecorder
 from utils.visualization import plotting_tool
 
@@ -59,24 +57,7 @@ def get_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode, ipu_opts:
     Returns:
         model[Detector]: a torch Detector Model
     """
-    # Change the data type of the dataloader depeding of the options
-    if cfg.model.uint_io:
-        image_type = "uint"
-    elif not cfg.model.ipu or not cfg.model.half:
-        image_type = "float"
-    else:
-        image_type = "half"
-
-    # Creates a transform object for the dataset
-    if cfg.model.mode == "train":
-        # TODO transform for training when data augmentation is implemented
-        transform = None
-    else:
-        transform = Compose([ResizetoNumpy(cfg.model.image_size),
-                             Pad(cfg.model.image_size),
-                             ToTensor(int(cfg.dataset.max_bbox_per_scale), image_type)])
-
-    dataset = Dataset(path=opt.data, cfg=cfg, transform=transform)
+    dataset = Dataset(path=opt.data, cfg=cfg)
 
     # Creates a loader using the dataset
     if cfg.model.ipu:
@@ -102,7 +83,7 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode)
     """
 
     # Create model
-    model = Yolov4P5(cfg.model)
+    model = Yolov4P5(cfg)
 
     if cfg.model.mode == "train":
         model.train()
@@ -129,13 +110,16 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode)
         else:
             model = inferenceModel(model, ipu_opts)
         try:
-            model.compile(next(iter(loader))[0])
+            img, _, _, _ = next(iter(loader))
+            model.compile(img)
+            warm_up_iterations = 100
+            for _ in range(warm_up_iterations):
+                _ = model(img)
         except Exception as e:
             print(e.args)
             exit(0)
 
     return model, loader
-
 
 
 def inference(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode):
@@ -152,9 +136,9 @@ def inference(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode):
 
         inference_round_trip_time = model.getLatency() if cfg.model.ipu else (inference_step_time,) * 3  # returns (min, max, avg) latency
 
-        processed_batch, nms_time = post_processing(cfg, y, image_sizes, transformed_labels)
+        processed_batch = post_processing(cfg, y, image_sizes, transformed_labels)
 
-        stat_recorder.record_inference_stats(nms_time, inference_round_trip_time, inference_step_time)
+        stat_recorder.record_inference_stats(inference_round_trip_time, inference_step_time)
 
         if cfg.inference.plot_output and batch_idx % cfg.inference.plot_step == 0:
             plotting_tool(cfg, processed_batch[0], [loader.dataset.get_image(img_idx) for img_idx in image_indxs])

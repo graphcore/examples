@@ -40,7 +40,7 @@ def _parse_data(sample_proto, shape, apply_log=False):
     return x, y
 
 
-def construct_dataset(file_dir, n_samples, batch_size, n_epochs,
+def construct_dataset(file_dir, n_samples, micro_batch_size, n_epochs,
                       sample_shape, samples_per_file=1, n_file_sets=1,
                       shard=0, n_shards=1, apply_log=False,
                       shuffle=False, shuffle_buffer_size=0,
@@ -55,16 +55,16 @@ def construct_dataset(file_dir, n_samples, batch_size, n_epochs,
         return None, 0
 
     # Ensure samples divide evenly into files * local-disks * worker-shards * batches
-    n_divs = samples_per_file * n_file_sets * n_shards * batch_size
+    n_divs = samples_per_file * n_file_sets * n_shards * micro_batch_size
     if (n_samples % n_divs) != 0:
         logging.error('Number of samples (%i) not divisible by %i '
-                      'samples_per_file * n_file_sets * n_shards * batch_size',
+                      'samples_per_file * n_file_sets * n_shards * micro_batch_size',
                       n_train, n_divs)
         raise Exception('Invalid sample counts')
 
     # Number of files and steps
     n_files = n_samples // (samples_per_file * n_file_sets)
-    n_steps = n_samples // (n_file_sets * n_shards * batch_size)
+    n_steps = n_samples // (n_file_sets * n_shards * micro_batch_size)
 
     # Find the files
     filenames = sorted(glob.glob(os.path.join(file_dir, '*.tfrecord')))
@@ -89,14 +89,14 @@ def construct_dataset(file_dir, n_samples, batch_size, n_epochs,
 
     # Construct batches
     data = data.repeat(n_epochs)
-    data = data.batch(batch_size, drop_remainder=True)
+    data = data.batch(micro_batch_size, drop_remainder=True)
 
     # Prefetch to device
     return data.prefetch(prefetch), n_steps
 
 
 def get_datasets(data_dir, sample_shape, n_train, n_valid,
-                 batch_size, n_epochs, dist=None, samples_per_file=1,
+                 micro_batch_size, n_epochs, dist=None, samples_per_file=1,
                  shuffle_train=True, shuffle_valid=False,
                  shard=True, staged_files=False,
                  prefetch=4, apply_log=False):
@@ -118,7 +118,7 @@ def get_datasets(data_dir, sample_shape, n_train, n_valid,
         shard, n_shards = 0, 1
 
     # Construct the training and validation datasets
-    dataset_args = dict(batch_size=batch_size, n_epochs=n_epochs,
+    dataset_args = dict(micro_batch_size=micro_batch_size, n_epochs=n_epochs,
                         sample_shape=sample_shape, samples_per_file=samples_per_file,
                         n_file_sets=n_file_sets, shard=shard, n_shards=n_shards,
                         apply_log=apply_log, prefetch=prefetch)

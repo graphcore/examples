@@ -47,20 +47,21 @@ class DataPadder:
             return tuple([tensor[:original_batch_size] for tensor in output])
 
 
-def test(inference_model, test_data, opts):
+def test(inference_model, test_data):
+    logging.info("Testing the model")
     nr_batches = len(test_data)
     bar = tqdm(test_data, total=nr_batches)
     sum_acc = 0.0
     sample_count = 0
     inference_model = DataPadder(test_data.combinedBatchSize, inference_model)
-    with torch.no_grad():
-        for idx, (input_data, labels) in enumerate(bar):
-            sample_count += labels.size()[0]
-            output = inference_model(input_data)
-            output = output.float()
+    for input_data, labels in bar:
+        sample_count += labels.size()[0]
+        output = inference_model(input_data)
+        output = output.float()
+        with torch.no_grad():
             sum_acc += utils.accuracy(output, labels) * labels.size()[0]
             aggregated_accuracy = sum_acc / sample_count
-            bar.set_description(f"Accuracy:{aggregated_accuracy:0.2f}%")
+        bar.set_description(f"Accuracy:{aggregated_accuracy:0.2f}%")
     acc = sum_acc / sample_count
     logging.info(f"Accuracy on test set: {acc:0.2f}%")
     return acc
@@ -68,29 +69,29 @@ def test(inference_model, test_data, opts):
 
 def load_checkpoint_weights(inference_model, file_path):
     checkpoint = torch.load(file_path)
-    opts = checkpoint['opts']
-    logging.info(f"Restore the {opts.model} model to epoch {checkpoint['epoch']} on {opts.data} dataset(Train loss:{checkpoint['loss']}, train accuracy:{checkpoint['train_accuracy']}%)")
+    args = checkpoint['args']
+    logging.info(f"Restore the {args.model} model to epoch {checkpoint['epoch']} on {args.data} dataset(Train loss:{checkpoint['loss']}, train accuracy:{checkpoint['train_accuracy']}%)")
     models.load_model_state_dict(inference_model, checkpoint['model_state_dict'])
     inference_model.copyWeightsToDevice()
 
 
-def create_validation_model_opts(opts, use_popdist):
+def create_validation_opts(args, use_popdist):
     if use_popdist:
-        model_opts = popdist.poptorch.Options(ipus_per_replica=len(opts.pipeline_splits) + 1)
+        opts = popdist.poptorch.Options(ipus_per_replica=len(args.pipeline_splits) + 1)
     else:
-        model_opts = poptorch.Options()
-        model_opts.replicationFactor(opts.replicas)
-        model_opts.Distributed.disable()
-    model_opts = utils.inference_settings(opts, model_opts)
-    model_opts.deviceIterations(max(opts.device_iterations, 1+len(opts.pipeline_splits)))
-    model_opts.anchorMode(poptorch.AnchorMode.All)
-    return model_opts
+        opts = poptorch.Options()
+        opts.replicationFactor(args.replicas)
+        opts.Distributed.disable()
+    opts = utils.inference_settings(args, opts)
+    opts.deviceIterations(max(args.device_iterations, 1+len(args.pipeline_splits)))
+    opts.outputMode(poptorch.OutputMode.All)
+    return opts
 
 
 def validate_checkpoints(checkpoint_list, test_data=None):
     checkpoint = torch.load(checkpoint_list[0])
-    opts = checkpoint['opts']
-    utils.Logger.setup_logging_folder(opts)
+    args = checkpoint['args']
+    utils.Logger.setup_logging_folder(args)
 
     # make sure the order is ascending
     def ckpt_key(ckpt):
@@ -101,30 +102,30 @@ def validate_checkpoints(checkpoint_list, test_data=None):
         logging.warn("Checkpoint names are changed, which may cause inconsistent order in evaluation.")
 
     # Validate in a single instance
-    model_opts = create_validation_model_opts(opts, use_popdist=False)
-    opts.use_popdist = False
-    opts.popdist_size = 1
+    opts = create_validation_opts(args, use_popdist=False)
+    args.use_popdist = False
+    args.popdist_size = 1
 
     if test_data is None:
-        logging.info("Loading the data")
-        test_data = datasets.get_data(opts, model_opts, train=False, async_dataloader=True, return_remaining=True)
+        test_data = datasets.get_data(args, opts, train=False, async_dataloader=True, return_remaining=True)
 
-    logging.info("Create model")
-    model = models.get_model(opts, datasets.datasets_info[opts.data], pretrained=False)
+    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False)
     model.eval()
     # Load the weights of the first checkpoint for the model
     models.load_model_state_dict(model, checkpoint['model_state_dict'])
-    inference_model = poptorch.inferenceModel(model, model_opts)
+    inference_model = poptorch.inferenceModel(model, opts)
 
     for checkpoint in checkpoint_list:
         if inference_model.isCompiled():
             load_checkpoint_weights(inference_model, checkpoint)
-        acc = test(inference_model, test_data, opts)
+        val_accuracy = test(inference_model, test_data)
         epoch_nr = torch.load(checkpoint)["epoch"]
-        result_dict = {"validation_epoch": epoch_nr,
-                       "validation_iteration": opts.logs_per_epoch * epoch_nr,
-                       "validation_accuracy": acc}
-        utils.Logger.log_validate_results(result_dict)
+        log_data = {
+            "validation_epoch": epoch_nr,
+            "validation_iteration": epoch_nr * len(test_data),
+            "validation_accuracy": val_accuracy,
+        }
+        utils.Logger.log_validate_results(log_data)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,47 @@
+# This is 8 IPUs, FP32 single batch training on VOC 2007
+MODEL_NAME: FasterRcnn
+
+INPUT_SIZE: [800,800]
+
+TRAIN:
+  WANDB_ON: False
+  PRETRAINED_WEIGHTS: weights/GC_init_weights.pth
+  SCALES: [[800,800],]
+  RESUME: False
+  MAX_ITERS: 90000
+  STEPSIZE: [55000,]
+  SAVE_ITERS: [40000, 60000, 80000,]
+  START_TO_FIND_SMALLEST_LOSS_ITERS: 75000
+  # Factor for reducing the learning rate
+  GAMMA: 0.1
+  # Step size for reducing the learning rate, currently only support one step
+  ADD_GT_BOX_IN_SAMPLER: False
+  RESNET:
+    FIXED_BLOCKS: 1
+    FIXED_BN: True
+  RPN_POST_NMS_TOP_N: 2000
+  BBOX_NORMALIZE_TARGETS_PRECOMPUTED: True
+  RPN_OUT_FG_FRACTION: 0.25
+
+  BG_THRESH_LO: 0.0
+
+NANO_DATA_CFG:
+  DATA:
+    SHUFFLE: True
+    TRAIN:
+      img_path: ./VOCdevkit/VOC2007/JPEGImages
+      ann_path: ./VOCdevkit/VOC2007/Annotations_trainval
+      keep_ratio: False
+      pipeline:
+        scale: [0.7, 1.2]
+
+MODEL:
+  LOAD_STRICT: False
+  RCNN:
+    EXPAND_PREDICTED_BOXES: True
+
+TEST:
+  SCALES: [800,800]
+  KEEP_RATIO: False
+  PIXEL_MEAN: [103.53, 116.28, 123.675]
+  SCORE_THRESH_TEST: 0.0

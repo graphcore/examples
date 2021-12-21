@@ -23,11 +23,10 @@ class Yolov4Head(nn.Module):
         self._anchor_centers = None
         if calculate_loss:
             self.loss = nn.L1Loss()
-        self.calculate_loss = calculate_loss
-        self.copy_tensor = CopyTensor()
-
-        self.precision = precision
         self.cpu_mode = cpu_mode
+        self.calculate_loss = calculate_loss
+        self.copy_tensor = CopyTensor(self.cpu_mode)
+        self.precision = precision
 
 
     def dummy_loss(self, act: torch.Tensor) -> torch.Tensor:
@@ -48,10 +47,7 @@ class Yolov4Head(nn.Module):
 
         preds = self.sigmoid(x)
 
-        if self.cpu_mode:
-            point_xy_weight_height_class_conf = preds[..., 0:5]
-        else:
-            point_xy_weight_height_class_conf = self.copy_tensor(preds[..., 0:5])[0]
+        point_xy_weight_height_class_conf = self.copy_tensor(preds[..., 0:5])[0]
         point_xy = point_xy_weight_height_class_conf[..., 0:2]
         weight_height = point_xy_weight_height_class_conf[..., 2:4]
         class_conf = point_xy_weight_height_class_conf[..., 4].unsqueeze(axis=-1)

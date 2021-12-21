@@ -14,7 +14,6 @@
 
 
 import os
-import six
 import time
 import yaml
 import math
@@ -33,11 +32,10 @@ from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import ipu_outfeed_queue
 from tensorflow.python.ipu.scopes import ipu_scope
 from tensorflow.python.ipu.ops import pipelining_ops
-from tensorboardX import SummaryWriter
 
+from ipu_optimizer import AdamLossScalingOptimizer
 from data_loader import Dataloader
 from util import get_config
-from ipu_optimizer import AdamLossScalingOptimizer
 
 
 class AMConfig(object):
@@ -65,15 +63,17 @@ class AMConfig(object):
             'epochs': 10,
             'vocab_size': 4233,
             'optimizer': 'sgd',
-            'num_ipus_per_replica': 4,
             'replica': 1,
             'mtlalpha': 0.3,
             'lsm_weight': 0.1,
             'data_path': None,
             'dict_path': None,
-            'global_batch_size': 64,
+            'gradient_accumulation_count': 12,
             'loss_scale': 512,
-            'use_synthetic_data': False
+            'use_synthetic_data': False,
+            'wandb_name': None,
+            'use_ipu_dropout': True,
+            'initializer_range': 0.083
         }
 
     @classmethod
@@ -123,7 +123,6 @@ class ConformerAM(object):
 
         self.kernel_regularizer = None
         self.bias_regularizer = None
-
         self.mask_value = -10000
 
 
@@ -214,7 +213,7 @@ class ConformerAM(object):
         dataset = dataset.batch(self.config['batch_size'], drop_remainder=True)
 
         self.infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
-            dataset, prefetch_depth=10)
+            dataset, prefetch_depth=15)
 
     def _build_pos_embedding(self, max_len, dmodel, reverse=False):
         '''
@@ -295,8 +294,14 @@ class ConformerAM(object):
             pos_emb = self._build_pos_embedding(length, dmodel, reverse=True)
 
             if self.training:
-                wav_emb = tf.nn.dropout(x, rate=self.config['dropout_rate'])
-                pos_emb = tf.nn.dropout(pos_emb, rate=self.config['dropout_rate'])
+                if self.config['use_ipu_dropout']:
+                    wav_emb = ipu.rand_ops.dropout(x, rate=self.config['dropout_rate'])
+                    pos_emb = ipu.rand_ops.dropout(pos_emb, rate=self.config['dropout_rate'])
+                else:
+                    wav_emb = tf.nn.dropout(x, rate=self.config['dropout_rate'])
+                    pos_emb = tf.nn.dropout(pos_emb, rate=self.config['dropout_rate'])
+            else:
+                wav_emb = x
 
         return wav_emb, pos_emb, mask_adder
 
@@ -338,7 +343,10 @@ class ConformerAM(object):
             x = swish(dense_1(input))
 
             if self.training:
-                x = tf.nn.dropout(x, rate=self.config['dropout_rate'])
+                if self.config['use_ipu_dropout']:
+                    x = ipu.rand_ops.dropout(x, rate=self.config['dropout_rate'])
+                else:
+                    x = tf.nn.dropout(x, rate=self.config['dropout_rate'])
 
             # linear 2
             dense_2 = tf.compat.v1.layers.Dense(units=self.config['adim'],
@@ -349,8 +357,10 @@ class ConformerAM(object):
             x = dense_2(x)
 
             if self.training:
-                x = tf.nn.dropout(x, rate=self.config['dropout_rate'])
-
+                if self.config['use_ipu_dropout']:
+                    x = ipu.rand_ops.dropout(x, rate=self.config['dropout_rate'])
+                else:
+                    x = tf.nn.dropout(x, rate=self.config['dropout_rate'])
             x = scale * x
 
         return x
@@ -428,7 +438,8 @@ class ConformerAM(object):
             if pos_emb is not None:
                 p_dense = tf.compat.v1.layers.Dense(units=self.config['adim'],
                                                     use_bias=False,
-                                                    kernel_initializer=create_initializer(0.083),
+                                                    kernel_initializer=create_initializer(
+                                                        self.config['initializer_range'], dtype=self.dtype),
                                                     kernel_regularizer=self.kernel_regularizer,
                                                     bias_regularizer=self.bias_regularizer,
                                                     name="att/p_dense")
@@ -480,7 +491,10 @@ class ConformerAM(object):
             #    scores = tf.multiply(scores, tf.where(mask_adder < 0, zeros, 1 - zeros))
 
             if self.training:
-                scores = tf.nn.dropout(scores, rate=self.config['attn_dropout_rate'])
+                if self.config['use_ipu_dropout']:
+                    scores = ipu.rand_ops.dropout(scores, rate=self.config['attn_dropout_rate'])
+                else:
+                    scores = tf.nn.dropout(scores, rate=self.config['attn_dropout_rate'])
 
             # (batch_size, n_head, length_q, length_v) * (batch_size, n_head, length_v, head_size)
             #                                        |
@@ -499,7 +513,10 @@ class ConformerAM(object):
             qkv_o = o_dense(qkv)
 
             if self.training:
-                qkv_o = tf.nn.dropout(qkv_o, rate=self.config['dropout_rate'])
+                if self.config['use_ipu_dropout']:
+                    qkv_o = ipu.rand_ops.dropout(qkv_o, rate=self.config['dropout_rate'])
+                else:
+                    qkv_o = tf.nn.dropout(qkv_o, rate=self.config['dropout_rate'])
 
             return qkv_o
 
@@ -556,8 +573,10 @@ class ConformerAM(object):
             x = conv3(x)
 
             if self.training:
-                x = tf.nn.dropout(x, rate=self.config['dropout_rate'])
-
+                if self.config['use_ipu_dropout']:
+                    x = ipu.rand_ops.dropout(x, rate=self.config['dropout_rate'])
+                else:
+                    x = tf.nn.dropout(x, rate=self.config['dropout_rate'])
         return x
 
     def _build_encoder_layer(self, x, mask_adder, pos_emb, prefix):
@@ -657,8 +676,10 @@ class ConformerAM(object):
             x = math.sqrt(self.config['adim']) * x + pos_emb
 
             if self.training:
-                x = tf.nn.dropout(x, rate=self.config['dropout_rate'])
-
+                if self.config['use_ipu_dropout']:
+                    x = ipu.rand_ops.dropout(x, rate=self.config['dropout_rate'])
+                else:
+                    x = tf.nn.dropout(x, rate=self.config['dropout_rate'])
             # subsequent_mask
             index = tf.range(1, self.config['maxlen_tgt'], 1, dtype=tf.int32)
             index = tf.reshape(index, (1, 1, -1))
@@ -758,21 +779,9 @@ class ConformerAM(object):
             loss_pre = y_true * (tf.math.log(y_true) - y_pred) * mask
             loss = tf.reduce_sum(loss_pre)
 
-        return loss, loss_pre
+        return loss
 
-    def _build_ctc_loss(self, logits, logits_len, labels, labels_len):
-        time_major_logits = tf.transpose(logits, perm=[1, 0, 2])
-        with tf.compat.v1.variable_scope("loss/ctc_loss", use_resource=True):
-            ctc_loss = ipu.ops.nn_ops.ctc_loss_v2(labels,
-                                                  time_major_logits,
-                                                  labels_len,
-                                                  logits_len,
-                                                  0)
-            ctc_loss = ctc_loss
-
-        return ctc_loss
-
-    def optimizer_function(self, lr, loss, kl_cls, tgt, kl_loss, ctc_loss, loss_pre, ctc_cls):
+    def optimizer_function(self, lr, loss, kl_cls, tgt):
         optimizer_type = self.config['optimizer'].lower()
         loss = self.config['loss_scale'] * loss
         if optimizer_type == 'sgd':
@@ -794,131 +803,77 @@ class ConformerAM(object):
 
         return pipelining_ops.OptimizerFunctionOutput(optimizer, loss)
 
-    # staged model
-    def _build_1st_stage(self, lr, input, input_len, tgt, tgt_len):
+
+    def _build_embedding_stage(self, input, input_len):
         enc_emb, pos_emb, enc_mask = \
             self._build_encoder_embedding(input, input_len, "encoder/embedding")
+        return enc_emb, pos_emb, enc_mask
 
-        return lr, enc_emb, pos_emb, enc_mask, input_len, tgt, tgt_len
-
-    def _build_2and_stage(self, lr, enc_emb, pos_emb, enc_mask, input_len, tgt, tgt_len):
-        (s, e) = self.pipeline[0]
-        for i in range(s, e):
+    def _build_encoder_stage(self, enc_emb, pos_emb, enc_mask):
+        for i in range(self.tmp_start, self.tmp_end):
             enc_emb = self._build_encoder_layer(enc_emb, enc_mask, pos_emb,
                                                 "encoder/encoder_" + str(i))
+        return enc_emb, pos_emb, enc_mask
 
-        return lr, enc_emb, pos_emb, enc_mask, input_len, tgt, tgt_len
-
-    def _build_2bnd_stage(self, lr, enc_emb, pos_emb, enc_mask, input_len, tgt, tgt_len):
-        (s, e) = self.pipeline[1]
-        for i in range(s, e):
-            enc_emb = self._build_encoder_layer(enc_emb, enc_mask, pos_emb,
-                                                "encoder/encoder_" + str(i))
-
-        return lr, enc_emb, pos_emb, enc_mask, input_len, tgt, tgt_len
-
-    def _build_2cnd_stage(self, lr, enc_emb, pos_emb, enc_mask, input_len, tgt, tgt_len):
-        (s, e) = self.pipeline[2]
-        for i in range(s, e):
-            enc_emb = self._build_encoder_layer(enc_emb, enc_mask, pos_emb,
-                                                "encoder/encoder_" + str(i))
-
-        return lr, enc_emb, pos_emb, enc_mask, input_len, tgt, tgt_len
-
-    def _build_2dnd_stage(self, lr, enc_emb, pos_emb, enc_mask, input_len, tgt, tgt_len):
-        (s, e) = self.pipeline[3]
-        for i in range(s, e):
-            enc_emb = self._build_encoder_layer(enc_emb, enc_mask, pos_emb,
-                                                "encoder/encoder_" + str(i))
-        enc_emb = self._build_layer_norm(enc_emb, "encoder/norm")
-
-        return lr, enc_emb, enc_mask, input_len, tgt, tgt_len
-
-    def _build_3rd_stage(self, lr, enc_emb, enc_mask, input_len, tgt, tgt_len):
-        # Note: tgt = sos + valid_word + eos + padding(it seems blank is ok)
+    def _build_decoder_embedding_stage(self, tgt, tgt_len):
         dec_emb, loss_mask, dec_mask = \
             self._build_decoder_embedding(tgt, tgt_len, "decoder/embedding")
+        dec_emb = dec_emb[:, : -1, :]    # the first tgt is `sos`
+        return tgt, dec_emb, loss_mask, dec_mask
 
-        dec_include_sos = dec_emb[:, : -1, :]    # the first tgt is `sos`
-        tgt_exclude_sos = tgt[:, 1:]          # tgt shouldn't include `sos`
+    def _build_decoder_stage(self, enc_emb, enc_mask, dec_emb, dec_mask):
+        for i in range(self.tmp_start, self.tmp_end):
+            dec_emb = self._build_decoder_layer(
+                dec_emb, dec_mask, enc_emb, enc_mask, "decoder/decoder_" + str(i))
+        return enc_emb, enc_mask, dec_emb, dec_mask
 
-        kl_logits = self._build_decoder(dec_include_sos, dec_mask,
-                                        enc_emb, enc_mask)
+    def _build_output_loss_stage(self, tgt, dec_emb, loss_mask):
+        tgt_exclude_sos = tgt[:, 1:]
+        kl_logits = self._build_layer_norm(dec_emb, "decoder/norm")
+        kl_logits = self._build_classifier_output(kl_logits, "loss/kl_logits")
         kl_cls = tf.compat.v1.argmax(kl_logits, axis=-1, output_type=tf.int32)
-        kl_loss, loss_pre = self._build_kl_loss(kl_logits, tgt_exclude_sos, loss_mask)
+        kl_loss = self._build_kl_loss(kl_logits, tgt_exclude_sos, loss_mask)
+        loss = kl_loss / self.global_batch_size
+        return loss, kl_cls, tgt_exclude_sos
 
-        alpha = self.config['mtlalpha']
-        ctc_logits = self._build_classifier_output(enc_emb, "ctc_logits")
-        ctc_cls = tf.compat.v1.argmax(ctc_logits, axis=-1, output_type=tf.int32)
+    def _build_1st_stage(self, lr, input, input_len, tgt, tgt_len):
+        enc_emb, pos_emb, enc_mask = self._build_embedding_stage(input, input_len)
+        self.tmp_start, self.tmp_end = 0, 8
+        enc_emb, pos_emb, enc_mask = self._build_encoder_stage(enc_emb, pos_emb, enc_mask)
+        return lr, enc_emb, pos_emb, enc_mask, tgt, tgt_len
 
-        mask = tf.transpose(tf.squeeze(enc_mask, axis=1), perm=[0, 2, 1])
-        ctc_logits = ctc_logits * ((mask - self.mask_value) / abs(self.mask_value))
-        ctc_loss = self._build_ctc_loss(ctc_logits, input_len,
-                                        tgt_exclude_sos, tf.add(tgt_len, -1))
-        loss = (1. - alpha) * kl_loss + alpha * ctc_loss
-        loss = loss / self.global_batch_size
-        # self.outputs = ['lr', 'loss', 'kl_cls', 'tgt']
-        return lr, loss, kl_cls, tgt_exclude_sos, kl_loss, ctc_loss, loss_pre, ctc_cls
+    def _build_2nd_stage(self, lr, enc_emb, pos_emb, enc_mask, tgt, tgt_len):
+        self.tmp_start, self.tmp_end = 8, 16
+        enc_emb, pos_emb, enc_mask = self._build_encoder_stage(enc_emb, pos_emb, enc_mask)
+        tgt, dec_emb, loss_mask, dec_mask = self._build_decoder_embedding_stage(tgt, tgt_len)
+        self.tmp_start, self.tmp_end = 0, 1
+        enc_emb, enc_mask, dec_emb, dec_mask = self._build_decoder_stage(enc_emb, enc_mask, dec_emb, dec_mask)
+        loss, kl_cls, tgt_exclude_sos = self._build_output_loss_stage(tgt, dec_emb, loss_mask)
+        return lr, loss, kl_cls, tgt_exclude_sos
 
     def _build_computational_stages(self):
-        assert self.config['num_ipus_per_replica'] in [1, 2, 4]
-
-        self.pipeline.append((0, 6))
-        self.pipeline.append((6, 11))
-        self.pipeline.append((11, 15))
-        self.pipeline.append((15, 16))
-
         self.computational_stages.append(
             partial(self._build_1st_stage)
         )
-        self.device_mapping = [0]
+        self.computational_stages.append(
+            partial(self._build_2nd_stage)
+        )
+        self.device_mapping = [0, 1]
 
-        self.computational_stages.append(
-            partial(self._build_2and_stage)
-        )
-        self.computational_stages.append(
-            partial(self._build_2bnd_stage)
-        )
-        self.computational_stages.append(
-            partial(self._build_2cnd_stage)
-        )
-        self.computational_stages.append(
-            partial(self._build_2dnd_stage)
-        )
-        for i in range(4):
-            if self.config['num_ipus_per_replica'] == 1:
-                ipu = 0
-            else:
-                ipu = i if self.config['num_ipus_per_replica'] == 4 else i // 2
-            self.device_mapping.append(ipu)
-
-        self.computational_stages.append(
-            partial(self._build_3rd_stage)
-        )
-        self.device_mapping.append(self.config['num_ipus_per_replica'] - 1)
-
-    def get_pipeline_depth(self):
-        num_of_computational_stages = len(self.device_mapping)
-        micro_batch_size = 2 * num_of_computational_stages * self.config['replica'] * self.config['batch_size']
-        num_of_micro_batch = int(self.config['global_batch_size'] / micro_batch_size)
-        pipeline_depth = num_of_micro_batch * 2 * num_of_computational_stages
-        if self.config['global_batch_size'] % micro_batch_size > 0:
-            pipeline_depth += 2 * num_of_computational_stages
-        self.pipeline_depth = pipeline_depth
-        self.global_batch_size = pipeline_depth * self.config['replica'] * self.config['batch_size']
-
-        return pipeline_depth
+    def get_global_batch_size(self):
+        self.global_batch_size = self.config['gradient_accumulation_count'] * self.config['replica'] * self.config['batch_size']
+        print('local batch size: {}, ga: {}, global batch size: {}'.format(self.config['batch_size'], self.config['gradient_accumulation_count'], self.global_batch_size))
 
     def run_with_pipeline(self):
         self._build_dataset()
         self._build_computational_stages()
-        self.get_pipeline_depth()
+        self.get_global_batch_size()
         self.outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
-        def train(lr, infeed, outfeed, pipeline_depth):
+        def train(lr, infeed, outfeed, gradient_accumulation_count):
             pipeline_op = pipelining_ops.pipeline(
                 self.computational_stages,
-                gradient_accumulation_count=pipeline_depth,
+                gradient_accumulation_count=gradient_accumulation_count,
                 gradient_accumulation_dtype=self.dtype,
                 inputs=[lr],
                 infeed_queue=infeed,
@@ -929,18 +884,18 @@ class ConformerAM(object):
 
             return pipeline_op
 
-        def infer(infeed, outfeed, pipeline_depth):
+        def infer(lr, infeed, outfeed, gradient_accumulation_count):
             pipeline_op = pipelining_ops.pipeline(
                 self.computational_stages,
-                gradient_accumulation_count=pipeline_depth,
+                gradient_accumulation_count=gradient_accumulation_count,
                 gradient_accumulation_dtype=self.dtype,
+                inputs=[lr],
                 infeed_queue=infeed,
                 outfeed_queue=outfeed,
                 device_mapping=self.device_mapping)
 
             return pipeline_op
 
-        num_stage = len(self.device_mapping)
         model = train if self.training else infer
         with tf.compat.v1.device("cpu"):
             lr = tf.compat.v1.placeholder(np.float32, [])
@@ -948,7 +903,7 @@ class ConformerAM(object):
                               lr=lr,
                               infeed=self.infeed_queue,
                               outfeed=self.outfeed_queue,
-                              pipeline_depth=self.pipeline_depth)
+                              gradient_accumulation_count=self.config['gradient_accumulation_count'])
 
         with ipu_scope('/device:IPU:0'):
             compiled = ipu_compiler.compile(pipeline_md, [])
@@ -965,48 +920,40 @@ class ConformerAM(object):
             fp.write('\nTotal Parameters : ' + str(total_parameters) + '\n')
 
         # Create ipu_options
-        ipu_options = get_config(num_ipus=self.config['num_ipus_per_replica'] * self.config['replica'])
+        # we assume one ipu for one stage here
+        ipu_options = get_config(num_ipus=len(self.device_mapping) * self.config['replica'])
         ipu_options.configure_ipu_system()
 
         total_steps = self.data_loader.num_utts * self.config['epochs'] // self.global_batch_size
         print('total_steps: ', total_steps)
-        writer = SummaryWriter(log_dir='logs/train', comment='conformer_asr')
+        if self.config['wandb_name'] is not None:
+            try:
+                import wandb
+            except:
+                raise ImportError('wandb not installed')
+            wandb.init(self.config['wandb_name'])
         with tf.compat.v1.Session() as sess:
             sess.run(tf.compat.v1.global_variables_initializer())
             sess.run(self.infeed_queue.initializer)
-
-            for globa_step in range(1, total_steps+1):
-                start = time.time()
-                _ = sess.run(compiled, {lr: self.get_lr(globa_step)})
-                # shape: {pipeline_depth, replica, ...}
-                result = sess.run(outfeed)
-                duration = time.time() - start
-                if globa_step % 500 == 0 and globa_step > 0:
-                    kl_acc = self.get_kl_acc(result[2], result[3])
-                    ctc_acc = self.get_ctc_acc(result[7], result[3])  # only support bs1
-                    writer.add_scalars(
-                        'conformer_asr_loss',
-                        {
-                            'main': np.sum(result[1]),
-                            'kl_loss': np.mean(result[4]),
-                            'ctc_loss': np.mean(result[5])
-                        },
-                        global_step = globa_step
-                    )
-                    writer.add_scalars(
-                        'conformer_asr_acc',
-                        {
-                            'kl_acc': kl_acc,
-                            'ctc_acc': ctc_acc
-                        },
-                        global_step = globa_step
-                    )
-                    writer.add_scalar('lr', np.mean(result[0]), global_step=globa_step)
-                if globa_step > 0 and globa_step % 5 == 0:
-                    tput = self.global_batch_size / duration
-                    print([total_steps, globa_step, tput])
-                if self.config['save_checkpoint'] and (globa_step % self.config['checkpoint_interval'] == 0):
-                    saver.save(sess, 'logs/model.ckpt', global_step=globa_step)
+            step_per_epoch = self.data_loader.num_utts // self.global_batch_size
+            for epoch in range(1, self.config['epochs']+1):
+                for step in range(1, step_per_epoch+1):
+                    global_step = (epoch-1) * step_per_epoch + step
+                    step_lr = self.get_lr(global_step)
+                    start = time.time()
+                    _ = sess.run(compiled, {lr: step_lr})
+                    result = sess.run(outfeed)
+                    duration = time.time() - start
+                    if step % 10 == 0:
+                        tput = self.global_batch_size / duration
+                        print('epoch: {}/{}, global_step: {}/{}, loss: {}, through_put: {}'.format(epoch, self.config['epochs'], global_step, total_steps, np.mean(result[1]), tput))
+                kl_acc = self.get_kl_acc(result[2], result[3])
+                if self.config['wandb_name'] is not None:
+                    wandb.log({
+                        "loss": np.mean(result[1]),
+                        'acc': kl_acc,
+                    })
+                if self.config['save_checkpoint']:
+                    saver.save(sess, 'logs/model.ckpt', global_step=global_step)
             if self.config['freeze']:
                 self.save_pb(sess, self.output_names)
-        writer.close()

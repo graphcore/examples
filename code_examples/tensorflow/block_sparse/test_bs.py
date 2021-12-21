@@ -66,7 +66,6 @@ test_matmul_params = [
 ]
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize("tag, scenario, data_type, partial_data_type, lhs_shape, rhs_shape, block_size, sparsity, transposed_rhs, inner_group_size", test_matmul_params)
 def test_bsmatmul(tag, scenario, data_type, partial_data_type, lhs_shape, rhs_shape, block_size, sparsity, transposed_rhs, inner_group_size):
@@ -149,7 +148,6 @@ test_softmax_params = [
 ]
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize("tag, data_type, shape, block_size, sparsity, sparsity_mask, inner_group_size, subblock_mask_type, in_place", test_softmax_params)
 def test_bssoftmax(tag, data_type, shape, block_size, sparsity, sparsity_mask, inner_group_size, subblock_mask_type, in_place):

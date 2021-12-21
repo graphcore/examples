@@ -28,9 +28,7 @@ from tests.utils import (
     copy_weights_to_torch,
     run_fwd_model,
     check_tensors,
-    check_model,
-    requires_remote_buffers,
-    sanity)
+    check_model)
 
 '''
 Tests the fully connected layers.
@@ -85,7 +83,7 @@ def setup_function(func):
 
 
 @pytest.mark.parametrize('micro_batch_size, phase, momentum',
-                         [sanity(4, "bwd", 0.984375),
+                         [(4, "bwd", 0.984375),
                           (4, "fwd", 0.0),
                           (4, "bwd", 0.0)])
 def test_activation_function(phase, momentum, micro_batch_size):

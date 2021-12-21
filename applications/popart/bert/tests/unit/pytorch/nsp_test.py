@@ -76,7 +76,6 @@ def test_nsp_fwd(custom_ops):
               transform=NSP_TRANSFORM)
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize("opt_type", ["SGD", "LAMB"])
 def test_nsp_bwd(custom_ops, opt_type):
     #  ------------------- PopART --------------------

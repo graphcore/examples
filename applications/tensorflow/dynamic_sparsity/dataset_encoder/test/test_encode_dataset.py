@@ -36,7 +36,6 @@ EXPECTED_PATHS = [
         "vocab")]
 
 
-@pytest.mark.category1
 def test_load_article():
     mock_file_iterator = ARTICLE.split("\n")
     sequences = encode_dataset.load_articles(mock_file_iterator)
@@ -46,7 +45,6 @@ def test_load_article():
         assert seq == EXPECTED_LINES[i]
 
 
-@pytest.mark.category1
 @pytest.mark.requires_encoder
 def test_raw_encoding(gpt2_repo_path):
     encoder = encode_dataset.get_encoder(gpt2_repo_path)
@@ -56,7 +54,6 @@ def test_raw_encoding(gpt2_repo_path):
         assert decoded == seq
 
 
-@pytest.mark.category1
 @pytest.mark.requires_encoder
 @pytest.mark.parametrize(
     "seq_len, surviving_sequences, num_processes",
@@ -82,7 +79,6 @@ def test_cropped_encoding(gpt2_repo_path, seq_len, surviving_sequences, num_proc
         assert expected_line.startswith(decoded)
 
 
-@pytest.mark.category1
 @pytest.mark.requires_encoder
 def test_output_location(gpt2_repo_path):
     np.random.seed(0xdeadcafe)

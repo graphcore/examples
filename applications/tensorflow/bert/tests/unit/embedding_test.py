@@ -21,6 +21,7 @@ import torch
 from modeling import BertConfig as TFBertConfig
 from modeling import BertModel as TFBertModel
 from tensorflow.python.framework import ops
+from tensorflow.python import ipu
 from tensorflow.python.ipu import ipu_compiler, utils
 from tests.torch_bert import BertConfig as TorchBertConfig
 from tests.torch_bert import BertEmbeddings as TorchBertEmbeddings
@@ -43,7 +44,7 @@ TF_TO_TORCH = {
 
 
 class TestConfig(NamedTuple):
-    batch_size: int = 1
+    micro_batch_size: int = 1
     sequence_length: int = 128
     vocab_size: int = 30400
     hidden_size: int = 128
@@ -77,12 +78,12 @@ test_config = TestConfig()
 def test_embedding(config, phase):
     # define input
     indices = np.random.randint(0, test_config.vocab_size,
-                                (test_config.batch_size, test_config.sequence_length)).astype(
+                                (test_config.micro_batch_size, test_config.sequence_length)).astype(
         np.int32)
-    positions = np.reshape(np.arange(test_config.sequence_length), (test_config.batch_size, test_config.sequence_length)).astype(
+    positions = np.reshape(np.arange(test_config.sequence_length), (test_config.micro_batch_size, test_config.sequence_length)).astype(
         np.int32)
     segments = np.random.randint(0, 2,
-                                 (test_config.batch_size, test_config.sequence_length)).astype(
+                                 (test_config.micro_batch_size, test_config.sequence_length)).astype(
         np.int32)
     inputs = [d for d in [indices, positions, segments]]
 
@@ -127,14 +128,14 @@ def test_embedding(config, phase):
 
             with ops.device('cpu'):
                 input_ids = tf.placeholder(
-                    shape=[test_config.batch_size, test_config.sequence_length], dtype=tf.int32)
+                    shape=[test_config.micro_batch_size, test_config.sequence_length], dtype=tf.int32)
                 position_ids = tf.placeholder(
-                    shape=[test_config.batch_size, test_config.sequence_length], dtype=tf.int32)
+                    shape=[test_config.micro_batch_size, test_config.sequence_length], dtype=tf.int32)
                 segment_ids = tf.placeholder(
-                    shape=[test_config.batch_size, test_config.sequence_length], dtype=tf.int32)
-            cfg = utils.create_ipu_config()
-            cfg = utils.auto_select_ipus(cfg, 1)
-            utils.configure_ipu_system(cfg)
+                    shape=[test_config.micro_batch_size, test_config.sequence_length], dtype=tf.int32)
+            cfg = ipu.config.IPUConfig()
+            cfg.auto_select_ipus = 1
+            cfg.configure_ipu_system()
             utils.move_variable_initialization_to_cpu()
             with ops.device("/device:IPU:0"):
                 opt = ipu_compiler.compile(tf_model.embeddings_layer, inputs=[
@@ -171,14 +172,14 @@ def test_embedding(config, phase):
             tf_model = TFBertModel(tf_config, is_training=True)
             with ops.device('cpu'):
                 input_ids = tf.placeholder(
-                    shape=[test_config.batch_size, test_config.sequence_length], dtype=tf.int32)
+                    shape=[test_config.micro_batch_size, test_config.sequence_length], dtype=tf.int32)
                 position_ids = tf.placeholder(
-                    shape=[test_config.batch_size, test_config.sequence_length], dtype=tf.int32)
+                    shape=[test_config.micro_batch_size, test_config.sequence_length], dtype=tf.int32)
                 segment_ids = tf.placeholder(
-                    shape=[test_config.batch_size, test_config.sequence_length], dtype=tf.int32)
-            cfg = utils.create_ipu_config()
-            cfg = utils.auto_select_ipus(cfg, 1)
-            utils.configure_ipu_system(cfg)
+                    shape=[test_config.micro_batch_size, test_config.sequence_length], dtype=tf.int32)
+            cfg = ipu.config.IPUConfig()
+            cfg.auto_select_ipus = 1
+            cfg.configure_ipu_system()
             utils.move_variable_initialization_to_cpu()
 
             def embedding_graph(input_ids, position_ids, segment_ids):

@@ -35,7 +35,6 @@ tf.disable_v2_behavior()
 
 @pytest.mark.parametrize("optim", ["momentum",
                                    "adamw"])
-@pytest.mark.category1
 def test_regression_optimizer(optim, expected_losses, expected_grads, expetced_weights):
 
     def model(use_custom_op, inputs, targets):

@@ -54,7 +54,6 @@ class MockWriter():
         self.scalars[key][step_num] = val
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "task, epochs, seed, exponent_loss, exponent_acc",
     list(itertools.product(

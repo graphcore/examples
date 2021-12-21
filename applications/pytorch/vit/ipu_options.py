@@ -39,7 +39,7 @@ def get_options(config):
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
 
     # Return all results from IPU to host
-    opts.anchorMode(poptorch.AnchorMode.All)
+    opts.outputMode(poptorch.OutputMode.All)
 
     # Fix the random seeds
     np.random.seed(config.random_seed)
@@ -50,7 +50,7 @@ def get_options(config):
     opts.TensorLocations.setOptimizerLocation(
         poptorch.TensorLocationSettings()
         # Optimizer state lives on-chip
-        .useOnChipStorage(True)
+        .useOnChipStorage(not config.optimizer_state_offchip)
         # Shard optimizer state between replicas with zero-redundancy
         .useReplicatedTensorSharding(config.enable_rts))
 
@@ -82,6 +82,8 @@ def get_options(config):
     # PopART performance options #
     # Only stream needed tensors back to host
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
+    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
+                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
 
     if config.prefetch_depth > 1:
         # How many batches to prefetch onto the IPU

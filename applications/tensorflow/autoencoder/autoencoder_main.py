@@ -131,9 +131,6 @@ def training_graph(opts, training_data):
         tf.summary.scalar("learning_rate", placeholders["learning_rate"])
         tf.summary.scalar("RMSE/train", rmse)
 
-        if opts.compiler_report:
-            ipu_ops.ipu_compile_summary('compile_summary', loss)
-
         train_summary = tf.summary.merge_all()
         train_saver = tf.train.Saver()
 
@@ -145,7 +142,7 @@ def training_graph(opts, training_data):
         graph=train_graph,
         flush_secs=30)
 
-    ipu_options = util.get_config(opts, profiling=opts.compiler_report)
+    ipu_options = util.get_config(opts)
     ipu_options.configure_ipu_system()
     train_sess = tf.Session(graph=train_graph)
 
@@ -388,10 +385,6 @@ def validation_process(opts, valid_data, q=None):
     except tf.errors.NotFoundError:
         valid.session.run(valid.init)
 
-    # --------------- OPTIONS ---------------------
-
-    validation_iterations = valid_data.size // opts.validation_batch_size
-
     # -------------- COMPILE RUN ------------------
 
     valid.session.run(valid.ops)
@@ -436,10 +429,8 @@ def testing_process(opts, valid_data):
 
     valid.saver.restore(valid.session, path.model_checkpoint_path)
 
-    start = time.time()
     print("Running testing...")
     accuracy = validation_run(valid, 1)
-    valid_time = time.time() - start
     print("Testing RMSE: {:6.4f}".format(accuracy))
 
     # --------------- CLEANUP ----------------
@@ -667,10 +658,6 @@ def get_options():
         '--testing-on-checkpoint',
         type=str,
         help="Only run testing on checkpoint directory specified (example: ./log-dir/weights-bs64-rn128-20200331_160859/). Testing data path is taken from validation data file.")
-    group.add_argument(
-        '--compiler-report',
-        action="store_true",
-        help="Include a compiler report in the log")
 
     opts = parser.parse_args()
 

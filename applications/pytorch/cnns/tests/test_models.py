@@ -7,7 +7,6 @@ import models
 
 
 class TestCustomEfficientNet:
-    @pytest.mark.category1
     def test_expand_ratio(self):
         model = models.create_efficientnet("efficientnet-b0", expand_ratio=2)
         for i, block in enumerate(model.blocks):
@@ -17,7 +16,6 @@ class TestCustomEfficientNet:
                 conv = layer.conv_pw
                 assert conv.out_channels == conv.in_channels * 2
 
-    @pytest.mark.category1
     def test_group_dim(self):
         model = models.create_efficientnet("efficientnet-b0", group_dim=2)
         for block in model.blocks:
@@ -35,49 +33,44 @@ class TestRecomputation:
 
 
     @classmethod
-    def default_opts(cls):
-        class HelperClass:
-            def __init__(self):
-                pass
-        opts = HelperClass()
-        opts.model = "resnet18"
-        opts.precision = "16.16"
-        opts.norm_type = "batch"
-        opts.norm_eps = 1e-5
-        opts.normalization_location = "none"
-        opts.pipeline_splits = []
-        opts.batchnorm_momentum = 0.9
-        return opts
+    def default_args(cls):
+        class HelperClass: pass
+        args = HelperClass()
+        args.model = "resnet18"
+        args.precision = "16.16"
+        args.norm_type = "batch"
+        args.norm_eps = 1e-5
+        args.normalization_location = "none"
+        args.pipeline_splits = []
+        args.batchnorm_momentum = 0.9
+        args.num_io_tiles = 0
+        return args
 
-    @pytest.mark.category1
     def test_recomputation_model_by_name(self):
-        opts = TestRecomputation.default_opts()
-        opts.recompute_checkpoints = ["layer2/0/conv2"]
-        model = models.get_model(opts, {"out": 1000}, pretrained=False)
+        args = TestRecomputation.default_args()
+        args.recompute_checkpoints = ["layer2/0/conv2"]
+        model = models.get_model(args, {"out": 1000}, pretrained=False)
         TestRecomputation.check_recompute(model, "layer2/0/conv2")
 
-    @pytest.mark.category1
     def test_recomputation_pipelined_model_by_name(self):
-        opts = TestRecomputation.default_opts()
-        opts.pipeline_splits = ["layer2"]
-        opts.recompute_checkpoints = ["layer2/0/conv2"]
-        model = models.get_model(opts, {"out": 1000}, pretrained=False)
+        args = TestRecomputation.default_args()
+        args.pipeline_splits = ["layer2"]
+        args.recompute_checkpoints = ["layer2/0/conv2"]
+        model = models.get_model(args, {"out": 1000}, pretrained=False)
         TestRecomputation.check_recompute(model, "layer2/0/conv2")
 
-    @pytest.mark.category1
     def test_recomputation_normalized_model_by_name(self):
-        opts = TestRecomputation.default_opts()
-        opts.normalization_location = "ipu"
-        opts.recompute_checkpoints = ["layer2/0/conv2"]
-        model = models.get_model(opts, {"out": 1000}, pretrained=False)
+        args = TestRecomputation.default_args()
+        args.normalization_location = "ipu"
+        args.recompute_checkpoints = ["layer2/0/conv2"]
+        model = models.get_model(args, {"out": 1000}, pretrained=False)
         TestRecomputation.check_recompute(model.model, "layer2/0/conv2")
 
 
-    @pytest.mark.category1
     def test_recomutation_regex_conv(self):
-        opts = TestRecomputation.default_opts()
-        opts.recompute_checkpoints = [".*conv.*"]
-        model = models.get_model(opts, {"out": 1000}, pretrained=False)
+        args = TestRecomputation.default_args()
+        args.recompute_checkpoints = [".*conv.*"]
+        model = models.get_model(args, {"out": 1000}, pretrained=False)
         TestRecomputation.check_recompute(model, "conv1")
         TestRecomputation.check_recompute(model, "layer2/0/conv1")
         TestRecomputation.check_recompute(model, "layer2/0/conv2")

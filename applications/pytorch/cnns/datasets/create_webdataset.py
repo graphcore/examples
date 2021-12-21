@@ -5,7 +5,6 @@ import re
 import os
 import json
 import argparse
-import torchvision
 import torch
 from checksumdir import dirhash
 from torchvision import transforms
@@ -79,41 +78,41 @@ def write_dataset(dataloader, target_path, chunksize, transform=None, image_qual
             sink.write(encode_sample(data, label, index, bbox=bbox, image_quality=image_quality))
 
 if __name__ == '__main__':
-    opts = get_args()
-    train_preprocess = parse_transforms(opts.train_preprocess_steps)
-    validation_preprocess = parse_transforms(opts.validation_preprocess_steps)
-    if opts.format == "tensor":
+    args = get_args()
+    train_preprocess = parse_transforms(args.train_preprocess_steps)
+    validation_preprocess = parse_transforms(args.validation_preprocess_steps)
+    if args.format == "tensor":
         train_preprocess.append(transforms.ToTensor())
         validation_preprocess.append(transforms.ToTensor())
 
-    if not os.path.exists(opts.target):
-        os.mkdir(opts.target)
+    if not os.path.exists(args.target):
+        os.mkdir(args.target)
 
     # Train
-    if opts.seed is not None:
-        torch.manual_seed(opts.seed)
-    dataset_train = ImageNetDataset(os.path.join(opts.source, "train"), bbox_file=os.path.join(opts.source, 'imagenet_2012_bounding_boxes.csv'))
-    dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=None, num_workers=16, shuffle=opts.shuffle)
-    write_dataset(dataloader_train, os.path.join(opts.target, "train-%06d.tar"), opts.samples_per_shard,
-                  transform=transforms.Compose(train_preprocess), image_quality=opts.image_quality)
+    if args.seed is not None:
+        torch.manual_seed(args.seed)
+    dataset_train = ImageNetDataset(os.path.join(args.source, "train"), bbox_file=os.path.join(args.source, 'imagenet_2012_bounding_boxes.csv'))
+    dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=None, num_workers=16, shuffle=args.shuffle)
+    write_dataset(dataloader_train, os.path.join(args.target, "train-%06d.tar"), args.samples_per_shard,
+                  transform=transforms.Compose(train_preprocess), image_quality=args.image_quality)
     # Validation
-    if opts.seed is None:
-        opts.seed = seed = random.randint(0, 2**32-1)
-    torch.manual_seed(opts.seed)
-    dataset_validation = ImageNetDataset(os.path.join(opts.source, "validation"), bbox_file=None)
-    dataloader_validation = torch.utils.data.DataLoader(dataset_validation, batch_size=None, num_workers=16, shuffle=opts.shuffle)
-    write_dataset(dataloader_validation, os.path.join(opts.target, "validation-%06d.tar"), opts.samples_per_shard,
-                  transform=transforms.Compose(validation_preprocess), image_quality=opts.image_quality)
-    checksum = dirhash(opts.target)
+    if args.seed is None:
+        args.seed = seed = random.randint(0, 2**32-1)
+    torch.manual_seed(args.seed)
+    dataset_validation = ImageNetDataset(os.path.join(args.source, "validation"), bbox_file=None)
+    dataloader_validation = torch.utils.data.DataLoader(dataset_validation, batch_size=None, num_workers=16, shuffle=args.shuffle)
+    write_dataset(dataloader_validation, os.path.join(args.target, "validation-%06d.tar"), args.samples_per_shard,
+                  transform=transforms.Compose(validation_preprocess), image_quality=args.image_quality)
+    checksum = dirhash(args.target)
     # Save metadatas of the dataset
     metadata = {"train_length": len(dataset_train),
                 "validation_length": len(dataset_validation),
-                "format": opts.format,
-                "shuffle": opts.shuffle,
-                "train_transform_pipeline": opts.train_preprocess_steps,
-                "validation_transform_pipeline": opts.validation_preprocess_steps,
-                "seed": opts.seed,
-                "image_quality": opts.image_quality,
+                "format": args.format,
+                "shuffle": args.shuffle,
+                "train_transform_pipeline": args.train_preprocess_steps,
+                "validation_transform_pipeline": args.validation_preprocess_steps,
+                "seed": args.seed,
+                "image_quality": args.image_quality,
                 "checksum": checksum}
-    with open(os.path.join(opts.target, "metadata.json"), "w") as metafile:
+    with open(os.path.join(args.target, "metadata.json"), "w") as metafile:
         json.dump(metadata, metafile)

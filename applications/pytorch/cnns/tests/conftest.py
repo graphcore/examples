@@ -58,13 +58,11 @@ def convert_cifar2imagenet_format():
             json.dump(metadata, metafile)
 
         # Create distributed chunks for 4 node
-        class HelperClass:
-            def __init__(self):
-                pass
-        opts = HelperClass()
-        opts.num_instances = 4
-        opts.target = webdata_path
-        create_distributed_remaining(opts, "validation")
+        class HelperClass: pass
+        args = HelperClass()
+        args.num_instances = 4
+        args.target = webdata_path
+        create_distributed_remaining(args, "validation")
 
 
 @pytest.fixture(autouse=True)

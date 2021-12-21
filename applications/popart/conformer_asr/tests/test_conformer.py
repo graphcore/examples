@@ -11,7 +11,6 @@ def assert_lists_equal(alist, blist):
     assert(all([a == b for a, b in zip(alist, blist)]))
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize("num_channels", [64, 256, 512])
 def test_feedforward_module_build(num_channels):
     """ testing build of feed-forward module """
@@ -28,7 +27,6 @@ def test_feedforward_module_build(num_channels):
     assert_lists_equal(builder.getTensorShape(output), [batch_size, num_channels, sequence_length])
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize("num_channels, kernel_size", [(256, 17), (512, 17), (256, 33), (512, 33)])
 def test_convolution_module_build(num_channels, kernel_size):
     """ testing build of convolution module """
@@ -45,7 +43,6 @@ def test_convolution_module_build(num_channels, kernel_size):
     assert_lists_equal(builder.getTensorShape(output), [batch_size, num_channels, sequence_length])
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize("num_heads, num_features", [(2, 16), (2, 64), (2, 256), (2, 512),
                                                      (8, 16), (8, 64), (8, 256), (8, 512)])
 def test_multihead_attention_block_build(num_heads, num_features):
@@ -65,7 +62,6 @@ def test_multihead_attention_block_build(num_heads, num_features):
     assert_lists_equal(builder.getTensorShape(context_vecs), [batch_size, num_features, sequence_length])
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize("num_heads, num_features", [(2, 16), (2, 64), (2, 256), (2, 512),
                                                      (8, 16), (8, 64), (8, 256), (8, 512)])
 def test_multihead_self_attention_module_build(num_heads, num_features):
@@ -83,7 +79,6 @@ def test_multihead_self_attention_module_build(num_heads, num_features):
     assert_lists_equal(builder.getTensorShape(output), [batch_size, num_features, sequence_length])
 
 
-@pytest.mark.category1
 @pytest.mark.parametrize("num_heads, num_features, kernel_size", [(2, 16, 33), (2, 64, 33), (2, 256, 33), (2, 512, 33),
                                                                   (8, 16, 33), (8, 64, 33), (8, 256, 33), (8, 512, 33)])
 def test_conformer_block_build(num_heads, num_features, kernel_size):

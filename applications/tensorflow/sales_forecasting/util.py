@@ -30,7 +30,7 @@ class DynamicScheduler:
     def __init__(self, opts, verbose=False):
         self.best_loss = np.Inf
         self.fails = 0
-        self.lr = (2 ** opts.base_learning_rate) * opts.batch_size
+        self.lr = (2 ** opts.base_learning_rate) * opts.micro_batch_size
         self.base_lr = self.lr
         self.factor = opts.lr_schedule_plateau_factor
         self.patience = opts.lr_plateau_patience
@@ -40,11 +40,11 @@ class DynamicScheduler:
     def schedule(self, loss, step):
         if self.opts.lr_warmup and step <= self.opts.lr_warmup_steps:
             # Scale lr up.
-            self.lr = self.base_lr * ((1 / self.opts.batch_size) *
+            self.lr = self.base_lr * ((1 / self.opts.micro_batch_size) *
                                       (1 - step / self.opts.lr_warmup_steps) +
                                       step / self.opts.lr_warmup_steps)
             if self.verbose:
-                print(f"    Warming up learning rate ({self.base_lr * (1/self.opts.batch_size)} -> {self.base_lr}): {self.lr}")
+                print(f"    Warming up learning rate ({self.base_lr * (1/self.opts.micro_batch_size)} -> {self.base_lr}): {self.lr}")
         else:
             if loss < self.best_loss:
                 self.fails = 0
@@ -60,7 +60,7 @@ class DynamicScheduler:
 
 class ManualScheduler:
     def __init__(self, opts, verbose=False):
-        base_lr = (2 ** opts.base_learning_rate) * opts.batch_size
+        base_lr = (2 ** opts.base_learning_rate) * opts.micro_batch_size
         self.lrs = [base_lr * decay for decay in opts.learning_rate_decay]
         self.lr_drops = [int(i * opts.iterations) for i in opts.learning_rate_schedule]
         self.lr = self.lrs.pop(0)
@@ -84,7 +84,7 @@ class Logger():
         self.mode = mode
         if self.mode == Modes.TRAIN:
             self.name = "Training"
-            self.samples_per_step = opts.batches_per_step * opts.batch_size
+            self.samples_per_step = opts.batches_per_step * opts.micro_batch_size
         elif self.mode == Modes.VALID:
             self.name = "Validation"
             self.samples_per_step = opts.validation_batches_per_step * opts.validation_batch_size

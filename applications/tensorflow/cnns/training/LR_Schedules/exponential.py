@@ -19,7 +19,7 @@ class LearningRate:
     """An exponential learning rate schedule with optional warmup"""
     def __init__(self, opts, total_iterations):
         self.decay = opts["lr_decay_rate"]
-        self.lr = (2 ** opts["base_learning_rate_exponent"]) * opts["total_batch_size"]
+        self.lr = (2 ** opts["base_learning_rate_exponent"]) * opts["global_batch_size"]
         self.iterations_per_epoch = total_iterations / opts["epochs"]
         self.freq = opts['epochs']/opts["lr_drops"]
         self.drops = 0

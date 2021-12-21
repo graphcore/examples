@@ -27,7 +27,6 @@ from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu.ops.rnn_ops import PopnnAUGRU
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 class TestDIENAUGRU(unittest.TestCase):
     """Testing augru layer"""

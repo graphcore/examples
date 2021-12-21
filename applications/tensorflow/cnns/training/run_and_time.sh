@@ -3,13 +3,13 @@
 # exit when any command fails
 set -e
 
-# Host ips, partition name, server ip and the net mask will be used in the command line.
-# Host ips are usually xxx.xxx.xxx.0, xxx.xxx.xxx.1, xxx.xxx.xxx.2, and xxx.xxx.xxx.3
-# A net mask can be xxx.xxx.xxx.0/24
+# Host names, partition name, server ip and the net mask will be used in the command line.
+# Host names are usually xxx-[m-n], or xxx,yyy,zzz,www
+# A net mask can be xxx.xxx.xxx.0/16
 # Example use case:
-# ./run_and_time.sh 16 42 host0-ip host1-ip host2-ip host3-ip partition server-ip netmask
+# ./run_and_time.sh 16 42 hosts partition server netmask
 # Example use case with the option of uploading to wandb:
-# ./run_and_time.sh 16 42 host0-ip host1-ip host2-ip host3-ip partition server-ip netmask --upload
+# ./run_and_time.sh 16 42 hosts partition server netmask --upload
 
 if [[ "$#" -gt 7 ||  "$#" == 0 ]]
 then
@@ -21,22 +21,7 @@ REPLICAS=$1
 INSTANCES=$(echo $REPLICAS / 2 | bc)
 SEED=$2
 
-# machine identifiers
-HOST0=$3
-IP1=`echo $HOST0 | cut -d "." -f 1`
-IP2=`echo $HOST0 | cut -d "." -f 2`
-IP3=`echo $HOST0 | cut -d "." -f 3`
-IP4=`echo $HOST0 | cut -d "." -f 4`
-HOST1="$IP1.$IP2.$IP3.$((IP4+1))"
-HOST2="$IP1.$IP2.$IP3.$((IP4+2))"
-HOST3="$IP1.$IP2.$IP3.$((IP4+3))"
-HOST4="$IP1.$IP2.$((IP3+1)).$IP4"
-HOST5="$IP1.$IP2.$((IP3+1)).$((IP4+1))"
-HOST6="$IP1.$IP2.$((IP3+1)).$((IP4+2))"
-HOST7="$IP1.$IP2.$((IP3+1)).$((IP4+3))"
-HOSTS_4=$HOST0,$HOST1,$HOST2,$HOST3
-HOSTS_8=$HOST0,$HOST1,$HOST2,$HOST3,$HOST4,$HOST5,$HOST6,$HOST7
-MAINHOST=$HOST0
+HOSTS=$3
 PARTITION=$4
 VIPU_SERVER_HOST=$5
 NETMASK=$6
@@ -45,19 +30,19 @@ echo "CLEARING THE CACHE FOR POD ..."
 
 export IPUOF_LOG_LEVEL=WARN
 export IPUOF_VIPU_API_TIMEOUT=300
-export TF_POPLAR_FLAGS=--executable_cache_path=/localdata/$USER/exec_cache
 export TEMP=/localdata/$USER/tmp
 export DATA_DIR=/localdata/datasets/imagenet-data
-export POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false", "target.deterministicWorkers":"portable", "target.hostSyncTimeout":"900"}'
-export POPLAR_TARGET_OPTIONS='{"gatewayMode":"false"}'
+export EXECUTABLE_CACHE=/localdata/$USER/exectuable_cache
+export POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false", "target.hostSyncTimeout":"900"}'
+export POPLAR_RUNTIME_OPTIONS='{"streamCallbacks.maxLookahead":"unlimited"}'
 MPI_SETTINGS="--mpi-global-args='--tag-output --allow-run-as-root --mca oob_tcp_if_include "$NETMASK" --mca btl_tcp_if_include "$NETMASK"' \
-    --mpi-local-args=' -x OPAL_PREFIX -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=WARN -x POPLAR_ENGINE_OPTIONS -x TF_POPLAR_FLAGS -x POPLAR_TARGET_OPTIONS' \
-    --update-partition=no --reset-partition=no \
-    --ipus-per-replica 1 --only-output-from-instance 0 \
-    --vipu-server-host "$VIPU_SERVER_HOST" --vipu-partition=$PARTITION "
+    --mpi-local-args=' -x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=INFO -x POPLAR_ENGINE_OPTIONS -x POPLAR_RUNTIME_OPTIONS ' \
+    --update-partition=yes --reset-partition=no --vipu-server-timeout 600 \
+    --ipus-per-replica 1 --numa-aware 1 --vipu-server-host "$VIPU_SERVER_HOST" \
+    --vipu-partition="$PARTITION" \
+    --executable-cache-path "$EXECUTABLE_CACHE" "
 
 TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
-mkdir -p /localdata/$USER/
 mkdir -p /localdata/$USER/tmp
 
 # start timing
@@ -65,61 +50,47 @@ start=$(date +%s)
 start_fmt=$(date +%Y-%m-%d\ %r)
 echo "STARTING TIMING RUN AT $start_fmt"
 
-LOGS_PATH="./logs/bs20_ipu"$REPLICAS"_$TIMESTAMP"
-if [[ $REPLICAS -eq "64" ]]
+# The default path of logs
+LOGS_PATH="/localdata/"$USER"/POD"$REPLICAS"/s"$SEED"_$TIMESTAMP"
+if [[ $REPLICAS -eq "16" ]]
+then
+  TRAIN=" poprun \
+    -vv --host $HOSTS $MPI_SETTINGS \
+    --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
+    python train.py --config mk2_resnet50_mlperf_pod16_lars --logs-path "$LOGS_PATH" \
+    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" "
+elif [[ $REPLICAS -eq "64" ]]
 then
   # POD64 through poprun
-  TRAIN="POPLAR_ENGINE_OPTIONS='"$POPLAR_ENGINE_OPTIONS"' poprun \
-    -vv --host $HOSTS_4 $MPI_SETTINGS \
+  TRAIN=" poprun \
+    -vv --host $HOSTS $MPI_SETTINGS \
     --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
-    python train.py --config mk2_resnet50_mlperf_pod64_bs20 --logs-path "$LOGS_PATH" \
-    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" --no-validation"
-  # Use less replicas (16) to exactly fit 50k validation samples (16*25*125)
-  VALIDATE="POPLAR_ENGINE_OPTIONS='"$POPLAR_ENGINE_OPTIONS"' poprun \
-    -vv --host $MAINHOST $MPI_SETTINGS \
-    --num-instances 8 --num-replicas 16 \
-    python validation.py --restore-path "$LOGS_PATH" --logs-path "$LOGS_PATH" \
-    --config mk2_resnet50_mlperf_pod16 --data-dir "$DATA_DIR" --no-stochastic-rounding   \
-    --batch-size 25 --seed "$SEED" --available-memory-proportion 0.6 --epochs 41"
+    python train.py --config mk2_resnet50_mlperf_pod64_lars --logs-path "$LOGS_PATH" \
+    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" "
 elif [[ $REPLICAS -eq "128" ]]
 then
   # POD128 through poprun
-  export POPLAR_TARGET_OPTIONS='{"gatewayMode":"true"}'
-  TRAIN=poprun \
-    -vv --host $HOSTS_8 $MPI_SETTINGS \
+  TRAIN=" poprun \
+    -vv --host $HOSTS $MPI_SETTINGS \
     --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
     python train.py --config mk2_resnet50_mlperf_pod128_lars --logs-path "$LOGS_PATH" \
-    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" --no-validation"
-  VALIDATE=poprun \
-    -vv --host $HOSTS_8 $MPI_SETTINGS \
-    --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
-    python validation.py --restore-path "$LOGS_PATH" --logs-path "$LOGS_PATH" \
-    --config mk2_resnet50_mlperf_pod128 --data-dir "$DATA_DIR" --no-stochastic-rounding  \
-    --batch-size 50 --seed "$SEED" --available-memory-proportion 0.6"
-elif [[ $REPLICAS -eq "16" ]]
+    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" "
+elif [[ $REPLICAS -eq "256" ]]
 then
-  TRAIN="POPLAR_ENGINE_OPTIONS='"$POPLAR_ENGINE_OPTIONS"' poprun \
-    -vv --host $MAINHOST $MPI_SETTINGS \
+  # POD256 through poprun
+  TRAIN=" poprun \
+    -vv --host $HOSTS $MPI_SETTINGS \
     --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
-    python train.py --config mk2_resnet50_mlperf_pod16_lars --logs-path "$LOGS_PATH" \
-    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" --no-validation "
-  VALIDATE="POPLAR_ENGINE_OPTIONS='"$POPLAR_ENGINE_OPTIONS"' poprun \
-    -vv --host $MAINHOST $MPI_SETTINGS \
-    --num-instances "$INSTANCES" --num-replicas "$REPLICAS" \
-    python validation.py --restore-path "$LOGS_PATH" --logs-path "$LOGS_PATH" \
-    --config mk2_resnet50_mlperf_pod16_lars --data-dir "$DATA_DIR" --no-stochastic-rounding  \
-    --batch-size 25 --seed "$SEED" --available-memory-proportion 0.6"
+    python train.py --config mk2_resnet50_mlperf_pod256_lars --logs-path "$LOGS_PATH" \
+    --identical-replica-seeding --seed "$SEED" --data-dir "$DATA_DIR" "
 else
   echo "Not implemented for "$REPLICAS" replicas"
   exit
 fi
 
-echo "Running training:"
+echo "Running training and validation:"
 echo $TRAIN
 eval $TRAIN
-echo "Running validation:"
-echo $VALIDATE
-eval $VALIDATE
 
 # end timing
 end=$(date +%s)

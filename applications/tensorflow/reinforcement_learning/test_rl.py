@@ -11,7 +11,6 @@ working_path = os.path.dirname(__file__)
 
 class TestReadmeCommands(SubProcessChecker):
 
-    @pytest.mark.category2
     @pytest.mark.ipus(8)
     def test_reinforcement_learning_model(self):
         self.run_command("python3 rl_benchmark.py --batch_size 8 --time_steps 16 --num_ipus 8",

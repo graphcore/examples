@@ -31,7 +31,6 @@ seed = 3
 tf.set_random_seed(seed)
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 class TestDINFCN(unittest.TestCase):
     """Testing att layer"""

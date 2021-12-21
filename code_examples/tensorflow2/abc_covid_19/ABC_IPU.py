@@ -81,8 +81,7 @@ configure_ipu()
 strategy = ipu.ipu_strategy.IPUStrategy()
 
 # Create outfeed for streaming data to host
-outfeed_data = ipu.ipu_outfeed_queue.IPUOutfeedQueue(
-    'outfeed_data', replication_factor=args.replication_factor)
+outfeed_data = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
 
 
 def conditional_enqueue_op(params, n_accs, dists, gain):

@@ -11,7 +11,7 @@ import math
 import tensorflow as tf
 
 
-def construct_dataset(sample_shape, target_shape, batch_size=1, n_samples=32):
+def construct_dataset(sample_shape, target_shape, micro_batch_size=1, n_samples=32):
 
     datatype = tf.float32
 
@@ -28,7 +28,7 @@ def construct_dataset(sample_shape, target_shape, batch_size=1, n_samples=32):
     data = tf.data.Dataset.from_tensors((input_data, labels))
 
     data = data.repeat(n_samples)
-    data = data.batch(batch_size=batch_size, drop_remainder=True)
+    data = data.batch(batch_size=micro_batch_size, drop_remainder=True)
     data = data.cache()
     data = data.repeat()
     data = data.prefetch(tf.data.experimental.AUTOTUNE)
@@ -36,15 +36,15 @@ def construct_dataset(sample_shape, target_shape, batch_size=1, n_samples=32):
     return data
 
 
-def get_datasets(sample_shape, target_shape, batch_size,
+def get_datasets(sample_shape, target_shape, micro_batch_size,
                  n_train, n_valid, n_epochs=None, shard=False,
                  rank=0, n_ranks=1):
-    train_dataset = construct_dataset(sample_shape, target_shape, batch_size=batch_size)
+    train_dataset = construct_dataset(sample_shape, target_shape, micro_batch_size=micro_batch_size)
     valid_dataset = None
     if n_valid > 0:
-        valid_dataset = construct_dataset(sample_shape, target_shape, batch_size=batch_size)
-    n_train_steps = n_train // batch_size
-    n_valid_steps = n_valid // batch_size
+        valid_dataset = construct_dataset(sample_shape, target_shape, micro_batch_size=micro_batch_size)
+    n_train_steps = n_train // micro_batch_size
+    n_valid_steps = n_valid // micro_batch_size
     if shard:
         n_train_steps = n_train_steps // n_ranks
         n_valid_steps = n_valid_steps // n_ranks

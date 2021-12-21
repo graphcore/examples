@@ -1,0 +1,66 @@
+{
+    "dataset_dir": "/localdata/datasets/wikipedia/384/",
+    "bert_config": {
+        "max_seq_length": 384,
+        "max_predictions_per_seq": 56,
+        "hidden_size": 1024,
+        "vocab_size": 30400,
+        "num_attention_heads": 16,
+        "num_hidden_layers": 24,
+        "intermediate_size": 4096,
+        "hidden_dropout_prob": 0.1,
+        "attention_probs_dropout_prob": 0.1,
+        "max_position_embeddings": 512,
+        "type_vocab_size": 2,
+        "initializer_range": 0.02,
+        "layer_norm_eps": 1e-12,
+        "position_embedding_type": "absolute"
+    },
+    "micro_batch_size": 2,
+    "replicas": 4,
+    "fp_exceptions": false,
+    "grad_acc_steps_per_replica": 2040,
+    "loss_scaling": 32768,
+    "replace_layers": true,
+    "use_outlining": true,
+    "enable_recomputation": true,
+    "optimizer_state_offchip": true,
+    "replicated_tensor_sharding": false,
+    "min_remote_tensor_size": 50000,
+    "matmul_available_memory_proportion_per_pipeline_stage": [0.1, 0.15, 0.15, 0.15],
+    "matmul_partials_type": "half",
+    "embedding_serialization_factor": 5,
+    "global_batches_per_log": 1,
+    "optimizer_opts": {
+        "name": "LAMB",
+        "params": {
+            "weight_decay_rate": 0.01
+        }
+    },
+    "learning_rate": {
+        "lr_schedule": "up_down",
+        "lr_schedule_params": {
+            "max_learning_rate": 0.002828, 
+            "warmup_frac": 0.129
+        }
+    },
+    "seed": 1984,
+    
+    "wandb_opts": {
+        "log_to_wandb": true,
+        "init": {
+            "project": "tf2-bert",
+            "notes": "",
+            "tags": ["pretraining"],
+            "name": "large"
+        }
+    },
+    "pipeline_stages": [
+        ["emb", "hid", "hid", "hid"],
+        ["hid", "hid", "hid", "hid", "hid", "hid", "hid"],
+        ["hid", "hid", "hid", "hid", "hid", "hid", "hid"],
+        ["hid", "hid", "hid", "hid", "hid", "hid", "hid", "enc_out", "pool"],
+        ["heads"]
+        ],
+    "device_mapping": [0, 1, 2, 3, 0]
+}

@@ -27,6 +27,8 @@ opt_to_cfg_map = {
     "test_file": "dataset.test.file",
     "no_eval": "eval.metrics",
     "verbose": "eval.verbose",
+    "pre_nms_topk_k": "inference.pre_nms_topk_k",
+    "nms_max_detections": "inference.nms_max_detections",
 }
 
 
@@ -57,6 +59,9 @@ def parse_args():
 
     parser.add_argument('--cpu', dest='ipu', action="store_false", default=True, help='Use cpu to run model (default: True)')
     parser.add_argument('--batches-per-step', type=int, help='Number of batches per step (default: 1)')
+
+    parser.add_argument('--pre-nms-topk-k', type=int, help='Defines how many elements will be chosen to be process in NMS')
+    parser.add_argument('--nms-max-detections', type=int, help='Number of output detections after NMS.')
 
     parser.add_argument('--class-conf-threshold', type=float, help='Minimum threshold for class prediction probability (default: 0.4)')
     parser.add_argument('--obj-threshold', type=float, help='Minimum threshold for the objectness score (default: 0.4)')

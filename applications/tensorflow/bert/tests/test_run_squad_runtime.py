@@ -42,7 +42,6 @@ def pytest_generate_tests(metafunc):
 
 
 @pytest.mark.ipus(1)
-@pytest.mark.requires_remote_buffers
 @pytest.mark.ipu_version("ipu2")
 class TestBuild(object):
     """Test the build for each config in the directory."""
@@ -53,7 +52,7 @@ class TestBuild(object):
                                             '--gradient-accumulation-count': 40,
                                             '--batches-per-step': 20,
                                             '--embedded-runtime': '',
-                                            '--batch-size': 2,
+                                            '--micro-batch-size': 2,
                                             '--vocab-file': f'{path}/vocab.txt',
                                             '--generated-data': ''})
         output = str(out.stdout, 'utf-8')

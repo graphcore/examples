@@ -203,7 +203,6 @@ def run_single_case(args):
 
 # Note that we do not test NoReduction at BS > 1 as Popart requires scalar losses
 @pytest.mark.ipus(1)
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "input_size, target_size, num_classes, batch_size, reduction_type, ipu",
     [
@@ -234,7 +233,6 @@ def test_ctc_loss_batch_size(custom_ops, input_size, target_size, num_classes, b
 
 
 @pytest.mark.ipus(1)
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "reduction_type, precision, ipu",
     [("mean", "FLOAT", False), ("mean", "FLOAT16", False), ("sum", "FLOAT", False), ("sum", "FLOAT16", False),
@@ -259,7 +257,6 @@ def test_ctc_loss_precision(custom_ops, reduction_type, precision, ipu):
 
 
 @pytest.mark.ipus(1)
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "batch_size, precision, ipu",
     [(1, "FLOAT16", False), (1, "FLOAT", False), (2, "FLOAT16", False), (2, "FLOAT", False),
@@ -284,7 +281,6 @@ def test_ctc_loss_asr_dim(custom_ops, batch_size, precision, ipu):
 
 
 @pytest.mark.ipus(1)
-@pytest.mark.category1
 @pytest.mark.parametrize(
     "reduction_type, variable_input, ipu",
     [("mean", True, False), ("mean", False, False), ("sum", True, False), ("mean", False, False),

@@ -83,7 +83,6 @@ def run_inference(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation,
 
     if mode == 'replicated':
         num_replicas = num_ipus
-        os.environ["TF_POPLAR_FLAGS"] += " --force_replicated_mode"
     else:
         num_replicas = 1
     opts.auto_select_ipus = num_ipus

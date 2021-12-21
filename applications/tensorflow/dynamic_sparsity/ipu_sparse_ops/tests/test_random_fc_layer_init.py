@@ -16,7 +16,6 @@ def assert_not_equal(a, b):
 @pytest.mark.usefixtures("ipu_sparse_ops")
 class TestBuildAndRun(SubProcessChecker):
 
-    @pytest.mark.category1
     def test_random_fc_layers(self):
         from ipu_sparse_ops import layers
         random_seed = 101

@@ -17,7 +17,6 @@ def assert_equal(a, b):
 @pytest.mark.usefixtures("ipu_sparse_ops")
 class TestBuildAndRun(SubProcessChecker):
 
-    @pytest.mark.category1
     def test_block_size_and_shape(self):
         from ipu_sparse_ops import sparse
         for i in [1, 2, 4, 8, 16, 32]:
@@ -30,7 +29,6 @@ class TestBuildAndRun(SubProcessChecker):
         with pytest.raises(ValueError):
             sparse.block_size_from_list([[1, 2, 3, 4], [1, 2, 3, 4]])
 
-    @pytest.mark.category1
     def test_conversions(self):
         from ipu_sparse_ops import sparse
         m = np.array([[10, 0], [0, 20]])
@@ -45,7 +43,6 @@ class TestBuildAndRun(SubProcessChecker):
         o = sparse.mask_from_triplets(spec, *t)
         assert_equal(o, np.array([[1, 0], [0, 1]]))
 
-    @pytest.mark.category1
     def test_block_conversions(self):
         from ipu_sparse_ops import sparse
         a = np.kron([[1, 0], [1, 0]], [[1, 2], [3, 4]])
@@ -75,7 +72,6 @@ class TestBuildAndRun(SubProcessChecker):
         assert_equal(t[1], td.col_indices)
         assert_equal(t[2], td.values)
 
-    @pytest.mark.category1
     def test_random_indices(self):
         from ipu_sparse_ops import sparse
         spec = sparse.matmul_spec_from_max(
@@ -89,7 +85,6 @@ class TestBuildAndRun(SubProcessChecker):
         assert np.min(r) >= 0
         assert np.min(c) >= 0
 
-    @pytest.mark.category1
     def test_disjoint_random_indices(self):
         from ipu_sparse_ops import sparse
         spec = sparse.matmul_spec_from_max(
@@ -111,7 +106,6 @@ class TestBuildAndRun(SubProcessChecker):
             ta, tb = sparse.disjoint_random_indices(spec, size_a=150, size_b=100,
                                                     indices_initialiser_gen=None)
 
-    @pytest.mark.category1
     def test_flatten_blocks(self):
         from ipu_sparse_ops import sparse
         values = np.array([1, 2, 3, 4, 5, 6, 7, 8])
@@ -134,7 +128,6 @@ class TestBuildAndRun(SubProcessChecker):
         values_rt = sparse.flatten_blocks(spec2, blocks)
         assert_equal(values, values_rt)
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_representation_round_trip_elements(self):
         from ipu_sparse_ops import sparse
@@ -153,7 +146,6 @@ class TestBuildAndRun(SubProcessChecker):
         dense_rt = sparse.dense_from_triplets(spec, *t_rt)
         assert_equal(dense, dense_rt)
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_representation_round_trip_blocks(self):
         from ipu_sparse_ops import sparse
@@ -193,7 +185,6 @@ class TestBuildAndRun(SubProcessChecker):
             assert_equal(t_block.col_indices, td.col_indices)
             assert_equal(t_block.values, td.values)
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_device_version_equality_ipu2(self):

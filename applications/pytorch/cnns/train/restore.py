@@ -3,7 +3,7 @@ import argparse
 import torch
 import os
 import logging
-from train import train, convert_to_ipu_model, get_validation_function, create_training_model_opts, get_optimizer, get_lr_scheduler
+from train import train, convert_to_ipu_model, get_validation_function, create_training_opts, get_optimizer, get_lr_scheduler
 from validate import validate_checkpoints
 import import_helper
 import models
@@ -16,26 +16,30 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint-path', help="The path of the checkpoint file", required=True)
     args = parser.parse_args()
     checkpoint = torch.load(args.checkpoint_path)
-    opts = checkpoint['opts']
-    utils.Logger.setup_logging_folder(opts)
+    args = checkpoint['args']
+    utils.Logger.setup_logging_folder(args)
 
-    logging.info("Loading the data")
-    model_opts = create_training_model_opts(opts)
-    train_data = datasets.get_data(opts, model_opts, train=True, async_dataloader=True)
+    opts = create_training_opts(args)
+    train_data = datasets.get_data(args, opts, train=True, async_dataloader=True)
 
-    logging.info(f"Restore the {opts.model} model to epoch {checkpoint['epoch']} on {opts.data} dataset(Loss:{checkpoint['loss']}, train accuracy:{checkpoint['train_accuracy']})")
-    model = models.get_model(opts, datasets.datasets_info[opts.data], pretrained=False, use_mixup=opts.mixup_enabled, use_cutmix=opts.cutmix_enabled)
+    logging.info(f"Restore the {args.model} model to epoch {checkpoint['epoch']} on {args.data} dataset(Loss:{checkpoint['loss']}, train accuracy:{checkpoint['train_accuracy']})")
+    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled)
     models.load_model_state_dict(model, checkpoint['model_state_dict'])
     model.train()
 
-    optimizer = get_optimizer(opts, model)
+    optimizer = get_optimizer(args, model)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    lr_scheduler = get_lr_scheduler(opts, optimizer, len(train_data), start_epoch=checkpoint["epoch"])
-    training_model = convert_to_ipu_model(model, opts, optimizer)
+    lr_scheduler = get_lr_scheduler(args, optimizer, len(train_data), start_epoch=checkpoint["epoch"])
+    training_model = convert_to_ipu_model(model, args, optimizer)
 
-    training_validation_func = get_validation_function(opts, model) if opts.validation_mode == "during" else None
-    train(training_model, train_data, opts, lr_scheduler, range(checkpoint["epoch"]+1, opts.epoch+1), optimizer, training_validation_func)
-    if opts.validation_mode == "after":
+    if args.validation_mode == "during":
+        training_validation_func = get_validation_function(args, model).func
+    else:
+        training_validation_func = None
+
+    train(training_model, train_data, args, lr_scheduler, range(checkpoint["epoch"] + 1, args.epoch + 1), optimizer, training_validation_func)
+
+    if args.validation_mode == "after":
         checkpoint_folder = os.path.dirname(os.path.realpath(args.checkpoint_path))
         checkpoint_files = [os.path.join(checkpoint_folder, file_name) for file_name in os.listdir(checkpoint_folder) if file_name.endswith(".pt")]
         validate_checkpoints(checkpoint_files)

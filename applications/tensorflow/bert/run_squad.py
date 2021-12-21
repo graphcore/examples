@@ -281,7 +281,7 @@ def build_infer_network_without_pipeline(infeed,
                                           iterations_per_step = iterations_per_step)
 
 
-def build_graph(opts, iterations_per_step=1, is_training=True, feed_name=None):
+def build_graph(opts, iterations_per_step=1, is_training=True):
 
     train_graph = tf.Graph()
     with train_graph.as_default():
@@ -434,7 +434,7 @@ def training_loop(opts):
 
     # -------------- BUILD TRAINING GRAPH ----------------
     train = build_graph(opts, iterations_per_step,
-                        is_training=True, feed_name="trainfeed")
+                        is_training=True)
     train.session.run(train.init)
     train.session.run(train.iterator.initializer)
 
@@ -596,7 +596,7 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
 
     eval_writer.close()
     iterations_per_step = 1
-    predict = build_graph(opts, iterations_per_step, is_training=False, feed_name="evalfeed")
+    predict = build_graph(opts, iterations_per_step, is_training=False)
     predict.session.run(predict.init)
     predict.session.run(predict.iterator.initializer)
 
@@ -612,10 +612,10 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
         assert len(assignment_map) >= 127
 
     all_results = []
-    if (opts['batch_size'] * opts['gradient_accumulation_count']) == 1:
-            iterations = len(eval_features) // (opts['batch_size'] * opts['gradient_accumulation_count'])
+    if (opts['micro_batch_size'] * opts['gradient_accumulation_count']) == 1:
+            iterations = len(eval_features) // (opts['micro_batch_size'] * opts['gradient_accumulation_count'] * opts['replicas'])
     else:
-            iterations = len(eval_features) // (opts['batch_size'] * opts['gradient_accumulation_count']) + 1
+            iterations = len(eval_features) // (opts['micro_batch_size'] * opts['gradient_accumulation_count'] * opts['replicas']) + 1
     logger.info(f"Total iterations: {iterations}")
     all_time_consumption = []
     while i < iterations:
@@ -659,7 +659,7 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
         all_time_consumption = np.array(all_time_consumption)
 
     logger.info((
-        f"inference throughput: { (opts['batch_size'] * opts['gradient_accumulation_count'] if should_be_pipeline_when_inference(opts) else opts['batch_size']) / all_time_consumption.mean() } "
+        f"inference throughput: { (opts['micro_batch_size'] * opts['gradient_accumulation_count'] if should_be_pipeline_when_inference(opts) else opts['micro_batch_size']) / all_time_consumption.mean() } "
         f"exmples/sec - Latency: {all_time_consumption.mean()} {all_time_consumption.min()} "
         f"{all_time_consumption.max()} (mean min max) sec "))
     # Done predictions
@@ -687,7 +687,7 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
 
 
 def set_training_defaults(opts):
-    opts['total_batch_size'] = opts['batch_size'] * opts['gradient_accumulation_count']
+    opts['total_batch_size'] = opts['micro_batch_size'] * opts['gradient_accumulation_count'] * opts['replicas']
 
 
 def set_ipu_defaults(opts):

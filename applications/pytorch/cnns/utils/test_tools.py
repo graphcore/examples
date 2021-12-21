@@ -1,11 +1,10 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 import os
 import subprocess
-import functools
+import sys
 from pathlib import Path
 from torchvision import datasets
 from models.models import available_models
-
 
 
 def run_script(script_name, parameters, python=True):
@@ -17,7 +16,7 @@ def run_script(script_name, parameters, python=True):
     cwd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     param_list = parameters.split(" ")
     if python:
-        cmd = ["python", script_name]
+        cmd = [get_current_interpreter_executable(), script_name]
     else:
         cmd = [script_name]
     cmd = cmd + param_list
@@ -29,6 +28,17 @@ def run_script(script_name, parameters, python=True):
         print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
         raise
     return out
+
+
+def get_current_interpreter_executable():
+    if sys.executable is not None and (sys.executable.endswith("python") or sys.executable.endswith("python3")):
+        return sys.executable
+    else:
+        print(
+            "Unable to get current interpreter executable, falling back to 'python'. "
+            "This may cause issues with incompatible python environment."
+        )
+    return "python"
 
 
 def get_test_accuracy(output):

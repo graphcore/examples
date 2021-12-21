@@ -18,7 +18,6 @@ resnet50: &resnet50
   lr_scheduler_freq: 16
   half_partial: true
   device_iterations: 1
-  loss_velocity_scaling_ratio: 1
   seed: 42
 
 

@@ -3,7 +3,7 @@ numpy==1.18.5
 scipy==1.4.1
 torchaudio==0.8.0
 librosa==0.7.2
-nltk==3.5
+nltk==3.6.5
 onnx==1.6.0
 tqdm==4.46.1
 six==1.15.0

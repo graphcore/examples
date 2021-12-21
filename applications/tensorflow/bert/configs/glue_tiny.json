@@ -22,7 +22,7 @@
         ["hid","hid", "glu"]
     ],
     "device_mapping": [0, 0],
-    "batch_size": 2,
+    "micro_batch_size": 2,
     "batches_per_step": 1,
     "epochs": 3,
     "epsilon": 0.000001,

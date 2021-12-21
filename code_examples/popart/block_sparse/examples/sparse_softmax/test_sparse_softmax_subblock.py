@@ -22,7 +22,6 @@ class Test(unittest.TestCase):
 
     @classmethod
     @pytest.mark.ipus(1)
-    @pytest.mark.category2
     def test_output(self):
         """Generic test on default arguments in training"""
         out = run_test_helper(

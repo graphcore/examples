@@ -1,0 +1,120 @@
+#----------------------------------------------------------------------------------
+defaults: &defaults
+  dataloader_workers: 4
+  loss_img_weight: 7
+  text_seq_len: 80
+  truncate_captions: True
+  lr_decay: True
+  checkpoint_output_dir: "./output/ckpt"
+  wandb: False
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+L16_CLIP_vocab:
+  <<: *defaults
+
+  # Execution
+  batch_size: 1
+  epochs: 200
+  batches_per_step: 1
+  replication_factor: 1
+  gradient_accumulation: 15
+  stochastic_rounding: True
+  embedding_serialization_factor: 8
+  enable_half_partials: True
+  ipus_per_replica: 4
+  layers_per_ipu: [0,7,7,2]
+  matmul_proportion: 0.2
+  fp16: True
+
+  # Optimizer
+  optimizer: "Adam"
+  learning_rate: 3e-4
+  enable_half_first_order_momentum: True
+
+  # Model
+  hidden_size: 512
+  num_hidden_layers: 16
+  num_attention_heads: 16
+  dim_head: 64
+  ff_dropout: 0.0
+  attn_dropout: 0.0
+  sandwich_norm: True
+  attn_types: "axial_row,axial_row,axial_col,axial_row,axial_row,axial_row,axial_col,axial_row,axial_row,axial_row,axial_col,full,axial_row,axial_row,axial_col,full"
+  checkpoint_save_steps: 5000
+  loss_scaling: 16384
+
+  # Dataset
+  input_folder: "./data/COCO"
+
+  # Misc
+  wandb_project_name: "miniDALL-E_CLIP_vocab"
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+L16:
+  <<: *defaults
+
+  # Execution
+  batch_size: 3
+  epochs: 200
+  batches_per_step: 1
+  replication_factor: 1
+  gradient_accumulation: 8
+  stochastic_rounding: True
+  embedding_serialization_factor: 4
+  enable_half_partials: True
+  ipus_per_replica: 4
+  layers_per_ipu: [0,6,6,4]
+  fp16: True
+
+  # Optimizer
+  optimizer: "Adam"
+  learning_rate: 3e-4
+  enable_half_first_order_momentum: True
+
+  # Model
+  hidden_size: 512
+  num_hidden_layers: 16
+  num_attention_heads: 16
+  dim_head: 64
+  ff_dropout: 0.0
+  attn_dropout: 0.0
+  attn_types: "axial_row,axial_row,axial_col,axial_row,axial_row,axial_row,axial_col,axial_row,axial_row,axial_row,axial_col,full,axial_row,axial_row,axial_col,full"
+  bpe_path: ./models/bpe/bpe_yttm_vocab.txt
+  checkpoint_save_steps: 5000
+  loss_scaling: 16384
+
+  # Dataset
+  input_folder: "./data/COCO"
+
+  # Misc
+  wandb_project_name: "miniDALL-E"
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+unit_test:
+  <<: *defaults
+
+  # Execution
+  batch_size: 1
+  epochs: 1
+  batches_per_step: 1
+  replication_factor: 1
+  gradient_accumulation: 2
+
+  # Model
+  hidden_size: 64
+  num_hidden_layers: 1
+  num_attention_heads: 1
+  dim_head: 64
+  ff_dropout: 0.0
+  attn_dropout: 0.0
+  enable_half_partials: False
+  attn_types: "axial_row"
+  bpe_path: ./models/bpe/bpe_yttm_vocab.txt
+
+  # Optimizer
+  learning_rate: 3e-4
+  loss_scaling: 1
+#----------------------------------------------------------------------------------

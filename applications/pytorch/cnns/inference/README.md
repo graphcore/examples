@@ -88,14 +88,14 @@ The program has a few command-line options:
 
 ### Model configurations
 
-Inference on single IPU.
+Inference on a single IPU.
 
-|Model   | MK1 IPU | MK2 IPU |
-|-------|----------|---------|
-|ResNet50| `python3 run_benchmark.py --config resnet50-mk1` | `python3 run_benchmark.py --config resnet50-mk2`  |
-|EfficientNet-B0| - | `python3 run_benchmark.py --config efficientnet-b0-mk2`  |
-|EfficientNet-B4| - | `python3 run_benchmark.py --config efficientnet-b4-mk2`  |
-|EfficientNet-B0 (Group Norm, Group Conv)| - | `python3 run_benchmark.py --config efficientnet-b0-g16-gn-mk2`  |
-|EfficientNet-B4 (Group Norm, Group Conv)| - | `python3 run_benchmark.py --config efficientnet-b4-g16-gn-mk2`  |
-|MobileNet v3 small| - | `python3 run_benchmark.py --config mobilenet-v3-small-mk2`  |
-|MobileNet v3 large| - | `python3 run_benchmark.py --config mobilenet-v3-large-mk2`  |
+|Model|Command|
+|-----|------|
+|ResNet50|`python3 run_benchmark.py --config resnet50-mk2`|
+|EfficientNet-B0|`python3 run_benchmark.py --config efficientnet-b0-mk2`|
+|EfficientNet-B4|`python3 run_benchmark.py --config efficientnet-b4-mk2`|
+|EfficientNet-B0 (Group Norm, Group Conv)|`python3 run_benchmark.py --config efficientnet-b0-g16-gn-mk2`|
+|EfficientNet-B4 (Group Norm, Group Conv)|`python3 run_benchmark.py --config efficientnet-b4-g16-gn-mk2`|
+|MobileNet v3 small|`python3 run_benchmark.py --config mobilenet-v3-small-mk2`|
+|MobileNet v3 large|`python3 run_benchmark.py --config mobilenet-v3-large-mk2`|

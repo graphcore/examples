@@ -16,7 +16,7 @@ import numpy as np
 import json
 import pytest
 import popart
-from tests.utils import run_py, check_tensors, check_onnx_model, requires_remote_buffers
+from tests.utils import run_py, check_tensors, check_onnx_model
 
 
 def model(splits=1):
@@ -103,12 +103,11 @@ def session(train=False, skip_execution=False, include_patterns=True, splits=1, 
             skip_execution=skip_execution)
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize('splits', (1, 4))
 @pytest.mark.parametrize(['phase', 'optimizer'], [
     ("fwd", None),
     ("bwd", "Sgd"),
-    requires_remote_buffers("bwd", "Lamb")])
+    ("bwd", "Lamb")])
 def test_tied_gather_pattern_ir(splits, phase, optimizer, custom_ops):
     train = phase == "bwd"
 
@@ -132,12 +131,11 @@ def test_tied_gather_pattern_ir(splits, phase, optimizer, custom_ops):
         assert len(list(filter(lambda op: op["type"] == "PopartSparseAccumulate", ops))) == splits
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize('splits', (1, 4))
 @pytest.mark.parametrize(['phase', 'optimizer'], [
     ("fwd", None),
     ("bwd", "Sgd"),
-    requires_remote_buffers("bwd", "Lamb")])
+    ("bwd", "Lamb")])
 def test_tied_gather_pattern_correctness(splits, phase, optimizer, custom_ops):
     train = phase == "bwd"
 
@@ -150,7 +148,6 @@ def test_tied_gather_pattern_correctness(splits, phase, optimizer, custom_ops):
         check_onnx_model(proto_1, proto_2)
 
 
-@pytest.mark.sanity
 @pytest.mark.parametrize(['phase'], [(phase,) for phase in ["fwd", "bwd"]])
 def test_tied_gather_pattern_outlining_correctness(phase, custom_ops):
     train = phase == "bwd"

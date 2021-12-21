@@ -2,7 +2,7 @@
     "attention_probs_dropout_prob": 0.0,
     "available_memory_proportion": [0.15,0.18,0.18,0.2],
     "base_learning_rate": 0.0008,
-    "batch_size": 2,
+    "micro_batch_size": 2,
     "batches_per_step": 1,
     "beta1": 0.9,
     "beta2": 0.999,

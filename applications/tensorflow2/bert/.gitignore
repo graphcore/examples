@@ -1,0 +1,6 @@
+!**/data
+!**/tests/*.json
+!**/configs/*.json
+**/checkpoints/*
+wandb
+profile

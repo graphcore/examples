@@ -14,7 +14,6 @@ class TestUNet(SubProcessChecker):
 
 
     @pytest.mark.ipus(2)
-    @pytest.mark.category2
     def test_unet_industrial(self):
         self.run_command("python3 unet_industrial.py "
                          "--training --evaluation --inference "

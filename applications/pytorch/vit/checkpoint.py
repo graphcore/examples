@@ -12,76 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import glob
 import os
 import torch
-from log import Logger
+from pathlib import Path
+from log import logger
 
 
-def prepare_checkpoint_metrics(outputs, factor):
-    return {"Loss": outputs.div(factor).mean().item()}
-
-
-def _check_config_is_compatible(saved_config, config):
-    if (saved_config.num_hidden_layers != config.num_hidden_layers or
-            saved_config.hidden_size != config.hidden_size or
-            saved_config.num_attention_heads != config.num_attention_heads):
-        raise RuntimeError("Checkpoint being loaded does not match model definition.")
-
-
-def _get_checkpoint_filename(config, step):
-    phase = config.dataset
-    layers = config.num_hidden_layers
-    hidden = config.hidden_size
-    heads = config.num_attention_heads
-    filename = f"{phase}_L_{layers}_H_{hidden}_A_{heads}_epoch_{step}.pt"
-    return filename
-
-
-def checkpoints_exist(config):
-    path = os.path.abspath(config.checkpoint_dir)
-    if os.path.exists(path):
-        # All checkpoint files
-        files = glob.glob(f"{os.path.join(path, '*.pt')}")
-        if len(files) > 0:
-            return True
-    return False
-
-
-def _load_checkpoint_from_file(config):
-    abs_path_ckpt = os.path.abspath(config.checkpoint_file)
-
-    # Return checkpoint if valid
-    if os.path.isfile(abs_path_ckpt):
-        try:
-            checkpoint = torch.load(abs_path_ckpt)
-            return checkpoint
-        except Exception as e:
-            log = Logger()
-            log.logger.error(f"Failed with exception {e}.")
-    else:
-        raise RuntimeError("Please specify a PyTorch checkpoint file.")
-
-
-def restore_checkpoint(config):
-    checkpoint = _load_checkpoint_from_file(config)
-    _check_config_is_compatible(checkpoint["config"], config)
-    return checkpoint
-
-
-def save_checkpoint(config, model, optimizer, epoch, metrics=None):
-    if config.checkpoint_dir:
-        abs_pathd = os.path.abspath(config.checkpoint_dir)
-        os.makedirs(abs_pathd, exist_ok=True)
-        filename = _get_checkpoint_filename(config, epoch)
-        save_path = os.path.join(abs_pathd, filename)
-        model_state = model.state_dict()
+def save_checkpoint(config, model, optimizer, step, metrics=None):
+    if config.checkpoint_output_dir:
+        path = Path(config.checkpoint_output_dir) / f"step_{step}"
+        os.makedirs(path, exist_ok=True)
+        logger.info(f"Saving checkpoint for step {step} to: {path}\n")
+        model.save_pretrained(path)
         optimizer_state = optimizer.state_dict()
         torch.save({
-            "epoch": epoch,
-            "model_state_dict": model_state,
+            "step": step,
             "optimizer_state_dict": optimizer_state,
             "metrics": metrics,
             "config": config
-        }, save_path)
-    return save_path
+        }, os.path.join(path, "training_state.pt"))

@@ -201,7 +201,7 @@ class Iteration:
         status_string += self.inference_metrics_string()
         status_string += self.throughput_string()
         if mean_latency is not None:
-            status_string += f"Per-sample Latency: {mean_latency} {min_latency} {max_latency} {p99_latency} {p999_latency} seconds (mean min max p99 p99.9) "
+            status_string += f"Per-sample: Mean Latency={mean_latency} Min Latency={min_latency} Max Latency={max_latency} p99 Latency={p99_latency} p999 Latency={p999_latency} seconds"
         logger.info(status_string)
 
 

@@ -22,7 +22,6 @@ import pytest
 from test_common import get_log, run_validation
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 class TestDINValidation(unittest.TestCase):
     """Testing some basic infer"""

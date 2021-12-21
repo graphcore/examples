@@ -46,7 +46,7 @@ def _decode_record(record, name_to_features, data_type=None):
 def synthetic_pretraining_dataset(opts):
     """Returns dataset filled with random data."""
     vocab_size = opts['vocab_size']
-    batch_size = opts['batch_size']
+    micro_batch_size = opts['micro_batch_size']
     seq_length = opts['seq_length']
     max_predictions_per_seq = opts['max_predictions_per_seq']
     generated_dataset_size = 1000
@@ -93,7 +93,7 @@ def synthetic_pretraining_dataset(opts):
         d = d.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
     dataset = d.cache()
     dataset = dataset.repeat()
-    return dataset.batch(batch_size=batch_size, drop_remainder=True)
+    return dataset.batch(batch_size=micro_batch_size, drop_remainder=True)
 
 
 def get_pretraining_dataset(opts, data_type, is_training=True, num_cpu_threads=4, use_static_mask=False):
@@ -101,7 +101,7 @@ def get_pretraining_dataset(opts, data_type, is_training=True, num_cpu_threads=4
         input_file = opts['train_file']
     else:
         input_file = opts['test_file']
-    batch_size = opts['batch_size']
+    micro_batch_size = opts['micro_batch_size']
     max_seq_length = opts['seq_length']
     max_predictions_per_seq = opts['max_predictions_per_seq']
 
@@ -178,7 +178,7 @@ def get_pretraining_dataset(opts, data_type, is_training=True, num_cpu_threads=4
 
     d = d.apply(map_and_batch(
             lambda record: _decode_record(record, name_to_features, data_type),
-            batch_size=batch_size,
+            batch_size=micro_batch_size,
             num_parallel_batches=num_cpu_threads,
             drop_remainder=True))
     return d

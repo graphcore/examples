@@ -1,6 +1,5 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 
-import pytest
 import numpy as np
 import torch
 
@@ -9,7 +8,6 @@ from utils.tools import ioa, nms, standardize_labels, xyxy_to_xywh
 
 class TestTools:
 
-    @pytest.mark.category1
     def test_ioa_some_intersection(self):
         target_box = np.array([[0, 0, 4, 6]])
         bboxes = np.array([
@@ -36,7 +34,6 @@ class TestTools:
             pruned.float(), torch.Tensor([[0, 0, 4, 6, 0.9, 0]]).float()
         )
 
-    @pytest.mark.category1
     def test_standardize_labels(self):
         labels = np.array([
             [10.0, 1.0, 1.0, 1.0, 1.0],

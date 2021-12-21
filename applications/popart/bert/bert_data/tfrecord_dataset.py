@@ -63,7 +63,7 @@ class PretrainingTfRecordDataLoader:
                  batch_size=1,
                  dtype=np.int32,
                  shuffle=True,
-                 pad_position_value=512,
+                 pad_position_value=511,
                  prefetch=1,
                  drop_remainder=True):
         self.files = input_files

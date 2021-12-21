@@ -36,8 +36,6 @@ if __name__ == '__main__':
                         help='Model config file')
     parser.add_argument('--save-checkpoint', type=bool, default=True,
                         help="Save checkpoint or not")
-    parser.add_argument('--checkpoint-interval', type=int, default=1000,
-                        help="Save interval")
     parser.add_argument('--freeze', type=bool, default=False,
                         help="Save frozen pb model")
     parser.add_argument('--logfile', type=str, default='model.log',
@@ -50,6 +48,8 @@ if __name__ == '__main__':
                         help='set training data vocab path')
     parser.add_argument('--use-synthetic-data', type=str, default=True,
                         help='if use synthetic data')
+    parser.add_argument('--wandb-name', type=str, default=None,
+                        help='Name of the Weights&Biases run, disabled if None')
 
     args = parser.parse_args()
     seed_all(args.seed)

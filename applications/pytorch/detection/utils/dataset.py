@@ -6,33 +6,68 @@ import re
 import PIL
 import yacs
 import torch
+import random
 import requests
-import torchvision
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from typing import Tuple, List, Any
+from torchvision.transforms import Compose
+from utils.preprocessing import HSV, ToNumpy, Pad, ToTensor, ResizeImage, Mosaic, RandomPerspective, HorizontalFlip, VerticalFlip
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, path: str, cfg: yacs.config.CfgNode, transform: torchvision.transforms = None):
-        self.mode = cfg.model.mode
+    def __init__(self, path: str, cfg: yacs.config.CfgNode):
+        self.cfg = cfg
+        self.dataset = None
 
-        if self.mode == "train":
-            dataset = cfg.dataset.train
-        elif self.mode == "test":
-            dataset = cfg.dataset.test
+        if self.cfg.model.mode == "train":
+            self.dataset = self.cfg.dataset.train
+        elif self.cfg.model.mode == "test" or self.cfg.model.mode == "test_inference":
+            self.dataset = self.cfg.dataset.test
+        else:
+            raise Exception("Mode not supported.")
 
-        self.input_channels = cfg.model.input_channels
         self.images_path = None
         self.labels_path = None
         self.img_data = None
 
-        self.transform = transform
+        # Change the data type of the dataloader depeding of the options
+        if self.cfg.model.uint_io:
+            image_type = "uint"
+        elif not self.cfg.model.ipu or not self.cfg.model.half:
+            image_type = "float"
+        else:
+            image_type = "half"
+
+        # Create transforms
+        self.resize_image = ResizeImage(self.cfg.model.image_size)
+        self.mosaic = Mosaic(self.cfg.model.image_size, self.cfg.model.input_channels)
+        # We create two perspective transforms, one for the case with mosaic, and one without.
+        # The difference is only in the border_to_remove parameter.
+        self.random_perspective_mosaic = RandomPerspective(self.cfg.dataset.train.degrees,
+                                                           self.cfg.dataset.train.translate,
+                                                           self.cfg.dataset.train.scale,
+                                                           self.cfg.dataset.train.shear,
+                                                           self.cfg.dataset.train.perspective,
+                                                           border_to_remove=[self.cfg.model.image_size, self.cfg.model.image_size])
+        self.random_perspective_augment = RandomPerspective(self.cfg.dataset.train.degrees,
+                                                            self.cfg.dataset.train.translate,
+                                                            self.cfg.dataset.train.scale,
+                                                            self.cfg.dataset.train.shear,
+                                                            self.cfg.dataset.train.perspective,
+                                                            border_to_remove=[0, 0])
+        self.hsv_augment = HSV(self.cfg.dataset.train.hsv_h_gain,
+                               self.cfg.dataset.train.hsv_s_gain,
+                               self.cfg.dataset.train.hsv_v_gain)
+        self.horizontal_flip = HorizontalFlip()
+        self.vertical_flip = VerticalFlip()
+        self.pad = Pad(self.cfg.model.image_size)
+        self.image_to_tensor = Compose([ToNumpy(), ToTensor(int(self.cfg.dataset.max_bbox_per_scale), image_type)])
 
         self.maximum_synthetic_data = 10000
 
-        if self.mode == "test_inference":
+        if self.cfg.model.mode == "test_inference":
             url_sample_image = 'http://images.cocodataset.org/train2017/000000001072.jpg'
             img_data = requests.get(url_sample_image).content
             self.img_data = Image.open(io.BytesIO(img_data))
@@ -40,28 +75,28 @@ class Dataset(torch.utils.data.Dataset):
             self.images_shapes = np.full((self.maximum_synthetic_data, 2), [height, width])
             self.labels = np.full((self.maximum_synthetic_data, 1, 5), [1.0, 1.0, 1.0, 1.0, 1.0])
         else:
-            path += cfg.dataset.name + "/" + dataset.file
+            path += self.cfg.dataset.name + "/" + self.dataset.file
             loaded = False
-            if os.path.isfile((dataset.cache_path + '.npy')):
-                images_path, labels_path = np.load(dataset.cache_path + '.npy')
+            if os.path.isfile((self.dataset.cache_path + '.npy')):
+                images_path, labels_path = np.load(self.dataset.cache_path + '.npy')
                 paths_pos = [m.start() for m in re.finditer(r"/", images_path[0])]
                 if images_path[0][:paths_pos[-3]] == path[:path.rfind("/")]:
-                    images_shapes = np.load(dataset.cache_path + '.shape.npy')
+                    images_shapes = np.load(self.dataset.cache_path + '.shape.npy')
                     self.images_path, self.images_shapes = images_path.tolist(), images_shapes.tolist()
                     self.labels_path = labels_path.tolist()
                     loaded = True
             if not loaded:
                 self.images_path, self.images_shapes = self.get_image_names_shapes(path)
                 self.labels_path = self.get_labels_names()
-                dir_pos = dataset.cache_path.rfind('/')
-                if not os.path.isdir(dataset.cache_path[:dir_pos]):
-                    os.mkdir(dataset.cache_path[:dir_pos])
-                np.save(dataset.cache_path, (np.array(self.images_path), np.array(self.labels_path)))
-                np.save(dataset.cache_path + '.shape', (np.array(self.images_shapes)))
+                dir_pos = self.dataset.cache_path.rfind('/')
+                if not os.path.isdir(self.dataset.cache_path[:dir_pos]):
+                    os.mkdir(self.dataset.cache_path[:dir_pos])
+                np.save(self.dataset.cache_path, (np.array(self.images_path), np.array(self.labels_path)))
+                np.save(self.dataset.cache_path + '.shape', (np.array(self.images_shapes)))
 
             self.labels = self.get_labels()
 
-            if dataset.cache_data:
+            if self.dataset.cache_data:
                 print("Not available")
 
 
@@ -171,7 +206,7 @@ class Dataset(torch.utils.data.Dataset):
         Return:
             length: length of the dataset
         """
-        return len(self.images_path) if (self.mode != "test_inference") else self.maximum_synthetic_data
+        return len(self.images_path) if (self.cfg.model.mode != "test_inference") else self.maximum_synthetic_data
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         """
@@ -187,8 +222,39 @@ class Dataset(torch.utils.data.Dataset):
         labels = self.labels[index]  # Format: [0] is the Class, [1, 2] is the Center x, y point and [3, 4] is the width and height of the box
         size = torch.as_tensor(image.size)
 
-        if self.transform:
-            transformed_image, transformed_labels = self.transform((image, labels))
+        transformed_image, transformed_labels = self.resize_image((image, labels))
+
+        if self.cfg.dataset.mosaic:
+            # sample other 3 images to stitch with the current image
+            indices = np.random.randint(0, self.__len__(), 3)
+            mosaic_candidates = [
+                self.resize_image((self.get_image(i), self.labels[i])) for i in indices
+            ]
+            mosaic_candidates = [(transformed_image, transformed_labels)] + mosaic_candidates
+            transformed_image, transformed_labels = self.mosaic(tuple(mosaic_candidates))
+            transformed_image, transformed_labels = self.random_perspective_mosaic((transformed_image, transformed_labels))
+
+        else:
+            # Pad if we don't do the mosaic
+            transformed_image, transformed_labels = self.pad((transformed_image, transformed_labels))
+
+        if self.dataset.data_aug:
+            if not self.cfg.dataset.mosaic:
+                transformed_image, transformed_labels = self.random_perspective_augment((transformed_image, transformed_labels))
+
+            # HSV color augmentation
+            if self.cfg.dataset.color:
+                transformed_image, transformed_labels = self.hsv_augment((transformed_image, transformed_labels))
+
+            # Vertical Flip
+            if random.random() < self.cfg.dataset.train.flipud:
+                transformed_image, transformed_labels = self.vertical_flip((transformed_image, transformed_labels))
+
+            # Horizontal Flip
+            if random.random() < self.cfg.dataset.train.fliplr:
+                transformed_image, transformed_labels = self.horizontal_flip((transformed_image, transformed_labels))
+
+        transformed_image, transformed_labels = self.image_to_tensor((transformed_image, transformed_labels))
 
         return transformed_image, transformed_labels, size, torch.as_tensor(index)
 
@@ -200,15 +266,15 @@ class Dataset(torch.utils.data.Dataset):
         Return:
             image: image in the index position
         """
-        if self.mode == "test_inference":
+        if self.cfg.model.mode == "test_inference":
             image = self.img_data
         else:
             image = Image.open(self.images_path[index])
 
 
-        if self.input_channels == 3:
+        if self.cfg.model.input_channels == 3:
             return image.convert('RGB')
-        elif self.input_channels == 1:
+        elif self.cfg.model.input_channels == 1:
             return image.convert('LA')
         else:
             raise RuntimeError("Unsupported number of channels! Supported: [1, 3]")

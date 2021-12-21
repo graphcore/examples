@@ -22,7 +22,6 @@ import pytest
 from test_common_dien import get_log, run_validation
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 class TestDIENValidation(unittest.TestCase):
     """Testing some basic infer"""

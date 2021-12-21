@@ -8,7 +8,7 @@ import timm
 from functools import partial
 from collections import OrderedDict
 from torch.fx import symbolic_trace
-from torchvision.models.utils import load_state_dict_from_url
+from torch.hub import load_state_dict_from_url
 from torchvision.models.resnet import model_urls as resnet_urls
 from torchvision.models.mobilenetv2 import model_urls as mobilenet_urls
 import import_helper

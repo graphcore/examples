@@ -15,12 +15,13 @@ POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch": "false"}'
 
 ### ResNet-50 v1.5
 
-#### 1 x IPU-M2000
+#### 1 x IPU-M2000 
 
 Command:
-```console
-  poprun \
+```console 
+    poprun \
       --mpi-global-args="--allow-run-as-root --tag-output" \
+      --mpi-local-args="-x POPLAR_ENGINE_OPTIONS" \
       --num-instances=4 \
       --numa-aware=yes \
       --num-replicas=4 \
@@ -28,11 +29,11 @@ Command:
     python run_benchmark.py \
       --config resnet50-mk2 \
       --data generated \
-      --batch-size 1 \
-      --iterations 20
+      --batch-size {batchsize} \
+      --iterations 20 \
+      --num-io-tiles 64
 ```
-
-Set --batch-size to 1, 4, 16, 32, 64 or 90. 
+Set --batch-size to 1, ... 80
 
 ### EfficientNet-B0 - Standard Group Dim 1
 
@@ -40,8 +41,9 @@ Set --batch-size to 1, 4, 16, 32, 64 or 90.
 
 Command:
 ```console
-	poprun \
+    poprun \
       --mpi-global-args="--allow-run-as-root --tag-output" \
+      --mpi-local-args="-x POPLAR_RUNTIME_OPTIONS" \
       --num-instances=4 \
       --numa-aware=yes \
       --num-replicas=4 \
@@ -50,20 +52,21 @@ Command:
       --config efficientnet-b0-mk2 \
       --data generated \
       --batch-size {batchsize} \
-      --iterations 20
+      --iterations 20 \
+      --num-io-tiles 64
 ```
 
-Set --batch-size to 1,8,16,32,36, or 49.  
+Set --batch-size to 1, ... 48. 
 
 ### EfficientNet-B4 - Standard Group Dim 1
 
 #### 1 x IPU-M2000
 
-
 Command:
 ```console
-	    poprun \
+    poprun \
       --mpi-global-args="--allow-run-as-root --tag-output" \
+      --mpi-local-args="-x POPLAR_RUNTIME_OPTIONS" \
       --num-instances=4 \
       --numa-aware=yes \
       --num-replicas=4 \
@@ -73,7 +76,10 @@ Command:
       --data generated \
       --batch-size {batchsize} \
       --iterations 20 \
+      --num-io-tiles 0
 ```
+
+Set --batch-size to 1, ... 10. 
 
 ### ResNeXt-101
 
@@ -81,25 +87,25 @@ Command:
 
 Command:
 ```console
-  poprun \
-    --mpi-global-args="--allow-run-as-root --tag-output" \
-    --num-instances=4 \
-    --numa-aware=yes \ 
-    --num-replicas=4 \
-    --ipus-per-replica=1 \
-  python run_benchmark.py \
-    --data generated \ 
-    --batch-size {batchsize} \
-    --model resnext101 \
-    --device-iterations 128 \ 
-    --norm-type batch \
-    --precision 16.16 \
-    --half-partial \
-    --eight-bit-io \
-    --normalization-location ipu \ 
-    --iterations 20
+    poprun \
+      --mpi-global-args="--allow-run-as-root --tag-output" \
+      --mpi-local-args="-x POPLAR_RUNTIME_OPTIONS" \
+      --num-instances=4 \
+      --numa-aware=yes \
+      --num-replicas=4 \
+      --ipus-per-replica=1 \
+    python run_benchmark.py \
+      --data generated \
+      --batch-size {batchsize} \
+      --model resnext101 \
+      --device-iterations 128 \
+      --norm-type batch \
+      --precision 16.16 \
+      --half-partial \
+      --eight-bit-io \
+      --normalization-location ipu \
+      --iterations 20 \
+      --num-io-tiles 32
 ```
 
-Set --batch-size to 1,2,4,8, or 16.
-
-
+Set --batch-size to 1, ... 16.

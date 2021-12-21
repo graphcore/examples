@@ -23,7 +23,7 @@
    "type_vocab_size": 2,
    "vocab_size": 30400,
    "seq_length": 128,
-   "batch_size": 8,
+   "micro_batch_size": 8,
    "batches_per_step": 1,
    "num_train_steps": 7032,
    "epsilon": 0.000001,
@@ -53,7 +53,7 @@
    "replicated_tensor_sharding": true,
    "min_remote_tensor_size": 50000,
 
-   "available_memory_proportion": [0.15, 0.21, 0.25, 0.25],
+   "available_memory_proportion": [0.15, 0.23, 0.25, 0.25],
 
    "partials_type": "half",
    "reduction_type": "mean",

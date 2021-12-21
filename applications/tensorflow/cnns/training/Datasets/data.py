@@ -77,7 +77,7 @@ def reconfigure_dataset_constants(opts):
 def data(opts, is_training=True):
     reconfigure_dataset_constants(opts)
     from .imagenet_dataset import ImageNetData
-    batch_size = opts["batch_size"]
+    batch_size = opts["micro_batch_size"]
     dtypes = opts["precision"].split('.')
     datatype = tf.float16 if dtypes[0] == '16' else tf.float32
 
@@ -143,10 +143,10 @@ def data(opts, is_training=True):
                 if is_distributed:
                     # Shuffle after sharding
                     dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
-                    if is_training:
-                        dataset = dataset.shard(
+                    dataset = dataset.shard(
                             num_shards=opts['distributed_worker_count'],
                             index=opts['distributed_worker_index'])
+                    if is_training:
                         dataset = dataset.shuffle(
                             ceil(len(filenames) / opts['distributed_worker_count']),
                             seed=opts['seed'])
@@ -161,10 +161,6 @@ def data(opts, is_training=True):
                 dataset = dataset.interleave(
                     dataset_fn, cycle_length=cycle_length,
                     block_length=block_length, num_parallel_calls=cycle_length)
-                if not is_training and is_distributed:
-                    # Shard the data and not the files for even sample distribution.
-                    dataset = dataset.shard(num_shards=opts['distributed_worker_count'],
-                                            index=opts['distributed_worker_index'])
         elif 'cifar' in opts["dataset"]:
             preprocess_fn = partial(cifar_preprocess, is_training=training_preprocessing, dtype=datatype,
                                     dataset=opts['dataset'], seed=opts['seed'])
@@ -179,12 +175,7 @@ def data(opts, is_training=True):
                 dataset = dataset.cache()
             shuffle_buffer = DATASET_CONSTANTS[opts['dataset']]['SHUFFLE_BUFFER']
             dataset = dataset.shuffle(shuffle_buffer, seed=opts['seed'])
-        else:
-            dataset = dataset.take(opts["validation_batches_per_step"] *
-                                   opts["validation_iterations"]*opts["validation_total_batch_size"])
-            if not opts['no_dataset_cache']:
-                dataset = dataset.cache()
-        dataset = dataset.repeat()
+            dataset = dataset.repeat()
 
         if opts['seed_specified'] and opts['pipeline_num_parallel'] > 1:
             print("****\n\n"
@@ -195,14 +186,41 @@ def data(opts, is_training=True):
 
         parallel_calls = opts['pipeline_num_parallel']
 
-        dataset = dataset.apply(
-            tf.data.experimental.map_and_batch(
+        if not is_training:
+            val_size = DATASET_CONSTANTS[opts['dataset']]['NUM_VALIDATION_IMAGES']
+            # Data to be processed with single validation session.run
+            # within one poprun instance.
+            count = (
+                opts["validation_batches_per_step"] *
+                opts["validation_iterations"] *
+                opts["validation_global_batch_size"])//opts['distributed_worker_count']
+            # Imagenet only: size diff by up to 1 for the 128 files.
+            # Overhead required to process all samples.
+            if opts['dataset'] == 'imagenet':
+                assert count*opts['distributed_worker_count'] >= val_size + 128 // opts['distributed_worker_count'], "All evaluation data needs to be processed!"
+
+            dataset = dataset.map(
+                preprocess_fn,
+                num_parallel_calls=parallel_calls,
+            )
+            padding_sample = generate_zero_sample(opts)
+            # Fill up with zeros
+            # Using cardinality of dataset instead does not work.
+            dataset = dataset.concatenate(
+                    padding_sample.cache().repeat(count)).take(count)
+            dataset = dataset.batch(batch_size, drop_remainder=True)
+            if not opts['no_dataset_cache']:
+                dataset = dataset.cache()
+            dataset = dataset.repeat()
+        else:
+            dataset = dataset.apply(
+              tf.data.experimental.map_and_batch(
                 preprocess_fn,
                 batch_size=batch_size,
                 num_parallel_calls=parallel_calls,
                 drop_remainder=True
+              )
             )
-        )
 
         if is_training and opts['mixup_alpha'] > 0:
             # always assign the mixup coefficients on the host
@@ -272,6 +290,31 @@ def generated_dataset(opts):
         maxval=num_classes - 1,
         dtype=tf.int32,
         name='generated_labels')
+
+    return tf.data.Dataset.from_tensors({
+        "image": images,
+        "label": labels
+    })
+
+
+def generate_zero_sample(opts):
+    """Return dataset filled with zero data.
+
+    Inspired by :func:`generated_dataset` but simplified.
+    """
+
+    if opts['image_size']:
+        height = opts['image_size']
+        width = opts['image_size']
+    else:
+        height = DATASET_CONSTANTS[opts['dataset']]['IMAGE_HEIGHT']
+        width = DATASET_CONSTANTS[opts['dataset']]['IMAGE_WIDTH']
+
+    dtypes = opts["precision"].split('.')
+    datatype = tf.float16 if dtypes[0] == '16' else tf.float32
+
+    images = tf.zeros([height, width, 3], dtype=datatype, name='generated_zero')
+    labels = tf.constant(DATASET_CONSTANTS[opts['dataset']]['NUM_CLASSES'], dtype=tf.int32)
 
     return tf.data.Dataset.from_tensors({
         "image": images,

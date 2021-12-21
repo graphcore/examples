@@ -42,9 +42,6 @@ def pytest_collection_modifyitems(config, items):
         if "requires_frozen" in item.keywords and not config.getoption("--frozen-path"):
             item.add_marker(pytest.mark.skip(
                 reason="Requires a frozen-graph path to run"))
-        if "requires_remote_buffers" in item.keywords and not remote_buffers_available():
-            item.add_marker(pytest.mark.skip(
-                reason="Requires remote buffers to be enabled on this system."))
 
 
 def pytest_addoption(parser):
@@ -78,8 +75,6 @@ def pytest_configure(config):
         "markers", "requires_chkpt: Skip if fixture chkpt_path not provided")
     config.addinivalue_line(
         "markers", "requires_frozen: Skip if fixture frozen_path not provided")
-    config.addinivalue_line(
-        "markers", "requires_remote_buffers: Skip if remote buffers are not enabled on this system")
 
 
 @pytest.fixture

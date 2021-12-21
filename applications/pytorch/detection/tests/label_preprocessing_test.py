@@ -13,7 +13,6 @@ from poptorch import inferenceModel
 
 class TestYolov4P5Preprocessing:
     """Tests for Yolov4loss labels preprocessing."""
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_preprocessing(self):
         config = get_cfg_defaults()

@@ -60,7 +60,7 @@ class Dataloader(object):
     @property
     def num_utts(self):
         if self.use_synthetic_data is True:
-            return 400
+            return 12000
         else:
             return len(self.utts.keys())
 

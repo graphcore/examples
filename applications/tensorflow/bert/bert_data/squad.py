@@ -521,9 +521,9 @@ def get_squad_dataset(opts, is_training):
         name_to_features["start_positions"] = tf.FixedLenFeature([], tf.int64)
         name_to_features["end_positions"] = tf.FixedLenFeature([], tf.int64)
 
-    batch_size = opts['batch_size']
+    micro_batch_size = opts['micro_batch_size']
     tfrecord_dir = opts['tfrecord_dir']
-    opts['global_batch_size'] = opts['replicas'] * opts['batch_size'] * opts['gradient_accumulation_count']
+    opts['global_batch_size'] = opts['replicas'] * opts['micro_batch_size'] * opts['gradient_accumulation_count']
     if opts["version_2_with_negative"]:
         base_name_train = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}_SQuAD20"
         base_name_eval = f"{opts['seq_length']}_{opts['doc_stride']}_{opts['max_query_length']}_{opts['global_batch_size']}_SQuAD20"
@@ -563,7 +563,7 @@ def get_squad_dataset(opts, is_training):
             padding_to = 1
         else:
             # Padding for pipeline depth
-            padding_to = opts['replicas'] * opts['batch_size'] * opts['gradient_accumulation_count']
+            padding_to = opts['replicas'] * opts['micro_batch_size'] * opts['gradient_accumulation_count']
 
         num_of_features = convert_examples_to_features(examples=examples,
                                                        tokenizer=tokenizer,
@@ -602,7 +602,7 @@ def get_squad_dataset(opts, is_training):
     d = d.apply(
         map_and_batch(
             lambda record: _decode_record(record, name_to_features),
-            batch_size=batch_size,
+            batch_size=micro_batch_size,
             drop_remainder=True))
 
     return d

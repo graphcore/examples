@@ -34,7 +34,6 @@ class TestMNIST(unittest.TestCase):
 
 
     @pytest.mark.ipus(1)
-    @pytest.mark.category2
     def test_mnist_train(self):
         """Generic test on default arguments in training"""
         py_args = self.generic_arguments.copy()
@@ -51,7 +50,6 @@ class TestMNIST(unittest.TestCase):
 
 
     @pytest.mark.ipus(2)
-    @pytest.mark.category2
     def test_mnist_train_sharded_pipelined(self):
         """Generic test on default arguments in training"""
         py_args = self.generic_arguments.copy()

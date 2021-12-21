@@ -22,9 +22,9 @@ def get_random_str(strlen=3):
 
 class Logger:
     @classmethod
-    def setup_logging_folder(cls, opts):
+    def setup_logging_folder(cls, args):
         # During distributed training log only single process
-        if hasattr(opts, "use_popdist") and opts.use_popdist and opts.popdist_rank != 0:
+        if hasattr(args, "use_popdist") and args.use_popdist and args.popdist_rank != 0:
             cls.silent_process = True
             return
         else:
@@ -36,11 +36,11 @@ class Logger:
         # get POPLAR_ENGINE_OPTIONS if it exists, as a Python dictionary
         eng_opts = json.loads(os.environ.get("POPLAR_ENGINE_OPTIONS", "{}"))
         profile_path = eng_opts.get("autoReport.directory", None)
-        options = vars(opts)
+        options = vars(args)
         options["POPLAR_ENGINE_OPTIONS"] = eng_opts
         # save to wandb
-        if hasattr(opts, "wandb"):
-            cls.wandb_logging = opts.wandb
+        if hasattr(args, "wandb"):
+            cls.wandb_logging = args.wandb
         else:
             cls.wandb_logging = False
         if cls.wandb_logging:
@@ -53,12 +53,12 @@ class Logger:
                 logging.info("W&B logging in offline mode")
 
         # Determine saving folder
-        if hasattr(opts, "checkpoint_path") and not opts.checkpoint_path == "":
-            cls.logdirname = opts.checkpoint_path
+        if hasattr(args, "checkpoint_path") and not args.checkpoint_path == "":
+            cls.logdirname = args.checkpoint_path
         elif profile_path is not None:
             cls.logdirname = profile_path
         else:
-            basename = f'{opts.model}_bs{opts.batch_size}_{opts.precision}fp_r{opts.replicas}_di{opts.device_iterations}'
+            basename = f'{args.model}_bs{args.batch_size}_{args.precision}fp_r{args.replicas}_di{args.device_iterations}'
             while True:
                 logdirname = os.path.join("logs", basename + "_" + get_random_str())
                 if not os.path.exists(logdirname):

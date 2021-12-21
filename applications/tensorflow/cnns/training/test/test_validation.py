@@ -4,13 +4,17 @@ import unittest
 import pytest
 from tempfile import TemporaryDirectory
 from pathlib import Path
+from examples_tests.test_util import SubProcessChecker
+import sys
+
+sys.path.append(str(Path(__file__).absolute().parent.parent))
+
 from test_common import run_train, cifar10_data_dir, run_validation
 
 working_path = Path(__file__).parent.parent
 
 
-@pytest.mark.category1
-class TestBasicFunctionality(unittest.TestCase):
+class TestBasicFunctionality(SubProcessChecker):
     """ Test that the help option works"""
     def test_help(self):
         help_out = run_validation(working_path, **{'--help': ''})
@@ -18,20 +22,22 @@ class TestBasicFunctionality(unittest.TestCase):
 
 
 @pytest.mark.ipus(1)
-@pytest.mark.category1
-class TestCifar10Validation(unittest.TestCase):
+class TestCifar10Validation(SubProcessChecker):
     """ Check validation for cifar-10."""
 
     def test_cifar10_validation(self):
         with TemporaryDirectory() as log_dir:
             # create checkpoints for iterations 0, 2 and 4
-            out = run_train(**{'--data-dir': cifar10_data_dir,
-                               '--name-suffix': 'test_validation',
-                               '--log-dir': log_dir,
-                               '--iterations': 4,
-                               '--batches-per-step': 2,
-                               '--no-validation': '',
-                               '--ckpts-per-epoch': 1000000})
+            out = run_train(
+                self,
+                **{
+                    '--data-dir': cifar10_data_dir,
+                    '--name-suffix': 'test_validation',
+                    '--log-dir': log_dir,
+                    '--iterations': 4,
+                    '--batches-per-step': 2,
+                    '--no-validation': '',
+                    '--ckpts-per-epoch': 1000000})
             dir_to_restore = None
             for line in out.split('\n'):
                 if line.find('Saving to ') != -1:

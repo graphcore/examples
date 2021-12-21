@@ -498,15 +498,20 @@ class SubProcessChecker(unittest.TestCase):
             Returns:
                 Output of the command (combined stderr and stdout).
         """
+        if isinstance(cmd, list):
+            cmd_list = cmd
+        else:
+            cmd_list = cmd.split()
+
         if env is None:
-            completed = subprocess.run(args=cmd.split(),
+            completed = subprocess.run(args=cmd_list,
                                        cwd=working_path,
                                        shell=False,
                                        stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT,
                                        timeout=timeout)
         else:
-            completed = subprocess.run(args=cmd.split(), cwd=working_path,
+            completed = subprocess.run(args=cmd_list, cwd=working_path,
                                        shell=False, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT,
                                        env=env,

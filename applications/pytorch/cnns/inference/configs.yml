@@ -8,12 +8,6 @@ common: &common
   normalization_location: ipu
 
 
-resnet50-mk1:
-  <<: *common
-  model: resnet50
-  batch_size: 8
-
-
 resnet50-mk2:
   <<: *common
   model: resnet50

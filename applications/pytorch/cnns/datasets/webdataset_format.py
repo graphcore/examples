@@ -6,7 +6,6 @@ import json
 import os
 import braceexpand
 import logging
-from torchvision import transforms
 from torch.utils.data import IterableDataset
 from math import ceil
 import import_helper
@@ -28,9 +27,9 @@ def split_datasets(dataset_filelist, ratio_in_first_set, worker_count=1):
     return first_dataset, second_dataset
 
 
-def get_webdataset(opts, model_opts, train=True, transform=identity, shuffle_buffer=5000, use_bbox_info=False, cache_ratio=0.0):
+def get_webdataset(args, opts, train=True, transform=identity, shuffle_buffer=5000, use_bbox_info=False, cache_ratio=0.0):
     subset_name = 'train' if train else 'validation'
-    with open(os.path.join(opts.imagenet_data_path, "metadata.json")) as metadata_file:
+    with open(os.path.join(args.imagenet_data_path, "metadata.json")) as metadata_file:
         metadata = json.load(metadata_file)
         dataset_size = metadata[f"{subset_name}_length"]
         data_format = metadata["format"]
@@ -39,27 +38,27 @@ def get_webdataset(opts, model_opts, train=True, transform=identity, shuffle_buf
         else:
             done_preprocess = metadata["validation_transform_pipeline"]
 
-    chunks = [file_name[-10:-4] for file_name in os.listdir(opts.imagenet_data_path) if file_name.startswith(subset_name)]
+    chunks = [file_name[-10:-4] for file_name in os.listdir(args.imagenet_data_path) if file_name.startswith(subset_name)]
     chunks.sort()  # sort the chunks so that they can be distributed properly
     # Handle missing batches in distributed case
-    all_chunks = list(braceexpand.braceexpand(os.path.join(opts.imagenet_data_path, subset_name + "-{" + chunks[0] + ".." + chunks[-1] + "}.tar")))
-    all_chunks, _ = split_datasets(all_chunks, opts.webdataset_percentage_to_use / 100.0)
-    cache_ratio = getattr(opts, 'webdataset_memory_cache_ratio', 0.0)
-    memory_chunks, disk_chunks = split_datasets(all_chunks, cache_ratio, worker_count=model_opts.Distributed.numProcesses * opts.dataloader_worker)
+    all_chunks = list(braceexpand.braceexpand(os.path.join(args.imagenet_data_path, subset_name + "-{" + chunks[0] + ".." + chunks[-1] + "}.tar")))
+    all_chunks, _ = split_datasets(all_chunks, args.webdataset_percentage_to_use / 100.0)
+    cache_ratio = getattr(args, 'webdataset_memory_cache_ratio', 0.0)
+    memory_chunks, disk_chunks = split_datasets(all_chunks, cache_ratio, worker_count=opts.Distributed.numProcesses * args.dataloader_worker)
     if len(memory_chunks) > 0:
-        memory_cache = MemoryCache(memory_chunks, data_format, model_opts, dataset_size * (1.0 - cache_ratio)//(model_opts.Distributed.numProcesses * opts.dataloader_worker))
+        memory_cache = MemoryCache(memory_chunks, data_format, opts, dataset_size * (1.0 - cache_ratio)//(opts.Distributed.numProcesses * args.dataloader_worker))
     else:
         memory_cache = None
     remaining_chunks = None
-    if model_opts.Distributed.numProcesses > 1:
-        distributed_path = os.path.join(opts.imagenet_data_path, "distributed", f"{model_opts.Distributed.numProcesses}-instances")
+    if opts.Distributed.numProcesses > 1:
+        distributed_path = os.path.join(args.imagenet_data_path, "distributed", f"{opts.Distributed.numProcesses}-instances")
         if os.path.exists(distributed_path):
-            remaining_chunks = [os.path.join(distributed_path, f"{subset_name}-{i:06d}.tar") for i in range(model_opts.Distributed.numProcesses)]
+            remaining_chunks = [os.path.join(distributed_path, f"{subset_name}-{i:06d}.tar") for i in range(opts.Distributed.numProcesses)]
         else:
             logging.warn("Data is not distributed correctly between instances, which may result in skipping samples. Recommended using distributed_webdataset.py before running.")
-    node_splitting = DistributeNode(remaining_chunks, model_opts.Distributed.processId, model_opts.Distributed.numProcesses, seed=getattr(opts, "seed", 0))
-    data_length = dataset_size // model_opts.Distributed.numProcesses
-    if dataset_size % model_opts.Distributed.numProcesses > model_opts.Distributed.processId:
+    node_splitting = DistributeNode(remaining_chunks, opts.Distributed.processId, opts.Distributed.numProcesses, seed=getattr(args, "seed", 0))
+    data_length = dataset_size // opts.Distributed.numProcesses
+    if dataset_size % opts.Distributed.numProcesses > opts.Distributed.processId:
         data_length += 1
     dataset = WebDataset(disk_chunks, length=data_length, shuffle_buffer=shuffle_buffer if train else 0, nodesplitter=node_splitting, memory_cache=memory_cache)
 
@@ -84,7 +83,7 @@ def decode_webdataset(dataset, data_format, transform, use_bbox_info=False, raw_
 
 
 class MemoryCache:
-    def __init__(self, cached_urls, data_format, model_opts, dataset_length, cache_chunk_size=256):
+    def __init__(self, cached_urls, data_format, opts, dataset_length, cache_chunk_size=256):
         """
         Caches part of the dataset
         cached_urls: the chunks, which are stored in the memory
@@ -94,7 +93,7 @@ class MemoryCache:
         self.cache_chunk_size = cache_chunk_size
         self.len_data = int(dataset_length)
         self.cached_urls = cached_urls
-        node_distribute = DistributeNode(None, model_opts.Distributed.processId, model_opts.Distributed.numProcesses, remove_remaining_chunks=False)
+        node_distribute = DistributeNode(None, opts.Distributed.processId, opts.Distributed.numProcesses, remove_remaining_chunks=False)
         self.cache_dataset = WebDataset(cached_urls, length=0, shuffle_buffer=0, nodesplitter=node_distribute)
         self.cache_dataset.dataset = decode_webdataset(self.cache_dataset.dataset, data_format, transform=None, use_bbox_info=False, raw_data=True)
         self.cached_content = []
@@ -116,7 +115,6 @@ class MemoryCache:
         """
         self.is_new_iter = True
         random.shuffle(self.cached_content)
-
 
     def cache(self, data):
         """
@@ -241,20 +239,17 @@ class DatasetRebatch:
     def combinedBatchSize(self):
         return self.batch_size
 
-
     def __iter__(self):
         self.remaining = None
         self.iterable_dataloader = iter(self.dataloader)
         self.end_iter = False
         return self
 
-
     def __len__(self):
         length = self.total_samples // self.batch_size
         if self.total_samples % self.batch_size > 0 and not self.drop_last:
             length += 1
         return length
-
 
     def __next__(self):
         if self.end_iter:
@@ -280,3 +275,6 @@ class DatasetRebatch:
                         returning_tensor = [buffer[:self.batch_size] for buffer in self.remaining]
                         self.remaining = [buffer[self.batch_size:] for buffer in self.remaining]
                         return returning_tensor
+
+    def terminate(self):
+        self.dataloader.terminate()

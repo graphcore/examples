@@ -108,7 +108,6 @@ def run_current_model(image_data):
     )
 
 
-@pytest.mark.category1
 def test_model_structure():
     image_data = np.random.random((1, 320, 320, 3))
     result_original = run_original_model(image_data)

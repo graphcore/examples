@@ -18,7 +18,7 @@ import tensorflow as tf
 class LearningRate:
 
     def __init__(self, opts, total_iterations):
-        self.initial_lr = (2 ** opts["base_learning_rate_exponent"]) * opts["total_batch_size"]
+        self.initial_lr = (2 ** opts["base_learning_rate_exponent"]) * opts["global_batch_size"]
         self.end_lr = opts["poly_lr_end_ratio"] * self.initial_lr
         self.power = opts["poly_lr_decay_power"]
         self.warmup_iterations = total_iterations * opts["warmup_epochs"] // opts["epochs"]
@@ -47,7 +47,7 @@ def add_arguments(parser):
 
 def set_defaults(opts):
     if opts['abs_end_learning_rate'] is not None:
-        opts['poly_lr_end_ratio'] = opts['abs_end_learning_rate'] / ((2 ** opts["base_learning_rate_exponent"]) * opts["total_batch_size"])
+        opts['poly_lr_end_ratio'] = opts['abs_end_learning_rate'] / ((2 ** opts["base_learning_rate_exponent"]) * opts["global_batch_size"])
 
     opts['summary_str'] += "Polynomial decay applied to learning rate with exponent {poly_lr_decay_power}.\n"
     opts['summary_str'] += " Ratio of end and initial learning rates: {poly_lr_end_ratio}\n"

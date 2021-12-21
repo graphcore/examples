@@ -25,6 +25,8 @@ from tensorflow.python.keras import layers
 from .batch_norm import batch_norm
 from .proxy_norm import proxynorm_activation
 
+from tensorflow.python import ipu
+
 
 BlockArgs = collections.namedtuple('BlockArgs', [
     'kernel_size', 'num_repeat', 'input_filters', 'output_filters',
@@ -168,9 +170,9 @@ def drop_connect(inputs, is_training, survival_prob):
         return inputs
 
     # Compute tensor.
-    batch_size = tf.shape(inputs)[0]
+    micro_batch_size = tf.shape(inputs)[0]
     random_tensor = survival_prob
-    random_tensor += tf.random_uniform([batch_size, 1, 1, 1], dtype=inputs.dtype)
+    random_tensor += tf.random_uniform([micro_batch_size, 1, 1, 1], dtype=inputs.dtype)
     binary_tensor = tf.floor(random_tensor)
     # Unlike conventional way that multiply survival_prob at test time, here we
     # divide survival_prob at training time, such that no addition compute is
@@ -199,50 +201,61 @@ def mb_conv_block_funs(
     intermediate_filters = in_filters * expand_ratio
     id_skip = id_skip and stride == 1 and in_filters == out_filters
     has_se = (se_ratio is not None) and (0 < se_ratio <= 1)
+    num_reduced_filters = max(1, int(in_filters * se_ratio))
 
     def mb_conv_a(input, name=name):
-        with tf.variable_scope(name + "/a"):
-            x = conv(input, 1, 1, intermediate_filters)
-            x = norm(x)
-            x = activation(x)
-            return x
+        @ipu.outlined_function
+        def mb_conv_a_inner(acts):
+            with tf.variable_scope(name + "/a"):
+                x = conv(acts, 1, 1, intermediate_filters)
+                x = norm(x)
+                x = activation(x)
+                return x
+
+        return mb_conv_a_inner(input)
+
 
     def mb_conv_b(input, has_se=True, name=name + "/b"):
-        with tf.variable_scope(name):
-            # Depthwise Convolution
-            x = depthwise_conv(input, kernel_size, stride, filters_out=intermediate_filters)
-            x = norm(x)
-            if proxy_norm:
-                x, inv_proxy_std = activation(x, delay_scale=True)  # delay proxy scaling for efficiency
-            else:
-                x = activation(x)
-
-        if has_se:
-            with tf.variable_scope(name[:-1] + "SE"):
-                num_reduced_filters = max(1, int(in_filters * se_ratio))
-                se_tensor = tf.reduce_mean(x, reduction_indices=[1, 2], keep_dims=True)
-                with tf.variable_scope("1"):
-                    se_tensor = conv(se_tensor, 1, 1, num_reduced_filters, bias=True)
+        @ipu.outlined_function
+        def mb_conv_b_inner(x):
+            with tf.variable_scope(name):
+                # Depthwise Convolution
+                x = depthwise_conv(x, kernel_size, stride, filters_out=intermediate_filters)
+                x = norm(x)
                 if proxy_norm:
-                    se_tensor = activation(se_tensor, proxy_norm=False)
+                    x, inv_proxy_std = activation(x, delay_scale=True)  # delay proxy scaling for efficiency
                 else:
-                    se_tensor = activation(se_tensor)
-                with tf.variable_scope("2"):
-                    se_tensor = conv(se_tensor, 1, 1, intermediate_filters, bias=True)
-                se_tensor = tf.math.sigmoid(se_tensor)
-                if proxy_norm:
-                    se_tensor = se_tensor * inv_proxy_std  # do proxy scaling here for efficiency
-                x = tf.math.multiply(x, se_tensor)
+                    x = activation(x)
 
-        return x
+                if has_se:
+                    with tf.variable_scope(name[:-1] + "SE"):
+                        se_tensor = tf.reduce_mean(x, reduction_indices=[1, 2], keep_dims=True)
+                        se_tensor = conv(se_tensor, 1, 1, num_reduced_filters, bias=True, name=name + "/1")
+                        if proxy_norm:
+                            se_tensor = activation(se_tensor, proxy_norm=False)
+                        else:
+                            se_tensor = activation(se_tensor)
+                        se_tensor = conv(se_tensor, 1, 1, intermediate_filters, bias=True, name=name + "/2")
+                        se_tensor = tf.math.sigmoid(se_tensor)
+                        if proxy_norm:
+                            se_tensor = se_tensor * inv_proxy_std  # do proxy scaling here for efficiency
+                        x = tf.math.multiply(x, se_tensor)
+                return x
 
-    def mb_conv_c(input, name=name + "/c"):
-        with tf.variable_scope(name):
-            x = conv(input, 1, 1, out_filters)
-            # we cannot use proxy norm here as this is not followed by an activation
-            # we find that disabling the shift parameter is a good alternative to reducing the denormalisation
-            x = norm(x, scale=True)
-        return x
+        return mb_conv_b_inner(input)
+
+    def mb_conv_c(x, name=name + "/c"):
+        @ipu.outlined_function
+        def mb_conv_c_inner(x):
+            with tf.variable_scope(name):
+                x = conv(x, 1, 1, out_filters)
+                # we cannot use proxy norm here as this is not followed by an activation
+                # we find that disabling the shift parameter is a good alternative to reducing the denormalisation
+                x = norm(x, scale=True)
+                return x
+
+        return mb_conv_c_inner(x)
+
 
     def full_block(x_in, name=name):
         x = x_in
@@ -254,6 +267,7 @@ def mb_conv_block_funs(
             x = drop_connect(x, is_training, survival_prob)
         x = tf.math.add(x, x_in)
         return x
+
 
     """Mobile Inverted Residual Bottleneck."""
     fn_list = []
@@ -529,8 +543,8 @@ def set_defaults(opts):
                 opts['lr_decay_rate'] = 0.97
             if not opts.get('lr_drops'):
                 opts['lr_drops'] = 146
-        if not opts.get("batch_size"):
-            opts['batch_size'] = 4
+        if not opts.get("micro_batch_size"):
+            opts['micro_batch_size'] = 4
         if opts.get("warmup") is None:
             opts['warmup'] = True
         if not opts.get("label_smoothing"):
@@ -565,8 +579,8 @@ def set_defaults(opts):
                 opts['lr_decay_rate'] = 0.97
             if not opts.get('lr_drops'):
                 opts['lr_drops'] = 146
-        if not opts.get("batch_size"):
-            opts['batch_size'] = 8
+        if not opts.get("micro_batch_size"):
+            opts['micro_batch_size'] = 8
     else:
         raise ValueError('Only the ImageNet and CIFAR datasets are currently supported for EfficientNet.')
 
@@ -582,7 +596,7 @@ def set_defaults(opts):
 
     opts['name'] = "EfficientNet-{}".format(opts['model_size'])
 
-    opts['name'] += "_bs{}".format(opts['batch_size'])
+    opts['name'] += "_bs{}".format(opts['micro_batch_size'])
     if opts['pipeline']:
         opts['name'] += "x{}p".format(opts['gradient_accumulation_count'])
     elif opts.get('gradient_accumulation_count') > 1:

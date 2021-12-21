@@ -14,7 +14,7 @@ from poptorch.optim import SGD, RMSprop, AdamW
 from lr_schedule import WarmUpLRDecorator, PeriodicLRDecorator
 from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR, ExponentialLR
 from train_utils import parse_arguments
-from validate import test, validate_checkpoints, create_validation_model_opts
+from validate import test, validate_checkpoints, create_validation_opts
 import weight_avg
 import sys
 import import_helper
@@ -36,7 +36,7 @@ class TrainingModelWithLoss(torch.nn.Module):
             self.loss = models.loss.weighted_nll_loss
         else:
             self.loss = torch.nn.NLLLoss(reduction='mean')
-        # Use human readable names for each layer
+        # Use human readable names for each layer.
         models.NameScopeHook(self)
 
     def forward(self, input_data, labels=None):
@@ -44,7 +44,7 @@ class TrainingModelWithLoss(torch.nn.Module):
             output, coeffs = self.model(input_data)
         else:
             output = self.model(input_data)
-        # Calculate loss in full precision
+        # Calculate loss in full precision.
         output = output.float()
         if labels is None:
             return output
@@ -60,7 +60,7 @@ class TrainingModelWithLoss(torch.nn.Module):
         loss_items['classification_loss'] = (1.0 - self.label_smoothing) * classification_loss
 
         if self.label_smoothing > 0.0:
-            # cross entropy between uniform distribution and output distribution
+            # Cross entropy between uniform distribution and output distribution.
             loss_items["smoothing_loss"] = -torch.mean(log_preds) * self.label_smoothing
             final_loss = loss_items["smoothing_loss"] + loss_items["classification_loss"]
         else:
@@ -71,188 +71,252 @@ class TrainingModelWithLoss(torch.nn.Module):
         return acc, poptorch.identity_loss(final_loss, reduction='none'), tuple(loss_items.values())
 
 
-def train(training_model, training_data, opts, lr_scheduler, epochs, optimizer, validation_function=None):
-    old_lr = lr_scheduler.get_last_lr()[0]
-    iterations_per_epoch = len(training_data)
-    num_instances = opts.popdist_size if opts.use_popdist else 1
-    metrics = utils.Metrics(running_mean_length=iterations_per_epoch, distributed=opts.use_popdist)
-    # Determine loss scaling change points
-    num_loss_scaling_steps = int(math.log2(opts.loss_scaling // opts.initial_loss_scaling)) + 1
-    loss_scaling_steps = {i * (opts.epoch // num_loss_scaling_steps) + 1: opts.initial_loss_scaling * (2 ** i) for i in range(num_loss_scaling_steps)}
-    new_loss_scaling = old_loss_scaling = opts.initial_loss_scaling
+def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, validation_function=None):
+    logging.info("Training the model")
 
-    if opts.mixup_enabled or opts.cutmix_enabled:
-        augmentation_generator = np.random.default_rng(opts.seed)
+    # A generic container used by the train function to set and update the host-side training state.
+    class TrainingState(): pass
+    state = TrainingState()
 
+    state.iterations_per_epoch = len(training_data)
+    metrics = utils.Metrics(running_mean_length=state.iterations_per_epoch, distributed=args.use_popdist)
+    state.old_lr = lr_scheduler.get_last_lr()[0]
+    state.num_instances = args.popdist_size if args.use_popdist else 1
 
-    for epoch in epochs:
+    # Determine the loss scaling change points.
+    num_loss_scaling_steps = int(math.log2(args.loss_scaling // args.initial_loss_scaling)) + 1
+    loss_scaling_steps = {i * (args.epoch // num_loss_scaling_steps) + 1: args.initial_loss_scaling * (2 ** i) for i in range(num_loss_scaling_steps)}
+    state.new_loss_scaling = state.old_loss_scaling = args.initial_loss_scaling
 
-        logging.info(f"Epoch {epoch}/{opts.epoch}")
+    if args.mixup_enabled or args.cutmix_enabled:
+        augmentation_generator = np.random.default_rng(args.seed)
 
-        if opts.disable_metrics or (opts.use_popdist and not(opts.popdist_rank == 0)):
-            bar = training_data
-        else:
-            bar = tqdm(training_data, total=iterations_per_epoch)
+    for state.epoch in epochs:
+        state.epoch_start_time = time.perf_counter()
+        state.epoch_sample_size = 0
+        logging.info(f"Epoch {state.epoch}/{args.epoch + args.fine_tune_epoch}")
 
-        epoch_start_time = time.time()
-        total_sample = 0
-        if epoch in loss_scaling_steps.keys():
-            new_loss_scaling = loss_scaling_steps[epoch]
-        for batch_idx, (input_data, labels) in enumerate(bar):
-            if opts.mixup_enabled or opts.cutmix_enabled:
-                input_data = get_augmented_samples(opts, input_data, augmentation_generator)
+        bar = tqdm(training_data, total=state.iterations_per_epoch)
 
-            # Offline model call to compile and exit with sample data
-            if opts.compile_only:
+        if state.epoch in loss_scaling_steps.keys():
+            state.new_loss_scaling = loss_scaling_steps[state.epoch]
+
+        # Beginning of the epoch.
+        for state.batch_idx, (input_data, labels) in enumerate(bar):
+            state.epoch_progress = (state.epoch - 1) + (state.batch_idx + 1) / state.iterations_per_epoch
+            state.epoch_sample_size += labels.size()[0]
+
+            if args.mixup_enabled or args.cutmix_enabled:
+                input_data = get_augmented_samples(args, input_data, augmentation_generator)
+
+            if args.compile_only:
                 _ = training_model.compile(input_data, labels)
                 logging.info("Graph compilation complete, --compile-only was set, exiting.")
                 sys.exit(0)
 
-            accuracy, losses, sublosses = training_model(input_data, labels)
-            if opts.profile:
-                # generate profile report for one iteration
+            accuracy, loss, sublosses = training_model(input_data, labels)
+            if args.profile:
+                # Profile report is only generated for one iteration.
                 sys.exit(0)
 
-            epoch_num = epoch - 1 + float(batch_idx+1) / iterations_per_epoch
+            running_mean_loss, running_mean_acc = handle_metrics(
+                metrics,
+                loss,
+                sublosses,
+                accuracy,
+                state,
+                bar,
+                validation_function,
+                training_model,
+                args,
+            )
 
-            if not opts.disable_metrics:
-                with torch.no_grad():
-                    # Each replica returns sum of values. Need to normalize by gradient accumulation and device iteration.
-                    mean_loss = torch.mean(losses).item() / (opts.device_iterations * opts.gradient_accumulation)
-                    classification_loss = torch.mean(sublosses[0]).item() / (opts.device_iterations * opts.gradient_accumulation)
-                    smoothing_loss = torch.mean(sublosses[1]).item() / (opts.device_iterations * opts.gradient_accumulation) if len(sublosses) > 1 else 0.0
-                    acc = torch.mean(accuracy).item() / (opts.device_iterations * opts.gradient_accumulation)
-                metrics.save_value("accuracy", acc)
-                metrics.save_value("loss", mean_loss)
-                metrics.save_value("classification_loss", classification_loss)
-                metrics.save_value("smoothing_loss", smoothing_loss)
+            update_lr(lr_scheduler, optimizer, training_model, state, args)
 
-                aggregated_loss = metrics.get_running_mean("loss")
-                aggregated_acc = metrics.get_running_mean("accuracy")
-                if not opts.use_popdist or opts.popdist_rank == 0:
-                    bar.set_description(f"Loss:{aggregated_loss:0.4f} | Accuracy:{aggregated_acc:0.2f}%")
-            total_sample += labels.size()[0] * num_instances
-
-            if not opts.disable_metrics and ((batch_idx + 1) % (iterations_per_epoch // opts.logs_per_epoch) == 0):
-                elapsed_time = metrics.get_elapsed_time()
-                num_batches = metrics.get_count()
-                if validation_function is not None and (epoch % opts.validation_frequency == 0):
-                    training_model.detachFromDevice()
-                    validation_accuracy = validation_function()
-                    model.train()
-                    training_model.attachToDevice()
-                    logging.info(f"Validation Accuracy: {validation_accuracy:0.2f}%")
-                else:
-                    validation_accuracy = 0.0
-                # save metrics
-                result_dict = {
-                    "loss_avg": metrics.get_running_mean("loss"),
-                    "loss_batch": metrics.get_value("loss"),
-                    "epoch": epoch_num,
-                    "iteration": batch_idx+1+(epoch-1)*iterations_per_epoch,
-                    "train_accuracy_avg": metrics.get_running_mean("accuracy"),
-                    "train_accuracy_batch": metrics.get_value("accuracy"),
-                    "learning_rate": old_lr,
-                    "loss_scaling": old_loss_scaling,
-                    "train_img_per_sec": (num_batches * labels.size()[0] / elapsed_time),
-                    "latency_sec": elapsed_time / (num_batches * num_instances),
-                    "validation_accuracy": validation_accuracy,
-                    "classification_loss_batch": metrics.get_value("classification_loss"),
-                    "classification_loss_avg": metrics.get_running_mean("classification_loss"),
-                    "smoothing_loss_batch:": metrics.get_value("smoothing_loss"),
-                    "smoothing_loss_avg:": metrics.get_running_mean("smoothing_loss"),
-                }
-                if opts.wandb_weight_histogram:
-                    utils.Logger.log_model_histogram(training_model.model)
-                utils.Logger.log_train_results(result_dict)
-
-            # lr schedule
-            lr_scheduler.step(epoch_num)
-            new_lr = lr_scheduler.get_last_lr()[0]
-            if new_lr != old_lr or new_loss_scaling != old_loss_scaling:
-                if new_loss_scaling != old_loss_scaling:
-                    optimizer.loss_scaling = new_loss_scaling
-                    if opts.optimizer == 'sgd_combined':
-                        optimizer.param_groups[0]["velocity_scaling"] = new_loss_scaling / opts.loss_velocity_scaling_ratio
-                        optimizer.param_groups[1]["velocity_scaling"] = new_loss_scaling / opts.loss_velocity_scaling_ratio
-                training_model.setOptimizer(optimizer)
-                old_lr = new_lr
-                old_loss_scaling = new_loss_scaling
-                if opts.lr_schedule == "step":
-                    logging.info(f"Learning rate is changed to {new_lr}")
-
-        epoch_end_time = time.time()
-        if not opts.disable_metrics:
-            aggregated_acc = metrics.get_running_mean("accuracy")
-            logging.info(f"Epoch {epoch}: Train accuracy is {aggregated_acc:0.2f}%")
-        elapsed_time = epoch_end_time-epoch_start_time
-        # sync metrics
-        if opts.use_popdist:
-            total_sample = utils.sync_metrics(total_sample)
-            elapsed_time = utils.sync_metrics(elapsed_time)
-        epoch_throughput = total_sample / elapsed_time
-        logging.info(f"Throughput of the epoch:{epoch_throughput:0.1f} img/sec")
-        # save, in case of multiple processes save the weights only from the first instance.
-        if not opts.checkpoint_path == "" and (not opts.use_popdist or opts.popdist_local_rank == 0):
-            if not os.path.exists(opts.checkpoint_path):
-                os.makedirs(opts.checkpoint_path)
-            filename = f"{opts.model}_{opts.data}_{epoch}.pt"
-            save_path = os.path.join(opts.checkpoint_path, filename)
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': models.get_model_state_dict(training_model),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'loss': aggregated_loss,
-                'train_accuracy': aggregated_acc,
-                'opts': opts
-            }, save_path)
+        # End of the epoch.
+        persist_checkpoint(training_model, optimizer, state, running_mean_loss, running_mean_acc, args)
 
 
-def get_augmented_samples(opts, input_data, random_generator):
+def get_augmented_samples(args, input_data, random_generator):
     # Mixup coefficients are sampled on the host, cutmix coefficients are
     # sampled on the device.
     batch_and_mixup_coefficients = [input_data]
-    if opts.mixup_enabled:
+    if args.mixup_enabled:
         mixup_coeffs = augmentations.sample_mixup_coefficients(
-            alpha=opts.mixup_alpha,
-            batch_size=opts.batch_size * opts.gradient_accumulation * opts.replicas * opts.device_iterations,
-            np_type=np.float16 if opts.precision[:3] == "16." else np.float,
+            alpha=args.mixup_alpha,
+            batch_size=args.batch_size * args.gradient_accumulation * args.replicas * args.device_iterations,
+            np_type=np.float16 if args.precision[:3] == "16." else np.float,
             random_generator=random_generator,
         )
         batch_and_mixup_coefficients.append(mixup_coeffs)
     return tuple(batch_and_mixup_coefficients)
 
 
-def create_training_model_opts(opts):
-    if opts.use_popdist:
-        model_opts = popdist.poptorch.Options(ipus_per_replica=len(opts.pipeline_splits) + 1)
+def handle_metrics(metrics, loss, sublosses, accuracy, state, bar, validation_function, training_model, args):
+    def mean_metric(metric):
+        # Each replica returns a sum of values. We need to normalize by
+        # gradient accumulation and device iteration.
+        with torch.no_grad():
+            normalization_term = args.device_iterations * args.gradient_accumulation
+            return torch.mean(metric).item() / normalization_term
+
+    metrics.save_value("loss", mean_metric(loss))
+    metrics.save_value("accuracy", mean_metric(accuracy))
+    metrics.save_value("classification_loss", mean_metric(sublosses[0]))
+    metrics.save_value("smoothing_loss", mean_metric(sublosses[1]) if len(sublosses) > 1 else 0.0)
+
+    if is_time_to_log_metrics(state, args):
+        # Log detailed metrics to wandb and/or stdout.
+        current_throughput = compute_throughput(args, state)
+
+        metric_names = ["loss", "accuracy", "classification_loss", "smoothing_loss"]
+        mean_values, running_mean_values = metrics.compute_mean_values(
+            names=metric_names,
+            running_mean_names=metric_names,
+        )
+
+        mean_loss = mean_values[0]
+        mean_acc = mean_values[1]
+        mean_classification_loss = mean_values[2]
+        mean_smoothing_loss = mean_values[3]
+        running_mean_loss = running_mean_values[0]
+        running_mean_acc = running_mean_values[1]
+        running_mean_classification_loss = running_mean_values[2]
+        running_mean_smoothing_loss = running_mean_values[3]
+
+        if validation_function is not None and (state.epoch % args.validation_frequency == 0):
+            training_model.detachFromDevice()
+            validation_accuracy = validation_function()
+            training_model.attachToDevice()
+            logging.info(f"Validation Accuracy: {validation_accuracy:0.2f}%")
+        else:
+            validation_accuracy = 0.0
+
+        if not args.use_popdist or args.popdist_rank == 0:
+            log_data = {
+                "loss_avg": running_mean_loss,
+                "loss_batch": mean_loss,
+                "epoch": state.epoch_progress,
+                "iteration": state.epoch_progress * state.iterations_per_epoch * state.num_instances,
+                "train_accuracy_avg": running_mean_acc,
+                "train_accuracy_batch": mean_acc,
+                "learning_rate": state.old_lr,
+                "loss_scaling": state.old_loss_scaling,
+                "train_img_per_sec": current_throughput,
+                "validation_accuracy": validation_accuracy,
+                "classification_loss_batch": mean_classification_loss,
+                "classification_loss_avg": running_mean_classification_loss,
+                "smoothing_loss_batch:": mean_smoothing_loss,
+                "smoothing_loss_avg:": running_mean_smoothing_loss,
+            }
+            if args.wandb_weight_histogram:
+                utils.Logger.log_model_histogram(models.get_nested_model(training_model))
+            utils.Logger.log_train_results(log_data)
+            bar.set_description(f"Loss:{running_mean_loss:0.4f} | Accuracy:{running_mean_acc:0.2f}%")
     else:
-        model_opts = poptorch.Options()
-        model_opts.replicationFactor(opts.replicas)
-    model_opts = utils.train_settings(opts, model_opts)
-    model_opts.deviceIterations(opts.device_iterations)
-    # Set mean reduction
-    model_opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
-    model_opts.Training.gradientAccumulation(opts.gradient_accumulation)
+        # Only update the progress bar.
+        metric_names = ["loss", "accuracy"]
+        _, running_mean_values = metrics.compute_mean_values(
+            names=[],
+            running_mean_names=metric_names,
+        )
+        running_mean_loss = running_mean_values[0]
+        running_mean_acc = running_mean_values[1]
+        if not args.use_popdist or args.popdist_rank == 0:
+            bar.set_description(f"Loss:{running_mean_loss:0.4f} | Accuracy:{running_mean_acc:0.2f}%")
 
-    if opts.seed is not None:
-        model_opts.randomSeed(opts.seed)
+    if is_end_of_epoch(state):
+        metrics.reset_values()
+        if not args.use_popdist or args.popdist_rank == 0:
+            logging.info(f"Epoch {state.epoch}: Train accuracy is {running_mean_acc:0.2f}%")
+            logging.info(f"Throughput of the epoch:{current_throughput:0.1f} img/sec")
 
-    # Use offline IPU for compilation only, needs appropriate version
-    if opts.compile_only:
-        model_opts.useOfflineIpuTarget(poptorch.ipuHardwareVersion())
-
-    return model_opts
+    return running_mean_loss, running_mean_acc
 
 
-def convert_to_ipu_model(model, opts, optimizer):
-    model_opts = create_training_model_opts(opts)
-    model_with_loss = TrainingModelWithLoss(model, label_smoothing=opts.label_smoothing, use_mixup=opts.mixup_enabled, use_cutmix=opts.cutmix_enabled)
-    training_model = poptorch.trainingModel(model_with_loss, model_opts, optimizer=optimizer)
+def is_time_to_log_metrics(state, args):
+    # This can happen at the middle of the epoch (depending on logs_per_epoch)
+    # and it always happens at the end of the epoch.
+    return (state.batch_idx + 1) % (state.iterations_per_epoch // args.logs_per_epoch) == 0
+
+
+def is_end_of_epoch(state):
+    return (state.batch_idx + 1) % state.iterations_per_epoch == 0
+
+
+def compute_throughput(args, state):
+    epoch_elapsed_time = time.perf_counter() - state.epoch_start_time
+    sample_size = state.epoch_sample_size
+    if args.use_popdist:
+        epoch_elapsed_time, sample_size = utils.synchronize_throughput_values(
+            epoch_elapsed_time,
+            sample_size,
+        )
+    return sample_size / epoch_elapsed_time
+
+
+def update_lr(lr_scheduler, optimizer, training_model, state, args):
+    lr_scheduler.step(state.epoch_progress)
+    state.new_lr = lr_scheduler.get_last_lr()[0]
+    if state.new_lr != state.old_lr or state.new_loss_scaling != state.old_loss_scaling:
+        if state.new_loss_scaling != state.old_loss_scaling:
+            optimizer.loss_scaling = state.new_loss_scaling
+            if args.optimizer == 'sgd_combined':
+                optimizer.param_groups[0]["velocity_scaling"] = state.new_loss_scaling
+                optimizer.param_groups[1]["velocity_scaling"] = state.new_loss_scaling
+        training_model.setOptimizer(optimizer)
+        state.old_lr = state.new_lr
+        state.old_loss_scaling = state.new_loss_scaling
+        if args.lr_schedule == "step":
+            logging.info(f"Learning rate is changed to {state.new_lr}")
+
+
+def persist_checkpoint(training_model, optimizer, state, running_mean_loss, running_mean_acc, args):
+    # Save the weights in the first process only.
+    if not args.checkpoint_path == "" and (not args.use_popdist or args.popdist_local_rank == 0):
+        if not os.path.exists(args.checkpoint_path):
+            os.makedirs(args.checkpoint_path)
+        save_path = os.path.join(args.checkpoint_path, f"{args.model}_{args.data}_{state.epoch}.pt")
+        save_data = {
+            'epoch': state.epoch,
+            'model_state_dict': models.get_model_state_dict(training_model),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': running_mean_loss,
+            'train_accuracy': running_mean_acc,
+            'args': args,
+        }
+        torch.save(save_data, save_path)
+
+
+def create_training_opts(args):
+    if args.use_popdist:
+        opts = popdist.poptorch.Options(ipus_per_replica=len(args.pipeline_splits) + 1)
+    else:
+        opts = poptorch.Options()
+        opts.replicationFactor(args.replicas)
+    opts = utils.train_settings(args, opts)
+    opts.deviceIterations(args.device_iterations)
+    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
+    opts.Training.gradientAccumulation(args.gradient_accumulation)
+
+    if args.seed is not None:
+        opts.randomSeed(args.seed)
+
+    # Use offline IPU for compilation only, it needs an appropriate version.
+    if args.compile_only:
+        opts.useOfflineIpuTarget(poptorch.ipuHardwareVersion())
+
+    return opts
+
+
+def convert_to_ipu_model(model, args, optimizer):
+    opts = create_training_opts(args)
+    model_with_loss = TrainingModelWithLoss(model, label_smoothing=args.label_smoothing, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled)
+    training_model = poptorch.trainingModel(model_with_loss, opts, optimizer=optimizer)
     return training_model
 
 
-def get_optimizer(opts, model):
+def get_optimizer(args, model):
     regularized_params = []
     non_regularized_params = []
 
@@ -265,102 +329,165 @@ def get_optimizer(opts, model):
                 regularized_params.append(param)
 
     params = [
-        {'params': regularized_params, 'weight_decay': opts.weight_decay},
+        {'params': regularized_params, 'weight_decay': args.weight_decay},
         {'params': non_regularized_params, 'weight_decay': 0}
     ]
 
     optimizer = None
-    if opts.optimizer == 'sgd':
-        optimizer = SGD(params, lr=opts.lr, momentum=opts.momentum, loss_scaling=opts.initial_loss_scaling, use_combined_accum=False)
-    elif opts.optimizer == 'sgd_combined':
-        optimizer = SGD(params, lr=opts.lr, momentum=opts.momentum, loss_scaling=opts.initial_loss_scaling, velocity_scaling=opts.initial_loss_scaling / opts.loss_velocity_scaling_ratio, use_combined_accum=True)
-    elif opts.optimizer == 'adamw':
-        optimizer = AdamW(params, lr=opts.lr, loss_scaling=opts.initial_loss_scaling, eps=opts.optimizer_eps)
-    elif opts.optimizer == 'rmsprop':
-        optimizer = RMSprop(params, lr=opts.lr, alpha=opts.rmsprop_decay, momentum=opts.momentum, loss_scaling=opts.initial_loss_scaling, eps=opts.optimizer_eps)
-    elif opts.optimizer == 'rmsprop_tf':
-        optimizer = RMSprop(params, lr=opts.lr, alpha=opts.rmsprop_decay, momentum=opts.momentum, loss_scaling=opts.initial_loss_scaling, eps=opts.optimizer_eps, use_tf_variant=True)
-
-    # Make optimizers distributed
-    if opts.use_popdist:
-        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    if args.optimizer == 'sgd':
+        optimizer = SGD(params, lr=args.lr, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, use_combined_accum=False)
+    elif args.optimizer == 'sgd_combined':
+        optimizer = SGD(params, lr=args.lr, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, velocity_scaling=args.initial_loss_scaling, use_combined_accum=True)
+    elif args.optimizer == 'adamw':
+        optimizer = AdamW(params, lr=args.lr, loss_scaling=args.initial_loss_scaling, eps=args.optimizer_eps)
+    elif args.optimizer == 'rmsprop':
+        optimizer = RMSprop(params, lr=args.lr, alpha=args.rmsprop_decay, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, eps=args.optimizer_eps)
+    elif args.optimizer == 'rmsprop_tf':
+        optimizer = RMSprop(params, lr=args.lr, alpha=args.rmsprop_decay, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, eps=args.optimizer_eps, use_tf_variant=True)
     return optimizer
 
 
-def get_validation_function(opts, model):
-    if opts.validation_mode == "none":
+def get_validation_function(args, model):
+    class ValidationFunction:
+        def __init__(self, func, iterations_per_epoch):
+            self.func = func
+            self.validation_iterations_per_epoch = iterations_per_epoch
+
+    if args.validation_mode == "none":
+        return None
+    if args.use_popdist and args.popdist_rank != 0:
+        # Run validation in a single process.
         return None
 
-    if opts.mixup_enabled or opts.cutmix_enabled:
+    if args.mixup_enabled or args.cutmix_enabled:
         assert isinstance(model, augmentations.AugmentationModel)
         model = model.model
 
-    inference_model_opts = create_validation_model_opts(opts, use_popdist=opts.use_popdist)
-    test_data = datasets.get_data(opts, inference_model_opts, train=False, async_dataloader=True, return_remaining=True)
-    inference_model = poptorch.inferenceModel(model, inference_model_opts)
+    opts = create_validation_opts(args, use_popdist=args.use_popdist)
+    test_data = datasets.get_data(args, opts, train=False, async_dataloader=True, return_remaining=True)
+    inference_model = poptorch.inferenceModel(model, opts)
 
     def validation_func():
         model.eval()
         if inference_model._executable:
             inference_model.attachToDevice()
-        val_acc = test(inference_model, test_data, opts)
-        if opts.use_popdist:
-            val_acc = utils.sync_metrics(val_acc)
+        val_acc = test(inference_model, test_data)
         inference_model.detachFromDevice()
+        model.train()
         return val_acc
-    return validation_func
+    return ValidationFunction(validation_func, len(test_data))
 
 
-def get_lr_scheduler(opts, optimizer, step_per_epoch, start_epoch=0):
-    scheduler_freq = opts.lr_scheduler_freq if opts.lr_scheduler_freq > 0.0 else step_per_epoch
+def get_lr_scheduler(args, optimizer, step_per_epoch, start_epoch=0):
+    scheduler_freq = args.lr_scheduler_freq if args.lr_scheduler_freq > 0.0 else step_per_epoch
     scheduler_last_epoch = (scheduler_freq * start_epoch) - 1
-    if opts.lr_schedule == "step":
-        lr_scheduler = MultiStepLR(optimizer=optimizer, milestones=[step*scheduler_freq for step in opts.lr_epoch_decay], gamma=opts.lr_decay, last_epoch=scheduler_last_epoch)
-    elif opts.lr_schedule == "cosine":
-        lr_scheduler = CosineAnnealingLR(optimizer=optimizer, T_max=opts.epoch*scheduler_freq, last_epoch=scheduler_last_epoch)
-    elif opts.lr_schedule == "exponential":
-        lr_scheduler = ExponentialLR(optimizer=optimizer, gamma=opts.lr_decay, last_epoch=scheduler_last_epoch)
+    if args.lr_schedule == "step":
+        lr_scheduler = MultiStepLR(optimizer=optimizer, milestones=[step*scheduler_freq for step in args.lr_epoch_decay], gamma=args.lr_decay, last_epoch=scheduler_last_epoch)
+    elif args.lr_schedule == "cosine":
+        lr_scheduler = CosineAnnealingLR(optimizer=optimizer, T_max=args.epoch*scheduler_freq, last_epoch=scheduler_last_epoch)
+    elif args.lr_schedule == "exponential":
+        lr_scheduler = ExponentialLR(optimizer=optimizer, gamma=args.lr_decay, last_epoch=scheduler_last_epoch)
 
     lr_scheduler = PeriodicLRDecorator(optimizer=optimizer, lr_scheduler=lr_scheduler, period=1./scheduler_freq)
-    lr_scheduler = WarmUpLRDecorator(optimizer=optimizer, lr_scheduler=lr_scheduler, warmup_epoch=opts.warmup_epoch)
+    lr_scheduler = WarmUpLRDecorator(optimizer=optimizer, lr_scheduler=lr_scheduler, warmup_epoch=args.warmup_epoch)
     return lr_scheduler
 
 
+def fine_tune(args):
+    logging.info("Fine-tuning the model after half resolution training")
+    args.half_res_training = False
+    args.mixup_enabled = False
+    args.cutmix_enabled = False
+    args.optimizer = 'sgd'
+    args.momentum = 0.0
+    args.warmup_epoch = 0
+    args.lr = args.fine_tune_lr
+    args.lr_schedule = 'cosine'
+    args.lr_scheduler_freq = 0
+    args.batch_size = args.fine_tune_batch_size
+    args.gradient_accumulation = args.fine_tune_gradient_accumulation
+    opts = create_training_opts(args)
+
+    train_data = datasets.get_data(args, opts, train=True, fine_tuning=True, async_dataloader=True)
+    model_fine_tune = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled)
+
+    if not args.use_popdist or args.popdist_rank == 0:
+        avg_checkpoint_file = os.path.join(args.checkpoint_path, f"{args.model}_{args.data}_{args.epoch}_averaged.pt")
+        avg_checkpoint = torch.load(avg_checkpoint_file)
+        models.load_model_state_dict(model_fine_tune, avg_checkpoint['model_state_dict'])
+
+    if args.use_popdist:
+        hvd.broadcast_parameters(models.get_model_state_dict(model_fine_tune), root_rank=0)
+
+    model_fine_tune.train()
+    nested_model = models.get_nested_model(model_fine_tune)
+
+    # Freeze relevant parameters.
+    for param_name, param in nested_model.named_parameters():
+        param_name = param_name.replace('.', '/')
+        if param_name.startswith(args.fine_tune_first_trainable_layer):
+            break
+        logging.info(f"Freezing parameter {param_name}")
+        param.requires_grad = False
+
+    # Make relevant dropout and batch norm layers eval.
+    for module_name, module in nested_model.named_modules():
+        module_name = module_name.replace('.', '/')
+        if module_name.startswith(args.fine_tune_first_trainable_layer):
+            break
+        if isinstance(module, torch.nn.modules.batchnorm._BatchNorm) or isinstance(module, torch.nn.modules.dropout._DropoutNd):
+            logging.info(f"Setting module {module_name} to eval mode")
+            module.eval()
+
+    optimizer = get_optimizer(args, model_fine_tune)
+    lr_scheduler = get_lr_scheduler(args, optimizer, len(train_data))
+    training_model = convert_to_ipu_model(model_fine_tune, args, optimizer)
+    train(training_model, train_data, args, lr_scheduler, range(args.epoch + 1, args.epoch + 1 + args.fine_tune_epoch), optimizer)
+    train_data.terminate()
+    return model_fine_tune, training_model
+
+
 if __name__ == '__main__':
-    run_opts = parse_arguments()
+    args = parse_arguments()
+    opts = create_training_opts(args)
+    train_data = datasets.get_data(args, opts, train=True, async_dataloader=True)
 
-    logging.info("Loading the data")
-    model_opts = create_training_model_opts(run_opts)
-    train_data = datasets.get_data(run_opts, model_opts, train=True, async_dataloader=True)
-
-    logging.info("Initialize the model")
-    model = models.get_model(run_opts, datasets.datasets_info[run_opts.data], pretrained=False, use_mixup=run_opts.mixup_enabled, use_cutmix=run_opts.cutmix_enabled)
-
+    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled)
+    if args.use_popdist:
+        hvd.broadcast_parameters(models.get_model_state_dict(model), root_rank=0)
     model.train()
 
-    optimizer = get_optimizer(run_opts, model)
-    lr_scheduler = get_lr_scheduler(run_opts, optimizer, len(train_data))
-    training_model = convert_to_ipu_model(model, run_opts, optimizer)
+    optimizer = get_optimizer(args, model)
+    lr_scheduler = get_lr_scheduler(args, optimizer, len(train_data))
+    training_model = convert_to_ipu_model(model, args, optimizer)
 
-    training_validation_func = get_validation_function(run_opts, model) if run_opts.validation_mode == "during" else None
-    train(training_model, train_data, run_opts, lr_scheduler, range(1, run_opts.epoch+1), optimizer, training_validation_func)
+    if args.validation_mode == "during":
+        training_validation_func = get_validation_function(args, model).func
+    else:
+        training_validation_func = None
 
-    # Weight averaging runs on single process
-    if run_opts.weight_avg_strategy != 'none' and (not run_opts.use_popdist or run_opts.popdist_rank == 0):
-        average_fn = weight_avg.create_average_fn(run_opts)
-        weight_avg.average_model_weights(run_opts.checkpoint_path, average_fn, run_opts.weight_avg_N)
+    train(training_model, train_data, args, lr_scheduler, range(1, args.epoch + 1), optimizer, training_validation_func)
+    train_data.terminate()
 
-    if run_opts.validation_mode == "after":
-        if run_opts.checkpoint_path == "":
-            training_model.destroy()
-            val_func = get_validation_function(run_opts, model)
-            acc = val_func()
-            result_dict = {"validation_epoch": run_opts.epoch,
-                           "validation_iteration": run_opts.logs_per_epoch * run_opts.epoch,
-                           "validation_accuracy": acc}
-            utils.Logger.log_validate_results(result_dict)
+    if args.weight_avg_strategy != 'none' and (not args.use_popdist or args.popdist_rank == 0):
+        average_fn = weight_avg.create_average_fn(args)
+        weight_avg.average_model_weights(args.checkpoint_path, average_fn, args.weight_avg_N)
+
+    if args.half_res_training:
+        training_model.destroy()
+        model, training_model = fine_tune(args)
+
+    if args.validation_mode == "after" and (not args.use_popdist or args.popdist_rank == 0):
+        training_model.destroy()
+        if args.checkpoint_path == "":
+            validation_function = get_validation_function(args, model)
+            val_accuracy = validation_function.func()
+            log_data = {
+                "validation_epoch": args.epoch + args.fine_tune_epoch,
+                "validation_iteration": (args.epoch + args.fine_tune_epoch) * validation_function.validation_iterations_per_epoch,
+                "validation_accuracy": val_accuracy,
+            }
+            utils.Logger.log_validate_results(log_data)
         else:
-            training_model.destroy()
-            if not run_opts.use_popdist or run_opts.popdist_rank == 0:
-                checkpoint_files = [os.path.join(run_opts.checkpoint_path, file_name) for file_name in os.listdir(run_opts.checkpoint_path) if file_name.endswith(".pt")]
-                validate_checkpoints(checkpoint_files)
+            checkpoint_files = [os.path.join(args.checkpoint_path, file_name) for file_name in os.listdir(args.checkpoint_path) if file_name.endswith(".pt")]
+            validate_checkpoints(checkpoint_files)

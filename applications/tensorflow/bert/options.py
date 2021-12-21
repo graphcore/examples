@@ -38,8 +38,8 @@ def add_common_arguments(parser, required=True):
 
     # Training options
     # fmt:off
-    group.add_argument('--batch-size', type=int,
-                       help="Set batch-size for training graph")
+    group.add_argument('--micro-batch-size', type=int,
+                       help="Set micro-batch-size for training graph")
     group.add_argument('--global-batch-size', type=int, default=None,
                        help="The total batch size at which we want the model to run")
     group.add_argument('--base-learning-rate', type=float, default=2e-5,
@@ -148,7 +148,7 @@ def add_common_arguments(parser, required=True):
     group.add_argument('--pipeline-schedule', type=str, default="Interleaved", choices=pipeline_schedule_options,
                        help="Pipelining scheduler.")
     group.add_argument('--replicas', type=int, default=1,
-                       help="Replicate graph over N workers to increase batch to batch-size*N")
+                       help="Replicate graph over N workers to increase batch to micro-batch-size*N")
     group.add_argument('--precision', type=str, default="16", choices=["16", "32"],
                        help="Precision of Ops(weights/activations/gradients) data types: 16, 32.")
     group.add_argument('--batches-per-step', type=int, default=1,

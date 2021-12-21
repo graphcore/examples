@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from torch import float16
+from torch import float16, float32
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 from transformers import get_constant_schedule
 from poptorch.optim import SGD
@@ -52,6 +52,8 @@ def get_optimizer(config, model):
         {"params": non_regularized_params, "weight_decay": 0}
     ]
 
+    first_order_type = float16 if config.enable_half_first_order_momentum else float32
+
     if config.optimizer == "SGD":
         optimizer = SGD(params,
                         lr=config.learning_rate,
@@ -59,7 +61,8 @@ def get_optimizer(config, model):
                         weight_decay=config.weight_decay,
                         loss_scaling=config.loss_scaling,
                         accum_type=float16,
-                        use_combined_accum=True)
+                        velocity_accum_type=first_order_type,
+                        use_combined_accum=False)
     else:
         raise ValueError("Unknown Optimizer:", config.optimizer)
     return optimizer

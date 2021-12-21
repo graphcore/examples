@@ -19,7 +19,6 @@ import subprocess
 import pytest
 
 
-@pytest.mark.category1
 def run_train(**kwargs):
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('..')
@@ -34,7 +33,6 @@ def run_train(**kwargs):
     return completed
 
 
-@pytest.mark.category1
 def run_fine_tune_squad(**kwargs):
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('..')
@@ -49,7 +47,6 @@ def run_fine_tune_squad(**kwargs):
     return completed
 
 
-@pytest.mark.category1
 def run_embedded_runtime_squad(**kwargs):
     os.chdir(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..'))
     cmd = ['python3', 'run_squad_runtime.py']
@@ -63,7 +60,6 @@ def run_embedded_runtime_squad(**kwargs):
     return completed
 
 
-@pytest.mark.category1
 def run_fine_tune_glue(**kwargs):
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.chdir('..')
@@ -77,17 +73,3 @@ def run_fine_tune_glue(**kwargs):
                                )
     return completed
 
-
-@pytest.mark.category1
-def run_popdist_train(**kwargs):
-    os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    os.chdir('..')
-    poprun_cmd = ['poprun', '-vv', '--mpi-global-args=--allow-run-as-root', '--num-instances', str(kwargs['--replicas']), '--ipus-per-replica', '1', '--num-replicas', str(kwargs['--replicas']), 'python3', 'run_pretraining.py']
-    args = [str(item) for sublist in kwargs.items() for item
-            in sublist if item != '']
-    poprun_cmd.extend(args)
-    completed = subprocess.run(args=poprun_cmd,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               )
-    return completed

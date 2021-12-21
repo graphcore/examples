@@ -23,7 +23,7 @@
     "type_vocab_size": 2,
     "vocab_size": 30400,
     "seq_length": 384,
-    "batch_size": 2,
+    "micro_batch_size": 2,
     "batches_per_step": 1,
     "num_train_steps": 2099,
     "epsilon": 0.000001,

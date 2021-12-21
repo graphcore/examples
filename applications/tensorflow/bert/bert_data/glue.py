@@ -812,7 +812,7 @@ def file_based_input_fn_builder(opts, is_training):
 
     def input_fn():
         """The actual input function."""
-        batch_size = opts["batch_size"]
+        micro_batch_size = opts["micro_batch_size"]
 
         # For training, we want a lot of parallel reading and shuffling.
         # For eval, we want no shuffling and parallel reading doesn't matter.
@@ -827,7 +827,7 @@ def file_based_input_fn_builder(opts, is_training):
         d = d.apply(
             map_and_batch(
                 lambda record: _decode_record(record, name_to_features),
-                batch_size=batch_size,
+                batch_size=micro_batch_size,
                 drop_remainder=True))
         d = d.repeat()
 

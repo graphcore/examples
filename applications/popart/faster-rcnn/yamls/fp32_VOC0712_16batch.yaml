@@ -1,0 +1,54 @@
+# This is 8 IPUs, FP32 16-batch training on 07+12
+MODEL_NAME: FasterRcnn
+
+INPUT_SIZE: [800,800]
+
+TRAIN:
+  LEARNING_RATE: 0.02
+  BATCH_SIZE: 16
+  WANDB_ON: False
+  MAX_ITERS: 18000
+  STEPSIZE: [12000,16000]
+  SAVE_ITERS: [10000, 12000, 14000, 16000]
+  START_TO_FIND_SMALLEST_LOSS_ITERS: 14000
+  PRETRAINED_WEIGHTS: weights/GC_init_weights.pth
+  RESUME: True
+  # Factor for reducing the learning rate
+  GAMMA: 0.1
+  # Step size for reducing the learning rate, currently only support one step
+  ADD_GT_BOX_IN_SAMPLER: False
+  RESNET:
+    FIXED_BLOCKS: 1
+    FIXED_BN: True
+  RPN_POST_NMS_TOP_N: 2000
+  BBOX_NORMALIZE_TARGETS_PRECOMPUTED: True
+  RPN_OUT_FG_FRACTION: 0.25
+
+  BG_THRESH_LO: 0.0
+
+NANO_DATA_CFG:
+  DATA:
+    SHUFFLE: False
+    TRAIN:
+      img_path: ./VOC_images
+      ann_path: ./VOC_annotrainval_2007_2012
+      keep_ratio: False
+      pipeline:
+        scale: [0.7, 1.2]
+
+SESSION:
+  TRAIN:
+    enableGradientAccumulation: True
+    accumulationFactor: 16
+
+MODEL:
+  LOAD_STRICT: False
+  RCNN:
+    EXPAND_PREDICTED_BOXES: True
+
+TEST:
+  SCALES: [800,800]
+  RPN_POST_NMS_TOP_N: 1000
+  SCORE_THRESH_TEST: 0.0 
+  KEEP_RATIO: False
+  PIXEL_MEAN: [103.53, 116.28, 123.675]

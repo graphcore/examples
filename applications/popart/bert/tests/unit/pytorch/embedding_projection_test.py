@@ -138,7 +138,6 @@ def test_embedding_projection_fwd(custom_ops):
     check_tensors(torch_outputs, outputs)
 
 
-@pytest.mark.sanity
 def test_embedding_projection_bwd(custom_ops):
     l1_lambda = 0.1
 

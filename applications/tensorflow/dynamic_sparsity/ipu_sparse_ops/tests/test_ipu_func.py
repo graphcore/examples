@@ -16,7 +16,6 @@ class TestIpuFunction(SubProcessChecker):
         env.update(extra_env)
         self.run_command(cmd_args, build_dir, ["All asserts pass."], env=env)
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_sparse_ipu_function(self):
         # Test default parameters:

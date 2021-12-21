@@ -139,8 +139,8 @@ def set_defaults(opts):
                 opts["groups"] = 32
         if not opts.get("model_size"):
             opts["model_size"] = 14
-        if not opts.get("batch_size"):
-            opts["batch_size"] = 1
+        if not opts.get("micro_batch_size"):
+            opts["micro_batch_size"] = 1
         if opts.get("warmup") is None:
             opts["warmup"] = True
         # force stable norm on
@@ -174,15 +174,15 @@ def set_defaults(opts):
                 opts["groups"] = 16
         if not opts.get("model_size"):
             opts["model_size"] = 11
-        if not opts.get("batch_size"):
-            opts["batch_size"] = 8
+        if not opts.get("micro_batch_size"):
+            opts["micro_batch_size"] = 8
 
     if not opts["BN_decay"]:
         opts["BN_decay"] = 0.97
 
     opts["name"] = "RNX{}".format(opts["model_size"])
 
-    opts["name"] += "_bs{}".format(opts["batch_size"])
+    opts["name"] += "_bs{}".format(opts["micro_batch_size"])
     if opts.get("replicas") > 1:
         opts["name"] += "x{}r".format(opts["replicas"])
     if opts["pipeline"]:

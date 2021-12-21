@@ -1,5 +1,5 @@
 --find-links https://download.pytorch.org/whl/torch_stable.html
-nltk==3.5
+nltk==3.6.5
 tqdm==4.53.0
 wandb==0.12.1
 torch==1.7.1+cpu

@@ -205,7 +205,7 @@ def build_network(infeed,
                                        name="Pipeline")
 
 
-def build_graph(opts, iterations_per_step=1, is_training=True, feed_name=None):
+def build_graph(opts, iterations_per_step=1, is_training=True):
 
     train_graph = tf.Graph()
     with train_graph.as_default():
@@ -417,7 +417,7 @@ def main(opts):
 
         tf.logging.info("***** Running training *****")
         tf.logging.info(f"  Num examples = {len(train_examples)}")
-        tf.logging.info(f"  Batch size = {opts['batch_size']}")
+        tf.logging.info(f"  Micro batch size = {opts['micro_batch_size']}")
         tf.logging.info(f"  Num steps / epoch = {iterations_per_epoch}")
         tf.logging.info(f"  Num iterations = {iterations}")
         tf.logging.info(f"  Num steps = {num_train_steps}")
@@ -435,7 +435,7 @@ def main(opts):
         # -------------- BUILD TRAINING GRAPH ----------------
         opts['current_mode'] = 'train'
         train = build_graph(opts, iterations_per_step,
-                            is_training=True, feed_name="trainfeed")
+                            is_training=True)
         train.session.run(train.init)
         train.session.run(train.iterator.initializer)
 
@@ -589,7 +589,7 @@ def main(opts):
     if opts["do_eval"]:
         eval_examples = processor.get_dev_examples(opts["data_dir"])
         num_actual_eval_examples = len(eval_examples)
-        opts["eval_batch_size"] = opts['batch_size'] * \
+        opts["eval_batch_size"] = opts['micro_batch_size'] * \
             opts['gradient_accumulation_count']
 
         eval_file = os.path.join(opts["output_dir"], "eval.tf_record")
@@ -598,12 +598,12 @@ def main(opts):
         tf.logging.info("  Num examples = %d (%d actual, %d padding)",
                         len(eval_examples), num_actual_eval_examples,
                         len(eval_examples) - num_actual_eval_examples)
-        tf.logging.info("  Batch size = %d", opts["eval_batch_size"])
+        tf.logging.info("  Evaluate batch size = %d", opts["eval_batch_size"])
 
         iterations_per_step = 1
         opts['current_mode'] = 'eval'
         predict = build_graph(opts, iterations_per_step,
-                              is_training=False, feed_name="evalfeed")
+                              is_training=False)
         predict.session.run(predict.init)
         predict.session.run(predict.iterator.initializer)
 
@@ -622,7 +622,7 @@ def main(opts):
         all_time_consumption = []
 
         iterations = int(len(
-            eval_examples) // (opts['batch_size'] * opts['gradient_accumulation_count']) + 1)
+            eval_examples) // (opts['micro_batch_size'] * opts['gradient_accumulation_count']) + 1)
 
         all_accs = []
         all_pearson = []
@@ -672,7 +672,7 @@ def main(opts):
             all_time_consumption = np.array(all_time_consumption)
 
         logger.info((
-            f"inference throughput: { (opts['batch_size'] * opts['gradient_accumulation_count'] ) / all_time_consumption.mean() } "
+            f"inference throughput: { (opts['micro_batch_size'] * opts['gradient_accumulation_count'] ) / all_time_consumption.mean() } "
             f"exmples/sec - Latency: {all_time_consumption.mean()} {all_time_consumption.min()} "
             f"{all_time_consumption.max()} (mean min max) sec "))
         # Done evaluations
@@ -680,18 +680,18 @@ def main(opts):
     if opts["do_predict"]:
         predict_examples = processor.get_test_examples(opts["data_dir"])
         num_actual_predict_examples = len(predict_examples)
-        opts["predict_batch_size"] = opts['batch_size'] * \
+        opts["predict_batch_size"] = opts['micro_batch_size'] * \
             opts['gradient_accumulation_count']
         tf.logging.info("***** Running prediction *****")
         tf.logging.info("  Num examples = %d (%d actual, %d padding)",
                         len(predict_examples), num_actual_predict_examples,
                         len(predict_examples) - num_actual_predict_examples)
-        tf.logging.info("  Batch size = %d", opts["predict_batch_size"])
+        tf.logging.info("  Predict batch size = %d", opts["predict_batch_size"])
 
         iterations_per_step = 1
         opts['current_mode'] = 'predict'
         prediction = build_graph(
-            opts, iterations_per_step, is_training=False, feed_name="predictfeed")
+            opts, iterations_per_step, is_training=False)
         prediction.session.run(prediction.init)
         prediction.session.run(prediction.iterator.initializer)
 
@@ -714,7 +714,7 @@ def main(opts):
         all_time_consumption = []
 
         iterations = int(len(
-            predict_examples) // (opts['batch_size'] * opts['gradient_accumulation_count']) + 1)
+            predict_examples) // (opts['micro_batch_size'] * opts['gradient_accumulation_count']) + 1)
 
         all_preds = []
         while i < iterations:
@@ -752,7 +752,7 @@ def main(opts):
 
 
 def set_training_defaults(opts):
-    opts['total_batch_size'] = opts['batch_size'] * \
+    opts['total_batch_size'] = opts['micro_batch_size'] * \
         opts['gradient_accumulation_count']
     if 'glu_reg' in [layer for stage in opts['pipeline_stages'] for layer in stage]:
         opts['task_type'] = 'regression'

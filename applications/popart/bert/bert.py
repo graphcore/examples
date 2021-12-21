@@ -32,6 +32,8 @@ import numpy as np
 import popart
 import popdist
 import popdist.popart
+from distutils import version
+LooseVersion = version.LooseVersion
 from torch.utils.tensorboard import SummaryWriter
 
 import utils
@@ -331,6 +333,13 @@ def bert_session_options(args, model):
     options.enableFloatingPointChecks = args.floating_point_exceptions
     options.enableStochasticRounding = args.stochastic_rounding
     options.enablePrefetchDatastreams = not args.minimum_latency_inference
+
+    # These options are necessary to allow poplar to overlap processing of
+    # multiple iterations in the host side
+    options.defaultPrefetchBufferingDepth = 3
+    options.rearrangeAnchorsOnHost = False
+    engine_options["exchange.streamBufferOverlap"] = "hostRearrangeOnly"
+
     options.enableOutlining = not args.no_outlining
     options.subgraphCopyingStrategy = popart.SubgraphCopyingStrategy.JustInTime
     partials_type = "half" if args.enable_half_partials else "float"
@@ -971,7 +980,7 @@ if __name__ == "__main__":
 
     if args.wandb and popdist_root(args):
         import wandb
-        wandb.init(project="popart-bert", config=args, sync_tensorboard=True)
+        wandb.init(project="popart-bert", config=args, sync_tensorboard=True, settings=wandb.Settings(console="wrap"))
         if args.wandb_checkpoint:
             artifact = wandb.use_artifact(args.wandb_checkpoint, type='model')
             artifact_dir = artifact.download()

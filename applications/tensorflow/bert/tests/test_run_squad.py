@@ -40,7 +40,6 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("config", filenames, ids=filenames)
 
 
-@pytest.mark.category1
 class TestBasicFunctionality(unittest.TestCase):
     """ Test that the help option works"""
 
@@ -53,7 +52,6 @@ class TestBasicFunctionality(unittest.TestCase):
 
 
 @pytest.mark.ipus(1)
-@pytest.mark.requires_remote_buffers
 class TestBuild(object):
     """Test the build for each config in the directory."""
 

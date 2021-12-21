@@ -83,9 +83,9 @@ with ipu.scopes.ipu_scope("/device:IPU:0"):
     regression = bind(model, opts.optimiser)
     fetches = ipu.ipu_compiler.compile(regression, [inputs, targets])
 
-cfg = ipu.utils.create_ipu_config()
-cfg = ipu.utils.auto_select_ipus(cfg, 1)
-ipu.utils.configure_ipu_system(cfg)
+cfg = ipu.config.IPUConfig()
+cfg.auto_select_ipus = 1
+cfg.configure_ipu_system()
 ipu.utils.move_variable_initialization_to_cpu()
 
 # Run the optimisation with each optimiser and compare to known results.
@@ -107,10 +107,10 @@ if loss > expected_losses[opts.optimiser]:
     raise RuntimeError("The losses has not reached the threshold.")
 # Check that the final grads are as expected
 if not np.allclose(dLdI, expected_grads[opts.optimiser], equal_nan=True,
-                   rtol=1e-4, atol=1e-4):
+                   rtol=1e-3, atol=1e-3):
     raise RuntimeError("Gradients do not match.")
 # Check the final weights are unchanged
 if not np.allclose(current_weights, expetced_weights[opts.optimiser],
-                   equal_nan=True, rtol=1e-3, atol=1e-3):
+                   equal_nan=True, rtol=1e-2, atol=1e-2):
     raise RuntimeError("The final weights do not match. Currenct Weights {}, Expected weights {}".format(current_weights, expetced_weights[opts.optimiser]))
 print("Losses, grads and weights match.")

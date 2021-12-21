@@ -1,10 +1,6 @@
 # Conformer: Convolution-augmented Transformer for Speech Recognition
 
-Implementation of the convolutional module from the [Conformer](https://arxiv.org/abs/2005.08100) paper, but with some changes.
-
-1. Replace RNN decoder with [Transformer](https://arxiv.org/pdf/1706.03762v5.pdf) Decoder
-2. Add [CTC loss](https://www.cs.toronto.edu/~graves/icml_2006.pdf) for multi task training
-
+Implementation of the convolutional module from the [Conformer](https://arxiv.org/abs/2005.08100) paper, but with a little change: Replace RNN decoder with [Transformer](https://arxiv.org/pdf/1706.03762v5.pdf) Decoder
 
 ## File structure
 
@@ -46,7 +42,7 @@ Implementation of the convolutional module from the [Conformer](https://arxiv.or
    shell
    cd espnet_docker
    docker build --network host -t espnet:data .
-   ./run.sh
+   bash run.sh
    ```
 
    The size of the data is about 60G. And will take about 3 hours(depending on your network).
@@ -69,7 +65,7 @@ Implementation of the convolutional module from the [Conformer](https://arxiv.or
    --trainsp_units.txt  --> vocab file
    ```
 
-   Set the `data_path` and `dict_path` to the corresponding data paths in the configuration files in the `configs/` directory (egs. `data_path: data/train_sp/deltafalse`, `dict_path: data/trainsp_units.txt`). Ensure that `use_synthetic_data` is false.
+   Ensure that `use_synthetic_data` is false.
 
 
 ## Examples of running the model
@@ -78,6 +74,12 @@ Training with sample data.
 
 ```
 python3 main.py --config configs/train_fp32_kl_loss.yaml
+```
+
+Training with True data.
+
+```
+python3 main.py --data-path='data/train_sp/deltafalse' --dict-path='data/train_sp_units.txt' --use-synthetic-data=False
 ```
 
 ## Licensing

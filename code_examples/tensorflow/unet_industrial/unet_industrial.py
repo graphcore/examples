@@ -391,10 +391,8 @@ def evaluate(estimator, args):
 def inference_test(args):
     # Create data feeds
     ds = data_fn(args, mode=tf.estimator.ModeKeys.PREDICT)
-    infeed = ipu.ipu_infeed_queue.IPUInfeedQueue(
-        ds, 'infeed', replication_factor=args.num_replicas_infer)
-    outfeed = ipu.ipu_outfeed_queue.IPUOutfeedQueue(
-        'outfeed', replication_factor=args.num_replicas_infer)
+    infeed = ipu.ipu_infeed_queue.IPUInfeedQueue(ds)
+    outfeed = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
 
     inference_batches_per_step = args.batches_per_step * \
         args.gradient_accumulation_batches

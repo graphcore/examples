@@ -35,7 +35,7 @@ def parse_args(args=None):
     pparser.add_argument("--config",
                          type=str,
                          help="Configuration Name",
-                         default='vit_base_16')
+                         required=True)
     pargs, remaining_args = pparser.parse_known_args(args=args)
     config_name = pargs.config
 
@@ -45,7 +45,7 @@ def parse_args(args=None):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # Execution
-    parser.add_argument("--batch-size", type=int, help="Set the micro batch-size")
+    parser.add_argument("--micro-batch-size", type=int, help="Set the micro batch-size")
     parser.add_argument("--training-steps", type=int, help="Number of training steps")
     parser.add_argument("--batches-per-step", type=int, help="Number of batches per training step")
     parser.add_argument("--replication-factor", type=int, help="Number of replicas")
@@ -78,6 +78,8 @@ def parse_args(args=None):
     parser.add_argument("--prefetch-depth", type=int, help="Prefetch buffering depth")
     parser.add_argument("--enable-rts", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Enabling RTS")
+    parser.add_argument("--optimizer-state-offchip", type=str_to_bool, nargs="?", const=True, default=True,
+                        help="Set the tensor storage location for optimizer state to be offchip.")
 
     # Optimizer
     parser.add_argument("--optimizer", type=str, choices=['SGD', ],
@@ -85,7 +87,7 @@ def parse_args(args=None):
     parser.add_argument("--learning-rate", type=float,
                         help="Learning rate value for constant schedule, "
                         "maximum for linear schedule.")
-    parser.add_argument("--lr-schedule", type=str, choices=["constant", "linear"],
+    parser.add_argument("--lr-schedule", type=str, choices=["constant", "linear", "cosine"],
                         help="Type of learning rate schedule. "
                         "--learning-rate will be used as the max value")
     parser.add_argument("--loss-scaling", type=float,
@@ -93,6 +95,8 @@ def parse_args(args=None):
     parser.add_argument("--weight-decay", type=float, help="Set the weight decay")
     parser.add_argument("--momentum", type=float, help="The momentum factor of SGD optimizer")
     parser.add_argument("--warmup-steps", type=int, help="Number of warmup steps")
+    parser.add_argument("--enable-half-first-order-momentum", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Use float16 for the first order momentum in the optimizer.")
 
 
     # Model
@@ -112,7 +116,7 @@ def parse_args(args=None):
     # Dataset
     parser.add_argument('--dataset', choices=['cifar10', 'imagenet', 'synthetic', 'generated'],
                         default='cifar10', help="Choose data")
-    parser.add_argument("--input-files", type=str, nargs="+", help="Input data files")
+    parser.add_argument("--dataset-path", type=str, help="Input data files")
     parser.add_argument("--synthetic-data", type=str_to_bool, nargs="?", const=True, default=False,
                         help="No Host/IPU I/O, random data created on device")
 
@@ -130,24 +134,19 @@ def parse_args(args=None):
     parser.add_argument("--profile-dir", type=str, help="Directory for profiling results")
 
     # Checkpointing
-    parser.add_argument("--checkpoint-dir", type=str, default="",
+    parser.add_argument("--checkpoint-output-dir", type=str, default="",
                         help="Directory where checkpoints will be saved and restored from."
                         "This can be either an absolute or relative path. If this is "
                         "not specified, only end of run checkpoint is saved in an automatically "
                         "generated directory at the root of this project. Specifying directory is"
                         "recommended to keep track of checkpoints.")
-    parser.add_argument("--checkpoint-save-steps", type=int, default=100,
+    parser.add_argument("--checkpoint-steps", type=int, default=100,
                         help="Option to checkpoint model after n steps.")
-    parser.add_argument("--restore-epochs-and-optimizer", type=str_to_bool,
-                        nargs="?", const=True, default=False,
-                        help="Restore epoch and optimizer state to continue training. "
-                        "This should normally be True when resuming a "
-                        "previously stopped run, otherwise False.")
-    parser.add_argument("--checkpoint-file", type=str, default="",
+    parser.add_argument("--resume-training-from-checkpoint", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Restore both the model checkpoint and training state in order to resume a training run.")
+    parser.add_argument("--pretrained-checkpoint", type=str, default="",
                         help="Checkpoint to be retrieved for further training. This can"
                         "be either an absolute or relative path to the checkpoint file.")
-    parser.add_argument("--restore", type=str_to_bool, nargs="?", const=True, default=False,
-                        help="Restore a checkpoint model to continue training.")
 
     # This is here only for the help message
     parser.add_argument("--config", type=str, help="Configuration name")
@@ -183,6 +182,7 @@ def parse_args(args=None):
             raise ValueError(f"Length of matmul_proportion doesn't match ipus_per_replica: "
                              f"{args.matmul_proportion} vs {args.ipus_per_replica}")
 
-    args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.batch_size
+    args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.micro_batch_size
     args.samples_per_step = args.global_batch_size * args.batches_per_step
+    args.config = config_name
     return args

@@ -27,7 +27,6 @@ from tensorflow.python.ipu.ops.rnn_ops import PopnnDynamicGRU
 from tensorflow.python.ipu.config import IPUConfig
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 class TestDIENGRU(unittest.TestCase):
     """Testing gru layer"""

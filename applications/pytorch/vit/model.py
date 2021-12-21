@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import poptorch
+import torch
 import torch.nn as nn
+import poptorch
 import transformers
 
 
@@ -25,12 +26,15 @@ def _get_layer_ipu(layers_per_ipu):
     return layer_ipu
 
 
-def recomputation_checkpoint(module: nn.Module):
+def recomputation_checkpoint(module: nn.Module) -> torch.utils.hooks.RemovableHandle:
     """Annotates the output of a module to be checkpointed instead of
         recomputed"""
     def recompute_outputs(module, inputs, outputs):
-        return tuple(poptorch.recomputationCheckpoint(y) for y in outputs)
-    module.register_forward_hook(recompute_outputs)
+        if type(outputs) is tuple:
+            return tuple(poptorch.recomputationCheckpoint(y) for y in outputs)
+        else:
+            return poptorch.recomputationCheckpoint(outputs)
+    return module.register_forward_hook(recompute_outputs)
 
 
 class PipelinedViTForImageClassification(transformers.ViTForImageClassification):
@@ -38,25 +42,41 @@ class PipelinedViTForImageClassification(transformers.ViTForImageClassification)
     HuggingFace ViT for Image Classification model parallelized over multiple IPUs
     to run with replicated pipeline parallelism.
     """
-    def __init__(self, config):
-        super().__init__(config)
-
-        print("---------- Device Allocation -----------")
-        print("Embedding  --> IPU 0")
+    def parallelize(self):
+        self._hooks = []
         self.vit.embeddings = poptorch.BeginBlock(self.vit.embeddings, "Embedding", ipu_id=0)
 
-        layer_ipu = _get_layer_ipu(config.layers_per_ipu)
+        layer_ipu = _get_layer_ipu(self.config.layers_per_ipu)
         for index, layer in enumerate(self.vit.encoder.layer):
+            if self.config.recompute_checkpoint_every_layer:
+                # Put checkpoints on every encoder layer
+                h = recomputation_checkpoint(layer)
+                self._hooks.append(h)
             ipu = layer_ipu[index]
-            if config.recompute_checkpoint_every_layer:
-                recomputation_checkpoint(layer)
             self.vit.encoder.layer[index] = poptorch.BeginBlock(layer, f"Encoder{index}", ipu_id=ipu)
-            print(f"Encoder {index:<2} --> IPU {ipu}")
 
-        print("Head       --> IPU 3")
         self.vit.layernorm = poptorch.BeginBlock(self.vit.layernorm, "LayerNorm", ipu_id=3)
         self.classifier = poptorch.BeginBlock(self.classifier, "Classifier", ipu_id=3)
+        return self
 
+    def deparallelize(self):
+        # Remove any hooks
+        for h in self._hooks:
+            h.remove()
+        # Remove poptorch Blocks
+        for m in self.modules():
+            if m != self:
+                poptorch.removeBlocks(m)
+        return self
+
+    def print_device_allocation(self):
+        layer_ipu = _get_layer_ipu(self.config.layers_per_ipu)
+        print("---------- Device Allocation -----------")
+        print("Embedding  --> IPU 0")
+        for index in range(self.config.num_hidden_layers):
+            ipu = layer_ipu[index]
+            print(f"Encoder {index:<2} --> IPU {ipu}")
+        print("Head       --> IPU 3")
         print("---------------------------------------")
 
     def forward(self, pixel_values, labels=None):

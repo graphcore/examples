@@ -1,6 +1,5 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 from torch.optim.lr_scheduler import _LRScheduler
-import warnings
 
 
 class WarmUpLRDecorator(_LRScheduler):

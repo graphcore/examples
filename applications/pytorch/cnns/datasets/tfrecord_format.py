@@ -45,11 +45,11 @@ class DecodeImage:
         return img, label
 
 
-def get_tfrecord(opts, model_opts, train=True, transform=None, use_bbox_info=False):
-    assert model_opts.Distributed.numProcesses == 1, "PopRun i not supported with TFRecord"
+def get_tfrecord(args, opts, train=True, transform=None, use_bbox_info=False):
+    assert opts.Distributed.numProcesses == 1, "PopRun i not supported with TFRecord"
     dataset_pattern = file_pattern["train"] if train else file_pattern["validation"]
-    chunks = glob.glob(os.path.join(opts.imagenet_data_path, dataset_pattern))
-    file_shuffle = DistributeNode(None, model_opts.Distributed.processId, model_opts.Distributed.numProcesses, seed=opts.seed)
+    chunks = glob.glob(os.path.join(args.imagenet_data_path, dataset_pattern))
+    file_shuffle = DistributeNode(None, opts.Distributed.processId, opts.Distributed.numProcesses, seed=args.seed)
     buffer_size = 5 if train else 1
     dataset = TFRecordDataset(chunks, file_buffer_size=buffer_size, shuffle=train, transform=DecodeImage(transform, use_bbox_info=use_bbox_info and train), nodesplitter=file_shuffle)
     return dataset

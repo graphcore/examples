@@ -30,12 +30,13 @@ config.model.anchors.p4width = [48, 119, 97, 217]
 config.model.anchors.p4height = [102, 96, 189, 184]
 config.model.anchors.p5width = [171, 324, 616, 800]
 config.model.anchors.p5height = [384, 451, 618, 800]
+
 # Number of classes of the model
 config.model.n_classes = 80
 # Class name path
-config.model.class_name_path = "./configs/class_name.yaml"
+config.model.class_name_path = "configs/class_name.yaml"
 # Image size of the input images to the model
-config.model.image_size = 416
+config.model.image_size = 896
 # Strides of the prediction layers of the model
 config.model.strides = [8, 16, 32]
 # Float precision used in the model
@@ -46,7 +47,7 @@ config.model.micro_batch_size = 1
 config.model.mode = "test"
 # Run model on cpu or ipu
 config.model.ipu = True
-# If run sweep to calculate the best anchors TODO
+# Compute optimal anchors
 config.model.auto_anchors = False
 # Anchors threshold to compare against when chooseing the best anchors
 config.model.anchor_threshold = 4.0
@@ -59,12 +60,18 @@ config.ipuopts.batches_per_step = 1
 
 
 config.inference = CN()
+# Whether to perform NMS or not
+config.inference.nms = True
 # Minimum threshold for objectness probability
 config.inference.obj_threshold = 0.4
 # Minimum threshold for class prediction probability
 config.inference.class_conf_threshold = 0.6
 # Minimum threshold for IoU used in NMS
-config.inference.iou_threshold = 0.5
+config.inference.iou_threshold = 0.65
+# Maximum number of detections after NMS
+config.inference.nms_max_detections = 300
+# Maximum number of detections filtered before NMS
+config.inference.pre_nms_topk_k = 2000
 # Plot output and save to file
 config.inference.plot_output = False
 # Plot every n image
@@ -113,7 +120,15 @@ config.dataset.train.cutout_scaled_treshold = 0.3
 config.dataset.train.hsv_h_gain = 0.5
 config.dataset.train.hsv_s_gain = 0.5
 config.dataset.train.hsv_v_gain = 0.5
-
+# Data Aug - random perspective config
+config.dataset.train.degrees = 0.0
+config.dataset.train.translate = 0.5
+config.dataset.train.scale = 0.5
+config.dataset.train.shear = 0.0
+config.dataset.train.perspective = 0.0
+# Data Aug - flip
+config.dataset.train.flipud = 0.0
+config.dataset.train.fliplr = 0.5
 
 config.eval = CN()
 # Compute eval metrics

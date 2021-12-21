@@ -1,7 +1,6 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 import os
 import gc
-import subprocess
 import pytest
 import shutil
 import torch
@@ -15,7 +14,6 @@ import models
 from utils import get_train_accuracy, get_test_accuracy, run_script
 
 
-@pytest.mark.category2
 @pytest.mark.ipus(1)
 def test_recomputation_checkpoints():
     gc.collect()
@@ -24,16 +22,16 @@ def test_recomputation_checkpoints():
     def train(model, recompute):
         input_data = torch.ones(1, 3, 224, 224)
         labels_data = torch.ones(1).long()
-        model_opts = poptorch.Options()
+        opts = poptorch.Options()
         if recompute:
-            model_opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
-        model_opts.anchorMode(poptorch.AnchorMode.All)
-        model_opts.randomSeed(0)
-        model_opts.Training.gradientAccumulation(1)
-        model_opts.Precision.enableStochasticRounding(False)
+            opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
+        opts.outputMode(poptorch.OutputMode.All)
+        opts.randomSeed(0)
+        opts.Training.gradientAccumulation(1)
+        opts.Precision.enableStochasticRounding(False)
         model_with_loss = TrainingModelWithLoss(model)
         optimizer = SGD(model_with_loss.parameters(), lr=0.01, momentum=0., use_combined_accum=True)
-        training_model = poptorch.trainingModel(model_with_loss, model_opts, optimizer=optimizer)
+        training_model = poptorch.trainingModel(model_with_loss, opts, optimizer=optimizer)
         predictions = []
         for _ in range(3):
             preds, _, _ = training_model(input_data, labels_data)
@@ -51,65 +49,63 @@ def test_recomputation_checkpoints():
             self.normalization_location = "none"
             self.pipeline_splits = []
             self.eight_bit_io = False
-    opts = Options()
+            self.num_io_tiles = 0
+    args = Options()
     torch.manual_seed(0)
-    model = models.get_model(opts, datasets.datasets_info["cifar10"], pretrained=True)
+    model = models.get_model(args, datasets.datasets_info["cifar10"], pretrained=True)
     no_recompute_predictions = train(model, False)
-    opts.recompute_checkpoints = ["conv", "norm"]
+    args.recompute_checkpoints = ["conv", "norm"]
     torch.manual_seed(0)
-    model = models.get_model(opts, datasets.datasets_info["cifar10"], pretrained=True)
+    model = models.get_model(args, datasets.datasets_info["cifar10"], pretrained=True)
     recompute_predictions = train(model, True)
     for pred1, pred2 in zip(no_recompute_predictions, recompute_predictions):
         assert torch.allclose(pred1, pred2, atol=1e-04)
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(4)
 def test_replicas_reduction():
     gc.collect()
 
-    def common_model_opts():
-        model_opts = poptorch.Options()
-        model_opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
-        model_opts.anchorMode(poptorch.AnchorMode.All)
-        model_opts.randomSeed(0)
-        model_opts.Training.gradientAccumulation(1)
-        return model_opts
+    def common_opts():
+        opts = poptorch.Options()
+        opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
+        opts.outputMode(poptorch.OutputMode.All)
+        opts.randomSeed(0)
+        opts.Training.gradientAccumulation(1)
+        return opts
 
-    def run_model(model_opts):
+    def run_model(opts):
         input_data = torch.ones(4, 1)
         labels_data = torch.ones(4).long()
         model = torch.nn.Linear(1, 2, bias=False)
         model_with_loss = TrainingModelWithLoss(model, 0.1)
         optimizer = SGD(model_with_loss.parameters(), lr=0.1, momentum=0., use_combined_accum=True)
-        training_model = poptorch.trainingModel(model_with_loss, model_opts, optimizer=optimizer)
+        training_model = poptorch.trainingModel(model_with_loss, opts, optimizer=optimizer)
         for _ in range(3):
             preds, loss, _ = training_model(input_data, labels_data)
         # return the weights of the model
         return list(model_with_loss.model.named_parameters())[0][1], loss
 
     # Single replica
-    model_opts = common_model_opts()
-    model_opts.replicationFactor(1)
-    single_replica_weights, single_replica_loss = run_model(model_opts)
+    opts = common_opts()
+    opts.replicationFactor(1)
+    single_replica_weights, single_replica_loss = run_model(opts)
     # 4 replica running
     gc.collect()
-    model_opts = common_model_opts()
-    model_opts.replicationFactor(4)
-    replicated_weights, replicated_loss = run_model(model_opts)
+    opts = common_opts()
+    opts.replicationFactor(4)
+    replicated_weights, replicated_loss = run_model(opts)
 
     assert torch.allclose(single_replica_weights, replicated_weights, atol=1e-05)
     assert torch.allclose(single_replica_loss, replicated_loss, atol=1e-05)
 
 
-@pytest.mark.category3
 @pytest.mark.ipus(1)
 def test_generated():
     gc.collect()
     run_script("train/train.py", f"--data generated --model resnet18 --epoch 1 --precision 16.16 --validation-mode none --optimizer sgd_combined --lr 0.001 --gradient-accumulation 128 --batch-size 1 --dataloader-worker 4 --seed 0")
 
 
-@pytest.mark.category3
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize("precision", ["16.16", "32.32"])
 def test_synthetic(precision):
@@ -130,14 +126,12 @@ def test_loss_function(label_smoothing):
     assert torch.allclose(ground_truth, loss, atol=1e-05)
 
 
-@pytest.mark.category3
 @pytest.mark.ipus(1)
 def test_mixup():
     gc.collect()
     run_script("train/train.py", f"--mixup-alpha 0.1 --data generated --model resnet18 --epoch 1 --validation-mode none --optimizer sgd_combined --batch-size 3 --dataloader-worker 1 --seed 0")
 
 
-@pytest.mark.category3
 @pytest.mark.ipus(1)
 def test_cutmix():
     gc.collect()
@@ -145,7 +139,6 @@ def test_cutmix():
 
 
 class TestSynthetic:
-    @pytest.mark.category3
     @pytest.mark.ipus(2)
     @pytest.mark.ipu_version("ipu2")
     def test_synthetic_mixed_precision(self):
@@ -155,7 +148,6 @@ class TestSynthetic:
 
 
 class TestTrainCIFAR10:
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_single_ipu_validation_groupnorm(self):
         gc.collect()
@@ -165,7 +157,6 @@ class TestTrainCIFAR10:
         assert acc > 15.0
 
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_single_ipu_validation_batchnorm(self):
@@ -176,7 +167,6 @@ class TestTrainCIFAR10:
         assert acc > 15.0
 
 
-    @pytest.mark.category3
     @pytest.mark.ipus(2)
     def test_replicas(self):
         gc.collect()
@@ -186,17 +176,15 @@ class TestTrainCIFAR10:
         assert acc > 15.0
 
 
-    @pytest.mark.category3
     @pytest.mark.ipus(2)
     def test_efficient_net(self):
         gc.collect()
-        out = run_script("train/train.py", "--data cifar10 --epoch 3 --model efficientnet-b0 --precision 16.32 --validation-mode none --optimizer sgd_combined --lr 0.1 --gradient-accumulation 64 "
+        out = run_script("train/train.py", "--data cifar10 --epoch 4 --model efficientnet-b0 --precision 16.32 --validation-mode none --optimizer sgd_combined --lr 0.1 --gradient-accumulation 64 "
                                            "--pipeline-splits blocks/2/1 --norm-type group --norm-num-groups 4 --enable-stochastic-rounding --dataloader-worker 4 --seed 0")
         acc = get_train_accuracy(out)
         assert acc > 15.0
 
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_full_precision(self):
         gc.collect()
@@ -205,7 +193,6 @@ class TestTrainCIFAR10:
         assert acc > 15.0
 
 
-    @pytest.mark.category3
     @pytest.mark.ipus(2)
     @pytest.mark.ipu_version("ipu2")
     def test_mixed_precision(self):
@@ -215,7 +202,6 @@ class TestTrainCIFAR10:
         acc = get_train_accuracy(out)
         assert acc > 15.0
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_single_ipu_mobilenet_v3_small_validation_batchnorm(self):
         gc.collect()
@@ -224,7 +210,6 @@ class TestTrainCIFAR10:
         acc = get_test_accuracy(out)
         assert acc > 15.0
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_single_ipu_mobilenet_v3_large_validation_batchnorm(self):
@@ -234,9 +219,21 @@ class TestTrainCIFAR10:
         acc = get_test_accuracy(out)
         assert acc > 15.0
 
+    @pytest.mark.ipus(1)
+    @pytest.mark.ipu_version("ipu2")
+    def test_half_resolution_training(self):
+        gc.collect()
+        out = run_script("train/train.py", "--data cifar10 --model resnet18 --epoch 1 --precision 16.32 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
+                                           "--norm-type batch --dataloader-worker 4 --half-res-training --fine-tune-epoch 1 --fine-tune-first-trainable-layer layer3 --weight-avg-strategy exponential "
+                                           "--weight-avg-exp-decay 0.97 --checkpoint-path test_half_resolution_training --seed 0")
+        acc = get_test_accuracy(out)
+        assert acc > 15.0
+        # remove folder
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        shutil.rmtree(os.path.join(parent_dir, "test_half_resolution_training"))
+
 
 class TestRestoreCheckpoint:
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_restore_train(self):
         gc.collect()
@@ -253,7 +250,6 @@ class TestRestoreCheckpoint:
         shutil.rmtree(os.path.join(parent_dir, "restore_test_path_test_restore_train"))
 
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_validation(self):
         gc.collect()
@@ -271,7 +267,6 @@ class TestRestoreCheckpoint:
         shutil.rmtree(os.path.join(parent_dir, "restore_test_path_test_validation"))
 
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_weight_avg(self):
         gc.collect()
@@ -288,16 +283,14 @@ class TestRestoreCheckpoint:
         assert acc1 == acc2
         shutil.rmtree(os.path.join(parent_dir, "restore_test_path_weight_avg"))
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     def test_mixup_cutmix_validation_weight_avg(self):
         # Only make sure that checkpoint loading works with mixup model wrapper.
         gc.collect()
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        run_script("train/train.py", f"--mixup-alpha 0.1 --cutmix-lambda-low 0.2 --cutmix-lambda-high 0.8 --data generated --checkpoint-path test_mixup_cutmix_validation_weight_avg --weight-avg-strategy exponential --weight-avg-exp-decay 0.97 --model resnet18 --epoch 2 --validation-mode after --optimizer sgd_combined --batch-size 3 --dataloader-worker 1 --seed 0")
+        run_script("train/train.py", f"--mixup-alpha 0.1 --cutmix-lambda-low 0.2 --cutmix-lambda-high 0.8 --data generated --checkpoint-path test_mixup_cutmix_validation_weight_avg --weight-avg-strategy exponential --weight-avg-exp-decay 0.97 --model resnet18 --epoch 2 --validation-mode after --optimizer sgd_combined --batch-size 4 --dataloader-worker 1 --seed 0")
         shutil.rmtree(os.path.join(parent_dir, "test_mixup_cutmix_validation_weight_avg"))
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_mixup_cutmix_restore_train(self):

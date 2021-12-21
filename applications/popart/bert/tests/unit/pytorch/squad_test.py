@@ -20,8 +20,6 @@ import numpy as np
 from bert_model import Bert, BertConfig
 from tests.torch_bert import BertConfig as TorchBertConfig, BertForQuestionAnswering
 
-from tests.utils import sanity
-
 from .full_graph_utils import fwd_graph, bwd_graph
 
 
@@ -77,8 +75,8 @@ def test_squad_fwd(custom_ops):
 
 
 @pytest.mark.parametrize("replication_factor, replicated_tensor_sharding, opt_type",
-                         [sanity(2, True, "SGD"),
-                          sanity(2, False, "LAMB"),
+                         [(2, True, "SGD"),
+                          (2, False, "LAMB"),
                           (1, False, "SGD"),
                           (2, True, "SGD"),
                           (2, False, "LAMB"),

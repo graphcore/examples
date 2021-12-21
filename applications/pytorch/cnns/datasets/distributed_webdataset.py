@@ -50,10 +50,10 @@ def save_remaining_data(dataset, save_pattern, total_instance):
     tar_writer(total_instance, dataloader, count, save_pattern)
 
 
-def create_distributed_remaining(opts, subset):
-    chunks = [file_name[-10:-4] for file_name in os.listdir(opts.target) if file_name.startswith(subset)]
+def create_distributed_remaining(args, subset):
+    chunks = [file_name[-10:-4] for file_name in os.listdir(args.target) if file_name.startswith(subset)]
     chunks.sort()
-    distribute_remaining_data(opts.target, subset, opts.num_instances, chunks)
+    distribute_remaining_data(args.target, subset, args.num_instances, chunks)
 
 
 def tar_writer(instance, dataloader, dataset_size, save_pattern):
@@ -74,6 +74,6 @@ def tar_writer(instance, dataloader, dataset_size, save_pattern):
 
 
 if __name__ == '__main__':
-    opts = get_args()
-    create_distributed_remaining(opts, "train")
-    create_distributed_remaining(opts, "validation")
+    args = get_args()
+    create_distributed_remaining(args, "train")
+    create_distributed_remaining(args, "validation")

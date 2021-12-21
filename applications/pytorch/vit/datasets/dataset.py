@@ -67,33 +67,39 @@ def get_data(configs, model_opts, train=True, async_dataloader=False):
                                            configs.normalization_location == "host")
     # Determine the size of the small datasets
     if hasattr(configs, "iterations"):
-        dataset_size = configs.batch_size * \
+        dataset_size = configs.micro_batch_size * \
             model_opts.device_iterations * \
             model_opts.replication_factor * \
             model_opts.Training.gradient_accumulation * \
             configs.iterations
 
+    rebatched_worker_size = None
+
     # Select the right dataset
     if configs.dataset in ["synthetic", "generated"]:
         if hasattr(configs, "iterations"):
-            dataset = GeneratedDataset(224, size=dataset_size, half_precision=half_precision)
+            dataset = GeneratedDataset((3, 224, 224), size=dataset_size, half_precision=half_precision)
         else:
-            dataset = GeneratedDataset(224, half_precision=half_precision)
+            dataset = GeneratedDataset((3, 224, 224), half_precision=half_precision)
+
     elif configs.dataset in ["imagenet1k", "imagenet21k"]:
-        data_folder = 'train' if train else 'validation'
         dataset = torchvision.datasets.ImageFolder(os.path.join(
-            configs.input_files, data_folder), transform=transform)
+            configs.dataset_path, "train" if train else "validation"), transform=transform)
+        if train:
+            rebatched_worker_size = 128
+
     elif configs.dataset == "cifar10":
-        data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10")
-        dataset = torchvision.datasets.CIFAR10(root=data_path, train=train,
+        dataset = torchvision.datasets.CIFAR10(root=configs.dataset_path, train=train,
                                                download=True, transform=transform)
+        if train:
+            rebatched_worker_size = 256
     else:
         raise Exception('Dataset type not recognized: %s' % configs.dataset)
 
-    mode = poptorch.DataLoaderMode.Async if async_dataloader else poptorch.DataLoaderMode.Sync
+    mode = poptorch.DataLoaderMode.AsyncRebatched if async_dataloader else poptorch.DataLoaderMode.Sync
     dataloader = poptorch.DataLoader(model_opts,
                                      dataset,
-                                     batch_size=configs.batch_size if not(isinstance(
+                                     batch_size=configs.micro_batch_size if not(isinstance(
                                          dataset, IterableDataset)) else None,
                                      num_workers=configs.dataloader_workers,
                                      shuffle=train and not(isinstance(dataset, IterableDataset)),
@@ -103,5 +109,6 @@ def get_data(configs, model_opts, train=True, async_dataloader=False):
                                          dataset, IterableDataset),
                                      worker_init_fn=None,
                                      mode=mode,
-                                     async_options={'load_indefinitely': True})
+                                     rebatched_worker_size=rebatched_worker_size,
+                                     async_options={'load_indefinitely': True, "buffer_size": 8})
     return dataloader

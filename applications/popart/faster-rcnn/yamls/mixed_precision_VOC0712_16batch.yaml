@@ -1,0 +1,41 @@
+# This is 4IPUs, mixed-precision, 16-batch training on 07+12
+parent: yamls/fp32_VOC0712_16batch.yaml
+
+FLOAT16_ON: True
+ANCHOR_SCALES: [8,16,32]
+
+TRAIN:
+  WARMUP_ITERS: 100
+  LAYERXS_FP16: [False, True, True]
+  FC_FP16: False
+  SET_PIPELINE_MANUALLY: set4
+  ROI_SAMPLER:
+    one_hot_opti: True
+
+MODEL:
+  RPN_CONV_FP16_ON: False
+  RCNN:
+    CONV_WEIGHTS_FP16_OFF_INDICES: [9,10]
+
+SESSION:
+  TRAIN:
+    LOSS_SCALING: 128
+    enablePipelining: True
+    CFGS:
+      RecomputationType: 'Pipeline' 
+      convolutionOptions: [['partialsType', "half"],]
+  COMMON:
+    enableEngineCaching: True
+    enableStochasticRounding: True
+
+NANO_DATA_CFG:
+  DATA:
+    SHUFFLE: True
+    TRAIN:
+      pipeline:
+        scale: [0.7, 1.2]
+
+TEST:
+  SCALES: [800,800]
+  RPN_POST_NMS_TOP_N: 1000
+  SCORE_THRESH_TEST: 0.0 

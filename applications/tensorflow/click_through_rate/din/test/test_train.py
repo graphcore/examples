@@ -22,7 +22,6 @@ import pytest
 from test_common import get_log, run_train
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(1)
 class TestDINTraining(unittest.TestCase):
     """Testing some basic training parameters"""

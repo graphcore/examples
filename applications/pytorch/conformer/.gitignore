@@ -1,0 +1,7 @@
+espnet/
+*.pop
+*.cbor
+training/*
+exec/*
+wandb/*
+log.txt

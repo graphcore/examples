@@ -108,8 +108,6 @@ The program has a few command line options:
 
 `--validation-frequency`        How many training epochs to run between validation steps.
 
-`--disable-metrics`             Do not calculate metrics during training, useful to measure peak throughput
-
 `--enable-recompute`            Enable the recomputation of network activations during backward pass instead of caching them during forward pass. This option turns on the recomputation for single-stage models. If the model is multi-stage (pipelined) the recomputation is always enabled.
 
 `--recompute-checkpoints`       List of recomputation checkpoints. List of regex rules for the layer names. (Example: Select convolutional layers: `.*conv.*`)
@@ -162,8 +160,6 @@ The program has a few command line options:
 
 `--profile`                     Generate PopVision Graph Analyser report
 
-`--loss-velocity-scaling-ratio` Only for sgd_combined optimizer: Loss Velocity / Velocity scaling ratio. In case of large number of replicas >1.0 can increase numerical stability
-
 `--use-bbox-info`               Images may contain bounding box information for the target object. If this flag is set, during the augmentation process make sure the augmented image overlaps with the target object.
 
 `--eight-bit-io`                Image transfer from host to IPU in 8-bit format, requires normalisation on the IPU
@@ -189,6 +185,18 @@ The program has a few command line options:
 `--input-image-padding`        Pad input images to be 4 channel images. This could speed up the model.
 
 `--exchange-memory-target`     Exchange memory optimisation target: balanced/cycles/memory. In case of cycles it uses more memory, but runs faster.
+
+`--half-res-training`          Train the model on images that are half the original size and fine tune at the end on original size inputs.
+
+`--fine-tune-epoch`            Number of fine-tuning epochs when training with --half-res-training.
+
+`--fine-tune-lr`               Learning rate during fine-tuning (with SGD) when training with --half-res-training.
+
+`--fine-tune-gradient-accumulation` Number of batches to accumulate before a gradient update during the fine-tuning phase when --half-res-training.
+
+`--fine-tune-batch-size`       Batch during the fine-tuning phase when --half-res-training.
+
+`--fine-tune-first-trainable-layer` First non-frozen layer in the fine-tuned model when --half-res-training.
 
 
 ### How to use the checkpoints
@@ -228,13 +236,13 @@ The following scripts support the previously defined arguments too.
 ResNet50 IPU-POD16 reference
 
 ```
-./rn50_pod16.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet> 
+./rn50_pod16.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet>
 ```
 
 ResNet50 IPU-POD64 reference
 
 ```
-./rn50_pod64.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet> 
+./rn50_pod64.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet>
 ```
 
 In case the script is unable to select the right partition or VIPU server, you can set them by running the following lines.
@@ -242,4 +250,9 @@ In case the script is unable to select the right partition or VIPU server, you c
 ```
 export VIPU_SERVER=<vipu server IP address>
 export PARTITION=<name of the selected partition>
+```
+
+EfficientNet-B4 (Group Norm, Group Conv) IPU-POD16 reference
+```
+./efficientnet_b4_pod16.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet>
 ```

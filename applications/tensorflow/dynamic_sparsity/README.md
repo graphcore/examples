@@ -68,4 +68,6 @@ make -j
 PYTHONPATH=./ python ipu_sparse_ops/tools/sparse_matmul.py
 ```
 
+If you have previously built this module using a different SDK version run ```make clean``` before running ```make -j```.
+
 To run any of the sparse models/training see the READMEs in their respective folders for example mnist_rigl/README.md, language_modelling/README.md.

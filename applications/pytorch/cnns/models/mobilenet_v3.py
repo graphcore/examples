@@ -3,7 +3,6 @@
 # @Author  : QiangGong(qiangg@graphcore.ai)
 # License: MIT (https://opensource.org/licenses/MIT)
 # This file has been modified by Graphcore Ltd.
-from functools import partial
 from torch import nn
 import math
 

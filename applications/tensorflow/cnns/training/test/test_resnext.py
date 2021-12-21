@@ -7,26 +7,33 @@ Tests covering ResNeXt training.
 import pytest
 import unittest
 import statistics
+import sys
+from pathlib import Path
+from examples_tests.test_util import SubProcessChecker
+
+sys.path.append(str(Path(__file__).absolute().parent.parent))
+
 from test_common import get_csv, run_train, cifar10_data_dir
 
 
-@pytest.mark.category2
 @pytest.mark.ipus(1)
-class TestCifar10ResNeXtTraining(unittest.TestCase):
+class TestCifar10ResNeXtTraining(SubProcessChecker):
     """Testing some basic training parameters"""
 
-    @classmethod
-    def setUpClass(cls):
-        out = run_train(**{'--data-dir': cifar10_data_dir,
-                           '--epochs': 10,
-                           '--model': "resnext",
-                           '--model-size': 29,
-                           '--batch-size': 8,
-                           '--warmup-epochs': 0,
-                           '--learning-rate-decay': '0.1',
-                           '--learning-rate-schedule': '0.5,0.75,0.875'})
-        cls.validation = get_csv(out, 'validation.csv')
-        cls.training = get_csv(out, 'training.csv')
+    def setUp(self):
+        out = run_train(
+            self,
+            **{
+                '--data-dir': cifar10_data_dir,
+                '--epochs': 10,
+                '--model': "resnext",
+                '--model-size': 29,
+                '--micro-batch-size': 8,
+                '--warmup-epochs': 0,
+                '--learning-rate-decay': '0.1',
+                '--learning-rate-schedule': '0.5,0.75,0.875'})
+        self.validation = get_csv(out, 'validation.csv')
+        self.training = get_csv(out, 'training.csv')
 
     def test_results(self):
         # test_final_validation_accuracy
@@ -47,25 +54,26 @@ class TestCifar10ResNeXtTraining(unittest.TestCase):
         self.assertEqual(round(self.training['epoch'][-1]), 10)
 
 
-@pytest.mark.category3
 @pytest.mark.ipus(1)
-class TestCifar10ResNeXtFullTraining(unittest.TestCase):
+class TestCifar10ResNeXtFullTraining(SubProcessChecker):
     """Fast training of Cifar-10 to good accuracy"""
 
-    @classmethod
-    def setUpClass(cls):
-        out = run_train(**{'--data-dir': cifar10_data_dir,
-                           '--epochs': 50,
-                           '--model': "resnext",
-                           '--model-size': 29,
-                           '--batch-size': 4,
-                           '--warmup-epochs': 2,
-                           '--lr-schedule': 'cosine',
-                           '--label-smoothing': '0.05',
-                           '--base-learning-rate-exponent': -5,
-                           '--precision': '16.32'})
-        cls.validation = get_csv(out, 'validation.csv')
-        cls.training = get_csv(out, 'training.csv')
+    def setUp(self):
+        out = run_train(
+            self,
+            **{
+                '--data-dir': cifar10_data_dir,
+                '--epochs': 50,
+                '--model': "resnext",
+                '--model-size': 29,
+                '--micro-batch-size': 4,
+                '--warmup-epochs': 2,
+                '--lr-schedule': 'cosine',
+                '--label-smoothing': '0.05',
+                '--base-learning-rate-exponent': -5,
+                '--precision': '16.32'})
+        self.validation = get_csv(out, 'validation.csv')
+        self.training = get_csv(out, 'training.csv')
 
     def test_results(self):
         # test_final_validation_accuracy
@@ -86,27 +94,28 @@ class TestCifar10ResNeXtFullTraining(unittest.TestCase):
         self.assertEqual(round(self.training['epoch'][-1]), 50)
 
 
-@pytest.mark.category2
 @pytest.mark.ipus(2)
-class TestPipelineResNeXt14(unittest.TestCase):
+class TestPipelineResNeXt14(SubProcessChecker):
     """A simple pipelined model"""
 
-    @classmethod
-    def setUpClass(cls):
-        out = run_train(**{'--iterations': 500,
-                           '--dataset': 'imagenet',
-                           '--model': 'resnext',
-                           '--model-size': 14,
-                           '--generated-data': '',
-                           '--shards': 2,
-                           '--pipeline': '',
-                           '--gradient-accumulation-count': 128,
-                           '--batch-size': 1,
-                           '--no-validation': '',
-                           '--pipeline-splits': 'b2/0/relu',
-                           '--fused-preprocessing': ''})
-        cls.out = out
-        cls.training = get_csv(out, 'training.csv')
+    def setUp(self):
+        out = run_train(
+            self,
+            **{
+                '--iterations': 500,
+                '--dataset': 'imagenet',
+                '--model': 'resnext',
+                '--model-size': 14,
+                '--generated-data': '',
+                '--shards': 2,
+                '--pipeline': '',
+                '--gradient-accumulation-count': 128,
+                '--micro-batch-size': 1,
+                '--no-validation': '',
+                '--pipeline-splits': 'b2/0/relu',
+                '--fused-preprocessing': ''})
+        self.out = out
+        self.training = get_csv(out, 'training.csv')
 
     def test_results(self):
         # test_iterations_completed
@@ -116,24 +125,25 @@ class TestPipelineResNeXt14(unittest.TestCase):
         self.assertTrue('9415016' in self.out)
 
 
-@pytest.mark.category2
 @pytest.mark.ipus(2)
-class TestReplicatedTraining(unittest.TestCase):
+class TestReplicatedTraining(SubProcessChecker):
     """Using replicas for data parallelism"""
 
-    @classmethod
-    def setUpClass(cls):
-        out = run_train(**{'--data-dir': cifar10_data_dir,
-                           '--model': 'resnext',
-                           '--lr-schedule': 'stepped',
-                           '--model-size': 29,
-                           '--batch-size': 4,
-                           '--learning-rate-decay': 0.5,
-                           '--learning-rate-schedule': '0.5,0.9',
-                           '--epochs': 20,
-                           '--replicas': 2})
-        cls.validation = get_csv(out, 'validation.csv')
-        cls.training = get_csv(out, 'training.csv')
+    def setUp(self):
+        out = run_train(
+            self,
+            **{
+                '--data-dir': cifar10_data_dir,
+                '--model': 'resnext',
+                '--lr-schedule': 'stepped',
+                '--model-size': 29,
+                '--micro-batch-size': 4,
+                '--learning-rate-decay': 0.5,
+                '--learning-rate-schedule': '0.5,0.9',
+                '--epochs': 20,
+                '--replicas': 2})
+        self.validation = get_csv(out, 'validation.csv')
+        self.training = get_csv(out, 'training.csv')
 
     def test_results(self):
         # test_final_training_accuracy
@@ -145,30 +155,30 @@ class TestReplicatedTraining(unittest.TestCase):
         self.assertEqual(round(self.training['epoch'][-1]), 20)
 
 
-@pytest.mark.category2
 @pytest.mark.ipus(1)
-class TestLotsOfOptions(unittest.TestCase):
+class TestLotsOfOptions(SubProcessChecker):
     """Testing lots of other options to check they are still available"""
 
-    @classmethod
-    def setUpClass(cls):
-        out = run_train(**{'--dataset': 'cifar-10',
-                           '--model': 'resnext',
-                           '--epochs': 10,
-                           '--model-size': 29,
-                           '--batch-size': 4,
-                           '--batch-norm': '',
-                           '--pipeline-num-parallel': 8,
-                           '--generated-data': '',
-                           '--base-learning-rate-exponent': -4,
-                           '--precision': '32.32',
-                           '--seed': 1234,
-                           '--warmup-epochs': 0,
-                           '--no-stochastic-rounding': '',
-                           '--batches-per-step': 100
-                           })
-        cls.validation = get_csv(out, 'validation.csv')
-        cls.training = get_csv(out, 'training.csv')
+    def setUp(self):
+        out = run_train(
+            self,
+            **{
+                '--dataset': 'cifar-10',
+                '--model': 'resnext',
+                '--epochs': 2,
+                '--model-size': 29,
+                '--micro-batch-size': 4,
+                '--batch-norm': '',
+                '--pipeline-num-parallel': 8,
+                '--generated-data': '',
+                '--base-learning-rate-exponent': -4,
+                '--precision': '32.32',
+                '--seed': 1234,
+                '--warmup-epochs': 0,
+                '--no-stochastic-rounding': '',
+                '--batches-per-step': 100})
+        self.validation = get_csv(out, 'validation.csv')
+        self.training = get_csv(out, 'training.csv')
 
     # We're mostly just testing that training still runs with all the above options.
     def test_results(self):
@@ -176,4 +186,4 @@ class TestLotsOfOptions(unittest.TestCase):
         self.assertEqual(self.training['lr'][0], 0.25)
 
         # test_epoch
-        self.assertEqual(int(self.validation['epoch'][-1] + 0.5), 10)
+        self.assertEqual(int(self.validation['epoch'][-1] + 0.5), 2)

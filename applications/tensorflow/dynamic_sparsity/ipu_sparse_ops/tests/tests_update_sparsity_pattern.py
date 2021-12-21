@@ -13,13 +13,11 @@ class TestBuildAndRun(SubProcessChecker):
         env["PYTHONPATH"] += ":./"
         self.run_command(cmd_args, build_dir, ["All results match"], env=env)
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_fc_sparsity(self):
         # Test default parameters:
         self._run_test_update("python ipu_sparse_ops/tools/fc_update_test.py ")
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     def test_gru_sparsity(self):
         # Test default parameters:

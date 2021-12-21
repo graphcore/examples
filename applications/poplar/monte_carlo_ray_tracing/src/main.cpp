@@ -199,7 +199,7 @@ struct ApplicationBuilder : public ipu_utils::BuilderInterface {
     }
     pvti::Tracepoint::end(&traceChannel, "build_path_trace_jobs");
 
-    auto rayTraceSequence = poplar::program::Sequence(allRandGenJobs, allRayTraceJobs);
+    auto rayTraceSequence = poplar::program::Sequence({allRandGenJobs, allRayTraceJobs});
     auto executeRayTrace = poplar::program::Repeat(samplesPerIpuStep, rayTraceSequence);
     programs.add("setup", preTraceInit);
     programs.add("init_params", initParams);
