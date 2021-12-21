@@ -1,36 +1,37 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 # Written by Hu Di
+import cv2
+import argparse
+import os
+import numpy as np
+import time
+import tqdm
+import json
+import torch
 import sys
 sys.path.append('./IPU')
-import torch
-import json
-import tqdm
-import time
-import numpy as np
-import os
-import argparse
-from utils import logger
-from utils.utils import load_from_pth_with_mappin
-from gc_session import Session
-from ipu_tensor import gcop
-from yaml_parser import change_cfg_by_yaml_file
-from datasets.factory import get_imdb
-from config import cfg
-from utils.utils import load_onnx
-from models.get_model import make_model
 from torchvision.ops import nms
-import cv2
+from models.get_model import make_model
+from utils.utils import load_onnx
+from config import cfg
+from datasets.factory import get_imdb
+from yaml_parser import change_cfg_by_yaml_file
+from ipu_tensor import gcop
+from gc_session import Session
+from utils.utils import load_from_pth_with_mappin
+from utils import logger
 
 
 def parse_args():
     """
     Parse input arguments
     """
-    parser = argparse.ArgumentParser(description='evaluate a Fast R-CNN network')
+    parser = argparse.ArgumentParser(
+        description='evaluate a Fast R-CNN network')
     parser.add_argument('yaml', type=str, help='path of yaml')
-    parser.add_argument('--model-postfix',
-                        dest='model_postfix',
-                        help='postfix of model name',
+    parser.add_argument('--model-name',
+                        dest='model_name',
+                        help='model name',
                         default='',
                         type=str)
     args = parser.parse_args()
@@ -85,28 +86,33 @@ def bbox_transform_inv_npy(boxes, deltas):
     return pred_boxes
 
 
-# change the trash cfg inplace by yaml config
 args = parse_args()
 change_cfg_by_yaml_file(args.yaml)
 
 # init outputs dir
-output_dir = os.path.join('outputs', cfg.task_name)
+output_dir = cfg.output_dir
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 
 # init log
-log_postfix = args.model_postfix if args.model_postfix != '' else ''
-log_postfix = '_inference' + log_postfix
+log_prefix = args.model_name if args.model_name != '' else ''
+log_prefix = '_inference' + log_prefix
 logger.init_log(output_dir,
                 log_name=cfg.task_name,
-                post_fix=log_postfix,
+                post_fix=log_prefix,
                 resume=False,
                 tb_on=False,
                 wandb_on=False)
+logger.log_str('output dir:', output_dir)
 
-imdb = get_imdb('voc_2007_test')
+if cfg.TEST.DATASET == 'voc':
+    imdb = get_imdb('voc_2007_test')
+elif cfg.TEST.DATASET == 'coco':
+    imdb = get_imdb('coco_2017_val')
+else:
+    raise ValueError("Unknown dataset!")
+
 imdb.competition_mode(False)
-
 val_size = imdb.num_images
 logger.log_str('{:d} roidb entries'.format(val_size))
 
@@ -127,9 +133,9 @@ if cfg.TEST.MODEL == '':
 else:
     pretrained_weights_path = cfg.TEST.MODEL
 
-if args.model_postfix != '':
+if args.model_name != '':
     pretrained_weights_path = os.path.join(output_dir,
-                                           '{}.onnx'.format(args.model_postfix))
+                                           '{}.onnx'.format(args.model_name))
 
 # load resnet50 weights
 init_weights_path = cfg.INIT_WEIGHTS_PATH
@@ -163,6 +169,7 @@ net = make_model(
     cfg.MODEL_NAME,
     input_im_shape=INPUT_SHAPE,
     fp16_on=cfg.FLOAT16_ON,
+    classes=[1] * cfg.NUM_CLASSES,
     training=False,
 )
 net.bulid_graph()

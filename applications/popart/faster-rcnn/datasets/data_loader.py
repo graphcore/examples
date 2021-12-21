@@ -19,7 +19,7 @@ def get_data_loader(cfg):
 
     # generate anchor target in cpu, put in dataset to speed up
     anchor_target_layer = AnchorTargetLayer(
-        cfg.FEAT_STRIDE[0],
+        cfg.FEAT_STRIDE,
         cfg.ANCHOR_SCALES,
         cfg.ANCHOR_RATIOS,
         dtype=np.float32)

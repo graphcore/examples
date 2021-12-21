@@ -8,7 +8,7 @@ import basic_func as bF
 import combined_func as cF
 import customized_ops as cOps
 import warnings
-from basic_func import safe_mode_on, safe_mode_off, set_builder, set_options, set_memory_proportion, load_model, set_seed, set_load_strict, load_strict
+from basic_func import safe_mode_on, safe_mode_off, set_builder, set_options, set_memory_proportion, load_model, set_seed, set_load_strict, load_strict, set_weight_fp16
 from initializers import zeros_initializer, ones_initializer, random_normal_initializer, variance_scaling_initializer, constant_initializer
 from easydict import EasyDict as edict
 import gc_session

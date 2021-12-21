@@ -82,7 +82,6 @@ train_dataloader = get_data_loader(cfg)
 iters_per_epoch = len(train_dataloader)
 train_dataloader_iter = iter(train_dataloader)
 train_size = iters_per_epoch * cfg.TRAIN.BATCH_SIZE
-logger.log_str('{:d} roidb entries'.format(train_size))
 IM_WIDTH, IM_HEIGHT = cfg.INPUT_SIZE
 input_im_shape = [1, 3, IM_HEIGHT, IM_WIDTH]
 
@@ -114,14 +113,6 @@ net = make_model(
 )
 
 net.bulid_graph()
-# record all tensors information
-all_tensors = gcop.bF.get_all_tensors_info()
-tensors_info_log_file = os.path.join(output_dir, 'tensors_info.txt')
-with open(tensors_info_log_file, 'w') as f:
-    for t in all_tensors:
-        f.write(str(t) + '\n')
-if cfg.TRAIN.RECORD_WEIGHTS_GRAD:
-    net.record_all_weights_grad()
 
 specific_dic = {}
 if not cfg.TRAIN.BIAS_DECAY:
@@ -172,7 +163,6 @@ if start_iters == -1:  # no past training is resumed
 # init data collector
 indices_collector = []  # collect image indices
 currentT = time.time()
-logger.log_str('start training...')
 while 1:
 
     if local_iters <= cfg.TRAIN.WARMUP_ITERS and cfg.TRAIN.WARMUP_ITERS != 0:
@@ -216,70 +206,10 @@ while 1:
     ]
 
     feed_dict = {net.inputs[k]: n for k, n in zip(net.inputs, local_inputs)}
-    results_dic = sess.run(feed_dict=feed_dict)
 
-    if checkNaN_np(results_dic['loss'].data):
-        raise Exception('NaN')
-
-    db_inds = blobs['db_inds']
-
-    # collect image ids
-    indices_collector.append([int(ele) for ele in db_inds])
-
-    if local_iters % cfg.TRAIN.LOG_INTERVAL == 0 or local_iters in list(
-            range(40)):
-        log_str = "iter: {}, lr: {}, db_ind: {}\n".format(
-            local_iters, current_lr, db_inds) + net.get_loss_info(results_dic)
-        valid_area_rois = results_dic['valid_area_rois'].data
-        clipped_valid_area_boxes = results_dic[
-            'clipped_valid_area_boxes'].data
-        valid_area_output_boxes = results_dic['valid_area_output_boxes'].data
-        append_str = ' >>> valid_area_rois: {}/256, clipped_valid_area_boxes: {}/9216, valid_area_output_boxes: {}/2000'.format(
-            valid_area_rois, clipped_valid_area_boxes,
-            valid_area_output_boxes)
-        log_str = log_str + '\n' + append_str
-
-        # log
-        summary_names = net.loss_names
-        [
-            logger.log_data(name,
-                            float(results_dic[name].data),
-                            step=local_iters) for name in summary_names
-        ]
-        [
-            logger.log_data('moving_' + name,
-                            float(net.moving_loss[name].var),
-                            step=local_iters) for name in summary_names
-        ]
-        logger.log_str(log_str)
-
-        # record weights grads
-        if cfg.TRAIN.RECORD_WEIGHTS_GRAD:
-            for _key in results_dic:
-                if hasattr(results_dic[_key], 'grad'):
-                    _mean = np.abs(results_dic[_key].grad).mean()
-                    _std = np.std(results_dic[_key].grad)
-                    logger.log_data(_key+'.grad.mean', _mean, step=local_iters)
-                    logger.log_data(_key+'.grad.std', _std, step=local_iters)
-
-    local_iters += 1
-
-    if local_iters > max_iters:
-        break
-
-    if local_iters > start_to_find_smallest_loss_iters:
-        # save smallest loss model in the final epoch
-        net.snap(output_dir, sess, iters=local_iters - 1, name='best')
-
-    if local_iters in save_iters:
-        # save model and states
-        net.snap(output_dir, sess, iters=local_iters - 1)
-
-logger.log_str('total training time: {} hours'.format(
-    (time.time() - currentT) / 60 / 60))
-
-net.snap(output_dir, sess, iters=local_iters - 1)
-
-# do something after training
-image_indices_path = os.path.join(output_dir, 'image_indices.npy')
-np.save(image_indices_path, np.asarray(indices_collector))
+    start_time = time.time()
+    for i in range(100):
+        results_dic = sess.run(feed_dict=feed_dict)
+    time_used = time.time() - start_time
+    tput = 100 * cfg.TRAIN.BATCH_SIZE / time_used
+    logger.log_str('Faster-RCNN training Tput: {}'.format(tput))

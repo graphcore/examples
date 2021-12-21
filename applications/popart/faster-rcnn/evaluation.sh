@@ -1,2 +1,2 @@
 python3 evaluation.py $1 &&
-python3 evaluation.py $1 --model-postfix best
+python3 evaluation.py $1 --model-name best

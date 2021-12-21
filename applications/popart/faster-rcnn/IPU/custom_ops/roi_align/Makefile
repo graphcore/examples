@@ -9,7 +9,7 @@ BUILD_DIR = build
 SOURCES = roi_align.cpp
 TARGET = $(BUILD_DIR)/roi_align.so
 
-all: create_build_dir codelet custom_op
+all: create_build_dir codelet custom_op 
 
 create_build_dir:
 	mkdir -p $(BUILD_DIR)

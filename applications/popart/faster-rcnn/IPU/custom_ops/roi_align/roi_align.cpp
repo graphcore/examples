@@ -21,6 +21,8 @@
 #include <onnx/defs/shape_inference.h>
 #include <popops/Reduce.hpp>
 
+#include "customop.h"
+
 #define PRINT_TENSOR(FLAG, PROGRAM, TENSOR, DBGMSG){\
 if(FLAG)\
   PROGRAM.add(poplar::program::PrintTensor((DBGMSG), TENSOR));\
@@ -371,8 +373,8 @@ roiAlignOpx::roiAlignOpx(popart::Op *op, popart::popx::Devicex *devicex) :
 #ifdef DEBUG
   std::cout << "entering roiAlignOpx()\n";
 #endif
-
-  graph().addCodelets("IPU/custom_ops/roi_align/build/roiAlignCodelets.gp");
+  std::string local_path = std::string(CUSTOM_OPS_PATH) + std::string("/roi_align/build/roiAlignCodelets.gp");
+  graph().addCodelets(local_path.c_str());
   graph().registerPerfEstimator("ROIAlignForwardIPU<float>", poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("ROIAlignForwardIPU<half>",  poplar::PerfEstimateFunc(getCyclesEstimateForOp));
 
@@ -506,7 +508,8 @@ public:
 #ifdef DEBUG
   std::cout << "entering roiAlignGradOpx()\n";
 #endif
-  graph().addCodelets("IPU/custom_ops/roi_align/build/roiAlignCodelets.gp");
+  std::string local_path = std::string(CUSTOM_OPS_PATH) + std::string("/roi_align/build/roiAlignCodelets.gp");
+  graph().addCodelets(local_path.c_str());
   graph().registerPerfEstimator("ROIAlignBackwardIPU<float>", poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("ROIAlignBackwardIPU<half>",  poplar::PerfEstimateFunc(getCyclesEstimateForOp));
 

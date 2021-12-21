@@ -8,12 +8,9 @@ from __future__ import print_function
 from __future__ import absolute_import
 
 import os
-# import PIL
 import numpy as np
 import scipy.sparse
 import subprocess
-import math
-import glob
 import uuid
 import scipy.io as sio
 import xml.etree.ElementTree as ET

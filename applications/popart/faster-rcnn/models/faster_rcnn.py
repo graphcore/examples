@@ -15,7 +15,11 @@ import os
 from IPU.ipu_tensor import gcop
 import math
 from .base_model import BaseModel, smooth_l1_loss, get_valid_area_mask, roi_align
-#
+from .stage_configs import get_stage_configs
+
+
+if logger.GLOBAL_LOGGER is not None:
+    print = logger.GLOBAL_LOGGER.log_str
 
 
 class MovingVar:
@@ -53,16 +57,6 @@ class FasterRcnn(BaseModel):
         super().__init__(fp16_on=fp16_on, training=training)
         self.input_im_shape = input_im_shape
         self.input_box_num = input_box_num
-        if fp16_on:
-            self.ipu_configs = [
-                '0_0', '0_0', '0_0', '0_0', '1_1', '1_1', '1_1', '2_2', '2_2',
-                '3_3', '3_3', '3_3'
-            ]
-        else:
-            self.ipu_configs = [
-                '0_0', '7_0', '1_0', '2_0', '2_0', '3_0', '6_0', '3_0', '4_0',
-                '7_0', '5_0', '5_0'
-            ]
 
         fix_Resnet_BN = cfg.TRAIN.RESNET.FIXED_BN if training else True
         self.backbone = Resnet(
@@ -82,42 +76,14 @@ class FasterRcnn(BaseModel):
             input_size=[self.input_im_shape[3], self.input_im_shape[2]],
         )
 
+        gcop.set_weight_fp16(cfg.WEIGHT_FP16)
+
         if self.training:
             self.roialign_fp16 = cfg.TRAIN.ROI_ALIGN_FP16
         else:
             self.roialign_fp16 = cfg.TEST.ROI_ALIGN_FP16
 
         if self.training:
-
-            if cfg.TRAIN.SET_PIPELINE_MANUALLY is not None:
-                if cfg.TRAIN.SET_PIPELINE_MANUALLY == 'set1':
-                    self.ipu_configs = [
-                        '0_0', '0_0', '0_0', '0_0', '1_1', '1_1', '1_1', '2_2',
-                        '2_2', '3_3', '3_3', '3_3'
-                    ]
-                elif cfg.TRAIN.SET_PIPELINE_MANUALLY == 'set2':
-                    self.ipu_configs = [
-                        '0_0', '7_0', '1_0', '1_0', '2_0', '2_0', '6_0', '3_0',
-                        '4_0', '7_0', '5_0', '5_0'
-                    ]
-                elif cfg.TRAIN.SET_PIPELINE_MANUALLY == 'set3':
-                    self.ipu_configs = [
-                        '0_0', '0_0', '0_0', '1_1', '1_1', '1_1', '1_1', '2_2',
-                        '2_2', '3_3', '3_3', '3_3'
-                    ]
-                elif cfg.TRAIN.SET_PIPELINE_MANUALLY == 'set4':
-                    self.ipu_configs = [
-                        '0_0', '0_0', '1_1', '1_1', '1_1', '2_2', '2_2', '2_2',
-                        '3_3', '3_3', '3_3', '3_3'
-                    ]
-                elif cfg.TRAIN.SET_PIPELINE_MANUALLY == 'set5':
-                    self.ipu_configs = [
-                        '0_0', '0_0', '1_1', '1_1', '1_1', '2_2', '3_3', '4_4',
-                        '5_5', '5_5', '5_5', '5_5'
-                    ]
-                else:
-                    raise NotImplementedError
-
             self.rcnn_proposal_target = ProposalTargetLayer(
                 fp16_on=False,
                 positive_fraction=cfg.TRAIN.RPN_OUT_FG_FRACTION,
@@ -131,11 +97,7 @@ class FasterRcnn(BaseModel):
             self.gt_boxes = self.add_input([1, self.input_box_num, 5],
                                            dtype=gcop.float32)
             anchor_nums = len(cfg.ANCHOR_SCALES)*len(cfg.ANCHOR_RATIOS)
-            backbone_strides = [
-                4
-            ] + cfg.MODEL.LAYERS_STRIDE  # first conv layer's stride is 4
-            rpn_feature_stride = backbone_strides[0] * backbone_strides[
-                1] * backbone_strides[2] * backbone_strides[3]
+            rpn_feature_stride = cfg.FEAT_STRIDE
             rpn_feature_h = math.ceil(self.input_im_shape[2] /
                                       rpn_feature_stride)
             rpn_feature_w = math.ceil(self.input_im_shape[3] /
@@ -163,6 +125,11 @@ class FasterRcnn(BaseModel):
             self.input_im = self.add_input(self.input_im_shape,
                                            dtype=gcop.float32)
 
+        ipu_sets = cfg.TRAIN.SET_PIPELINE_MANUALLY if training else cfg.TEST.SET_PIPELINE_MANUALLY
+        self.stage_configs = get_stage_configs(
+            ipu_set=ipu_sets, train=training, fp16=fp16_on)
+        print('set ipu configs:', str(self.stage_configs))
+
     def bulid_graph(self, ):
         if self.training:
             self.__build_graph_train_resnet__()
@@ -178,11 +145,14 @@ class FasterRcnn(BaseModel):
         # 4. head2tail
         # 5. bboxoffset and claasification
 
-        with gcop.device("0_0"):
-            x = self.backbone.init_block(self.input_im)
-            if cfg.FLOAT16_ON:
+        with gcop.device(self.stage_configs[0]):
+            x = self.input_im
+            if cfg.FLOAT16_ON and cfg.FP16_EARLY:
                 x = x.cast(gcop.float16)
+            x = self.backbone.init_block(x)
             x = self.backbone.layerX(x, 0)
+            if cfg.FLOAT16_ON and not cfg.FP16_EARLY:
+                x = x.cast(gcop.float16)
             x = self.backbone.layerX(x, 1)
             base_feat = self.backbone.layerX(x, 2)
 
@@ -191,16 +161,16 @@ class FasterRcnn(BaseModel):
                                                self.input_im_shape[2],
                                                self.input_im_shape[3]
                                            ]).astype(np.int32),
-                                           ipu_configs='0_0')
+                                           stage_configs=self.stage_configs[1])
 
-        with gcop.device("1_0"):
+        with gcop.device(self.stage_configs[2]):
             valid_area_mask = get_valid_area_mask(x[0])
             self.add_output('valid_area_mask', valid_area_mask)
 
             pooled_feat = gcop.cOps.roi_align(
                 base_feat,
                 x[0],
-                1 / cfg.FEAT_STRIDE[0],
+                1 / cfg.FEAT_STRIDE,
                 cfg.TEST.RPN_POST_NMS_TOP_N,
                 fp16_on=self.roialign_fp16,
                 aligned_height=cfg.MODEL.ALIGNED_HEIGHT,
@@ -208,34 +178,13 @@ class FasterRcnn(BaseModel):
             )
 
             pooled_feat = pooled_feat.squeeze(0)
-        with gcop.device("2_0"):
-            # use stride 1 for the last conv4 layer (same as tf-faster-rcnn)
-            pooled_feat = self.backbone.bottleneck_block_single(
-                pooled_feat,
-                stride=self.backbone.layers_stride[3],
-                c_out=self.backbone.layers_out[3],
-                i=0,
-                debugPrefix='layer{}'.format(3 + 1),
-                training=self.training)
-        with gcop.device("3_0"):
-            pooled_feat = self.backbone.bottleneck_block_single(
-                pooled_feat,
-                stride=1,
-                c_out=self.backbone.layers_out[3],
-                i=1,
-                debugPrefix='layer{}'.format(3 + 1),
-                training=self.training)
 
-        with gcop.device("3_0"):
-            pooled_feat = self.backbone.bottleneck_block_single(
-                pooled_feat,
-                stride=1,
-                c_out=self.backbone.layers_out[3],
-                i=2,
-                debugPrefix='layer{}'.format(3 + 1),
-                training=self.training)
+        pooled_feat = self.backbone.head_to_tail(
+            pooled_feat, self.stage_configs[3])
 
+        with gcop.device(self.stage_configs[4]):
             B, C, H, W = pooled_feat.shape.as_list()
+            pooled_feat = pooled_feat.cast(gcop.float32)
             pooled_feat = gcop.reduce_mean(pooled_feat,
                                            [2, 3])
             cls_score, bbox_pred = self.backbone.cls_reg_head(
@@ -259,24 +208,26 @@ class FasterRcnn(BaseModel):
         x = self.input_im
         gt_boxes = self.gt_boxes
 
-        with gcop.device(self.ipu_configs[0]):
-            x = self.backbone.init_block(x)
-            if cfg.FLOAT16_ON:
+        with gcop.device(self.stage_configs[0]):
+            if cfg.FLOAT16_ON and cfg.FP16_EARLY:
                 x = x.cast(gcop.float16)
+            x = self.backbone.init_block(x)
             x = self.backbone.layerX(x, 0)
+            if cfg.FLOAT16_ON and not cfg.FP16_EARLY:
+                x = x.cast(gcop.float16)
             x = self.backbone.layerX(x, 1)
-        with gcop.device(self.ipu_configs[1]):
+        with gcop.device(self.stage_configs[1]):
             base_feat = self.backbone.layerX(x, 2)
             x = None
-        with gcop.device(self.ipu_configs[2]):
+        with gcop.device(self.stage_configs[2]):
             fixed_length_roi, roi_keeps, self.rpn_loss_cls, self.rpn_loss_bbox = self.rpn.forward(
                 base_feat,
                 rpn_data=self.rpn_data,
                 im_info=np.asarray(
                     [self.input_im_shape[2],
                      self.input_im_shape[3]]).astype(np.int32),
-                ipu_configs=self.ipu_configs[3])
-        with gcop.device(self.ipu_configs[4]):
+                stage_configs=self.stage_configs[3])
+        with gcop.device(self.stage_configs[4]):
             roi_data = self.rcnn_proposal_target(fixed_length_roi, roi_keeps,
                                                  gt_boxes)
             rois, rois_label, rois_target, _, labels_mask, encoded_rois_target, bbox_inside_weights, _ = roi_data
@@ -285,7 +236,7 @@ class FasterRcnn(BaseModel):
             local_num_rois = cfg.TRAIN.RPN_BATCHSIZE
             valid_area_mask = get_valid_area_mask(rois)
             rois = rois.detach()
-        with gcop.device(self.ipu_configs[5]):
+        with gcop.device(self.stage_configs[5]):
             _pooled_feat = roi_align(
                 base_feat,
                 rois,
@@ -297,10 +248,12 @@ class FasterRcnn(BaseModel):
 
             pooled_feat = _pooled_feat.squeeze([0])
 
-        pooled_feat = self.backbone.head_to_tail(pooled_feat, self.ipu_configs)
+        pooled_feat = self.backbone.head_to_tail(
+            pooled_feat, self.stage_configs[6])
 
-        with gcop.device(self.ipu_configs[11]):
+        with gcop.device(self.stage_configs[7]):
             B, C, H, W = pooled_feat.shape.as_list()
+            pooled_feat = pooled_feat.cast(gcop.float32)
             pooled_feat = gcop.reduce_mean(pooled_feat,
                                            [2, 3])
             cls_score, bbox_pred = self.backbone.cls_reg_head(
@@ -414,7 +367,7 @@ class FasterRcnn(BaseModel):
             state_dict = json.load(f)
         resume_model_path = os.path.join(
             output_dir, 'iter{}.onnx'.format(state_dict['iters']))
-        logger.log_str('resume:', 'load model {}'.format(resume_model_path))
+        print('resume:', 'load model {}'.format(resume_model_path))
         gcop.load_model(resume_model_path)
         self.moving_loss['loss'].var = state_dict['loss']
         self.moving_loss['rpn_loss_cls'].var = state_dict['rpn_loss_cls']

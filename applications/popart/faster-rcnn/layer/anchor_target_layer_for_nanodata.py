@@ -143,7 +143,8 @@ class AnchorTargetLayer(DetectBase):
 
     def change2tensor(self, rpn_data):
         rpn_label = rpn_data[0].view(1, -1)
-        rpn_keep = rpn_label.view(-1).ne(-1).nonzero().view(-1)  # If you amend this code, you have to be clear about the consequences!!!
+        # If you amend this code, you have to be clear about the consequences!!!
+        rpn_keep = rpn_label.view(-1).ne(-1).nonzero().view(-1)
         rpn_label = rpn_label
         rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights = rpn_data[
             1:]
@@ -157,8 +158,10 @@ class AnchorTargetLayer(DetectBase):
 
         im_info = meta['img_info']
         raw_boxes = meta['gt_bboxes'].numpy().astype(np.float32)
-        raw_labels = meta['gt_labels'].numpy().astype(np.float32)[:, np.newaxis]
-        gt_boxes = np.concatenate([raw_boxes, raw_labels], axis=1)[np.newaxis, :, :]
+        raw_labels = meta['gt_labels'].numpy().astype(np.float32)[
+            :, np.newaxis]
+        gt_boxes = np.concatenate([raw_boxes, raw_labels], axis=1)[
+            np.newaxis, :, :]
         num_boxes = meta['num_boxes']
         IM_WIDTH, IM_HEIGHT = cfg.INPUT_SIZE
         im_info = [IM_HEIGHT, IM_WIDTH]
@@ -193,8 +196,8 @@ class AnchorTargetLayer(DetectBase):
         gt_boxes = input[0]
         im_info = input[1]
         feat_width, feat_height = math.ceil(
-            cfg.INPUT_SIZE[0] / cfg.FEAT_STRIDE[0]), math.ceil(
-                cfg.INPUT_SIZE[1] / cfg.FEAT_STRIDE[0])
+            cfg.INPUT_SIZE[0] / cfg.FEAT_STRIDE), math.ceil(
+                cfg.INPUT_SIZE[1] / cfg.FEAT_STRIDE)
         shift_x = np.arange(0, feat_width) * self._feat_stride
         shift_y = np.arange(0, feat_height) * self._feat_stride
         shift_x, shift_y = np.meshgrid(shift_x, shift_y)
@@ -245,7 +248,8 @@ def anchor_target_layer(feat_height, feat_width, gt_boxes, im_info,
     height, width = feat_height, feat_width
 
     # only keep anchors inside the image
-    inds_inside = np.where((all_anchors[:, 0] >= -_allowed_border) & (all_anchors[:, 1] >= -_allowed_border) & (all_anchors[:, 2] < im_info[1] + _allowed_border) & (all_anchors[:, 3] < im_info[0] + _allowed_border))[0]
+    inds_inside = np.where((all_anchors[:, 0] >= -_allowed_border) & (all_anchors[:, 1] >= -_allowed_border) & (
+        all_anchors[:, 2] < im_info[1] + _allowed_border) & (all_anchors[:, 3] < im_info[0] + _allowed_border))[0]
 
     # keep only inside anchors
     anchors = all_anchors[inds_inside, :]

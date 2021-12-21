@@ -24,6 +24,14 @@ def assgin_attr(yaml_cfg, dst_cfg):
             dst_cfg.__setattr__(key, val)
 
 
+def get_multi_level_folders(path):
+    _folder, _file = os.path.split(path)
+    if _folder in ['.', '/', '', '..']:
+        return [_folder, _file]
+    _folders = get_multi_level_folders(_folder)
+    return _folders + [_file]
+
+
 def change_cfg_by_yaml_file(yaml_file):
     with open(yaml_file, 'r') as f:
         yaml_cfg = yaml.load(f, Loader=yaml.FullLoader)
@@ -32,10 +40,25 @@ def change_cfg_by_yaml_file(yaml_file):
         del yaml_cfg['parent']
     if yaml_cfg is None:
         yaml_cfg = {}
-    _, filename = os.path.split(yaml_file)
+
+    # assign yaml file name to name of this config
+    folderpath, filename = os.path.split(yaml_file)
     name, _ = filename.split('.')
     assert 'task_name' not in yaml_cfg
     yaml_cfg['task_name'] = name
+
+    # assign output dir, if yaml file in yamls folder, replace folder 'yamls' with 'outputs', then the result path is the output dir
+    # else use 'output' + name as the output dir
+    list_of_folders_and_file = get_multi_level_folders(folderpath)
+    if 'yamls' in list_of_folders_and_file:
+        idx = list_of_folders_and_file.index('yamls')
+        list_of_folders_and_file[idx] = 'outputs'
+        list_of_folders_and_file = list_of_folders_and_file + [name]
+        output_dir = os.path.join(*list_of_folders_and_file)
+    else:
+        output_dir = os.path.join('outputs', name)
+    yaml_cfg['output_dir'] = output_dir
+
     assgin_attr(yaml_cfg, cfg)
 
 

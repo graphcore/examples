@@ -21,9 +21,15 @@ import torch
 from pycocotools.coco import COCO
 
 from .base import BaseDataset
+from utils import logger
+
+
+if logger.GLOBAL_LOGGER is not None:
+    print = logger.GLOBAL_LOGGER.log_str
 
 
 class CocoDataset(BaseDataset):
+
     def get_data_info(self, ann_path):
         """
         Load basic information of dataset such as image path, label and so on.

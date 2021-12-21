@@ -16,14 +16,27 @@ GLOBAL_V = {
     'deviceType': 'ipu',
     'options': popart.SessionOptions(),
     'seed': int(time.time()),
-    'float_precision': 'FLOAT',
+    'weight_fp16': None,
     'available_memory_proportion': None,
     'global_initializer': {},
     'exclude_weights': [],
     'all_weights': [],
     'all_trainable_weights': [],
     'load_strict': False,
+    'all_tensors_info': [],
 }
+
+
+def get_all_tensors_info():
+    return GLOBAL_V['all_tensors_info']
+
+
+def set_weight_fp16(_state):
+    GLOBAL_V['weight_fp16'] = _state
+
+
+def get_weight_fp16():
+    return GLOBAL_V['weight_fp16']
 
 
 def set_exclude_weights(exclude_weights):

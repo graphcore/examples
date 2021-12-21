@@ -14,6 +14,7 @@
 #include <poputil/VertexTemplates.hpp>
 #include <popops/Reduce.hpp>
 #include <popops/ElementWise.hpp>
+#include <popops/Sort.hpp>
 #include <popnn/Loss.hpp>
 #include <poputil/VertexTemplates.hpp>
 #include "popops/Cast.hpp"
@@ -26,6 +27,9 @@
 
 #include <onnx/defs/schema.h>
 #include <onnx/defs/shape_inference.h>
+#include <time.h>
+
+#include "customop.h"
 
 using namespace poplar;
 using namespace poplar::program;
@@ -95,7 +99,6 @@ void NMSOp::setup() {
 
   size_t batchSize = (scoresShape.size() > 2) ? scoresShape[0] : 0;
 
-
   popart::Shape scoresClassesOutShape, boxesOutShape, keepOutShape;
   if(batchSize > 0) {
     boxesOutShape.push_back(batchSize);
@@ -106,7 +109,6 @@ void NMSOp::setup() {
 
   boxesOutShape.push_back(scoresShape[0]);
   boxesOutShape.push_back(numDetections);
-  // boxesOutShape.push_back(scoresShape[1]);
 
   boxesOutShape.push_back(4);
 
@@ -189,31 +191,27 @@ NMSOpx::NMSOpx(popart::Op *op, popart::popx::Devicex *devicex) :
   threshold = static_cast<float>(dynamic_cast<NMSOp *>(op)->getThresh());
   numDetections = static_cast<unsigned>(dynamic_cast<NMSOp *>(op)->getNumDetections());
 
-  graph().addCodelets("IPU/custom_ops/nms/nms_codelet.cpp");
+  std::string local_path = std::string(CUSTOM_OPS_PATH) + std::string("/nms/nms_codelet.cpp");
+  graph().addCodelets(local_path.c_str());
 
   graph().registerPerfEstimator("NmsCoreVertex<float>",                             poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("NmsCoreVertex<half>",                             poplar::PerfEstimateFunc(getCyclesEstimateForOp));
-  graph().registerPerfEstimator("CalcNNZVertex<float>",                           poplar::PerfEstimateFunc(getCyclesEstimateForOp));
-  graph().registerPerfEstimator("CalcNNZVertex<half>",                           poplar::PerfEstimateFunc(getCyclesEstimateForOp));
-  graph().registerPerfEstimator("PartialFetchVertex<float>",               poplar::PerfEstimateFunc(getCyclesEstimateForOp));
-  graph().registerPerfEstimator("PartialFetchVertex<int>", poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("PartialFetchBoxVertex<float>",                poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("PartialFetchBoxVertex<half>",                poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("UpdateStateVertex<float>",                   poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("UpdateStateVertex<half>",                   poplar::PerfEstimateFunc(getCyclesEstimateForOp));
-  graph().registerPerfEstimator("CalcOnesVertex<half>",                      poplar::PerfEstimateFunc(getCyclesEstimateForOp));
-  graph().registerPerfEstimator("CalcOnesVertex<float>",                      poplar::PerfEstimateFunc(getCyclesEstimateForOp));
-  graph().registerPerfEstimator("CalcNzVertex<half>",                       poplar::PerfEstimateFunc(getCyclesEstimateForOp));
-  graph().registerPerfEstimator("CalcNzVertex<float>",                       poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("fillTrueVertex",                     poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("SetIthKeepVertex<float>",                     poplar::PerfEstimateFunc(getCyclesEstimateForOp));
   graph().registerPerfEstimator("SetIthKeepVertex<half>",                     poplar::PerfEstimateFunc(getCyclesEstimateForOp));
+  
 }
 
 poplar::Device getDevice() 
 {
+  
   auto dm = DeviceManager::createDeviceManager();
   auto devices = dm.getDevices(TargetType::IPU, 1);
+  std::cout << "Found " << devices.size() << " devices ..." << std::endl;
   
   if (devices.size() > 0) 
   {
@@ -242,8 +240,7 @@ Program create_nms_core_program(Graph& graph,
                                 std::string debugMsg,
                                 Tensor& Keep,          
                                 Tensor& Score,         
-                                Tensor& Box,           
-                                Tensor& Finish,        
+                                Tensor& Box,                 
                                 Tensor& Box_i,         
                                 Tensor& Score_2D_idx,
                                 float threshold,
@@ -252,7 +249,7 @@ Program create_nms_core_program(Graph& graph,
 {
     program::Sequence prog;
     ComputeSet Update_CS = graph.addComputeSet(poputil::templateVertex(debugMsg+"Update_CS"));
-
+    
     int tile = 0;
     int numTiles = graph.getTarget().getNumTiles();
 
@@ -271,7 +268,6 @@ Program create_nms_core_program(Graph& graph,
                             {"score_r"   , Score[sample][idx]},
                             {"box_r"   , Box[sample][idx]},
                             {"box_i"   , Box_i[sample]},
-                            {"finish_r", Finish[sample]}
                         }
             );
 
@@ -280,7 +276,6 @@ Program create_nms_core_program(Graph& graph,
         graph.setTileMapping(Score[sample][idx], tile);
         graph.setTileMapping(Box[sample][idx]  , tile);
         graph.setTileMapping(Box_i[sample]  , tile);
-        graph.setTileMapping(Finish[sample] , tile);
         if(tile+1 >= numTiles)
           tile = 0;
         else 
@@ -289,7 +284,6 @@ Program create_nms_core_program(Graph& graph,
     
     }
     prog.add(Execute(Update_CS));
-
     auto Score_2D = Score.reshape({bs, vlength});
     return prog;
 }
@@ -300,7 +294,6 @@ Program fetch_set_result_program(Graph& graph,
                                  Tensor& Score,   
                                  Tensor& Box,
                                  Tensor& Keep,
-                                 Tensor& ITensor,
                                  Tensor& Box_i,
                                  Tensor& result, 
                                  Tensor& resultbox,     
@@ -311,27 +304,22 @@ Program fetch_set_result_program(Graph& graph,
                                  int numDetections)
 {
     program::Sequence prog;
-    ComputeSet Calc_NumNonZero_CS = graph.addComputeSet(poputil::templateVertex(debugMsg+"Calc_NumNonZeros_CS"));
     ComputeSet Set_Result_CS      = graph.addComputeSet(poputil::templateVertex(debugMsg+"SetIthKeep_CS"));
     ComputeSet Result_Index_CS      = graph.addComputeSet(poputil::templateVertex(debugMsg+"ResultIndex_CS"));
     ComputeSet Fetch_ielements_CS = graph.addComputeSet(poputil::templateVertex(debugMsg+"Fetch_ielements_CS"));
     graph.setTileMapping(Box_i, 1);
 
     int numTiles = graph.getTarget().getNumTiles(); 
-    Tensor Score_2D = Score.reshape({(long unsigned int)bs, (long unsigned int)vlength});
-    Tensor Box_2D   = Box.reshape({(long unsigned int)bs, (long unsigned int)vlength*4});
-    int numWorkers = graph.getTarget().getNumWorkerContexts() *
-                            graph.getTarget().getNumTiles();
+    //reshape cause pass3 codelets require 2D tensors 
+    Tensor Score_2D = Score.reshape({bs, vlength});
+    Tensor Box_2D   = Box.reshape({bs, vlength*4});
+    int numWorkers = graph.getTarget().getNumWorkerContexts() * graph.getTarget().getNumTiles();
 
     int L = vlength;
     numWorkers = 1216;
     int numRowsPerWorker = (L + numWorkers - 1) / numWorkers;
     int numVertices = L / numRowsPerWorker + 1;
     int tile = 0;
-
-    //Complete the tile mapping for iTensor (otherwise there is compilation error)
-    for(int sample = 0; sample < bs; sample++)
-      graph.setTileMapping(ITensor[sample], 9);
 
     tile = 0;
     for(int sample = 0; sample < bs; sample++)
@@ -347,9 +335,8 @@ Program fetch_set_result_program(Graph& graph,
       }
     
     poplar::Tensor Box_dist_Tensor     = graph.addVariable(Box.elementType(), {numVertices, bs, 4}, "Box_dist_T"); 
-
     for (int i = 0; i < numVertices; i++) {
-      int rowStart = i * numRowsPerWorker * 4; //TODO, if numRowsPerWorker>1, something will be wrong
+      int rowStart = i * numRowsPerWorker * 4;
       int rowEnd = std::min(L * 4, rowStart + numRowsPerWorker * 4);
       poplar::Tensor workerBox = Box_2D.slice(rowStart, rowEnd, 1); 
       graph.setTileMapping(workerBox, tile);
@@ -360,8 +347,7 @@ Program fetch_set_result_program(Graph& graph,
                                   {"in_row_start", rowStart},
                                   {"in_row_end", rowEnd},
                                   {"in_tensor", workerBox},
-                                  {"sorted_index", Score_2D_idx[0]},//TODO why the idx is zero, shape is [batchsize, 1]
-                                  {"length", rowEnd - rowStart},
+                                  {"sorted_index", Score_2D_idx[0]},
                                   {"out_val", Box_dist_Tensor[i]},
                                   {"batch_size", bs}
                               }
@@ -383,7 +369,6 @@ Program fetch_set_result_program(Graph& graph,
     for (int i = 0; i < numDetections; i++) {
       int rowStart = i;
       int rowEnd = std::min(L, rowStart + 1);
-    
       poplar::Tensor worker_ResultBox = resultbox.slice(rowStart * 4, rowEnd * 4, 1); 
       poplar::Tensor worker_result_idx = result.slice(rowStart, rowEnd, 1); 
       graph.setTileMapping(worker_ResultBox, tile);
@@ -425,112 +410,31 @@ Program fetch_set_result_program(Graph& graph,
 Program init_iter_round_program(Graph& graph,
                                 std::string debugMsg,
                                 Tensor& Keep,          
-                                Tensor& Score,         
-                                Tensor NumOnes,       
-                                Tensor NumNonZeros,   
-                                Tensor iTensor,       
-                                Tensor Finish,        
+                                Tensor& Score,                    
                                 Tensor& Score_2D_idx,
                                 int bs,
                                 int vlength)
 {
     program::Sequence prog;
-    ComputeSet Counting_CS = graph.addComputeSet(poputil::templateVertex(debugMsg+"Counting_CS"));
-    ComputeSet Criterion_CS = graph.addComputeSet(poputil::templateVertex(debugMsg+"Criterion_CS"));
-
-    int numTiles = graph.getTarget().getNumTiles(); 
-    int numWorkers = numTiles;
-    unsigned int L = vlength;
-
-    unsigned int numRowsPerWorker = (L + numWorkers - 1) / numWorkers;
-    unsigned int numVertices = L / numRowsPerWorker + 1;
-    unsigned int tile = 0;
-
-    Tensor Score_2D = Score.reshape({(long unsigned int)bs, (long unsigned int)vlength});
-
-    poplar::Tensor Ones_dist_Tensor     = graph.addVariable(INT, {numVertices, bs}, "Ones_dist_T"); 
-    poplar::Tensor NZs_dist_Tensor     = graph.addVariable(INT, {numVertices, bs}, "NZs_dist_T"); 
-    graph.setTileMapping(NumOnes, 10);
-    graph.setTileMapping(NumNonZeros, 1);
-    for (size_t i = 0; i < numVertices; i++) {
-      unsigned int rowStart = i * numRowsPerWorker;
-      unsigned int rowEnd = std::min(L, rowStart + numRowsPerWorker);
-      unsigned int length = rowEnd - rowStart;
-      poplar::Tensor workerScore = Score_2D.slice(rowStart, rowEnd, 1); 
-      graph.setTileMapping(workerScore, tile);
-      graph.setTileMapping(Ones_dist_Tensor[i], tile);
-      graph.setTileMapping(NZs_dist_Tensor[i], tile);
-  
-      auto v1 = graph.addVertex(
-                          Counting_CS, 
-                          poputil::templateVertex("CalcNzVertex", Score.elementType()), 
-                          {
-                              {"InputVector", workerScore},
-                              {"length", length},
-                              {"batch_size", bs},
-                              {"v_num_nonzero", NZs_dist_Tensor[i]}
-                          }
-              );
-      graph.setTileMapping(v1, tile); 
-      if(tile+1 >= numTiles)
-        tile = 0;
-      else 
-        tile++;
-    }
-    prog.add(Execute(Counting_CS)); 
-    NumNonZeros = popops::reduce(graph, NZs_dist_Tensor, poplar::INT, {0}, popops::Operation::ADD, prog, debugMsg+"CalcNzVertex_nzs");
+    Tensor Score_2D = Score.reshape({bs, vlength});
     graph.setTileMapping(Score_2D_idx, 1);
     Score_2D_idx = popnn::argMax(graph, Score_2D, prog, debugMsg+"argmax");
-    //TODO set to -1 if max score==0.0 Score_2D_idx =  
-    poplar::Tensor sum_socres = popops::reduce(graph, Score_2D, Score_2D.elementType(), {0,1}, popops::Operation::ADD, prog);
-    poplar::Tensor no_box_flag =  popops::cast(graph,sum_socres,poplar::BOOL,prog);
-    no_box_flag =  popops::cast(graph,no_box_flag,poplar::INT,prog);
-    no_box_flag =  popops::sub(graph,1,no_box_flag,prog);
     Score_2D_idx = popops::cast(graph,Score_2D_idx,poplar::INT,prog);
-    Score_2D_idx = popops::sub(graph,Score_2D_idx,no_box_flag,prog);
     Score_2D_idx = Score_2D_idx.reshape({bs, 1});
-
-    auto v2 = graph.addVertex(
-                        Criterion_CS, 
-                        poputil::templateVertex("UpdateStateVertex", Score.elementType()),
-                        {
-                            {"num_nonzeros_in_scores", NumNonZeros},
-                            {"batch_size", bs},
-                            {"iTensor", iTensor},
-                            {"finish", Finish},
-                        }
-            );
-    graph.setTileMapping(v2, 4);
-    
-    tile = 0;
-    for(int sample = 0; sample < bs; sample++)
-      for(int idx = 0; idx < vlength; idx++)
-      {
-        graph.setTileMapping(Score[sample][idx]  , tile);
-      
-        if(tile+1 >= numTiles)
-          tile = 0;
-        else 
-          tile++;
-      } 
-    graph.setTileMapping(iTensor, 3);
-    graph.setTileMapping(Finish, 8);
-
-    prog.add(Execute(Criterion_CS)); 
     return prog;
 }
 
 void init_params(Graph& graph, 
                  std::string debugMsg,
-                 program::Sequence& prog,
-                 poplar::Tensor& value_index,
-                 poplar::Tensor& keep,
+                 Sequence& prog,
+                 Tensor& value_index,
+                 Tensor& keep,
                  int bs,
-                 int vlength) {
-  const auto initializePhaseCS = graph.addComputeSet(debugMsg+"initializePhaseCS");
-  unsigned int numWorkers = graph.getTarget().getNumWorkerContexts() *
-                          graph.getTarget().getNumTiles();
-  int numTiles = graph.getTarget().getNumTiles(); 
+                 int vlength
+                 ) {
+  const auto initializePhaseCS = graph.addComputeSet(debugMsg + "initializePhaseCS");
+  unsigned int numWorkers = graph.getTarget().getNumWorkerContexts() * graph.getTarget().getNumTiles();
+  unsigned int numTiles = graph.getTarget().getNumTiles(); 
   unsigned int L = vlength * bs;
   numWorkers = 1216;
   unsigned int numRowsPerWorker = (L + numWorkers - 1) / numWorkers;
@@ -547,7 +451,7 @@ void init_params(Graph& graph,
           graph.addVertex(initializePhaseCS,
                         poputil::templateVertex("fillTrueVertex"),
                         {
-                          {"keep", workerKeep} // Input
+                          {"keep", workerKeep}
                         });
       graph.setTileMapping(fillTrueVertex, tile);
       if(tile + 1 >= numTiles)
@@ -560,36 +464,48 @@ void init_params(Graph& graph,
     graph.addVertex(initializePhaseCS,
                       poputil::templateVertex("fillZeroVertex"),
                       {
-                        {"var", value_index} // InOut
+                        {"var", value_index}
                       });
     graph.setTileMapping(fillZeroVertex, 2);
   prog.add(poplar::program::Execute(initializePhaseCS));
 }
 
+void post_process_result(Graph& graph, std::string debugMsg, Sequence& prog, int bs, Tensor& result) {
+  // wq add
+  // This function is used to set the index of the redundant box to -1
+  const auto setValidResult = graph.addComputeSet(debugMsg + "setValidResult");
+  unsigned int numTiles = graph.getTarget().getNumTiles();
+  unsigned tile = 0;
+  for (unsigned i = 0; i < bs; i++) {
+    unsigned tileId = tile % numTiles;
+    poplar::VertexRef setResultVertex = graph.addVertex(setValidResult,
+                                                        poputil::templateVertex("setResultVertex"), 
+                                                        {
+                                                          {"res", result[i]}
+                                                        });
+    graph.setTileMapping(setResultVertex, tileId);
+    tile++;
+  }
+  prog.add(poplar::program::Execute(setValidResult));
+}
+
 // the forward process 
 void NMSOpx::grow(poplar::program::Sequence& prog) const {
   std::string debugMsg = "NMSOpx::grow";
-  poplar::Tensor Score_Tensor = getInTensor(0);             // {B, L}
-  poplar::Tensor Box_Tensor = getInTensor(1);              // {B, L, 4}
+  poplar::Tensor Score_Tensor = getInTensor(0);  // {B, L}
+  poplar::Tensor Box_Tensor = getInTensor(1);  // {B, L, 4}
 
   auto score_shape = Score_Tensor.shape();
   long unsigned int Bs = score_shape[0];
   long unsigned int N = score_shape[1];
   Score_Tensor = Score_Tensor.reshape({Bs, score_shape[1], 1});
-
+  
   poplar::Tensor Score_2D_idx          = graph().addVariable(INT     , {Bs, 1}   , "score_2d_idx");
   poplar::Tensor Keep_Tensor           = graph().addVariable(FLOAT            , {Bs, N, 1}, "Keep_T");
   poplar::Tensor result_Tensor         = graph().addVariable(INT     , {Bs, numDetections}   , "Result_T");
-  poplar::Tensor resultbox_Tensor_tmp  = graph().addVariable(Box_Tensor.elementType(), {Bs, numDetections, 4}   , "ResultBox_T_tmp");
-  graph().setTileMapping(resultbox_Tensor_tmp, 0);
   poplar::Tensor resultbox_Tensor      = graph().addVariable(Box_Tensor.elementType(), {Bs, numDetections, 4}   , "ResultBox_T");
   poplar::Tensor value_index           = graph().addVariable(INT         , {Bs}      , "value_index_T");
-  poplar::Tensor Finish_Tensor         = graph().addVariable(INT         , {Bs}      , "Finish_T");
   poplar::Tensor Box_i_Tensor          = graph().addVariable(Box_Tensor.elementType() , {Bs, 4}   , "Box_i_T");
-
-  poplar::Tensor iTensor               = graph().addVariable(INT         , {Bs}      , "iTensor");
-  poplar::Tensor NumOne_Tensor         = graph().addVariable(INT         , {Bs}      , "NumOnes_T");
-  poplar::Tensor NumNonZeros_Tensor    = graph().addVariable(INT         , {Bs}      , "NumNonZeros_T");
 
   poplar::program::Sequence core_programs;
  
@@ -597,15 +513,12 @@ void NMSOpx::grow(poplar::program::Sequence& prog) const {
   
   auto iter_init_prog = init_iter_round_program(graph(),
                                                 debugMsg,
-                                                Keep_Tensor, Score_Tensor,
-                                                NumOne_Tensor, NumNonZeros_Tensor,
-                                                iTensor, Finish_Tensor, Score_2D_idx,
+                                                Keep_Tensor, Score_Tensor, Score_2D_idx,
                                                 Bs, N);
-
+                                                
   auto fetch_set_prog = fetch_set_result_program(graph(),
                                                  debugMsg,
                                                  Score_Tensor, Box_Tensor, Keep_Tensor,
-                                                 iTensor, 
                                                  Box_i_Tensor, result_Tensor, resultbox_Tensor, 
                                                  value_index, Score_2D_idx,
                                                  Bs, N, numDetections);
@@ -613,7 +526,7 @@ void NMSOpx::grow(poplar::program::Sequence& prog) const {
   auto nms_core_prog = create_nms_core_program(graph(),
                                                debugMsg,
                                                Keep_Tensor, Score_Tensor, Box_Tensor, 
-                                               Finish_Tensor, Box_i_Tensor,
+                                               Box_i_Tensor,
                                                Score_2D_idx,
                                                threshold, Bs, N);
     
@@ -623,7 +536,8 @@ void NMSOpx::grow(poplar::program::Sequence& prog) const {
   core_programs.add(nms_core_prog);
   
   prog.add(Repeat(numDetections, core_programs));
-  
+  post_process_result(graph(), debugMsg, prog, Bs, result_Tensor);
+
   // outScores
   setOutTensor(0, Score_Tensor);
 

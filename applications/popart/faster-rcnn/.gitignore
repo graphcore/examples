@@ -18,3 +18,5 @@ build
 /wandb/
 /notebooks/
 /engine_cache/
+/deprecated_yamls/
+/IPU/custom_ops/roi_align/report/

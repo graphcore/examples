@@ -1,7 +1,7 @@
 ## Faster-RCNN
 This is a IPU implementation of Faster-RCNN detection framework based on ruotianluo's [pytorch-faster-rcnn](https://github.com/ruotianluo/pytorch-faster-rcnn). This model is based on the original paper "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks": https://arxiv.org/abs/1506.01497
 
-Currently, we get 79.7(mixed-precision) versus 80.3(Detectron2, FP32) on VOC, Faster-RCNN C4, Resnet50 training.
+Currently, we get 80.5(mixed-precision, 4IPUs and FP32 and 8IPUs) versus 80.3(Detectron2, FP32) on VOC, Faster-RCNN C4, Resnet50 training.
 
 NOTE, different SDK versions will influence the mAP slightly.
 
@@ -9,15 +9,17 @@ The instructions to run the model are as follows:
 
 ## 1. Prepare working environment
 
-1. Install requirements
-```
-pip install -r requirements.txt
-make
-```
-
-2. Go to your local version of the examples repo:
+1. Go to your local version of the examples repo:
 ```
 cd public_examples/applications/popart/detection/faster-rcnn
+```
+
+2. Install requirements
+```
+# install python third-party libraries
+pip install -r requirements.txt
+# make two custom ops named ROI-Align and NMS
+make
 ```
 
 ## 2. Download and setup the dataset
@@ -52,7 +54,7 @@ python3 split_trainval_voc.py ${DATASETS_DIR}/VOCdevkit/VOC2012
 ```
 
 3. merge VOC2007 and VOC2012
-We will train on VOC 2007 train+val + VOC 2012 train+val, testing on VOC 2007. This is a popular training method, called 07+12 in many papers. Another 07++12 (testing on 2012 test) requires submitting test data to the official VOC server. Those who are interested can try it by themselves. The mAP of 07+12 should be aournd 79.7 for Faster-RCNN-R50-C4 and Detectron2 is 80.3. 
+We will train on VOC 2007 train+val + VOC 2012 train+val, testing on VOC 2007. This is a popular training method, called 07+12 in many papers. Another 07++12 (testing on 2012 test) requires submitting test data to the official VOC server. Those who are interested can try it by themselves. The mAP of 07+12 should be aournd 80.5 for Faster-RCNN-R50-C4 and Detectron2 is 80.3. 
 
 To train on VOC 2007 train+val + VOC 2012 train+val, we need to put them together.
 ```
@@ -80,12 +82,19 @@ python3 get_init_weights.py
 The weights are from Detectron2(https://github.com/facebookresearch/detectron2), they are licensed under the Apache 2.0
 
 2. train and evaluate model
-For multi-batch, 4 IPUs, mixed-presision training on VOC 2007 train+val + VOC 2012 train+val and testing on VOC 2007, you will get mAP around 79.7 on VOC 2007 test. 
-This is a popular training method, called 07+12 in many papers. Another 07++12 (testing on 2012 test) requires submitting test data to the official VOC server. Those who are interested can try it by themselves. The mAP of 07+12 should be aournd 79.7 for Faster-RCNN-R50-C4 and Detectron2 is 80.3. 
+For multi-batch, 4 IPUs, mixed-presision training on VOC 2007 train+val + VOC 2012 train+val and testing on VOC 2007, you will get mAP around 80.5 on VOC 2007 test. 
+This is a popular training method, called 07+12 in many papers. Another 07++12 (testing on 2012 test) requires submitting test data to the official VOC server. Those who are interested can try it by themselves. The mAP of 07+12 should be aournd 80.5 for Faster-RCNN-R50-C4 and the result on Detectron2 is 80.3. 
 ```
-bash train.sh yamls/mixed_precision_VOC0712_16batch.yaml
+bash train.sh yamls/example_mixed_precision_VOC0712_16batch.yaml
 ```
-Also you can try other configs contained in `yamls/`
+Also you can try FP32 config contained in `yamls/` which requires 8 IPUs, and `example.yaml` is used for debugging.
+NOTE: Due to the custom ops and complicated network, it takes long time to complie model, but correspondingly, the training speed will be fast.
+
+## 2. check the throughput of Faster-RCNN training
+```
+python3 check_tput.py ${your config}
+```
+This script will output Tput of model training to the log.
 
 ## License information
 This application is licensed under Apache License 2.0.
@@ -96,6 +105,7 @@ The following files are licensed under MIT license and are derived from the work
 ./datasets/blob.py 
 ./datasets/imdb.py 
 ./datasets/factory.py 
+./datasets/coco.py 
 
 The files contained in following folder are licensed under MIT license and are derived from the work of ONNX Project: 
 ./IPU/custom_ops/include/onnx

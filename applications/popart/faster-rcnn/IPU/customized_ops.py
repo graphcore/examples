@@ -100,7 +100,8 @@ def roi_align(bottom_data,
     """roi_align implements."""
 
     load_lib()
-    assert isinstance(aligned_height, int) and isinstance(aligned_width, int), 'they should be int or IndexError: map::at will raised'
+    assert isinstance(aligned_height, int) and isinstance(
+        aligned_width, int), 'they should be int or IndexError: map::at will raised'
     cast_flag, bottom_data, fp16_on = bF.deduce_half(bottom_data, fp16_on)
     if fp16_on:
         bottom_rois = bottom_rois.cast('FLOAT16')

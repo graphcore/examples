@@ -10,6 +10,7 @@ from __future__ import print_function
 
 import numpy as np
 from datasets.pascal_voc import pascal_voc
+from datasets.coco import coco
 __sets = {}
 
 # Set up voc_<year>_<split>
@@ -35,6 +36,14 @@ for year in ['2015']:
     for split in ['test', 'test-dev']:
         name = 'coco_{}_{}'.format(year, split)
         __sets[name] = (lambda split=split, year=year: coco(split, year))
+
+
+# Set up coco_2017_<split>
+for year in ['2017']:
+    for split in ['train', 'val', 'test']:
+        name = 'coco_{}_{}'.format(year, split)
+        __sets[name] = (lambda split=split, year=year: coco(split, year))
+
 
 # Set up vg_<split>
 for version in [

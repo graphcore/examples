@@ -17,6 +17,11 @@
 import numpy as np
 import torch
 from .xml_dataset import XMLDataset
+from utils import logger
+
+
+if logger.GLOBAL_LOGGER is not None:
+    print = logger.GLOBAL_LOGGER.log_str
 
 
 def calc_area(boxes):

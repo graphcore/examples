@@ -22,6 +22,11 @@ from collections import defaultdict
 from pycocotools.coco import COCO
 
 from .coco import CocoDataset
+from utils import logger
+
+
+if logger.GLOBAL_LOGGER is not None:
+    print = logger.GLOBAL_LOGGER.log_str
 
 
 def get_file_list(path, type=".xml"):

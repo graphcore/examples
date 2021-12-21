@@ -210,8 +210,7 @@ class NmsCoreVertex : public Vertex
         Input<float> nms_thresh;
 
         Input<unsigned int>   idx;
-        Vector<Input<T>> box_i;    //vector of 4 elements filled per vertice
-        Input<int>   finish_r;
+        Vector<Input<T>> box_i;  // vector of 4 elements filled per vertice
 
         // The compute method performs core computation
         bool compute()
@@ -227,7 +226,7 @@ class NmsCoreVertex : public Vertex
             float box_b[4] = {box_i[0], box_i[1], box_i[2], box_i[3]};
             float box_s[4] = {box_r[0], box_r[1], box_r[2], box_r[3]};
 
-            if(keep_r[0]==1.0f and finish_r != 1)
+            if(keep_r[0]==1.0f)
             {   
                 float xy1_0 = (box_r[0] > box_i[0])? box_r[0] : box_i[0]; 
                 float xy1_1 = (box_r[1] > box_i[1])? box_r[1] : box_i[1];
@@ -235,12 +234,12 @@ class NmsCoreVertex : public Vertex
                 float xy2_0 = (box_r[2] < box_i[2])? box_r[2] : box_i[2];
                 float xy2_1 = (box_r[3] < box_i[3])? box_r[3] : box_i[3];
                 
-                float tmp0 = xy2_0 - xy1_0; //+ 1.0f;
-                float tmp1 = xy2_1 - xy1_1; //+ 1.0f;
+                float tmp0 = xy2_0 - xy1_0;  // + 1.0f;
+                float tmp1 = xy2_1 - xy1_1;  // + 1.0f;
                 if(tmp0 < 0.0f)
-                    tmp0 = 0.0f;//-tmp0;
+                    tmp0 = 0.0f;
                 if(tmp1 < 0.0f)
-                    tmp1 = 0.0f;//-tmp1;
+                    tmp1 = 0.0f;
 
                 
                 float inter = tmp0 * tmp1;
@@ -394,13 +393,11 @@ class PartialFetchBoxVertex : public Vertex
     public:
         Input<int> in_row_start;
         Input<int> in_row_end;
-        Vector<Input<Vector<T>>> in_tensor; // Per Vertex sees subtensor of shape [bs, (5*Top_n)*4]
-        // Vector<Input<int>> j_tensor;            // Per Vertex sees subtensor of shape [bs], value within [0, 5*top_n) 
-        Input<int> batch_size;                  // bs
-        Input<int> length;                      // Suppose to be 5*top_n
+        Vector<Input<Vector<T>>> in_tensor;  // Per Vertex sees subtensor of shape [bs, (5*Top_n)*4]
+        Input<int> batch_size;  // bs
  
-        Input<Vector<int>>       sorted_index;
-        Vector<Output<Vector<T>>>         out_val;  // Per Vertex fill sub-tensor of shape [bs, 4]
+        Input<Vector<int>> sorted_index;
+        Vector<Output<Vector<T>>> out_val;  // Per Vertex fill sub-tensor of shape [bs, 4]
 
 
     bool compute()
@@ -584,25 +581,28 @@ template <typename T>
 class UpdateStateVertex : public Vertex
 {
     public:        
-        Input<Vector<int>> num_nonzeros_in_scores; // [bs] shaped
-        Input<int> batch_size;                     //  bs
-        InOut<Vector<int>> iTensor;                // [bs] shaped
-        Output<Vector<int>> finish;                // [bs] shaped
+        Input<Vector<int>> num_nonzeros_in_scores;  // [bs] shaped
+        Input<int> batch_size;  //  bs
+        InOut<Vector<int>> iTensor;  // [bs] shaped
+        Output<Vector<int>> finish;  // [bs] shaped
+        Output<Vector<int>> flag_test;
 
         // The compute method performs core computation
         bool compute()
-        {   
+        {
             for(int sample = 0; sample < batch_size; sample++)
             {
                 int i = iTensor[sample];
                 int scores_num_nonzeros = num_nonzeros_in_scores[sample];
-
+                
                 if(i >= scores_num_nonzeros)
                 {
+                    flag_test[sample] = 1;
                     break;
                 }
                 else
                     iTensor[sample] = (i + 1);
+                    flag_test[sample] = 2;
             }
             return true;
         }
@@ -615,3 +615,28 @@ class UpdateStateVertex : public Vertex
 template class UpdateStateVertex<float>;
 template class UpdateStateVertex<half>;
 
+class setResultVertex : public poplar::Vertex {
+public:
+  setResultVertex();
+
+  Vector<InOut<int>> res;  // {L}
+
+  bool compute() {
+    int L = res.size();
+    if (res[L - 1] != 0 || L <= 1) {
+        return true;
+    }
+    int count = 1;
+    for (int i = L - 2; i >= 0; i--) {
+        if (res[i + 1] == res[i]) {
+            count++;
+        } else {
+            break;
+        }
+    }
+    for (int i = L - 1; i >= L - count; i--) {
+        res[i] = -1;
+    }
+    return true;
+  }
+};

@@ -7,7 +7,7 @@ import builtins
 import string
 import numpy as np
 import popart
-from _globals import GLOBAL_V, set_batch, get_batch_size, get_anchor_return_type, train_mode_on, train_mode, safe_mode, safe_mode_on, safe_mode_off, get_builder, set_builder, set_seed, get_seed, set_options, get_options, set_device, get_device_type, get_ai_onnx_version, set_memory_proportion, get_memory_proportion, enable_global_initializer, get_global_initializer, get_exclude_weights, set_exclude_weights, get_all_trainable_weights, load_model, set_load_strict, load_strict
+from _globals import GLOBAL_V, set_batch, get_batch_size, get_anchor_return_type, train_mode_on, train_mode, safe_mode, safe_mode_on, safe_mode_off, get_builder, set_builder, set_seed, get_seed, set_options, get_options, set_device, get_device_type, get_ai_onnx_version, set_memory_proportion, get_memory_proportion, enable_global_initializer, get_global_initializer, get_exclude_weights, set_exclude_weights, get_all_trainable_weights, load_model, set_load_strict, load_strict, set_weight_fp16, get_weight_fp16, get_all_tensors_info
 
 CONSTANT_COUNTER = [0]
 TENSOR_NAMES = []
@@ -820,7 +820,7 @@ def align_tensor(tensors):
     return tensors
 
 
-def int32toint64(tensor):
+def int32toint64(t):
     return t.cast('INT64') if t.type == 'int32' else t
 
 
@@ -839,6 +839,7 @@ class TTensor():
         if safe_mode() and not nodata:
             assert isinstance(self.pureShape, (list, tuple))
             assert isinstance(self.dtype, str)
+        get_all_tensors_info().append(str(self))
 
     def copy_from_tensor(self, tensor):
         assert self.__class__.__name__ == tensor.__class__.__name__
@@ -1067,6 +1068,13 @@ class ConstantTensor(TTensor):
         assert name is not None
         return name
 
+    def __repr__(self, ):
+        string = self.__class__.__name__ + ': ' + self.__name + ', shape: ' + str(
+            self.pureShape) + ', dtype: ' + self.dtype
+        string = string + ', constant'
+        string += ', ID: ' + str(id(self))
+        return string
+
     @property
     def pureShape(self):
         return self.data.shape
@@ -1080,13 +1088,6 @@ class ConstantTensor(TTensor):
 
     def as_list(self, ):
         return self.data.tolist()
-
-    def __repr__(self, ):
-        string = self.__class__.__name__ + ': ' + self.__name + ', shape: ' + str(
-            self.pureShape) + ', dtype: ' + self.dtype
-        string = string + ', constant: ' + str(self.data)
-        string += ', ID: ' + str(id(self))
-        return string
 
     def __getitem__(self, index):
         if isinstance(index, int):
@@ -1174,7 +1175,8 @@ def nllloss(prob,
             label,
             reductionType=popart.ReductionType.Mean,
             debugPrefix=''):
-    #
+    # prob: scaled probabilities, [batch, classes], float
+    # label: labels, [batch,], int32
     with name_scope(debugPrefix):
         loss = get_builder().aiGraphcore.nllloss(
             [prob.getIpuIndex(), label.getIpuIndex()],

@@ -53,7 +53,6 @@ def conv2d(input,
            bias=True,
            train=True,
            strides=[1, 1],
-           pads=[1, 1, 1, 1],
            dilations=[1, 1],
            group=1,
            filters_data=None,
@@ -75,12 +74,21 @@ def conv2d(input,
             np.asarray(filters_data.shape) == np.asarray(weights_shape))
     else:
         filters_data = np.ones(weights_shape, bF.mappin_gc2npy[input.dtype])
-    local_weights_fp16_on = fp16_on if weights_fp16_on is None else weights_fp16_on
+    local_weights_fp16_on = fp16_on
+    if bF.get_weight_fp16() is not None:
+        local_weights_fp16_on = bF.get_weight_fp16()
+    if weights_fp16_on is not None:
+        local_weights_fp16_on = weights_fp16_on
+    if input.dtype.upper() in ['FLOAT', 'FLOAT32'] and local_weights_fp16_on:
+        raise RuntimeError('weights cannnot be fp16 while input is fp32')
     weights = temporary_init_weights(filters_data,
                                      debugContext + "weight",
                                      fp16_on=local_weights_fp16_on,
                                      train=train)
     if fp16_on and local_weights_fp16_on is False:
+        if isinstance(weights, bF.ConstantTensor):
+            # casting 32 to 16 might be different between IPU and numpy
+            weights = bF.TTensor(weights.getIpuIndex())
         weights = weights.cast('FLOAT16')
 
     # init bias

@@ -1,13 +1,14 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 # Written by Hu Di
+
 import numpy as np
 import sys
 import os
 import subprocess
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../IPU'))
-from gc_session import Session
 from ipu_tensor import gcop
+from gc_session import Session
 
 # make test data for NMS
 IMAGE_SIZE = [800, 800]
@@ -118,6 +119,7 @@ def helper_func(iou_thrd):
 
 
 def test_nms():
-    subprocess.run(['make'], shell=True, cwd=os.path.join(os.path.dirname(__file__), '../'))
+    faster_rcnn_working_dic = os.path.join(os.path.dirname(__file__), '../')
+    subprocess.run(['make'], shell=True, cwd=faster_rcnn_working_dic)
     for iou_thrd in [0.1, 0.3, 0.5, 0.7, 0.9]:
         helper_func(iou_thrd)

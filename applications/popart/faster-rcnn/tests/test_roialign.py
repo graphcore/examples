@@ -1,15 +1,16 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 # Written by Hu Di
+
 import sys
 import os
 import subprocess
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../IPU'))
-from gc_session import Session, add_aux_vars_to_tensor
-from ipu_tensor import gcop
-import numpy as np
-import torch
 from torchvision.ops import RoIAlign as torch_roialign
+import torch
+import numpy as np
+from ipu_tensor import gcop
+from gc_session import Session, add_aux_vars_to_tensor
 
 # make test data for ROI-Align
 IMAGE_SIZE = 800
@@ -59,7 +60,8 @@ def my_test_func(feat, box, pt_on_output, output_shape, spatial_scale, aligned=T
 
 
 def test_roialign():
-    subprocess.run(['make'], shell=True, cwd=os.path.join(os.path.dirname(__file__), '../'))
+    faster_rcnn_working_dic = os.path.join(os.path.dirname(__file__), '../')
+    subprocess.run(['make'], shell=True, cwd=faster_rcnn_working_dic)
     box_centers = np.random.rand(1, BOX_NUM, 2) * np.asarray(IMAGE_SIZE)
     box_whs = np.random.rand(
         1, BOX_NUM, 2) * (BOX_SIZE_RANGE[1] - BOX_SIZE_RANGE[0]) + BOX_SIZE_RANGE[0]

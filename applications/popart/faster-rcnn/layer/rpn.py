@@ -42,7 +42,8 @@ class Proposal(BaseModel, DetectBase):
         self.boxes = self.process(
             self.generate_anchors(scales=np.array(scales),
                                   ratios=np.array(ratios)),
-            feat_size=np.asarray([feat_height, feat_width])).astype(self.dtype)
+            feat_size=np.asarray([feat_height, feat_width]),
+            feat_stride=feat_stride).astype(self.dtype)
 
         self.anchors = gcop.constant(self.boxes)
 
@@ -150,9 +151,12 @@ class Proposal(BaseModel, DetectBase):
                             gcop.reduce_sum(valid_area_boxes))
 
             if cfg.TRAIN.RPN_PRE_NMS_TOP_N > 0:
-                rpn_pre_nms_top_n = min(cfg.TRAIN.RPN_PRE_NMS_TOP_N, scores.squeeze(0).pureShape[0])
-                sorted_scores, order = gcop.nn.top_k(scores.squeeze(0), k=rpn_pre_nms_top_n)
-                sorted_clipped_proposals = gcop.gather(clipped_proposals, order, axis=1)
+                rpn_pre_nms_top_n = min(
+                    cfg.TRAIN.RPN_PRE_NMS_TOP_N, scores.squeeze(0).pureShape[0])
+                sorted_scores, order = gcop.nn.top_k(
+                    scores.squeeze(0), k=rpn_pre_nms_top_n)
+                sorted_clipped_proposals = gcop.gather(
+                    clipped_proposals, order, axis=1)
             else:
                 sorted_scores = scores.squeeze(0)
                 sorted_clipped_proposals = clipped_proposals
@@ -186,6 +190,7 @@ class RPN(BaseModel):
                                  scales=cfg.ANCHOR_SCALES,
                                  ratios=cfg.ANCHOR_RATIOS,
                                  input_size=input_size,
+                                 feat_stride=cfg.FEAT_STRIDE,
                                  training=training)
         self.classes = classes
         self.classes_count = len(classes)
@@ -195,7 +200,12 @@ class RPN(BaseModel):
             len(self.anchor_ratios) * 2
         self.rpn_channel = rpn_channel
 
-    def forward(self, x, im_info=None, rpn_data=None, ipu_configs='0'):
+    def forward(self, x, im_info=None, rpn_data=None, stage_configs='0'):
+        if cfg.MODEL.RPN_CONV_FP16_ON:
+            x = x.cast(gcop.float16)
+        else:
+            x = x.cast(gcop.float32)
+
         with gcop.variable_scope("rpn"):
             x = gcop.cF.conv2d(x,
                                self.rpn_channel,
@@ -247,7 +257,13 @@ class RPN(BaseModel):
                 rpn_bbox_pred = gcop.transpose(rpn_bbox_pred,
                                                [0, 2, 3, 1])
 
-        with gcop.device(ipu_configs):
+            if cfg.MODEL.RPN_CONV_FP16_ON:
+                rpn_bbox_pred = rpn_bbox_pred.cast(gcop.float32)
+                logits = logits.cast(gcop.float32)
+                rpn_cls_prob_premute_reshape = rpn_cls_prob_premute_reshape.cast(
+                    gcop.float32)
+
+        with gcop.device(stage_configs):
             if self.training:
                 _rpn_label, rpn_keep, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights = rpn_data
                 rpn_keep = rpn_keep.squeeze(0)

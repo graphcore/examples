@@ -181,6 +181,12 @@ class Session:
             for aux_output_name in getattr(t, 'aux_vars', []):
                 if aux_output_name == 'Gradient___':
                     t.grad = self.anchors[aux_output_name + t.getIpuIndex()]
+                elif aux_output_name == 'Accl1___':
+                    t.accl1 = self.anchors[aux_output_name + t.getIpuIndex()]
+                elif aux_output_name == 'Accl2___':
+                    t.accl2 = self.anchors[aux_output_name + t.getIpuIndex()]
+                elif aux_output_name == 'Accl___':
+                    t.accl = self.anchors[aux_output_name + t.getIpuIndex()]
                 else:
                     raise NotImplementedError
 

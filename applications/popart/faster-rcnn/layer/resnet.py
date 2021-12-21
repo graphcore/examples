@@ -12,6 +12,10 @@ from utils import logger
 from config import cfg
 
 
+if logger.GLOBAL_LOGGER is not None:
+    print = logger.GLOBAL_LOGGER.log_str
+
+
 def my_conv(x,
             ksize,
             stride,
@@ -65,7 +69,7 @@ class Resnet(BaseModel):
         else:
             self.fc_fp16 = cfg.TEST.FC_FP16
 
-        logger.log_str('network_type:', self.network_type)
+        print('network_type:', self.network_type)
         if self.network_type == '50':
             self.layers_count = [3, 4, 6, 3]
             self.layers_out = [256, 512, 1024, 2048]
@@ -340,11 +344,23 @@ class Resnet(BaseModel):
 
         return x
 
-    def head_to_tail(self, x, ipu_configs):
+    def head_to_tail(self, x, stage_configs):
+        with gcop.device(stage_configs[0]):
+            cast_flag, x, fp16_on = gcop.bF.deduce_half(
+                x, cfg.MODEL.LAYER3_FP16_ON)
+        result = self.expanded_layer3(x, stage_configs)
+        if cast_flag:
+            with gcop.device(stage_configs[-1]):
+                result = result.cast(cast_flag)
+        return result
+
+    def expanded_layer3(self, x, stage_configs):
         conv_weights_fp16_on_l = [None for i in range(12)]
         for _idx in cfg.MODEL.RCNN.CONV_WEIGHTS_FP16_OFF_INDICES:
             conv_weights_fp16_on_l[_idx] = False
-        with gcop.device(ipu_configs[6]):
+
+        # block 1
+        with gcop.device(stage_configs[0]):
             x, stride, pads, c_out, expansion, i, debugPrefix, training = x, self.layers_stride[
                 3], 1, self.layers_out[3], 4, 0, 'layer4', self.training
             conv_bias = False
@@ -375,7 +391,7 @@ class Resnet(BaseModel):
                     fp16_on=None,
                     name='bn1')
                 x = gcop.nn.relu(x)
-        with gcop.device(ipu_configs[7]):
+        with gcop.device(stage_configs[1]):
             with gcop.variable_scope(debugPrefix + "/" + '{}'.format(str(i))):
                 x = self.conv3x3(x,
                                  stride=lastlayer_second_stride,
@@ -408,6 +424,7 @@ class Resnet(BaseModel):
                     fp16_on=None,
                     name='bn3')
 
+        with gcop.device(stage_configs[2]):
             with gcop.variable_scope(debugPrefix + "/" + '{}'.format(str(i)) +
                                      "/downsample"):
                 x = self.residual(x,
@@ -418,7 +435,8 @@ class Resnet(BaseModel):
                                   weights_fp16_on=conv_weights_fp16_on_l[3],
                                   bias_training=local_bn_training)
 
-        with gcop.device(ipu_configs[8]):
+        # block 2
+        with gcop.device(stage_configs[3]):
             x, stride, pads, c_out, expansion, i, debugPrefix, training = x, 1, 1, self.layers_out[
                 3], 4, 1, 'layer4', self.training
             conv_bias = False
@@ -487,7 +505,8 @@ class Resnet(BaseModel):
                                   weights_fp16_on=conv_weights_fp16_on_l[7],
                                   bias_training=local_bn_training)
 
-        with gcop.device(ipu_configs[9]):
+        # block 3
+        with gcop.device(stage_configs[4]):
             x, stride, pads, c_out, expansion, i, debugPrefix, training = x, 1, 1, self.layers_out[
                 3], 4, 2, 'layer4', self.training
             conv_bias = False
@@ -513,7 +532,7 @@ class Resnet(BaseModel):
                     fp16_on=None,
                     name='bn1')
                 x = gcop.nn.relu(x)
-        with gcop.device(ipu_configs[10]):
+        with gcop.device(stage_configs[5]):
             with gcop.variable_scope(debugPrefix + "/" + '{}'.format(str(i))):
                 x = self.conv3x3(x,
                                  stride=lastlayer_second_stride,
@@ -565,7 +584,7 @@ class Resnet(BaseModel):
         local_bn_fp16 = False
         x = my_conv(x,
                     7,
-                    2,
+                    cfg.MODEL.INIT_BLOCK_CONV_STRIDE,
                     3,
                     64,
                     conv_bias,
@@ -582,15 +601,23 @@ class Resnet(BaseModel):
         x = gcop.nn.relu(x)
 
         x = gcop.layers.max_pooling2d(x,
-                                      strides=2,
+                                      strides=cfg.MODEL.INIT_BLOCK_POOL_STRIDE,
                                       pool_size=3,
                                       padding='same',
                                       data_format='channels_first')
         return x
 
     def layerX(self, x, index):
+        if index == 1:
+            cast_flag, x, fp16_on = gcop.bF.deduce_half(
+                x, cfg.MODEL.LAYER1_FP16_ON)
+        elif index == 2:
+            cast_flag, x, fp16_on = gcop.bF.deduce_half(
+                x, cfg.MODEL.LAYER2_FP16_ON)
+        else:
+            cast_flag = False
+
         local_training = False if index + 1 <= self.fix_blocks else self.training
-        cast_flag, x, fp16_on = gcop.bF.deduce_half(x, cfg.TRAIN.LAYERXS_FP16[index])
         result = self.bottleneck_block(x,
                                        stride=self.layers_stride[index],
                                        c_out=self.layers_out[index],

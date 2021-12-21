@@ -17,6 +17,12 @@
 import numpy as np
 import torch
 from .coco import CocoDataset
+from pycocotools.coco import COCO
+from utils import logger
+
+
+if logger.GLOBAL_LOGGER is not None:
+    print = logger.GLOBAL_LOGGER.log_str
 
 
 def calc_area(boxes):
@@ -43,6 +49,34 @@ class CocoDatasetForRcnn(CocoDataset):
         self.real_length = len(self.data_info)
         self.length = self.real_length if specified_length is None else specified_length
         self.extra_layer = extra_layer
+
+    def get_data_info(self, ann_path):
+        """
+        Load basic information of dataset such as image path, label and so on.
+        :param ann_path: coco json file path
+        :return: image info:
+        [{'license': 2,
+            'file_name': '000000000139.jpg',
+            'coco_url': 'http://images.cocodataset.org/val2017/000000000139.jpg',
+            'height': 426,
+            'width': 640,
+            'date_captured': '2013-11-21 01:34:01',
+            'flickr_url':
+                'http://farm9.staticflickr.com/8035/8024364858_9c41dc1666_z.jpg',
+            'id': 139},
+            ...
+        ]
+        """
+        self.coco_api = COCO(ann_path)
+        self.cat_ids = sorted(self.coco_api.getCatIds())
+        self.cat2label = {cat_id: i+1 for i, cat_id in enumerate(self.cat_ids)}
+        print('self.cat_ids', self.cat_ids)
+        print('self.cat2label', self.cat2label)
+        self.cats = self.coco_api.loadCats(self.cat_ids)
+        print('self.cats', self.cats)
+        self.img_ids = sorted(self.coco_api.imgs.keys())
+        img_info = self.coco_api.loadImgs(self.img_ids)
+        return img_info
 
     def get_train_data(self, idx):
         """
