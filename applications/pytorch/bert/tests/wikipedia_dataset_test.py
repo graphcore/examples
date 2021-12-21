@@ -72,7 +72,6 @@ from tqdm import tqdm
 from args import parse_bert_args
 from pretraining_data import get_dataloader
 from ipu_options import get_options
-from poptorch import DataLoader
 import transformers
 import pytest
 
@@ -220,12 +219,8 @@ def test_wikipedia_dataset():
     num_tokens = 0
     replacement_counts = Counter({"103": 0, "same": 0, "random": 0})
 
-    dataset = get_dataloader(config)
     opts = get_options(config)
-    loader = DataLoader(opts,
-                        dataset,
-                        batch_size=config.batch_size,
-                        num_workers=config.dataloader_workers)
+    loader = get_dataloader(config, opts)
 
     for datum in tqdm(loader):
         tokens, attn_mask, types, mask_lm_pos, labels, nsp = datum
@@ -235,7 +230,7 @@ def test_wikipedia_dataset():
         mask_lm_pos = mask_lm_pos.numpy()
         labels = labels.numpy()
         nsp = nsp.numpy()
-        for b in range(config.batch_size):
+        for b in range(config.micro_batch_size):
             check_dimensions(config, tokens[b], attn_mask[b], types[b], mask_lm_pos[b], labels[b], nsp[b])
             check_tokens(config, tokens[b], mask_lm_pos[b], labels[b])
             check_attention_mask(attn_mask[b], tokens[b])

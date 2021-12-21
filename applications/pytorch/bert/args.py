@@ -62,7 +62,8 @@ def parse_bert_args(args=None):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # Execution
-    parser.add_argument("--batch-size", type=int, help="Set the micro batch-size")
+    parser.add_argument("--micro-batch-size", type=int,
+                        help="Set the micro-batch-size. This is the single forward-backward path batch-size on one replica")
     parser.add_argument("--training-steps", type=int, help="Number of training steps")
     parser.add_argument("--batches-per-step", type=int, help="Number of batches per training step")
     parser.add_argument("--replication-factor", type=int, help="Number of replicas")
@@ -208,11 +209,11 @@ def parse_bert_args(args=None):
         parser.error("checkpoint-steps must be >=1")
 
     if args.use_popdist:
-        args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.batch_size * args.popdist_size
+        args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.micro_batch_size * args.popdist_size
     else:
-        args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.batch_size
+        args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.micro_batch_size
 
-    args.samples_per_step = args.replication_factor * args.gradient_accumulation * args.batch_size * args.batches_per_step
+    args.samples_per_step = args.replication_factor * args.gradient_accumulation * args.micro_batch_size * args.batches_per_step
     args.intermediate_size = args.hidden_size * 4
 
     return args

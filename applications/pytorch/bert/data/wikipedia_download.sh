@@ -12,7 +12,7 @@ echo $folder_path
 echo "under the name of"
 echo $file_path
 
-wget 'ftp://ftpmirror.your.org/pub/wikimedia/dumps/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2' -O "${file_path}"
+wget 'https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2' -O "${file_path}"
 
 # Unzip
 cd ${folder_path}

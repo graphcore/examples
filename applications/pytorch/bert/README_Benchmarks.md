@@ -18,7 +18,11 @@ Run the following commands from inside the applications/pytorch/bert/ directory.
 
 Command:
 ```console
-python run_pretraining.py --config pretrain_base_128 --training-steps 10 --input-file $DATASETS_DIR/wikipedia/128/wiki_1[0-1]*.tfrecord --disable-progress-bar
+python3 run_pretraining.py \
+   --config pretrain_base_128 \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/128/wiki_1[0-1]*.tfrecord \
+   --disable-progress-bar
 ```
 
 ### Pretrain BERT-Base Sequence Length 384
@@ -27,7 +31,11 @@ python run_pretraining.py --config pretrain_base_128 --training-steps 10 --input
 
 Command:
 ```console
-python run_pretraining.py --config pretrain_base_384 --training-steps 10 --input-file $DATASETS_DIR/wikipedia/384/wiki_1[0-1]*.tfrecord --disable-progress-bar
+python3 run_pretraining.py \
+   --config pretrain_base_384 \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/384/wiki_1[0-1]*.tfrecord \
+   --disable-progress-bar
 ```
 
 ### Pretrain BERT-Large Sequence Length 128
@@ -36,16 +44,23 @@ python run_pretraining.py --config pretrain_base_384 --training-steps 10 --input
 
 Command:
 ```console
-python run_pretraining.py --config pretrain_large_128 --training-steps 10 --input-file $DATASETS_DIR/wikipedia/128/wiki_1[0-1]*.tfrecord --disable-progress-bar
+python3 run_pretraining.py \
+   --config pretrain_large_128 \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/128/wiki_1[0-1]*.tfrecord \
+   --disable-progress-bar
 ```
 
 #### 1 x IPU-POD64
 
 Command:
 ```console
-python run_pretraining.py --config pretrain_large_128_POD64 --training-steps 10 --input-file $DATASETS_DIR/wikipedia/128/wiki_1[0-1]*.tfrecord --disable-progress-bar
+python3 run_pretraining.py \
+   --config pretrain_large_128_POD64 \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/128/wiki_1[0-1]*.tfrecord \
+   --disable-progress-bar
 ```
-
 
 #### 1 x IPU-POD128
 
@@ -91,7 +106,7 @@ python run_pretraining.py --config pretrain_large_128_POD64 --replication-factor
                           --replicated-tensor-sharding True \
                           --random-seed 1984 \
                           --input-files  $DATASETS_DIR/wikipedia/torch_bert/128/*.tfrecord 
-```CAL_HOME}/exec_cache" python run_pretraining.py --config configs/pretrain_large_128_phase1_POD128.json --train-file "$DATASETS_DIR/tf_wikipedia/tokenised_128_dup5_mask20/*.tfrecord" 
+
 ```
 
 ### Pretrain BERT-Large Sequence Length 384
@@ -100,14 +115,22 @@ python run_pretraining.py --config pretrain_large_128_POD64 --replication-factor
 
 Command:
 ```console
-python run_pretraining.py --config pretrain_large_384 --training-steps 10 --input-file $DATASETS_DIR/wikipedia/384/wiki_1[0-1]*.tfrecord --disable-progress-bar
+python3 run_pretraining.py \
+   --config pretrain_large_384 \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/384/wiki_1[0-1]*.tfrecord \
+   --disable-progress-bar
 ```
 
 #### 1 x IPU-POD64
 
 Command:
 ```console
-python run_pretraining.py --config pretrain_large_384_POD64 --training-steps 10 --input-file $DATASETS_DIR/wikipedia/384/wiki_1[0-1]*.tfrecord --disable-progress-bar
+python3 run_pretraining.py \
+   --config pretrain_large_384_POD64 \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/384/wiki_1[0-1]*.tfrecord \
+   --disable-progress-bar
 ```
 
 #### 1 x IPU-POD128

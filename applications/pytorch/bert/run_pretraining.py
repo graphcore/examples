@@ -71,6 +71,7 @@ if __name__ == "__main__":
     start_loading = time.perf_counter()
     loader = get_dataloader(config, opts)
     steps_per_epoch = len(loader)
+    loader = cycle(loader)
     if steps_per_epoch < 1:
         raise RuntimeError("Not enough data in input_files for current configuration, "
                            "try reducing deviceIterations or gradientAccumulation.")
@@ -89,17 +90,23 @@ if __name__ == "__main__":
 
         if config.resume_training_from_checkpoint:
             training_state = torch.load(Path(config.pretrained_checkpoint) / "training_state.pt")
+            optimizer.load_state_dict(training_state["optimizer_state_dict"])
             scheduler.last_epoch = steps_finished = training_state["step"]
             checkpoint_metrics = training_state["metrics"]
+            logger(f"---- Forwarding Data Loader until Checkpoint Step {steps_finished} ----")
+            start_data_forward = time.perf_counter()
+            for step in range(steps_finished + 1):
+                next(loader)
+            duration_data_forward = time.perf_counter() - start_data_forward
+            logger(f"Data loader forwarded in {duration_data_forward} secs")
+            logger("-----------------------------------------------------------")
+
     else:
         # Train model from scratch
         model = PipelinedBertForPretraining(config).parallelize().half().train()
         optimizer = get_optimizer(config, model)
         scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
                                      config.lr_warmup, config.training_steps)
-
-    # Checkpoint model at start of run
-    save_checkpoint(config, model, steps_finished)
 
     poptorch_model = trainingModel(model, opts, optimizer=optimizer)
 
@@ -117,11 +124,13 @@ if __name__ == "__main__":
         logger("Model successfully compiled. Exiting now as '--compile-only' argument was passed.")
         sys.exit(0)
 
+    # Checkpoint model at start of run
+    save_checkpoint(config, model, steps_finished, optimizer)
+
     # Training loop
     logger("--------------------- Training Started --------------------")
     factor = config.gradient_accumulation * config.batches_per_step
     start_train = time.perf_counter()
-    loader = cycle(loader)
     train_iterator = tqdm(range(steps_finished, config.training_steps),
                           desc="Training", disable=config.disable_progress_bar or (config.use_popdist and not(config.popdist_rank == 0)))
     for step in train_iterator:
@@ -163,18 +172,17 @@ if __name__ == "__main__":
                         wandb.run.history.torch.log_tensor_stats(parameter.data, name)
 
             if config.checkpoint_steps and (step % config.checkpoint_steps) == 0:
-                save_checkpoint(config, model, step,
+                save_checkpoint(config, model, step, optimizer,
                                 metrics={"Loss": outputs_sync[0],
                                          "Acc/MLM": outputs_sync[3],
                                          "Acc/NSP": outputs_sync[4]})
 
         if step + 1 == config.training_steps:
             break  # Training finished mid-epoch
-
     stop_train = time.perf_counter()
     # Checkpoint at end of run
     if not config.use_popdist or config.popdist_rank == 0:
-        save_checkpoint(config, model, step,
+        save_checkpoint(config, model, step, optimizer,
                         metrics={"Loss": outputs[0].mean().item(),
                                  "Acc/MLM": outputs[3].mean().item(),
                                  "Acc/NSP": outputs[4].mean().item()})

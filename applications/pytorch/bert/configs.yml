@@ -41,7 +41,7 @@ demo_tiny_128:
   <<: *defaults
 
   # Execution
-  batch_size: 1
+  micro_batch_size: 1
   training_steps: 150
   batches_per_step: 1
   replication_factor: 1
@@ -73,7 +73,7 @@ pretrain_base_128: &pretrain_base_128
   <<: *defaults
 
   # Execution
-  batch_size: 32
+  micro_batch_size: 32
   training_steps: 7038
   batches_per_step: 1
   replication_factor: 4
@@ -106,7 +106,7 @@ pretrain_base_384:
   <<: *pretrain_base_128
 
   # Execution
-  batch_size: 8
+  micro_batch_size: 8
   training_steps: 2137
   gradient_accumulation: 512
 
@@ -124,11 +124,34 @@ pretrain_base_384:
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
+pretrain_base_512:
+  <<: *pretrain_base_128
+
+  # Execution
+  micro_batch_size: 8
+  training_steps: 2137
+  gradient_accumulation: 512
+  embedding_serialization_factor: 2
+
+  # Model
+  sequence_length: 512
+  mask_tokens: 76
+
+  # Optimizer
+  lr_warmup: 0.128
+  learning_rate: 0.002828
+  loss_scaling: 128.0
+
+  # Dataset
+  input_files: ["data/wikipedia/512/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
 pretrain_large_128: &pretrain_large_128
   <<: *defaults
 
   # Execution
-  batch_size: 8
+  micro_batch_size: 8
   training_steps: 7038
   batches_per_step: 1
   replication_factor: 4
@@ -164,7 +187,21 @@ pretrain_large_128_POD64:
   # Execution
   replication_factor: 16
   gradient_accumulation: 512
-  matmul_proportion: [0.15, 0.2, 0.2, 0.2]
+  matmul_proportion: [0.14, 0.19, 0.19, 0.19]
+
+  # Optimizer
+  loss_scaling: 32768.0
+
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_128_POD128:
+  <<: *pretrain_large_128
+
+  # Execution
+  replication_factor: 32
+  gradient_accumulation: 256
+  matmul_proportion: [0.14, 0.19, 0.19, 0.19]
 
   # Optimizer
   loss_scaling: 32768.0
@@ -176,7 +213,7 @@ pretrain_large_384: &pretrain_large_384
   <<: *pretrain_large_128
 
   # Execution
-  batch_size: 2
+  micro_batch_size: 2
   training_steps: 2137
   gradient_accumulation: 2048
 
@@ -206,11 +243,58 @@ pretrain_large_384_POD64:
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
+pretrain_large_512: &pretrain_large_512
+  <<: *pretrain_large_128
+
+  # Execution
+  micro_batch_size: 2
+  training_steps: 2137
+  gradient_accumulation: 2048
+
+  # Model
+  sequence_length: 512
+  mask_tokens: 76
+
+  # Optimizer
+  lr_warmup: 0.128
+  learning_rate: 0.002828
+  loss_scaling: 8192.0
+
+  # Dataset
+  input_files: ["data/wikipedia/512/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_512_POD64:
+  <<: *pretrain_large_512
+
+  # Execution
+  replication_factor: 16
+  gradient_accumulation: 512
+  matmul_proportion: [0.15, 0.2, 0.2, 0.2]
+
+  # Optimizer
+  loss_scaling: 16384.0
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_384_POD128:
+  <<: *pretrain_large_384
+
+  # Execution
+  replication_factor: 32
+  gradient_accumulation: 256
+
+  # Optimizer
+  loss_scaling: 16384.0
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
 squad_base_384: &squad_base_384
   <<: *defaults
 
   # Execution
-  batch_size: 2
+  micro_batch_size: 2
   num_epochs: 3
   batches_per_step: 2
   replication_factor: 4
@@ -248,7 +332,7 @@ squad_large_384: &squad_large_384
   <<: *squad_base_384
 
   # Execution
-  batch_size: 4
+  micro_batch_size: 4
   batches_per_step: 2
   gradient_accumulation: 32
   replication_factor: 2
@@ -269,10 +353,6 @@ squad_large_384: &squad_large_384
   loss_scaling: 64.0
   learning_rate: 5e-5
   lr_warmup: 0.10
-#----------------------------------------------------------------------------------
-# Deprecated config name. Will be removed in next release.
-squad_large_384_POD16:
-  <<: *squad_large_384
 
 #----------------------------------------------------------------------------------
 unit_test:
@@ -285,7 +365,7 @@ unit_test:
   layers_per_ipu: [0, 1, 1, 1]
   gradient_accumulation: 16
   replication_factor: 1
-  batch_size: 1
+  micro_batch_size: 1
   batches_per_step: 10
   training_steps: 10
   learning_rate: 0.01
@@ -297,7 +377,7 @@ pretrain_base_3L_128_single:
   <<: *defaults
 
   # Execution
-  batch_size: 8
+  micro_batch_size: 8
   training_steps: 150
   batches_per_step: 64
   replication_factor: 1

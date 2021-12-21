@@ -24,7 +24,6 @@ from optimization import get_optimizer
 from pretraining_data import get_generated_datum
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(2)
 def test_recompute_checkpoint_in_ir():
     import warnings
@@ -65,7 +64,6 @@ def test_recompute_checkpoint_in_ir():
                           "should be stashed")
 
 
-@pytest.mark.category1
 @pytest.mark.ipus(2)
 def test_recompute_checkpoint_not_in_ir():
     import warnings

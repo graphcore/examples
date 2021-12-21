@@ -40,12 +40,12 @@ def main():
         elif not config.replicated_tensor_sharding:
             logger("[warning] With replicated_tensor_sharding=False you may need to set "
                    "embedding_serialization_factor > 1 for the model to fit")
-    samples_per_step = config.batches_per_step * config.batch_size * \
+    samples_per_step = config.batches_per_step * config.micro_batch_size * \
         config.gradient_accumulation * config.replication_factor
     do_training = config.squad_do_training
     do_validation = config.squad_do_validation
     opts = get_options(config)
-    opts.anchorMode(poptorch.AnchorMode.All)
+    opts.outputMode(poptorch.OutputMode.All)
 
     logger("Loading Dataset...")
     datasets = load_dataset("squad")
@@ -87,7 +87,7 @@ def main():
     if do_training:
         train_dl = poptorch.DataLoader(opts,
                                        train_dataset,
-                                       batch_size=config.batch_size,
+                                       batch_size=config.micro_batch_size,
                                        shuffle=True,
                                        drop_last=False,
                                        collate_fn=PadCollate(samples_per_step,
@@ -142,18 +142,18 @@ def main():
         training_model.detachFromDevice()
 
     if do_validation:
-        config.batch_size = 2
+        config.micro_batch_size = 2
         config.batches_per_step = 16
         config.gradient_accumulation = 1
         config.replication_factor = 1
-        samples_per_step = config.batches_per_step * config.batch_size * \
+        samples_per_step = config.batches_per_step * config.micro_batch_size * \
             config.gradient_accumulation * config.replication_factor
         opts = get_options(config)
-        opts.anchorMode(poptorch.AnchorMode.All)
+        opts.outputMode(poptorch.OutputMode.All)
         val_dl = poptorch.DataLoader(opts,
                                      validation_features.remove_columns(
                                          ['example_id', 'offset_mapping']),
-                                     batch_size=config.batch_size,
+                                     batch_size=config.micro_batch_size,
                                      shuffle=False,
                                      drop_last=False,
                                      collate_fn=default_data_collator)

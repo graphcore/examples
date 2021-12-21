@@ -27,15 +27,23 @@ def checkpoints_exist(path):
     return False
 
 
-def save_checkpoint(config, model, step, metrics=None):
+def save_checkpoint(config, model, step, optimizer=None, metrics=None):
     if config.checkpoint_output_dir:
         path = os.path.join(os.path.abspath(config.checkpoint_output_dir), f"step_{step}")
         os.makedirs(path, exist_ok=True)
 
         logger(f"Saving checkpoint for step {step} to: {path}\n")
         model.save_pretrained(path)
-        torch.save({
-            "step": step,
-            "metrics": metrics,
-            "config": config
-        }, os.path.join(path, "training_state.pt"))
+        if optimizer is None:
+            torch.save({
+                "step": step,
+                "metrics": metrics,
+                "config": config
+            }, os.path.join(path, "training_state.pt"))
+        else:
+            torch.save({
+                "step": step,
+                "optimizer_state_dict": optimizer.state_dict(),
+                "metrics": metrics,
+                "config": config
+            }, os.path.join(path, "training_state.pt"))

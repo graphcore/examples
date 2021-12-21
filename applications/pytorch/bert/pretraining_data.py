@@ -213,7 +213,7 @@ def get_dataloader(config, opts):
 
     loader = DataLoader(opts,
                         dataset,
-                        batch_size=config.batch_size,
+                        batch_size=config.micro_batch_size,
                         num_workers=config.dataloader_workers,
                         worker_init_fn=_WorkerInit(config.random_seed),
                         auto_distributed_partitioning = not isinstance(dataset, torch.utils.data.IterableDataset),

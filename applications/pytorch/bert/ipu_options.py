@@ -60,7 +60,7 @@ def get_options(config):
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
 
     # For efficiency return the sum of the outputs from IPU to host
-    opts.anchorMode(poptorch.AnchorMode.Sum)
+    opts.outputMode(poptorch.OutputMode.Sum)
 
     # Fix the random seeds
     np.random.seed(config.random_seed)

@@ -87,8 +87,6 @@ def accuracy_reached_threshold(accs, threshold):
     assert accs[-1] > threshold
 
 
-@pytest.mark.sanity
-@pytest.mark.category1
 @pytest.mark.ipus(8)
 @pytest.mark.parametrize("replication", [1, 2])
 @pytest.mark.parametrize("embedding_serialization_factor", [3, 1])
@@ -110,7 +108,6 @@ def test_loss_down_accuracy_up(embedding_serialization_factor, replication):
     accuracy_reached_threshold(accs, 0.9)
 
 
-@pytest.mark.category3
 @pytest.mark.ipus(16)
 @pytest.mark.skip_longtest_needs_dataset
 def test_base_convergence():

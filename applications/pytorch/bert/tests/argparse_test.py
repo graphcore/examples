@@ -18,7 +18,6 @@ from modeling import _get_layer_ipu
 from args import parse_bert_args
 
 
-@pytest.mark.category1
 def test_single_value_layers_per_ipu():
     args = """
     --config unit_test
@@ -29,7 +28,6 @@ def test_single_value_layers_per_ipu():
     assert config.layers_per_ipu == [1, 1, 1, 1]
 
 
-@pytest.mark.category1
 def test_multi_value_layers_per_ipu():
     args = """
     --config unit_test
@@ -48,7 +46,6 @@ def test_multi_value_layers_per_ipu():
     assert config.layers_per_ipu == [0, 3, 3, 4]
 
 
-@pytest.mark.category1
 def test_invalid_layers_per_ipu():
     args = """
     --config unit_test
@@ -83,7 +80,6 @@ def test_invalid_layers_per_ipu():
         config = BertConfig(**(vars(parse_bert_args(args))))
 
 
-@pytest.mark.category1
 def test_single_value_matmul_prop():
     # Matmul proportion on all IPUs, not just encoder IPUs
     args = """
@@ -96,7 +92,6 @@ def test_single_value_matmul_prop():
     assert config.matmul_proportion == [0.2, 0.2, 0.2, 0.2]
 
 
-@pytest.mark.category1
 def test_multi_value_matmul_prop():
     args = """
     --config unit_test
@@ -127,7 +122,6 @@ def test_multi_value_matmul_prop():
         config = BertConfig(**(vars(parse_bert_args(args))))
 
 
-@pytest.mark.category1
 def test_get_layer_ipu():
     args = """
     --config unit_test

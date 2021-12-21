@@ -38,7 +38,7 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization_factor):
     --lr-schedule constant
     --layers-per-ipu 0 3
     --vocab-size 30400
-    --batch-size 10
+    --micro-batch-size 10
     --batches-per-step 1
     --gradient-accumulation 10
     --enable-half-partials False
@@ -53,7 +53,7 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization_factor):
 
     # Models and options
     opts = get_options(config)
-    opts.anchorMode(poptorch.AnchorMode.Final)
+    opts.outputMode(poptorch.OutputMode.Final)
     model_cpu = PipelinedBertForPretraining(config).train()
     model_ipu = PipelinedBertForPretraining(config).parallelize().train()
     model_ipu.load_state_dict(model_cpu.state_dict())
@@ -78,7 +78,7 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization_factor):
     inputs['next_sentence_label'] = torch.randint(0, 1, [1], dtype=torch.long)
     inputs['masked_lm_positions'] = torch.randint(0, config.sequence_length, [1, config.mask_tokens], dtype=torch.long)
 
-    batch_size = config.batch_size
+    batch_size = config.micro_batch_size
 
     batch = (inputs['input_ids'].repeat(batch_size, 1),
              inputs['attention_mask'].repeat(batch_size, 1),
