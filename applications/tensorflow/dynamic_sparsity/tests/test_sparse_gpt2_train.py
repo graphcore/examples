@@ -32,7 +32,7 @@ class TestBuildAndRun(SubProcessChecker):
             'CI_GPT2_DATASET',
             '/tmp/datasets/wikitext-103-gpt2/')
 
-        self.run_command(f"{cmd} {args} --data-dir {dataset_dir}",
+        self.run_command(f"{cmd} {args} --data-dir {dataset_dir} --on-demand",
                          build_dir,
                          [r"Throughput (\w+.\w+) token/s", r"Training complete."], env=env)
 

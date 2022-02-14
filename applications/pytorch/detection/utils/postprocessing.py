@@ -11,13 +11,14 @@ from utils.tools import xywh_to_xyxy
 
 
 class PredictionsPostProcessing(nn.Module):
-    def __init__(self, inference_cfg: CfgNode, cpu_mode: bool):
+    def __init__(self, inference_cfg: CfgNode, cpu_mode: bool, testing_preprocessing: bool = False):
         super().__init__()
         self.score_threshold = inference_cfg.class_conf_threshold
         self.pre_nms_topk_k = inference_cfg.pre_nms_topk_k
         self.max_image_dimension = torch.tensor([4096.])
         self.nms = Nms(inference_cfg, cpu_mode)
         self.cpu_mode = cpu_mode
+        self.testing_preprocessing = testing_preprocessing
 
     def indexing_with_batch_size(self, x: torch.Tensor, index: torch.Tensor):
         """Indexes a 2 or 3 dimensional Tensor x, with the indices "index" in the last dimension,
@@ -73,7 +74,7 @@ class PredictionsPostProcessing(nn.Module):
         # We get new scores which are the multiplication of the class score with the objectness score
         multiplied_scores = (one_hot_encoded_classes * valid_scores.unsqueeze(axis=-1)).view(batch_size, -1)
 
-        if self.cpu_mode:
+        if self.cpu_mode and not self.testing_preprocessing:
             # We create indices for all the positions in multiplied scores
             all_indices = torch.arange(multiplied_scores.shape[1]).unsqueeze(axis=0).repeat(batch_size, 1)
             # We make the indices 0 where the multiplied scores are below self.score_threshold
@@ -103,7 +104,7 @@ class PredictionsPostProcessing(nn.Module):
             # We calculate the final box indices which will be the valid scores indices indexed by the box indices
             boxes = self.indexing_with_batch_size(boxes, valid_scores_indices)
 
-            return scores.view(batch_size, -1, n_classes), boxes, None
+            return scores.view(batch_size, -1, n_classes), boxes, 0
 
 
     def nms_postprocessing(self, scores: torch.Tensor, boxes: torch.Tensor, classes: torch.Tensor) -> torch.Tensor:
@@ -131,7 +132,9 @@ class PredictionsPostProcessing(nn.Module):
                 predictions (torch.Tensor): Predictions after NMS
                 true_max_detections (torch.Tensor): int that points where the NMS detections finishes
         """
-        scores, boxes, classes = self.nms_preprocessing(predictions)
-        _, scores, boxes, classes, true_max_detections = self.nms(scores.float(), boxes.float(), classes)
+        scores_pre_nms, boxes_pre_nms, classes_pre_nms = self.nms_preprocessing(predictions)
+        if self.testing_preprocessing:
+            return scores_pre_nms, boxes_pre_nms
+        _, scores, boxes, classes, true_max_detections = self.nms(scores_pre_nms.float(), boxes_pre_nms.float(), classes_pre_nms)
         predictions = self.nms_postprocessing(scores, boxes, classes)
         return predictions, true_max_detections

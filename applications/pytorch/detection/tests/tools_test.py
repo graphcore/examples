@@ -19,19 +19,32 @@ class TestTools:
         )
 
     def test_nms(self):
-        boxes = torch.Tensor([
+        boxes = torch.Tensor([[
             [0, 0, 4.1, 6.1],
             [0, 0, 4, 6],
             [7, 9, 20, 25]
-        ])
-        obj_scores = torch.Tensor([[0.9], [1.0], [0.1]])
-        cls_scores = torch.Tensor([[0.9, 0.1, 0.1], [0.9, 0.2, 0.3], [0.1, 0.1, 0.2]])
-        predictions = torch.unsqueeze(torch.cat((boxes, obj_scores, cls_scores), axis=1), 0)
+        ]])
+        obj_scores = torch.Tensor([[[0.9], [1.0], [0.1]]])
+        cls_scores = torch.Tensor([[[0.9, 0.1, 0.1], [0.9, 0.2, 0.3], [0.1, 0.1, 0.2]]])
 
-        pruned = nms(predictions, iou_threshold = 0.5, score_threshold = 0.5)[0]
-        pruned = xyxy_to_xywh(pruned)
+        batch_size = boxes.shape[1]
+        scores = obj_scores * cls_scores
+        classes = torch.arange(batch_size).view(boxes.shape[0], 1, cls_scores.shape[1]).repeat(1, batch_size, 1)
+        boxes = boxes.repeat(1, 1, cls_scores.shape[1]).view(batch_size, -1, boxes.shape[-1])
+
+        pruned = nms(scores.view(batch_size, -1), boxes, classes.view(batch_size, -1), iou_threshold = 0.5, max_detections = 6)
+
+        score_pos = 1
+        box_pos = 2
+        class_pos = 3
+        score_value = pruned[score_pos][1][0].unsqueeze(axis=-1)
+        box_value = pruned[box_pos][1][0]
+        class_value = pruned[class_pos][1][0].unsqueeze(axis=-1)
+
+        result = torch.cat((box_value, score_value, class_value), axis=-1).float()
+
         assert torch.equal(
-            pruned.float(), torch.Tensor([[0, 0, 4, 6, 0.9, 0]]).float()
+            result, torch.Tensor([0, 0, 4, 6, 0.9, 0]).float()
         )
 
     def test_standardize_labels(self):

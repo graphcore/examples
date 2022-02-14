@@ -12,7 +12,10 @@ LIB_LOADED = False
 def load_lib():
     global LIB_LOADED
     if not LIB_LOADED:
+        print(__file__)
+        print(os.path.dirname(__file__))
         basedir = os.path.abspath(os.path.dirname(__file__))
+        print(basedir)
         ctypes.cdll.LoadLibrary(
             os.path.join(basedir, "custom_ops/nms/build/libnms_ops.so"))
         ctypes.cdll.LoadLibrary(

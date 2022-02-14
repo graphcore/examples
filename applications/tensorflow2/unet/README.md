@@ -35,6 +35,11 @@ We are using the training data from [ISBI Challenge 2012](http://brainiac2.mit.e
 
 The data preprocessing includes normalization and data augmentation similar to [this one](https://github.com/NVIDIA/DeepLearningExamples/blob/master/TensorFlow2/Segmentation/UNet_Medical/data_loading/data_loader.py).
 
+### 4. Build the custom op
+```bash
+make
+```
+
 ## Train the model
 Sample command to train the model on 4 IPUs:
 ```bash

@@ -3,7 +3,6 @@
 
 import sys
 import os
-import subprocess
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../IPU'))
 from torchvision.ops import RoIAlign as torch_roialign
@@ -60,8 +59,6 @@ def my_test_func(feat, box, pt_on_output, output_shape, spatial_scale, aligned=T
 
 
 def test_roialign():
-    faster_rcnn_working_dic = os.path.join(os.path.dirname(__file__), '../')
-    subprocess.run(['make'], shell=True, cwd=faster_rcnn_working_dic)
     box_centers = np.random.rand(1, BOX_NUM, 2) * np.asarray(IMAGE_SIZE)
     box_whs = np.random.rand(
         1, BOX_NUM, 2) * (BOX_SIZE_RANGE[1] - BOX_SIZE_RANGE[0]) + BOX_SIZE_RANGE[0]
@@ -145,6 +142,6 @@ def test_roialign():
     # local_spatial_scale = 1/16
     # local_result = my_test_func(local_feat,local_box,pt_on_output,output_shape,local_spatial_scale)
     np.testing.assert_allclose(
-        torch_result.detach().numpy(), pooled_feat.data[0], rtol=1e-2)
+        torch_result.detach().numpy(), pooled_feat.data[0], rtol=1e-2, atol=1e-5)
     np.testing.assert_allclose(
-        torch_feat.grad.detach().numpy(), input_features.grad, rtol=1e-3)
+        torch_feat.grad.detach().numpy(), input_features.grad, rtol=1e-3, atol=1e-6)

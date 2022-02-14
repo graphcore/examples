@@ -41,10 +41,44 @@ This README describes how to run a conv3D based model called CosmoFlow on IPU ha
  - run with tensorflow estimator, with 2 IPUs:
    `poprun --num-replicas 2 --num-instances 2 --ipus-per-replica 1 --numa-aware 1 python train.py configs/graphcore.yaml --use-estimator`
 
-## License
+## Licensing
 
-The code for this example is based on code published at https://github.com/sparticlesteve/cosmoflow-benchmark/
-Its license is retained and reproduced here as LICENSE. 
+The code in this directory is licensed under the Apache License, Version 2.0. See the LICENSE file in this directory.
 
-models/resnet.py was derived by the original author from https://github.com/keras-team/keras-applications/blob/1.0.8/keras_applications/resnet_common.py.
-The original license for that code is preserved at the start of the file, and is compatible with the license for the modifications, and the rest of this example. 
+This directory includes derived work from https://github.com/sparticlesteve/cosmoflow-benchmark/ which is licensed under the Apache License, Version 2.0.
+
+`models/resnet.py` includes derived work from <https://github.com/keras-team/keras-applications/blob/master/keras_applications/resnet_common.py> which is licensed under the MIT license. The notice below is reproduced from the keras-applications repository:
+
+Copyright (c) 2016 - 2018, the respective contributors.
+All rights reserved.
+
+Each contributor holds copyright over their respective contributions.
+The project versioning (Git) records all such contribution source information.
+The initial code of this repository came from https://github.com/keras-team/keras
+(the Keras repository), hence, for author information regarding commits
+that occured earlier than the first commit in the present repository,
+please see the original Keras repository.
+
+LICENSE
+
+The MIT License (MIT)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+

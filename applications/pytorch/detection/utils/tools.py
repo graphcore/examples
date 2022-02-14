@@ -12,6 +12,7 @@ from tqdm import tqdm
 from yacs.config import CfgNode
 
 import torch
+from torchvision.ops.boxes import nms as torchvision_nms
 
 from utils.anchors import AnchorBoxes
 from utils.visualization import scale_boxes_to_orig
@@ -424,48 +425,41 @@ def iou(boxes1: torch.Tensor, boxes2: torch.Tensor):
     return inter / (area1[:, None] + area2 - inter)
 
 
-def nms(predictions: torch.Tensor, iou_threshold: float, score_threshold: float, max_detections: int = 300) -> List[torch.Tensor]:
+def nms(scores: torch.Tensor, boxes: torch.Tensor, classes: torch.Tensor, iou_threshold: float, max_detections: int) -> List[torch.Tensor]:
     """
     Perform non maximum suppression on predictions
     Parameters:
-        predictions (torch.Tensor): Nx85 representing xmin, ymin, xmax, ymax, obj_scores, cls_scores
+        scores (torch.Tensor): objectness scores per box
+        boxes (torch.Tensor): (xmin, ymin, xmax, ymax)
+        classes (torch.Tensor): classes per box
         iou_threshold (float):  Predictions that overlap by more than this threshold will be discarded
-        score_threshold (float): Predictions less than this prob will be discarded
         max_detections (int) : Maximum number of detections per image
     Returns:
-        List[torch.Tensor]: Mx6 predictions filtered after NMS
+        List[torch.Tensor]: Predictions filtered after NMS, indexes, scores, boxes, classes, and the number of detection per image
     """
-    max_image_dimension = 4096
-    output = [None] * predictions.shape[0]
+    batch = scores.shape[0]
+    selected_box_indx = torch.full((batch, max_detections), -1, dtype=torch.long)
+    cpu_classes = torch.full((batch, max_detections), torch.iinfo(torch.int32).max, dtype=int)
+    cpu_boxes = torch.zeros((batch, max_detections, 4))
+    cpu_scores = torch.zeros((batch, max_detections))
+    cpu_true_max_detections = torch.full((batch,), max_detections)
 
-    valid_predictions_indices = predictions[..., 4] > score_threshold  # indices for predictions that are above the threshold.
+    for i, (bscores, bboxes, bclasses) in enumerate(zip(scores, boxes, classes)):
+        nms_preds = torchvision_nms(bboxes, bscores, iou_threshold)
 
-    # iterate over batches
-    for pred_indx, pred in enumerate(predictions):
-        pred = pred[valid_predictions_indices[pred_indx]]
-        if not pred.shape[0]:
-            continue
+        if nms_preds.shape[0] > max_detections:
+            selected_box_indx[i] = nms_preds[:max_detections]
+        else:
+            selected_box_indx[i, :nms_preds.shape[0]] = nms_preds
+            cpu_true_max_detections[i] = nms_preds.shape[0]
 
-        # Compute confidence
-        pred[:, 5:] = pred[:, 5:] * pred[:, 4:5]
-        boxes = xywh_to_xyxy(pred[:, :4])
+        batch_indices = selected_box_indx[i, :cpu_true_max_detections[i]]
 
-        # Multi-Class NMS
-        # Select classes for which confidence is above the threshold.
-        box_indx, class_indx = (pred[:, 5:] > score_threshold).nonzero(as_tuple=False).T  # Class indices that exceed threshold.
-        pred = torch.cat((boxes[box_indx], pred[box_indx, class_indx + 5, None], class_indx[:, None].float()), 1)  # Assign valid classes to the bboxes.
+        cpu_classes[i, :cpu_true_max_detections[i]] = bclasses[batch_indices]
+        cpu_boxes[i, :cpu_true_max_detections[i]] = bboxes[batch_indices]
+        cpu_scores[i, :cpu_true_max_detections[i]] = bscores[batch_indices]
 
-        if not pred.shape[0]:
-            continue
-
-        box_shift = pred[:, 5:6] * (max_image_dimension)
-        shifted_box, scores = pred[:, :4] + box_shift, pred[:, 4]
-        selected_box_indx = torchvision.ops.boxes.nms(shifted_box, scores, iou_threshold)
-        if selected_box_indx.shape[0] > max_detections:  # limit detections
-            selected_box_indx = selected_box_indx[:max_detections]
-        output[pred_indx] = pred[selected_box_indx]
-
-    return output
+    return [selected_box_indx, cpu_scores, cpu_boxes, cpu_classes.int(), cpu_true_max_detections.int()]
 
 
 def post_processing(

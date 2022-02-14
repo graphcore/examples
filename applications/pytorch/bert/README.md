@@ -236,22 +236,18 @@ for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .
 
 ## Licensing
 
-The code presented here is licensed under the Apache License Version 2.0, see the LICENSE file in this directory.
+This application is licensed under Apache License 2.0.
+Please see the LICENSE file in this directory for full details of the license conditions.
 
-This directory includes derived work from the following:
+This directory contains derived work from:
+* BERT, https://github.com/google-research/bert (licensed under the Apache License, Version 2.0)
+* Hugging Face Transformers, https://github.com/huggingface/transformers (licensed under the Apache License, Version 2.0)
 
-BERT, https://github.com/google-research/bert
+See the headers in the source code for details.
 
-Copyright 2018 The Google AI Language Team Authors.
+The following files include code derived from https://github.com/huggingface/transformers which uses Apache License, Version 2.0:
+* bert_fused_attention.py
+* squad_data.py
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+The following files include code derived from https://github.com/google-research/bert which uses Apache License, Version 2.0:
+* third_party/create_pretraining_data.py

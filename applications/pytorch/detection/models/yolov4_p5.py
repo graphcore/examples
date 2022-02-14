@@ -191,9 +191,10 @@ class Yolov4P5(Detector):
     Yolov4P5 object detector as described in https://arxiv.org/abs/2011.08036.
     """
 
-    def __init__(self, cfg: CfgNode, backbone: nn.Module = Yolov4P5BackBone, neck: nn.Module = Yolov4P5Neck, detector_head: nn.Module = Yolov4Head):
+    def __init__(self, cfg: CfgNode, backbone: nn.Module = Yolov4P5BackBone, neck: nn.Module = Yolov4P5Neck, detector_head: nn.Module = Yolov4Head, debugging_nms: bool = False):
         super().__init__(backbone, neck, detector_head)
         self.cpu_mode = not cfg.model.ipu
+        self.debugging_nms = debugging_nms
 
         # We storage the specific paremeters of training or inference,
         # for example for inference we have nms, and it's hyperparameters.
@@ -263,9 +264,12 @@ class Yolov4P5(Detector):
         predictions = (p3, p4, p5)
 
         if self.nms:
-            return self.ipu_post_process(torch.cat(predictions, axis=1))
-        else:
-            return predictions
+            if self.debugging_nms:
+                return self.ipu_post_process(torch.cat(predictions, axis=1)), predictions
+            else:
+                return self.ipu_post_process(torch.cat(predictions, axis=1))
+
+        return predictions
 
     def output_shape(self, input_shape: Tuple[int, int]) -> Dict[str, Tuple[int, ...]]:
         if len(input_shape) != 2:

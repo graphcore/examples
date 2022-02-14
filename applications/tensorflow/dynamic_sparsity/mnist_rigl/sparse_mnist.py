@@ -631,6 +631,11 @@ def run_mnist(opts):
     utils.move_variable_initialization_to_cpu()
     config = IPUConfig()
     config.auto_select_ipus = 1
+
+    if opts.on_demand:
+        config.device_connection.enable_remote_buffers = True
+        config.device_connection.type = utils.DeviceConnectionType.ON_DEMAND
+
     config.floating_point_behaviour.inv = False
     config.floating_point_behaviour.div0 = False
     config.floating_point_behaviour.oflo = False
@@ -872,6 +877,7 @@ if __name__ == '__main__':
                             'period': 0.5
                             },
                         help="Fine grained control of the pruning schedule.")
+    parser.add_argument("--on-demand", action="store_true", help="Defer IPU attach until execution.")
     parser.add_argument("--use-wandb", action="store_true", help="Exports results to Weights and Biases for experiments tracking")
     parser.add_argument("--wandb-project-name", type=str, default=None, help="The name of the wandb project")
     parser.add_argument("--wandb-tags", type=str, nargs='+', default=None,

@@ -1,6 +1,8 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 import argparse
 import logging
+from pathlib import Path
+import os
 import time
 from tqdm import tqdm
 import yacs
@@ -17,6 +19,10 @@ from utils.dataset import Dataset
 from utils.parse_args import parse_args
 from utils.tools import load_and_fuse_pretrained_weights, post_processing, StatRecorder
 from utils.visualization import plotting_tool
+
+
+path_to_detection = Path(__file__).parent.resolve()
+os.environ['PYTORCH_APPS_DETECTION_PATH'] = str(path_to_detection)
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 logger = logging.getLogger('Detector')

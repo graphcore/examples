@@ -15,7 +15,7 @@ class TestBuildAndRun(SubProcessChecker):
         cmd = sys.executable + " mnist_rigl/sparse_mnist.py"
         env = os.environ.copy()
         env["PYTHONPATH"] += ":./"
-        self.run_command(f"{cmd} {args}",
+        self.run_command(f"{cmd} {args} --on-demand",
                          build_dir,
                          [r"Test loss: (\w+.\w+) Test accuracy: (\w+.\w+)"], env=env)
 

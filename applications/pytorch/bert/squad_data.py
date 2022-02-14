@@ -196,7 +196,9 @@ def postprocess_qa_predictions(examples, features, raw_predictions, n_best_size=
                     if start_index >= len(offset_mapping) \
                        or end_index >= len(offset_mapping) \
                        or offset_mapping[start_index] is None \
-                       or offset_mapping[end_index] is None:
+                       or offset_mapping[end_index] is None \
+                       or offset_mapping[start_index] == [] \
+                       or offset_mapping[end_index] == []:
                         continue
                     # Don't consider answers with a length that is either < 0 or > max_answer_length.
                     if end_index < start_index or end_index - start_index + 1 > max_answer_length:

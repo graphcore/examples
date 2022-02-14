@@ -8,4 +8,4 @@ inflect==5.3.0
 scikit-learn==0.24.2
 pyworld==0.3.0
 wandb==0.12.6
-dataclasses==0.8
+dataclasses==0.8; python_version < '3.7'

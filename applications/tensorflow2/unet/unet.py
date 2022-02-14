@@ -82,12 +82,17 @@ def train_model(args, model, ds_train, ds_eval):
     if args.nb_ipus_per_replica <= 1:
         executions = args.num_epochs
     else:
-        executions = int(args.gradient_accumulation_count *
-                         args.num_epochs / args.steps_per_execution)
-        assert executions > 0, \
-            f"gradient accumulation count * nb of executions " \
-            f"({args.gradient_accumulation_count * args.num_executions}) " \
-            f"needs to be at least the nb of steps per execution ({args.steps_per_execution})"
+        total_num_steps = args.gradient_accumulation_count * args.num_epochs
+        if total_num_steps < args.steps_per_execution:
+            logger.warning(
+                f"The steps per execution is reduced to the total number of steps ({total_num_steps})."
+                f"To keep the user-defined steps per execution, gradient accumulation count"
+                f" * nb of epochs ({args.gradient_accumulation_count * args.num_epochs}) "
+                f"needs to be at least the nb of steps per execution ({args.steps_per_execution})")
+            executions = 1
+            args.steps_per_execution = total_num_steps
+        else:
+            executions = int(total_num_steps / args.steps_per_execution)
 
     additional_args = {}
     if args.eval:
@@ -130,8 +135,7 @@ def infer_model(args, model, ds_infer):
         model.predict(ds_infer, steps=args.steps_per_execution)
         t1 = perf_counter()
         duration = t1 - t0
-        total_nb_samples = args.steps_per_execution * \
-            args.micro_batch_size * args.replicas
+        total_nb_samples = args.steps_per_execution * args.micro_batch_size
         tput = f"{total_nb_samples / duration:0.15f}"
         logger.info(
             f'Inference\t Time: {duration} seconds\t Throughput {tput} images/sec.')

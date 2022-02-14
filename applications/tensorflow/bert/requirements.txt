@@ -4,7 +4,7 @@ tqdm==4.53.0
 wandb==0.12.1
 torch==1.7.1+cpu
 onnx==1.8.1
-pytest
+pytest==6.2.5
 pytest-pythonpath
 scipy
 

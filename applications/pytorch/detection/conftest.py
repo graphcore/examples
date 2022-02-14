@@ -1,14 +1,15 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 
 from pathlib import Path
-import subprocess
+import os
 import requests
+import subprocess
 import tarfile
 
 
 def download_weights():
     weight_file = 'yolov4_p5_reference_weights'
-    weight_folder = 'weights'
+    weight_folder = os.environ['PYTORCH_APPS_DETECTION_PATH'] + '/weights'
     file_path = Path(weight_folder)
 
     if not file_path.exists():
@@ -33,8 +34,9 @@ def download_weights():
 
 
 def pytest_sessionstart(session):
-    make_path = Path(__file__).parent.resolve()
-    subprocess.run(['make'], shell=True, cwd=make_path)
-    build_folder_path = make_path.joinpath("utils/custom_ops/build")
+    path_to_detection = Path(__file__).parent.resolve()
+    os.environ['PYTORCH_APPS_DETECTION_PATH'] = str(path_to_detection)
+    subprocess.run(['make'], shell=True, cwd=path_to_detection)
+    build_folder_path = path_to_detection.joinpath("utils/custom_ops/build")
     assert build_folder_path.is_dir()
     download_weights()

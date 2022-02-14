@@ -8,6 +8,6 @@ regex
 omegaconf>=2.0.0
 taming-transformers-rom1504
 wandb==0.12.1
-pytest>=6.2.4
+pytest==6.2.5
 pytest-pythonpath>=0.7.3
 torchvision==0.11.1+cpu

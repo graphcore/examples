@@ -26,7 +26,7 @@ import tensorflow as tf
 
 
 def generate_numpy_data(args):
-    nb_samples = args.steps_per_execution * args.micro_batch_size
+    nb_samples = 30
     X = np.random.uniform(size=(nb_samples, 572, 572)).astype(args.dtype)
     Y = np.random.uniform(
         size=(nb_samples, 388, 388, args.nb_classes)).astype(args.dtype)
@@ -146,8 +146,9 @@ def tf_fit_dataset(args, inputs, labels):
 def tf_eval_dataset(args, X_eval, y_eval):
     ds = tf.data.Dataset.from_tensor_slices((X_eval, y_eval))
     ds = ds.repeat(count=args.gradient_accumulation_count//len(X_eval) + 1)
-    ds = ds.map(partial(preprocess_fn, dtype=args.dtype),
-                num_parallel_calls=min(32, multiprocessing.cpu_count()))
+    if not args.host_generated_data:
+        ds = ds.map(partial(preprocess_fn, dtype=args.dtype),
+                    num_parallel_calls=min(32, multiprocessing.cpu_count()))
     ds = ds.batch(args.micro_batch_size, drop_remainder=True)
 
     return ds

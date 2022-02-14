@@ -95,6 +95,7 @@ def get_program_options():
     parser.add_argument("--compile-only", action='store_true', help='Compile without running or attaching to device.')
     parser.add_argument("--compile-only-ipu-version", choices=['ipu1', 'ipu2'], type=str, default=None,
                         help='If --compile-only is set this determines the IPU version to target.')
+    parser.add_argument("--on-demand", action='store_true', help='Defer IPU attach until execution.')
 
     def parse_optimizer_arg(arg: str):
         name, value = arg.split('=')

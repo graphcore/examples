@@ -4,7 +4,6 @@
 import numpy as np
 import sys
 import os
-import subprocess
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../IPU'))
 from ipu_tensor import gcop
@@ -119,7 +118,5 @@ def helper_func(iou_thrd):
 
 
 def test_nms():
-    faster_rcnn_working_dic = os.path.join(os.path.dirname(__file__), '../')
-    subprocess.run(['make'], shell=True, cwd=faster_rcnn_working_dic)
     for iou_thrd in [0.1, 0.3, 0.5, 0.7, 0.9]:
         helper_func(iou_thrd)

@@ -37,7 +37,7 @@ class TestDetector:
         model.optimize_for_inference()
         model_fuse = inferenceModel(model.eval())
         output_fuse = model_fuse(input_tensor)
-        assert torch.max(torch.abs(output_no_fuse - output_fuse)) <= 1e-04
+        assert torch.max(torch.abs(output_no_fuse - output_fuse)) <= 1.1e-04
 
     def test_fuse_csp(self):
         input_tensor = torch.Tensor(np.random.randint(0, 255, size=(1, 16, 32, 32)))

@@ -25,12 +25,12 @@ The [applications/](applications) folder contains example applications written i
 
 | Model | Domain | Type |Links |
 | ------- | ------- |------- | ------- |
-| ResNet  | Image Classifcation | Training & Inference | [TensorFlow 1](applications/tensorflow/cnns/) , [TensorFlow 2](applications/tensorflow/cnns/), [PyTorch](applications/pytorch/cnns/)|
+| ResNet  | Image Classifcation | Training & Inference | [TensorFlow 1](applications/tensorflow/cnns/) , [TensorFlow 2](applications/tensorflow2/classification/), [PyTorch](applications/pytorch/cnns/)|
 | ResNeXt  | Image Classifcation | Training & Inference | [TensorFlow 1](applications/tensorflow/cnns/) , [PopART (Inference)](applications/popart/resnext_inference)
 | EfficientNet | Image Classifcation | Training & Inference | [TensorFlow 1](applications/tensorflow/cnns/) , [PyTorch](applications/pytorch/cnns/)|
 | MobileNet | Image Classifcation | Inference | [TensorFlow 1](applications/tensorflow/cnns/inference) |
 | MobileNetv2 | Image Classifcation | Inference | [TensorFlow 1](applications/tensorflow/cnns/inference) |
-| MobileNetv3 | Image Classifcation | Training & Inference | [PyTorch](applications/tensorflow/cnns/) |
+| MobileNetv3 | Image Classifcation | Training & Inference | [PyTorch](applications/pytorch/cnns/) |
 | ViT(Vision Transformer) | Image Classifcation | Training| [PyTorch](applications/pytorch/vit) |
 | Yolov3 | Object Detection | Training & Inference | [TensorFlow 1](applications/tensorflow/detection/yolov3) |
 | Yolov4-P5 | Object Detection | Inference | [PyTorch](applications/pytorch/detection) |
@@ -41,7 +41,7 @@ The [applications/](applications) folder contains example applications written i
 | DeepVoice3 | TTS (TextToSpeech) | Training & Inference |[PopART](applications/popart/deep_voice) |
 | FastSpeech2 | TTS(TextToSpeech) | Training & Inference | [TensorFlow 2](applications/tensorflow2/fastspeech2/) |
 | Conformer | STT(SpeechToText) | Training & Inference | [PopART](applications/popart/conformer_asr) |
-| Conformer with Transformer | STT(SpeechToText) | Training & Inference | [TensorFlow 1](applications/tensorflow/conformer) |
+| Conformer with Transformer | STT(SpeechToText) | Training & Inference | [TensorFlow 1](applications/tensorflow/conformer) , [PyTorch](applications/pytorch/conformer) |
 | Transfomer Transducer | STT(SpeechToText) | Training & Inference | [PopART](applications/popart/transformer_transducer) |
 | TGN (Temporal Graph Network) | GNN | Training & Inference | [TensorFlow 1](applications/tensorflow/tgn/) |
 | MPNN (Message Passing Neural Networks) | GNN | Training & Inference | [TensorFlow 2](code_examples/tensorflow2/message_passing_neural_network) |
@@ -51,9 +51,10 @@ The [applications/](applications) folder contains example applications written i
 | RL Policy model | Reinforcement Learning | Training | [TensorFlow 1](applications/tensorflow/reinforcement_learning) |
 | MNIST RigL | Dynamic Sparsity | Training | [TensorFlow 1](applications/tensorflow/dynamic_sparsity/mnist_rigl) |
 | Autoregressive Language Modelling | Dynamic Sparsity | Training | [TensorFlow 1](applications/tensorflow/dynamic_sparsity/language_modelling) |
-| Sales forecasting | MLP (Multi-Layer Perceptron) | Training | [TensorFlow 1](applications/tensorflow/dynamic_sparsity/language_modelling) |
+| Sales forecasting | MLP (Multi-Layer Perceptron) | Training | [TensorFlow 1](applications/tensorflow/sales_forcasting/language_modelling) |
 | Contrastive Divergence VAE using MCMC methods  | Generative Model | Training | [TensorFlow 1](applications/tensorflow/contrastive_divergence_vae) |
 | Monte Carlo Ray Tracing  | Vision | Inference | [Poplar](applications/poplar/monte_carlo_ray_tracing) |
+
 
 
 ### Code examples
@@ -80,5 +81,6 @@ December 2021:
     - NLP : BERT(TensorFlow 2)
     - TTS/STT : FastSpeech2(TensorFlow 2), Transfomer Transducer(PopART), Conformer with Transformer(PyTorch)
     - GNN : TGN(TensorFlow1), MPNN(TensorFlow 2)
+
 
 

@@ -33,5 +33,5 @@ observable==1.0.3
 gitignore-parser==0.0.8
 
 # For tests
-pytest==6.1.2
+pytest==6.2.5
 pytest-pythonpath==0.7.3

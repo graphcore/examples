@@ -526,6 +526,10 @@ def run_language_model(opts):
     num_ipus = 2**k
     logger.info(f"Need {opts.num_shards} IPUs, requesting {num_ipus}")
     config = IPUConfig()
+    config.device_connection.enable_remote_buffers = True
+
+    if opts.compile_only and opts.on_demand:
+        raise ValueError("Can only provide one of --on-demand, --compile-only.")
 
     if opts.compile_only:
         if opts.compile_only_ipu_version is None:
@@ -533,8 +537,10 @@ def run_language_model(opts):
                 "Must provide --compile-only-ipu-version if --compile-only is set.")
 
         config.device_connection.version = opts.compile_only_ipu_version
-        config.device_connection.enable_remote_buffers = True
         config.device_connection.type = utils.DeviceConnectionType.NEVER
+
+    if opts.on_demand:
+        config.device_connection.type = utils.DeviceConnectionType.ON_DEMAND
 
     config.auto_select_ipus = num_ipus
     config.allow_recompute = opts.recompute
