@@ -39,7 +39,7 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization_factor):
     --layers-per-ipu 0 3
     --vocab-size 30400
     --micro-batch-size 10
-    --batches-per-step 1
+    --device-iterations 1
     --gradient-accumulation 10
     --enable-half-partials False
     --optimizer AdamW

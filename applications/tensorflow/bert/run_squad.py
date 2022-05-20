@@ -93,7 +93,6 @@ def build_squad_pipeline_stages(model, bert_config, opts, is_training):
     for stage in opts['pipeline_stages']:
         func_list = []
         for layer in stage:
-            # embedding layer and mlm layer can be splited to mutliple IPUs, so need to be dealt with separately
             func_list.append(layers[layer])
         stage_layer_list.append(func_list)
 
@@ -346,7 +345,7 @@ def build_graph(opts, iterations_per_step=1, is_training=True):
                             max_cross_replica_sum_buffer_size=opts['max_cross_replica_sum_buffer_size'],
                             max_reduce_scatter_buffer_size=opts['max_reduce_scatter_buffer_size'],
                             scheduler_selection='CLUSTERING',
-                            compile_only=False,
+                            compile_only=opts['compile_only'],
                             ipu_id=None,
                             partials_type=opts["partials_type"])
 
@@ -666,7 +665,7 @@ def predict_loop(opts, finetuned_checkpoint_path=None):
 
     output_dir = opts['output_dir']
     if output_dir is None:
-        if 'adamw' in finetuned_checkpoint_path:
+        if 'adamw' in finetuned_checkpoint_path or 'lamb' in finetuned_checkpoint_path:
             output_dir = finetuned_checkpoint_path.split('/ckpt')[0]
     else:
         if not os.path.exists(output_dir):
@@ -694,25 +693,14 @@ def set_ipu_defaults(opts):
     opts['poplar_version'] = os.popen('popc --version').read()
     opts['hostname'] = gethostname()
     opts['datetime'] = str(datetime.datetime.now())
-
-    if opts['seed']:
-        seed = int(opts['seed'])
-        random.seed(seed)
-        # tensorflow seed
-        tf.set_random_seed(random.randint(0, 2 ** 32 - 1))
-        # numpy seed
-        np.random.seed(random.randint(0, 2 ** 32 - 1))
-        # ipu seed
-        reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
-    else:
-        seed = random.randint(0, 2 ** 32 - 1)
-        random.seed(seed)
-        # tensorflow seed
-        tf.set_random_seed(random.randint(0, 2 ** 32 - 1))
-        # numpy seed
-        np.random.seed(random.randint(0, 2 ** 32 - 1))
-        # ipu seed
-        reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
+    seed = int(opts['seed'])
+    random.seed(seed)
+    # tensorflow seed
+    tf.set_random_seed(random.randint(0, 2 ** 32 - 1))
+    # numpy seed
+    np.random.seed(random.randint(0, 2 ** 32 - 1))
+    # ipu seed
+    reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
 
 
 def set_defaults(opts):
@@ -768,6 +756,9 @@ if __name__ == '__main__':
     os.environ['XLA_FLAGS'] = xla_flags
 
     opts = make_global_options([add_squad_options])
+
+    if not opts['seed']:
+        opts['seed'] = random.randint(0, 2 ** 32 - 1)
 
     set_defaults(opts)
     opts['distributed_worker_count'] = 1

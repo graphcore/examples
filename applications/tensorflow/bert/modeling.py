@@ -26,7 +26,7 @@ import math
 import re
 import numpy as np
 import six
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import functools
 from tensorflow.python import ipu
 
@@ -346,6 +346,7 @@ class BertModel(object):
                     initializer=tf.zeros_initializer(),
                     trainable=True
                 )
+                qkv_bias = tf.concat([query_bias, key_bias, value_bias], axis=-1)
                 qkv = tf.nn.bias_add(qkv, qkv_bias)
             # Split and transpose to [B, N, S, H]
             query_layer, key_layer, value_layer = [
@@ -672,7 +673,7 @@ class BertModel(object):
                 # Calculate `mlm_acc`
                 results = tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32)
                 predictions = tf.cast(
-                    tf.equal(results, label_ids), dtype=tf.float16)
+                    tf.equal(results, label_ids), dtype=self.bert_config.dtype)
                 predictions = tf.cast(
                     predictions * label_weights, dtype=tf.float32)
 
@@ -759,7 +760,7 @@ class BertModel(object):
 
             if self.is_training:
                 # I.e., 0.1 dropout
-                output_layer = tf.nn.dropout(output_layer, keep_prob=1.0-self.bert_config.glue_dropout_prob)
+                output_layer = tf.nn.dropout(output_layer, rate=self.bert_config.glue_dropout_prob)
 
             logits = tf.matmul(output_layer, output_weights, transpose_b=True)
             logits = tf.nn.bias_add(logits, output_bias)
@@ -801,7 +802,7 @@ class BertModel(object):
             with tf.variable_scope("loss"):
                 if self.is_training:
                     # I.e., 0.1 dropout
-                    output_layer = tf.nn.dropout(output_layer, keep_prob=0.9)
+                    output_layer = tf.nn.dropout(output_layer, rate=0.1)
 
                 logits = tf.matmul(
                     output_layer, output_weights, transpose_b=True)

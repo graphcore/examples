@@ -108,7 +108,7 @@ class BaseModel(object):
         self.lr_kwargs = self.config.training.get('lr_kwargs', ConfigMap()).toDict()
 
         # If batch size specified in model config it will override that in data config
-        self.batch_size = self.config.get('batch_size', DEFAULT_BATCH_SIZE)
+        self.micro_batch_size = self.config.get('micro_batch_size', DEFAULT_BATCH_SIZE)
 
         # Introduce ops to record how many epochs have elapsed, and number of training steps
         self.iters = 0
@@ -135,23 +135,23 @@ class BaseModel(object):
         if 'epoch_timescale' in self.lr_kwargs:
             epoch_decay_scale = self.lr_kwargs.pop('epoch_timescale')
         else:
-            n_epochs = self.max_iter * self.batch_size / self.experiment.data_meta['train_size']
+            n_epochs = self.max_iter * self.micro_batch_size / self.experiment.data_meta['train_size']
 
             # Scale decay length proportional to number of epochs
             epoch_decay_scale = DEFAULT_EPOCH_LS * n_epochs / N_EPOCHS_REFERENCE
         self.lr_kwargs['iter_timescale'] = \
-            int(epoch_decay_scale * self.experiment.data_meta['train_size'] / self.batch_size)
+            int(epoch_decay_scale * self.experiment.data_meta['train_size'] / self.micro_batch_size)
 
         # Whether using convolutional architecture (dictates if data flattened)
         self.conv_flag = self.config.network.get('is_conv', False)
 
     def set_test_config(self):
         # How many batches training between test set evaluation
-        self.n_batch_freq_te = \
-            self.config.testing.get('n_batch_freq_te',
+        self.n_batch_freq_test = \
+            self.config.testing.get('n_batch_freq_test',
                                     int(self.max_iter / N_TE_EVAL_DURING_TRAIN))
-        self.batch_size_te = \
-            self.config.testing.get('batch_size_te', self.batch_size)
+        self.micro_batch_size_test = \
+            self.config.testing.get('micro_batch_size_test', self.micro_batch_size)
 
     def get_optimiser(self):
         _learning_rate = self.get_current_learning_rate()
@@ -180,7 +180,7 @@ class BaseModel(object):
 
     def get_epoch(self):
         """Calculates how many epochs have elapsed"""
-        batches_per_epoch = self.experiment.dtype_np(self.experiment.data_meta['train_size'] / self.batch_size)
+        batches_per_epoch = self.experiment.dtype_np(self.experiment.data_meta['train_size'] / self.micro_batch_size)
         return tf.cast(self.global_step, self.experiment.dtype) / batches_per_epoch
 
     def get_current_learning_rate(self):
@@ -193,36 +193,36 @@ class BaseModel(object):
                                            epoch,
                                            **self.lr_kwargs)
 
-    def get_train_ops(self, graph_ops, infeed_queue, i_tr, X_b_tr, y_b_tr):
+    def get_train_ops(self, graph_ops, infeed_queue, i_train, X_micro_batch_train, y_micro_batch_train):
         raise NotImplementedError("'get_train_ops() must be implemented in child class")
 
-    def get_validation_ops(self, graph_ops, i_val, X_b_val, y_b_val):
+    def get_validation_ops(self, graph_ops, i_val, X_micro_batch_val, y_micro_batch_val):
         raise NotImplementedError("'get_validation_ops() must be implemented in child class")
 
-    def get_test_ops(self, graph_ops, i_te, X_b_te, y_b_te):
+    def get_test_ops(self, graph_ops, i_test, X_micro_batch_test, y_micro_batch_test):
         raise NotImplementedError("'get_test_ops() must be implemented in child class")
 
     def get_load_data_ops(self):
         """Load minibatches"""
         with self.graph.as_default():
-            batch_size = self.batch_size
+            micro_batch_size = self.micro_batch_size
 
             if self.device_config['do_xla'] and not self.device_config['on_ipu'] and self.use_infeed:
                 # If using infeeds on GPU, and doing XLA compilation,
                 # scale batch size by number of loops in each session call
-                batch_size *= self.iters_per_sess_run
+                micro_batch_size *= self.iters_per_sess_run
 
             # Data iterator ops, format: <indices of batch elements in original dataset>, <batch>
-            i_tr, X_b_tr, y_b_tr = self.experiment.data_iters['train'].get_next()
-            i_val, X_b_val, y_b_val = self.experiment.data_iters['validation'].get_next()
-            i_te, X_b_test, y_b_test = self.experiment.data_iters['test'].get_next()
+            i_train, X_micro_batch_train, y_micro_batch_train = self.experiment.data_iters['train'].get_next()
+            i_val, X_micro_batch_val, y_micro_batch_val = self.experiment.data_iters['validation'].get_next()
+            i_test, X_micro_batch_test, y_micro_batch_test = self.experiment.data_iters['test'].get_next()
             if self.use_infeed:
                 if self.device_config['on_ipu']:
                     infeed_queue = ipu.ipu_infeed_queue.IPUInfeedQueue(
                         self.experiment.data_sets['train'])
                     infeed_queue_init = infeed_queue.initializer
                 elif self.device_config['do_xla']:
-                    infeed_queue = (i_tr, X_b_tr, y_b_tr)
+                    infeed_queue = (i_train, X_micro_batch_train, y_micro_batch_train)
                     infeed_queue_init = tf.no_op()
                 else:
                     # CPU/GPU - will use tf.while_loop as infeed later
@@ -235,9 +235,9 @@ class BaseModel(object):
 
         return infeed_queue,\
             infeed_queue_init,\
-            (i_tr, X_b_tr, y_b_tr),\
-            (i_val, X_b_val, y_b_val),\
-            (i_te, X_b_test, y_b_test)
+            (i_train, X_micro_batch_train, y_micro_batch_train),\
+            (i_val, X_micro_batch_val, y_micro_batch_val),\
+            (i_test, X_micro_batch_test, y_micro_batch_test)
 
     def get_graph_ops(self):
         """Declare all operations on the graph"""
@@ -252,14 +252,14 @@ class BaseModel(object):
 
         infeed_queue,\
             infeed_queue_init,\
-            (i_tr, X_b_tr, y_b_tr),\
-            (i_val, X_b_val, y_b_val),\
-            (i_te, X_b_test, y_b_test) = \
+            (i_train, X_micro_batch_train, y_micro_batch_train),\
+            (i_val, X_micro_batch_val, y_micro_batch_val),\
+            (i_test, X_micro_batch_test, y_micro_batch_test) = \
             self.get_load_data_ops()
 
-        ops = self.get_train_ops(ops, infeed_queue, i_tr, X_b_tr, y_b_tr)
-        ops = self.get_validation_ops(ops, i_val, X_b_val, y_b_val)
-        ops = self.get_test_ops(ops, i_te, X_b_test, y_b_test)
+        ops = self.get_train_ops(ops, infeed_queue, i_train, X_micro_batch_train, y_micro_batch_train)
+        ops = self.get_validation_ops(ops, i_val, X_micro_batch_val, y_micro_batch_val)
+        ops = self.get_test_ops(ops, i_test, X_micro_batch_test, y_micro_batch_test)
 
         with self.graph.as_default():
             if self.device_config['on_ipu']:
@@ -368,7 +368,7 @@ class BaseModel(object):
         epochs = self.sess.run(self.graph_ops['epochs'])
 
         # Create `record` dict to store performance metrics
-        record = {'n_tr_examples': self.iters * self.batch_size,
+        record = {'n_train_examples': self.iters * self.micro_batch_size,
                   'n_iter': self.iters,
                   'learning_rate': lr,
                   'epochs': epochs}
@@ -413,7 +413,7 @@ class BaseModel(object):
                 # Checkpoint session - overwrite previous
                 self.save_checkpoint(timestep=-1)
 
-            if is_nearest_multiple(self.iters, self.iters_per_sess_run, self.n_batch_freq_te) and \
+            if is_nearest_multiple(self.iters, self.iters_per_sess_run, self.n_batch_freq_test) and \
                     self.experiment.config.testing and \
                     self.iters != 0 and \
                     self.max_iter - self.iters > self.iters_per_sess_run:
@@ -435,10 +435,10 @@ class BaseModel(object):
                 self.experiment.log.info(self.train_update_str(n_iter=self.iters,
                                                                tr_out=tr_out_labelled,
                                                                time_diff=self.train_time))
-                record_tr = {'n_iters': self.iters,
-                             'train output': tr_out_labelled,
-                             'seconds_taken': self.train_time}
-                self.experiment.save_record(record_tr, scope='train_speed')
+                record_train = {'n_iters': self.iters,
+                                'train output': tr_out_labelled,
+                                'seconds_taken': self.train_time}
+                self.experiment.save_record(record_train, scope='train_speed')
 
             return True
         else:

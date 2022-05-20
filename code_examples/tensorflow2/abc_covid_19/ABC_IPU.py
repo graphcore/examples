@@ -231,8 +231,10 @@ def build_graph(accumulated_number_of_samples, run_number, local_tolerance):
             acceptance_vector, name="num_accepted_samples")
 
         # sync between replicas
-        gain = ipu.cross_replica_ops.cross_replica_sum(
-            num_accepted_samples, name="accumulated_sum")
+        gain = ipu.cross_replica_ops.assume_equal_across_replicas(
+            ipu.cross_replica_ops.cross_replica_sum(
+                num_accepted_samples, name="accumulated_sum")
+            )
 
         # transfer stats for simulations with at least once success
         maybe_enq = conditional_enqueue_op(params=param_vector,

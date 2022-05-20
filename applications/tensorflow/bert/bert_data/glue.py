@@ -53,7 +53,7 @@ from tensorflow.python.ipu import ipu_infeed_queue, ipu_outfeed_queue
 from tensorflow.python.ipu.ops import pipelining_ops
 from tensorflow.python.ipu.scopes import ipu_scope
 from tensorflow.python.ipu.utils import reset_ipu_seed
-from tensorflow.contrib.data import map_and_batch
+from tensorflow.data.experimental import map_and_batch
 
 
 from typing import List
@@ -805,7 +805,7 @@ def file_based_input_fn_builder(opts, is_training):
         for name in list(example.keys()):
             t = example[name]
             if t.dtype == tf.int64:
-                t = tf.to_int32(t)
+                t = tf.cast(t, tf.int32)
             example[name] = t
 
         return example
@@ -858,19 +858,19 @@ def get_glue_dataset(opts, is_training):
     (processor, label_list, tokenizer) = opts["pass_in"]
     if is_training and opts['current_mode'] == 'train':
         train_examples = processor.get_train_examples(opts["data_dir"])
-        train_file = os.path.join(opts["output_dir"], f"train_{opts['task_type']}.tf_record")
+        train_file = os.path.join(opts["output_dir"], f"train_{opts['task_name']}_{opts['task_type']}.tf_record")
         file_based_convert_examples_to_features(
             train_examples, label_list, opts['seq_length'], tokenizer, train_file)
         return file_based_input_fn_builder(opts, is_training)
-    elif opts['do_eval'] and opts['current_mode'] == 'eval':
+    elif opts['do_evaluation'] and opts['current_mode'] == 'eval':
         train_examples = processor.get_dev_examples(opts["data_dir"])
-        train_file = os.path.join(opts["output_dir"], f"eval_{opts['task_type']}.tf_record")
+        train_file = os.path.join(opts["output_dir"], f"eval_{opts['task_name']}_{opts['task_type']}.tf_record")
         file_based_convert_examples_to_features(
             train_examples, label_list, opts['seq_length'], tokenizer, train_file)
         return file_based_input_fn_builder(opts, is_training)
     elif opts['do_predict'] and opts['current_mode'] == 'predict':
         train_examples = processor.get_test_examples(opts["data_dir"])
-        train_file = os.path.join(opts["output_dir"], f"predict_{opts['task_type']}.tf_record")
+        train_file = os.path.join(opts["output_dir"], f"predict_{opts['task_name']}_{opts['task_type']}.tf_record")
         file_based_convert_examples_to_features(
             train_examples, label_list, opts['seq_length'], tokenizer, train_file)
         return file_based_input_fn_builder(opts, is_training)

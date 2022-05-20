@@ -136,113 +136,6 @@ def get_ckpt_mapper(opts):
     return name_mapper
 
 
-def get_h5_mapper(opts):
-    name_mapper = {}
-    embedding_mapper = {
-        'embeddings/charactor_embeddings/weight:0': 'tf2_fastspeech2/embeddings/charactor_embeddings/weight:0',
-        'embeddings/position_embeddings/embeddings:0': 'tf2_fastspeech2/embeddings/position_embeddings/embeddings:0',
-        'decoder/position_embeddings/embeddings:0': 'tf2_fastspeech2/decoder/position_embeddings/embeddings:0',
-    }
-    name_mapper.update(**embedding_mapper)
-    # f0/energy embeddings
-    emb_mapper = {}
-    for prefix in ['f0', 'energy']:
-        emb_mapper.update(**{
-            f'{prefix}_embeddings/kernel:0': f'tf2_fastspeech2/{prefix}_embeddings/kernel:0',
-            f'{prefix}_embeddings/bias:0': f'tf2_fastspeech2/{prefix}_embeddings/bias:0',
-        })
-    name_mapper.update(**emb_mapper)
-
-    # encoder
-    encoder_mapper = {}
-    for i in range(opts["encoder_num_hidden_layers"]):
-        encoder_mapper.update(**{
-            f"encoder/layer_._{i}/attention/self/query/kernel:0": f'tf2_fastspeech2/encoder/layer_._{i}/attention/self/query/kernel:0',
-            f"encoder/layer_._{i}/attention/self/query/bias:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/self/query/bias:0",
-            f"encoder/layer_._{i}/attention/self/key/kernel:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/self/key/kernel:0",
-            f"encoder/layer_._{i}/attention/self/key/bias:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/self/key/bias:0",
-            f"encoder/layer_._{i}/attention/self/value/kernel:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/self/value/kernel:0",
-            f"encoder/layer_._{i}/attention/self/value/bias:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/self/value/bias:0",
-            f"encoder/layer_._{i}/attention/output/dense/kernel:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/output/dense/kernel:0",
-            f"encoder/layer_._{i}/attention/output/dense/bias:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/output/dense/bias:0",
-            f"encoder/layer_._{i}/attention/output/LayerNorm/gamma:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/output/LayerNorm/gamma:0",
-            f"encoder/layer_._{i}/attention/output/LayerNorm/beta:0": f"tf2_fastspeech2/encoder/layer_._{i}/attention/output/LayerNorm/beta:0",
-            f"encoder/layer_._{i}/intermediate/conv1d_1/kernel:0": f"tf2_fastspeech2/encoder/layer_._{i}/intermediate/conv1d_1/kernel:0",
-            f"encoder/layer_._{i}/intermediate/conv1d_1/bias:0": f"tf2_fastspeech2/encoder/layer_._{i}/intermediate/conv1d_1/bias:0",
-            f"encoder/layer_._{i}/intermediate/conv1d_2/kernel:0": f"tf2_fastspeech2/encoder/layer_._{i}/intermediate/conv1d_2/kernel:0",
-            f"encoder/layer_._{i}/intermediate/conv1d_2/bias:0": f"tf2_fastspeech2/encoder/layer_._{i}/intermediate/conv1d_2/bias:0",
-            f"encoder/layer_._{i}/output/LayerNorm/gamma:0": f"tf2_fastspeech2/encoder/layer_._{i}/output/LayerNorm/gamma:0",
-            f"encoder/layer_._{i}/output/LayerNorm/beta:0": f"tf2_fastspeech2/encoder/layer_._{i}/output/LayerNorm/beta:0"
-        })
-    name_mapper.update(**encoder_mapper)
-
-    # decoder
-    decoder_mapper = {}
-    for i in range(opts["decoder_num_hidden_layers"]):
-        decoder_mapper.update(**{
-            f"decoder/layer_._{i}/attention/self/query/kernel:0": f'tf2_fastspeech2/decoder/layer_._{i}/attention/self/query/kernel:0',
-            f"decoder/layer_._{i}/attention/self/query/bias:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/self/query/bias:0",
-            f"decoder/layer_._{i}/attention/self/key/kernel:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/self/key/kernel:0",
-            f"decoder/layer_._{i}/attention/self/key/bias:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/self/key/bias:0",
-            f"decoder/layer_._{i}/attention/self/value/kernel:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/self/value/kernel:0",
-            f"decoder/layer_._{i}/attention/self/value/bias:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/self/value/bias:0",
-            f"decoder/layer_._{i}/attention/output/dense/kernel:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/output/dense/kernel:0",
-            f"decoder/layer_._{i}/attention/output/dense/bias:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/output/dense/bias:0",
-            f"decoder/layer_._{i}/attention/output/LayerNorm/gamma:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/output/LayerNorm/gamma:0",
-            f"decoder/layer_._{i}/attention/output/LayerNorm/beta:0": f"tf2_fastspeech2/decoder/layer_._{i}/attention/output/LayerNorm/beta:0",
-            f"decoder/layer_._{i}/intermediate/conv1d_1/kernel:0": f"tf2_fastspeech2/decoder/layer_._{i}/intermediate/conv1d_1/kernel:0",
-            f"decoder/layer_._{i}/intermediate/conv1d_1/bias:0": f"tf2_fastspeech2/decoder/layer_._{i}/intermediate/conv1d_1/bias:0",
-            f"decoder/layer_._{i}/intermediate/conv1d_2/kernel:0": f"tf2_fastspeech2/decoder/layer_._{i}/intermediate/conv1d_2/kernel:0",
-            f"decoder/layer_._{i}/intermediate/conv1d_2/bias:0": f"tf2_fastspeech2/decoder/layer_._{i}/intermediate/conv1d_2/bias:0",
-            f"decoder/layer_._{i}/output/LayerNorm/gamma:0": f"tf2_fastspeech2/decoder/layer_._{i}/output/LayerNorm/gamma:0",
-            f"decoder/layer_._{i}/output/LayerNorm/beta:0": f"tf2_fastspeech2/decoder/layer_._{i}/output/LayerNorm/beta:0"
-        })
-    name_mapper.update(**decoder_mapper)
-
-    # f0/energy/duration predictor
-    predictor_mapper = {}
-    for offset, prefix in enumerate(['duration', 'f0', 'energy']):
-        for i in range(opts["variant_predictor_num_conv_layers"]):
-            predictor_mapper.update(**{
-                f"{prefix}_predictor/conv_._{i}/kernel:0": f"{prefix}_predictor/conv_._{i}/kernel:0",
-                f"{prefix}_predictor/conv_._{i}/bias:0": f"{prefix}_predictor/conv_._{i}/bias:0",
-                f"{prefix}_predictor/LayerNorm_._{i}/gamma:0": f"{prefix}_predictor/LayerNorm_._{i}/gamma:0",
-                f"{prefix}_predictor/LayerNorm_._{i}/beta:0": f"{prefix}_predictor/LayerNorm_._{i}/beta:0",
-            })
-        # last dense layer in predictor
-        if prefix == "duration":
-            predictor_mapper.update(**{
-                f'{prefix}_predictor/dense_{offset+4}/kernel:0': f'tf2_fastspeech2/{prefix}_predictor/dense_3/kernel:0',
-                f'{prefix}_predictor/dense_{offset+4}/bias:0': f'tf2_fastspeech2/{prefix}_predictor/dense_3/bias:0',
-            })
-        else:
-            predictor_mapper.update(**{
-                f'{prefix}_predictor/dense_{offset+4}/kernel:0': f'tf2_fastspeech2/{prefix}_predictor/dense_{offset}/kernel:0',
-                f'{prefix}_predictor/dense_{offset+4}/bias:0': f'tf2_fastspeech2/{prefix}_predictor/dense_{offset}/bias:0',
-            })
-    name_mapper.update(**predictor_mapper)
-
-    # mel before
-    melb_mapper = {
-        "mel_before/kernel:0": 'tf2_fastspeech2/mel_before/kernel:0',
-        "mel_before/bias:0": 'tf2_fastspeech2/mel_before/bias:0'
-    }
-    name_mapper.update(**melb_mapper)
-
-    # postnet
-    postnet_mapper = {}
-    for i in range(opts["postnet_num_conv_layers"]):
-        postnet_mapper.update(**{
-            f"postnet/conv_._{i}/kernel:0": f"tf2_fastspeech2/postnet/conv_._{i}/kernel:0",
-            f"postnet/conv_._{i}/bias:0": f"tf2_fastspeech2/postnet/conv_._{i}/bias:0",
-            f"postnet/batch_norm_._{i}/gamma:0": f"tf2_fastspeech2/postnet/batch_norm_._{i}/gamma:0",
-            f"postnet/batch_norm_._{i}/beta:0": f"tf2_fastspeech2/postnet/batch_norm_._{i}/beta:0"
-        })
-    name_mapper.update(**postnet_mapper)
-    print(len(name_mapper))
-    return name_mapper
-
-
 def parse_ckpt(ckpt_file):
     reader = tf.compat.v1.NewCheckpointReader(ckpt_file)
     variable_to_shape = reader.get_variable_to_shape_map()
@@ -254,7 +147,133 @@ def parse_ckpt(ckpt_file):
     return weights_value
 
 
-def parse_h5(h5_file, rename=True, redundant_decoder_name=False):
+def get_gpu_predictor_mapper():
+    # predictor mapper
+    mapper = {
+        'duration_predictor/conv_._0/kernel:0': 'duration_predictor/sequential_3/conv_._0/kernel:0',
+        'duration_predictor/conv_._0/bias:0': 'duration_predictor/sequential_3/conv_._0/bias:0',
+        'duration_predictor/LayerNorm_._0/gamma:0': 'duration_predictor/sequential_3/LayerNorm_._0/gamma:0',
+        'duration_predictor/LayerNorm_._0/beta:0': 'duration_predictor/sequential_3/LayerNorm_._0/beta:0',
+        'duration_predictor/conv_._1/kernel:0': 'duration_predictor/sequential_3/conv_._1/kernel:0',
+        'duration_predictor/conv_._1/bias:0': 'duration_predictor/sequential_3/conv_._1/bias:0',
+        'duration_predictor/LayerNorm_._1/gamma:0': 'duration_predictor/sequential_3/LayerNorm_._1/gamma:0',
+        'duration_predictor/LayerNorm_._1/beta:0': 'duration_predictor/sequential_3/LayerNorm_._1/beta:0',
+        'duration_predictor/dense/kernel:0': 'duration_predictor/dense_3/kernel:0',
+        'duration_predictor/dense/bias:0': 'duration_predictor/dense_3/bias:0',
+        'f0_predictor/conv_._0/kernel:0': 'f0_predictor/sequential_1/conv_._0/kernel:0',
+        'f0_predictor/conv_._0/bias:0': 'f0_predictor/sequential_1/conv_._0/bias:0',
+        'f0_predictor/LayerNorm_._0/gamma:0': 'f0_predictor/sequential_1/LayerNorm_._0/gamma:0',
+        'f0_predictor/LayerNorm_._0/beta:0': 'f0_predictor/sequential_1/LayerNorm_._0/beta:0',
+        'f0_predictor/conv_._1/kernel:0': 'f0_predictor/sequential_1/conv_._1/kernel:0',
+        'f0_predictor/conv_._1/bias:0': 'f0_predictor/sequential_1/conv_._1/bias:0',
+        'f0_predictor/LayerNorm_._1/gamma:0': 'f0_predictor/sequential_1/LayerNorm_._1/gamma:0',
+        'f0_predictor/LayerNorm_._1/beta:0': 'f0_predictor/sequential_1/LayerNorm_._1/beta:0',
+        'f0_predictor/dense_1/kernel:0': 'f0_predictor/dense_1/kernel:0',
+        'f0_predictor/dense_1/bias:0': 'f0_predictor/dense_1/bias:0',
+        'energy_predictor/conv_._0/kernel:0': 'energy_predictor/sequential_2/conv_._0/kernel:0',
+        'energy_predictor/conv_._0/bias:0': 'energy_predictor/sequential_2/conv_._0/bias:0',
+        'energy_predictor/LayerNorm_._0/gamma:0': 'energy_predictor/sequential_2/LayerNorm_._0/gamma:0',
+        'energy_predictor/LayerNorm_._0/beta:0': 'energy_predictor/sequential_2/LayerNorm_._0/beta:0',
+        'energy_predictor/conv_._1/kernel:0': 'energy_predictor/sequential_2/conv_._1/kernel:0',
+        'energy_predictor/conv_._1/bias:0': 'energy_predictor/sequential_2/conv_._1/bias:0',
+        'energy_predictor/LayerNorm_._1/gamma:0': 'energy_predictor/sequential_2/LayerNorm_._1/gamma:0',
+        'energy_predictor/LayerNorm_._1/beta:0': 'energy_predictor/sequential_2/LayerNorm_._1/beta:0',
+        'energy_predictor/dense_2/kernel:0': 'energy_predictor/dense_2/kernel:0',
+        'energy_predictor/dense_2/bias:0': 'energy_predictor/dense_2/bias:0'
+
+    }
+    # GPU weight names --> IPU weight names
+    return {v: k for k, v in mapper.items()}
+
+
+def load_weights_from_h5file(h5_file_path):
+    f = h5py.File(h5_file_path, 'r')
+    tensor_names = []
+
+    def _find_name(name):
+        if isinstance(f[name], h5py.Dataset):
+            tensor_names.append(name)
+
+    f.visit(_find_name)
+    pretrained_weights = {}
+    for tname in tensor_names:
+        pretrained_weights[tname] = f.get(tname)[()]  # get datasets value
+    return pretrained_weights
+
+
+def rename_pretrained_weights(pretrained_weights, mode='ipu', debug=False):
+    """
+    Rename pretrained weights to match model.weights name.
+    It's a bit different where loading weights between GPU and IPU pretrained h5 files.
+    Furthermore, we got another different name scope while saving weights in unit test.
+    So we provide two modes for renaming the weights.
+
+    Args:
+        pretrained_weights: Dict[str:numpy.array]. Pretrained weights from `load_weights_from_h5file` function.
+        mode: Str. Different renaming mode include ['gpu', 'ipu']. 'gpu' means the pre-trained weights
+                are saved on the GPU. 'ipu' means the pre-trained weights are saved on the IPU.
+        debug: Bool. Whether logging more information about renaming or not.
+
+    Returns:
+        Dict[str:numpy.array]. The renamed weights.
+    """
+    assert mode in ['gpu', 'ipu'], "Only support one of ['gpu', 'ipu']."
+    rename_weights = {}
+    for k, v in pretrained_weights.items():
+        if mode == "gpu":
+            # decoder/tf_fast_speech2/decoder/layer_._0/attention/output/LayerNorm/beta:0 ==> decoder/layer_._0/attention/output/LayerNorm/beta:0,
+            newname = "/".join(k.split("/")[2:])
+        elif mode == "ipu":
+            # rename `decoder/layer_._0/decoder/layer_._0/attention/output/LayerNorm/beta:0` to
+            # `decoder/layer_._0/attention/output/LayerNorm/beta:0`
+            if "decoder" in k:
+                newname = "/".join(k.split("/")[2:])
+            # rename `f0_embeddings/f0_embeddings/bias:0` to `f0_embeddings/bias:0`.
+            # Only IPU pretrained weights have such names.
+            else:
+                newname = "/".join(k.split("/")[1:])
+        else:
+            newname = k
+        if debug:
+            print(f"rename {k} ==> {newname}, {v.shape}")
+        rename_weights[newname] = v
+    return rename_weights
+
+
+def set_weights(ckpt_path, model, mode="ipu", debug=False):
+    reload_weights = load_weights_from_h5file(ckpt_path)
+    reload_weights = rename_pretrained_weights(
+        reload_weights, mode=mode, debug=debug)
+    weights_to_restore = []
+    wi_names = [w.name for w in model.weights]
+    if mode == "gpu":
+        predictore_mapper = get_gpu_predictor_mapper()
+        rename_weights = {}
+        for k, v in reload_weights.items():
+            if k in predictore_mapper.keys():
+                rename_weights[predictore_mapper[k]] = v
+            else:
+                if "moving_" in k:
+                    # drop moving_mean and moving_variance
+                    continue
+                rename_weights[k] = v
+        reload_weights = rename_weights
+
+    not_match = [k for k in reload_weights.keys() if k not in wi_names]
+    if len(not_match) > 0:
+        print(f"Mismatch: {len(not_match)}\n{not_match}")
+    for w in model.weights:
+        weights_to_restore.append(reload_weights[w.name])
+    assert len(weights_to_restore) == len(reload_weights) == len(wi_names), \
+        f"Weights loading failed.Loaded {len(weights_to_restore)}/{len(wi_names)}."
+    model.set_weights(weights_to_restore)
+    return model
+
+
+def parse_h5(h5_file, is_gpu=True, debug=False):
+    """
+    Parse weights(*.h5) file from whether pretrained on GPU or IPU.
+    """
     f = h5py.File(h5_file, 'r')
     tensor_names = []
 
@@ -268,10 +287,15 @@ def parse_h5(h5_file, rename=True, redundant_decoder_name=False):
         pretrained_weights[tname] = f.get(tname)[()]  # get datasets value
     rename_weights = {}  # rename to match model.weights name
     for k, v in pretrained_weights.items():
-        print(k, v.shape)
-        if redundant_decoder_name and "decoder" in k:
+        # rename `decoder/layer_._0/decoder/layer_._0/attention/output/LayerNorm/beta:0` to
+        # `decoder/layer_._0/attention/output/LayerNorm/beta:0`
+        if is_gpu or "decoder" in k:
             newname = "/".join(k.split("/")[2:])
+        # rename `f0_embeddings/f0_embeddings/bias:0` to `f0_embeddings/bias:0`.
+        # Only IPU pretrained weights have such names.
         else:
             newname = "/".join(k.split("/")[1:])
+        if debug:
+            print(f"rename {k} ==> {newname}, {v.shape}")
         rename_weights[newname] = v
-    return rename_weights if rename else pretrained_weights
+    return rename_weights

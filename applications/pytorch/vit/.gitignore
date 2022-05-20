@@ -1,8 +1,10 @@
 !**/data
 wandb
-data/cifar10
-output
+data
 checkpoint
+logs
+report*
+output*
 *.pvti
 *.pvti-journal
-report
+*.backup

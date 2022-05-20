@@ -13,6 +13,9 @@ A number of complete examples of models implemented on the IPU are available.
 
 - [CosmoFlow](cosmoflow) is a deep learning model for calculating cosmological parameters. The model primarily consists of 3D convolutions, pooling operations, and dense layers.
 
+- [Concurrent Pipeline](concurrent_pipeline) code example shows how to use the feature of single pipeline stages that use more than a single IPU to implement a tensor parallel tied embedding where the embedding lookup, projection, and final softmax operations are sharded across multiple IPUs.
+
+- [SSD Single Image Example](ssd) is an implementation of the Single Shot MultiBox Detector (SSD) model using a dual-device, single-graph framework for inference applications.
 
 ## Other examples
 

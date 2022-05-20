@@ -18,10 +18,10 @@ import re
 from tensorflow.python.ipu.config import (
     IPUConfig,
     SchedulingAlgorithm,
-    DeviceConnectionType
+    DeviceConnectionType,
+    StochasticRoundingBehaviour
 )
 from tensorflow.python.ipu import utils
-
 
 
 def get_ipu_arch():
@@ -37,7 +37,7 @@ def get_ipu_arch():
     return arch
 
 
-def get_config(prng=False,
+def get_config(stochastic_rounding="ON",
                ipu_id=-1,
                shards=1,
                number_of_replicas=1,
@@ -130,8 +130,23 @@ def get_config(prng=False,
     config.floating_point_behaviour.inv = fp_exceptions
     config.floating_point_behaviour.div0 = fp_exceptions
     config.floating_point_behaviour.oflo = fp_exceptions
-    config.floating_point_behaviour.esr = prng
+
     config.floating_point_behaviour.nanoo = nanoo
+
+    if stochastic_rounding == 'ON':
+        config.floating_point_behaviour.esr = StochasticRoundingBehaviour.ON
+    elif stochastic_rounding == 'ON_prng_stable':
+        config.experimental.enable_prng_stability = True
+        config.floating_point_behaviour.esr = StochasticRoundingBehaviour.ON
+    elif stochastic_rounding == 'RI_prng_stable':
+        config.experimental.enable_prng_stability = True
+        config.floating_point_behaviour.esr = StochasticRoundingBehaviour.REPLICA_IDENTICAL_ONLY
+    elif stochastic_rounding == 'OFF':
+        config.floating_point_behaviour.esr = StochasticRoundingBehaviour.OFF
+    else:
+        print(f'Acceptable values for --stochastic-rounding include '
+              f'[ON, ON_prng_stable, RI_prng_stable or OFF], {stochastic_rounding} is not one of them.')
+        raise ValueError
 
     config.norms.experimental.distributed_batch_norm_replica_group_size = (
         number_of_distributed_batch_norm_replicas)

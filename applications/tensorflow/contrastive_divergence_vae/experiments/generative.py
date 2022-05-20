@@ -118,15 +118,15 @@ class Generative(object):
             self.np_data['validation'] = {'x': np.array(()), 'y': np.array(())}
 
         # Can override batch size in data config if specified in model
-        batch_size = self.model.config.get('batch_size', DEFAULT_BATCH_SIZE)
-        batch_size_te = self.model.config.testing.get('batch_size_te', batch_size)
+        micro_batch_size = self.model.config.get('micro_batch_size', DEFAULT_BATCH_SIZE)
+        micro_batch_size_test = self.model.config.testing.get('micro_batch_size_test', micro_batch_size)
 
         # If using mock infeed on CPU/GPU need to multiply batchsize by number of infeed loops
         use_infeed = self.model.config.training.get('use_infeed', False)
         n_infeed_loops = self.model.config.training.get('n_infeed_batches', 1)
         scale_batch = use_infeed and not self.model.device_config['on_ipu'] and self.model.device_config['do_xla']
         batch_factor = n_infeed_loops if scale_batch else 1
-        batch_sizes = {'train': batch_size * batch_factor, 'validation': batch_size_te, 'test': batch_size_te}
+        micro_batch_sizes = {'train': micro_batch_size * batch_factor, 'validation': micro_batch_size_test, 'test': micro_batch_size_test}
 
         # Only drop remainder of training set
         drop_remainders = {'train': True, 'validation': False, 'test': False}
@@ -135,7 +135,7 @@ class Generative(object):
         # Convert numpy arrays into tf datasets and iterators
         tf_data = {split: make_iterator_from_np(np_arrays=np_arrs,
                                                 shuffle=True,
-                                                batch_size=batch_sizes[split],
+                                                micro_batch_size=micro_batch_sizes[split],
                                                 rand_binarise=False,
                                                 drop_remain=drop_remainders[split],
                                                 repeat=repeats[split])

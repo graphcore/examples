@@ -144,6 +144,58 @@ Command:
 python bert.py --config configs/mk2/pretrain_base_384.json --input-files=$DATASETS_DIR/wikipedia/AA/sequence_384/wiki_00_tokenised --epochs 1 --no-model-save --no-validation --steps-per-log 1
 ```
 
+### BERT-Packed-Large Phase 1 Pre-training Sequence length 128
+
+#### 1 x IPU-POD16
+
+Command:
+```console
+python bert.py --config configs/mk2/packed/packed_pretrain_large_128.json --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_128/duplication_0 --epochs 1 --no-model-save --no-validation --steps-per-log 1
+```
+
+#### 1 x IPU-POD64
+
+Command:
+```console
+python bert.py --config configs/mk2/packed/packed_pretrain_large_128.json  --replication-factor 16 --loss-scaling 32768.0 --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_128/duplication_* --checkpoint-dir "checkpoint/phase1"
+```
+
+
+### BERT-Packed-Large Phase 2 Pre-training Sequence length 384
+
+#### 1 x IPU-POD16
+
+Command:
+```console
+python bert.py --config configs/mk2/packed/packed_pretrain_large_384.json --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_384/duplication_0 --epochs 1 --no-model-save --no-validation --steps-per-log 1
+```
+
+#### 1 x IPU-POD64
+
+Command:
+```console
+python bert.py --config configs/mk2/packed/packed_pretrain_large_384.json  --replication-factor 16 --loss-scaling 32768.0 --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_384/duplication_*
+```
+
+
+### BERT-Packed-Base Phase 1 Pre-training Sequence length 128
+
+#### 1 x IPU-POD16
+
+Command:
+```console
+python bert.py --config configs/mk2/packed/packed_pretrain_base_128.json --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_128/duplication_0 --epochs 1 --no-model-save --no-validation --steps-per-log 1
+```
+
+### BERT-Packed-Base Phase 2 Pre-training Sequence length 384
+
+#### 1 x IPU-POD16
+
+Command:
+```console
+python bert.py --config configs/mk2/packed/packed_pretrain_base_384.json --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_384/duplication_0 --epochs 1 --no-model-save --no-validation --steps-per-log 1
+```
+
 ### BERT Large SQuAD Sequence length 384
 
 #### 1 x IPU-POD16

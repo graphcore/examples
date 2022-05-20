@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Base class for setting up pre-trained Tensorflow inference network."""
+"""Base class for setting up pre-trained TensorFlow inference network."""
 
 import logging
 import sys
@@ -85,7 +85,7 @@ class InferenceNetwork(object):
         Args:
             config: Model specific configuration dict.
 
-        Returns: Tensorflow graph and list of names of output tensors.
+        Returns: TensorFlow graph and list of names of output tensors.
         """
         raise NotImplementedError
 

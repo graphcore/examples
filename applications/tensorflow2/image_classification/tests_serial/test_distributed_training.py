@@ -15,7 +15,8 @@ from tensorflow.python.ipu.horovod import popdist_strategy
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).absolute().parent.parent))
-from losses.loss_enqueuer import wrap_loss_in_enqueuer
+from losses.loss_enqueuer import wrap_loss_in_enqueuer, wrap_loss_in_allreduce_enqueuer
+from metrics.metric_enqueuer import wrap_metric_in_enqueuer, wrap_metric_in_allreduce_enqueuer
 from callbacks.logging_callback import LoggingCallback
 from callbacks.outfeed_queue_callback import OutFeedQueueCallback
 from callbacks.allreduce_metrics_callback import AllReduceMetricsCallback
@@ -23,11 +24,16 @@ from callbacks.allreduce_metrics_callback import AllReduceMetricsCallback
 
 class PopDistStrategyEquivalenceToIPUStrategy(unittest.TestCase):
 
+    def __init__(self, methodName: str = ...) -> None:
+        super().__init__(methodName=methodName)
+
     def call_program(self,
                      num_instances: int,
                      num_replicas: int,
+                     weight_updates: int,
                      gradient_accumulation: int,
-                     test_all_reduce: bool = False):
+                     test_reduction: bool = False,
+                     accelerator_side_reduction: bool = False):
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         working_path = os.getcwd()
 
@@ -37,7 +43,9 @@ class PopDistStrategyEquivalenceToIPUStrategy(unittest.TestCase):
                                                     '--only-output-from-instance', '0']
 
         cmd_suffix = ['--num-replicas', f'{num_replicas}'] if num_instances == 0 else []
+        cmd_suffix += ['--weight-updates', f'{weight_updates}']
         cmd_suffix += ['--gradient-accumulation-count', f'{gradient_accumulation}']
+        cmd_suffix += ['--accelerator-side-reduction'] if accelerator_side_reduction else []
 
         cmd = cmd_prefix + ['python3', 'test_distributed_training.py'] + cmd_suffix
 
@@ -47,18 +55,12 @@ class PopDistStrategyEquivalenceToIPUStrategy(unittest.TestCase):
                                        shell=False, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT, check=True)
             decoded_output = str(completed.stdout, 'utf-8')
-            if not test_all_reduce:
+            if not test_reduction:
                 output_last_line = decoded_output.splitlines()[-1]
                 return float(output_last_line.split(':')[-1] if '<stdout>' in output_last_line else output_last_line)
             else:
-                # parse to get the loss
-                last_logging_callback_line = [
-                    line for line in decoded_output.splitlines() if 'INFO:logging_callback' in line][-1]
-                import re
-                matches = re.findall(r'(\{[^{}]+\})', last_logging_callback_line)
-                import json
-                d = json.loads(matches[-1].replace("'", '"'))
-                return d['average_loss']
+                d = self.extract_logging_data_from_output(decoded_output)
+                return d['average_loss'], d['average_accuracy']
 
         except subprocess.CalledProcessError as e:
             print(f"The following command failed: {cmd}\n"
@@ -66,41 +68,95 @@ class PopDistStrategyEquivalenceToIPUStrategy(unittest.TestCase):
                   f"Output of failed command:\n{e.output}")
             return 0.0
 
-    def test_allreduce_callback(self):
-        loss_with_allreduce = self.call_program(num_instances=2, num_replicas=4,
-                                                gradient_accumulation=1, test_all_reduce=True)
-        loss_single_instance = self.call_program(
-            num_instances=0, num_replicas=4, gradient_accumulation=1, test_all_reduce=True)
-        assert loss_single_instance == loss_with_allreduce
+    @staticmethod
+    def extract_logging_data_from_output(output):
+        # parse to get the loss
+        last_logging_callback_line = [
+            line for line in output.splitlines() if 'INFO:logging_callback' in line][-1]
+        import re
+        matches = re.findall(r'(\{[^{}]+\})', last_logging_callback_line)
+        import json
+        d = json.loads(matches[-1].replace("'", '"'))
+        return d
+
+    def test_multireplica_outfeed_reduction(self):
+        loss_allreduce_on_host, metrics_allreduce_on_host = self.call_program(
+            num_instances=2,
+            num_replicas=4,
+            weight_updates=2,
+            gradient_accumulation=1,
+            test_reduction=True,
+            accelerator_side_reduction=False
+        )
+        loss_allreduce_on_device, metrics_allreduce_on_device = self.call_program(
+            num_instances=2,
+            num_replicas=4,
+            weight_updates=2,
+            gradient_accumulation=1,
+            test_reduction=True,
+            accelerator_side_reduction=True
+        )
+        loss_single_instance, metrics_single_instance = self.call_program(
+            num_instances=0,
+            num_replicas=4,
+            weight_updates=2,
+            gradient_accumulation=1,
+            test_reduction=True,
+        )
+
+        # verify losses
+        self.assertAlmostEqual(loss_single_instance, loss_allreduce_on_host, places=4)
+        self.assertAlmostEqual(loss_single_instance, loss_allreduce_on_device, places=4)
+        # verify metrics
+        self.assertAlmostEqual(metrics_single_instance, metrics_allreduce_on_host, places=4)
+        self.assertAlmostEqual(metrics_single_instance, metrics_allreduce_on_device, places=4)
 
     def test_ipu_strategy_replication(self):
-        assert self.call_program(num_instances=0, num_replicas=4, gradient_accumulation=1) == -186.0
+        self.assertAlmostEqual(
+            first=self.call_program(num_instances=0, num_replicas=4, weight_updates=1, gradient_accumulation=1),
+            second=0.3111111,
+            places=4
+        )
 
     def test_ipu_strategy_accumulation(self):
-        assert self.call_program(num_instances=0, num_replicas=1, gradient_accumulation=4) == -186.0
+        self.assertAlmostEqual(
+            first=self.call_program(num_instances=0, num_replicas=1, weight_updates=1, gradient_accumulation=4),
+            second=0.3111111,
+            places=4
+        )
 
     def test_popdist_strategy_multiple_instances(self):
-        assert self.call_program(num_instances=2, num_replicas=4, gradient_accumulation=1) == -186.0
+        self.assertAlmostEqual(
+            first=self.call_program(num_instances=2, num_replicas=4, weight_updates=1, gradient_accumulation=1),
+            second=0.3111111,
+            places=4
+        )
 
     def test_popdist_strategy_multiple_instances_and_accumulation(self):
-        assert self.call_program(num_instances=2, num_replicas=4, gradient_accumulation=4) == -186.0
+        self.assertAlmostEqual(
+            first=self.call_program(num_instances=2, num_replicas=4, weight_updates=1, gradient_accumulation=4),
+            second=0.3111111,
+            places=4
+        )
 
 
 if __name__ == '__main__':
 
-    def ipu_prog(num_replicas, gradient_accumulation):
+    def ipu_prog(num_replicas, gradient_accumulation, accelerator_side_reduction, weight_updates=1):
+
         import logging
-        import sys
+
         logging.basicConfig(stream=sys.stdout, level=logging.INFO)
         popdist_on = popdist.isPopdistEnvSet()
 
         num_global_replicas = popdist.getNumTotalReplicas() if popdist_on else num_replicas
         num_instances = popdist.getNumInstances() if popdist_on else 1
 
-        dataset_size = global_batch_size = 16
+        global_batch_size = 16
+        dataset_size = global_batch_size * weight_updates
         micro_batch_size = int(global_batch_size / num_global_replicas / gradient_accumulation)
 
-        X = np.arange(1, dataset_size + 1, 1, dtype=float)
+        X = np.linspace(0, 1, num=dataset_size, dtype=float)
         Y = [0] * dataset_size
         ds = tf.data.Dataset.from_tensor_slices((X, Y))
         if popdist_on:
@@ -140,26 +196,53 @@ if __name__ == '__main__':
 
             optimizer = tf.keras.optimizers.SGD(learning_rate=1.0, gradient_transformers=[gradient_normalizer])
 
+            micro_batches_per_weight_update = num_global_replicas * gradient_accumulation
+            steps_per_execution = dataset_size // global_batch_size * micro_batches_per_weight_update
+
+            print(f'weight_updates {weight_updates}')
+            print(f'step_per_execution {steps_per_execution}')
+
+            # wrap loss and metrics in enqueuer
             loss_class = tf.keras.losses.MeanSquaredError
             loss_outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
-            loss_class = wrap_loss_in_enqueuer(loss_class, loss_outfeed_queue)
-            loss = loss_class()
 
-            micro_batches_per_weight_update = num_global_replicas * gradient_accumulation
-            steps_per_execution = dataset_size // (micro_batch_size *
-                                                   micro_batches_per_weight_update) * micro_batches_per_weight_update
+            accuracy_class = tf.keras.metrics.MeanSquaredError
+            accuracy_outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
+
+            if num_instances > 1 and accelerator_side_reduction:
+                loss_class = wrap_loss_in_allreduce_enqueuer(
+                    loss_class,
+                    outfeed_queue=loss_outfeed_queue,
+                    num_replicas=num_global_replicas
+                )
+                accuracy_class = wrap_metric_in_allreduce_enqueuer(
+                    accuracy_class,
+                    outfeed_queue=accuracy_outfeed_queue,
+                    num_replicas=num_global_replicas
+                )
+            else:
+                loss_class = wrap_loss_in_enqueuer(loss_class, loss_outfeed_queue)
+                accuracy_class = wrap_metric_in_enqueuer(accuracy_class, accuracy_outfeed_queue)
+
+            loss = loss_class()
+            accuracy = accuracy_class()
+
+            steps_per_execution_per_replica = steps_per_execution // num_global_replicas
 
             model.compile(optimizer=optimizer,
                           loss=loss,
-                          metrics=[tf.keras.losses.MSE],
-                          steps_per_execution=steps_per_execution)
+                          metrics=[accuracy],
+                          steps_per_execution=steps_per_execution_per_replica)
 
-            callbacks = [OutFeedQueueCallback(queue=loss_outfeed_queue, name='average_loss')]
-            if num_instances > 1:
+            callbacks = [OutFeedQueueCallback(queue=loss_outfeed_queue, name='average_loss'),
+                         OutFeedQueueCallback(queue=accuracy_outfeed_queue, name='average_accuracy')]
+            if num_instances > 1 and not accelerator_side_reduction:
                 callbacks += [AllReduceMetricsCallback()]
             callbacks += [LoggingCallback(1)]
 
-            model.fit(ds, steps_per_epoch=steps_per_execution, callbacks=callbacks)
+            steps_per_epoch_per_instance = steps_per_execution * weight_updates // num_instances
+
+            model.fit(ds, steps_per_epoch=steps_per_epoch_per_instance, callbacks=callbacks)
 
             return model.get_weights()[0][0][0]
 
@@ -168,6 +251,8 @@ if __name__ == '__main__':
     def add_arguments(parser):
         parser.add_argument('--num-replicas', type=int, default=1)
         parser.add_argument('--gradient-accumulation-count', type=int, default=1)
+        parser.add_argument('--accelerator-side-reduction', action='store_true', default=False)
+        parser.add_argument('--weight-updates', type=int, default=1)
         return parser
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -176,4 +261,6 @@ if __name__ == '__main__':
     print(args)
 
     print(ipu_prog(num_replicas=args.num_replicas,
-                   gradient_accumulation=args.gradient_accumulation_count))
+                   gradient_accumulation=args.gradient_accumulation_count,
+                   accelerator_side_reduction=args.accelerator_side_reduction,
+                   weight_updates=args.weight_updates))

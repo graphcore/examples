@@ -1,21 +1,18 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 import argparse
 import collections
+import math
 import numpy as np
 import os
 from ruamel import yaml
 from scipy.cluster.vq import kmeans
-import torchvision
+import torch
 import time
 from typing import Dict, List, Tuple, Union
 from tqdm import tqdm
 from yacs.config import CfgNode
 
-import torch
-from torchvision.ops.boxes import nms as torchvision_nms
-
 from utils.anchors import AnchorBoxes
-from utils.visualization import scale_boxes_to_orig
 
 
 class StatRecorder:
@@ -31,7 +28,6 @@ class StatRecorder:
         """
         self.total_times = []
         self.inference_times = []
-        self.nms_times = []
         self.inference_throughputs = []
         self.total_throughputs = []
         self.eval_stats = []
@@ -323,7 +319,7 @@ def load_weights(weight_path: str) -> List[Tuple[str, torch.Tensor]]:
     Returns:
         A list of layer names and weights for the model
     """
-    model = torch.load(weight_path)
+    model = torch.load(weight_path, map_location=torch.device('cpu'))
     model_weight = [(k, v) for (k, v) in model.items() if 'anchor' not in k]
     return model_weight
 
@@ -345,17 +341,19 @@ def map_key_names(scaled_yolo: List[Tuple[str, torch.Tensor]], our_model_dict: D
     return scaled_yolo_final
 
 
-def load_and_fuse_pretrained_weights(model: torch.nn.Module, opt: argparse.ArgumentParser) -> torch.nn.Module:
+def load_and_fuse_pretrained_weights(model: torch.nn.Module, weight_path: str, is_inference: bool = True) -> torch.nn.Module:
     """
     Given a model, load pretrained weight and fuse conv layers
     Parameters:
         model (torch.nn.Module): Placeholder model to load weights into
-        opt (argparse.ArgumentParser): Object that contains the path to the model weights
+        weight_path: Path to the model weights
+        is_inference: Fuse conv and batch norm layers when loading the model for inference
     Returns:
         A model fused with the weights
     """
-    model.optimize_for_inference(fuse_all_layers=False)
-    fused_state_dict = load_weights(opt.weights)
+    if is_inference:
+        model.optimize_for_inference(fuse_all_layers=False)
+    fused_state_dict = load_weights(weight_path)
     fused_state_dict = map_key_names(fused_state_dict, model.state_dict())
     model.load_state_dict(fused_state_dict)
     return model
@@ -422,111 +420,78 @@ def iou(boxes1: torch.Tensor, boxes2: torch.Tensor):
     area2 = area(boxes2)
 
     inter = (torch.min(boxes1[:, None, 2:], boxes2[:, 2:]) - torch.max(boxes1[:, None, :2], boxes2[:, :2])).clamp(0).prod(2)
-    return inter / (area1[:, None] + area2 - inter)
+    union = area1[:, None] + torch.finfo(torch.float32).eps + area2 - inter
+    return inter / union
 
 
-def nms(scores: torch.Tensor, boxes: torch.Tensor, classes: torch.Tensor, iou_threshold: float, max_detections: int) -> List[torch.Tensor]:
+def bbox_iou(predicted_boxes: torch.Tensor, target_boxes: torch.Tensor, is_xyxy: bool, special_iou_type: str ='ciou'):
     """
-    Perform non maximum suppression on predictions
-    Parameters:
-        scores (torch.Tensor): objectness scores per box
-        boxes (torch.Tensor): (xmin, ymin, xmax, ymax)
-        classes (torch.Tensor): classes per box
-        iou_threshold (float):  Predictions that overlap by more than this threshold will be discarded
-        max_detections (int) : Maximum number of detections per image
+    Calculate distance IoU (DIoU) or complete IoU (CIoU) between N pairs of predicted and target boxes,
+    used specifically in the loss function.
+        Arguments:
+        predicted_boxes (torch.Tensor): a NX4 tensor of boxes
+        target_boxes (torch.Tensor): a NX4 tensor of boxes
+        is_xyxy (bool): whether the format of the box is in xyxy or xywh
+        special_iou_type (str): options between ciou or diou. Default is ciou. If None is given, the iou will be returned.
     Returns:
-        List[torch.Tensor]: Predictions filtered after NMS, indexes, scores, boxes, classes, and the number of detection per image
+        torch.Tensor: the 1xN matrix containing the pairwise special IoU values for each predicted-target box.
     """
-    batch = scores.shape[0]
-    selected_box_indx = torch.full((batch, max_detections), -1, dtype=torch.long)
-    cpu_classes = torch.full((batch, max_detections), torch.iinfo(torch.int32).max, dtype=int)
-    cpu_boxes = torch.zeros((batch, max_detections, 4))
-    cpu_scores = torch.zeros((batch, max_detections))
-    cpu_true_max_detections = torch.full((batch,), max_detections)
+    # Keep predicted values only when there are actual boxes in the target, otherwise fill them with padding boxes.
+    predicted_boxes = torch.where(~isclose(target_boxes, torch.zeros(1).float()), predicted_boxes, target_boxes)
 
-    for i, (bscores, bboxes, bclasses) in enumerate(zip(scores, boxes, classes)):
-        nms_preds = torchvision_nms(bboxes, bscores, iou_threshold)
+    if not is_xyxy:
+        predicted_boxes = xywh_to_xyxy(predicted_boxes)
+        target_boxes = xywh_to_xyxy(target_boxes)
 
-        if nms_preds.shape[0] > max_detections:
-            selected_box_indx[i] = nms_preds[:max_detections]
-        else:
-            selected_box_indx[i, :nms_preds.shape[0]] = nms_preds
-            cpu_true_max_detections[i] = nms_preds.shape[0]
+    # diag() because our iou function calculates value for every NxN combination, we only want the only the predicted-target pair
+    iou_value = iou(predicted_boxes, target_boxes).diag()
 
-        batch_indices = selected_box_indx[i, :cpu_true_max_detections[i]]
+    if not special_iou_type:
+        return iou_value
 
-        cpu_classes[i, :cpu_true_max_detections[i]] = bclasses[batch_indices]
-        cpu_boxes[i, :cpu_true_max_detections[i]] = bboxes[batch_indices]
-        cpu_scores[i, :cpu_true_max_detections[i]] = bscores[batch_indices]
+    b1x1, b1y1, b1x2, b1y2 = predicted_boxes[:, 0], predicted_boxes[:, 1], predicted_boxes[:, 2], predicted_boxes[:, 3]
+    b2x1, b2y1, b2x2, b2y2 = target_boxes[:, 0], target_boxes[:, 1], target_boxes[:, 2], target_boxes[:, 3]
+    width1, height1 = b1x2 - b1x1, b1y2 - b1y1
+    width2, height2 = b2x2 - b2x1, b2y2 - b2y1
 
-    return [selected_box_indx, cpu_scores, cpu_boxes, cpu_classes.int(), cpu_true_max_detections.int()]
+    convex_width = torch.max(b1x2, b2x2) - torch.min(b1x1, b2x1)
+    convex_height = torch.max(b1y2, b2y2) - torch.min(b1y1, b2y1)
+    convex_diag_squared = convex_width * convex_width + convex_height * convex_height + torch.finfo(torch.float32).eps
+    rho_squared = ((b2x1 + b2x2) - (b1x1 + b1x2)) ** 2 / 4 + ((b2y1 + b2y2) - (b1y1 + b1y2)) ** 2 / 4
+
+    if special_iou_type == 'diou':
+        return iou_value - rho_squared / convex_diag_squared
+    elif special_iou_type == 'ciou':
+        pi = torch.tensor([math.pi], dtype=torch.float32)
+        atan1 = torch.atan(width1 / (height1 + torch.finfo(torch.float32).eps))
+        atan2 = torch.atan(width2 / (height2 + torch.finfo(torch.float32).eps))
+        atan_diff = atan2 - atan1
+        v = (4 / (pi * pi)) * (atan_diff * atan_diff)
+        with torch.no_grad():
+            alpha = v / (1 - iou_value + v + torch.finfo(torch.float32).eps)
+        return iou_value - (rho_squared / convex_diag_squared + v * alpha)
+    else:
+        raise ValueError("Type {} not supported. Valid options are 'ciou', 'diou' or None".format(special_iou_type))
 
 
-def post_processing(
-    cfg: CfgNode, y: torch.Tensor, orig_img_size: torch.Tensor, transformed_labels: torch.Tensor
-) -> Tuple[Tuple[List[np.array], List[np.array]], float]:
+def isclose(tensor1, tensor2):
+    return torch.abs(tensor1-tensor2) < 1e-6
+
+
+def sparse_mean(x: torch.Tensor, excluded_value=torch.zeros(1).float()):
     """
-    Post process raw prediction output from the model, and convert the normalized label to image size scale
+    Find the mean among the non-excluded value in the given tensor
     Parameters:
-        cfg: yacs object containing the config
-        y (torch.Tensor): tensor output from the model
-        orig_img_size (torch.Tensor):  size of the original image (h, w)
-        transformed_labels (torch.Tensor): labels from dataloader, that has been transformed with augmentation if applicable
+        x (torch.Tensor): input tensor for the mean to be calculated
+        excluded_value (torch.Tensor): a single value to be excluded from the calculation in torch.Tensor
     Returns:
-        Tuple[Tuple[List[np.array], List[np.array]], float]: a tuple of processed predictions, processed labels
-        and the time taken to compute the post-processing
+        (torch.Tensor): a mean value in torch.Tensor form
     """
-    pruned_preds_batch = post_process_prediction(y, orig_img_size, cfg)
-    processed_labels_batch = post_process_labels(transformed_labels, orig_img_size, cfg)
-
-    return pruned_preds_batch, processed_labels_batch
-
-
-def post_process_prediction(y: torch.Tensor, orig_img_sizes: torch.Tensor, cfg: CfgNode) -> List[np.array]:
-    """
-    Post process the raw output from the model, including filtering predictions
-        with higher probability than the object score, apply nms and scale the prediction back
-        to the original image size
-    Parameters:
-        y (torch.Tensor): tensor output from the model
-        orig_img_size (torch.Tensor):  size of the original image (h, w)
-        cfg: yacs object containing the config
-    Returns:
-        List[np.array]: an array of processed bounding boxes, associated class score
-        and class prediction of each bounding box
-    """
-    predictions, max_n_predictions = y
-    scaled_preds = []
-    for i, (pred, max_n) in enumerate(zip(predictions, max_n_predictions)):
-        if pred is None:
-            continue
-        max_n = -1 if max_n == 0 else max_n
-        pred = pred[:max_n]
-        pred = xyxy_to_xywh(pred)
-        scaled_pred = scale_boxes_to_orig(pred, orig_img_sizes[i], cfg.model.image_size)
-        scaled_preds.append(scaled_pred)
-    return scaled_preds
-
-
-def post_process_labels(labels: torch.Tensor, orig_img_sizes: torch.Tensor, cfg: CfgNode) -> List[np.array]:
-    """
-    Post process raw prediction output from the model, and convert the normalized label to image size scale
-    Parameters:
-        labels (torch.Tensor): labels from dataloader, that has been transformed with augmentation if applicable
-        orig_img_sizes (torch.Tensor):  size of the original image (h, w)
-        cfg: yacs object containing the config
-    Returns:
-        List[np.array]: a list of processed labels
-    """
-    processed_labels = []
-    for i, label in enumerate(labels):
-        # Remove label padding
-        label = label[torch.abs(label.sum(axis=1)) != 0.]
-        label = standardize_labels(label, cfg.model.image_size, cfg.model.image_size)
-        scaled_boxes = scale_boxes_to_orig(label[:, 1:], orig_img_sizes[i], cfg.model.image_size)
-        label[:, 1:] = scaled_boxes
-        processed_labels.append(label)
-    return processed_labels
+    const_zero = torch.zeros(1).float()
+    mask = ~isclose(x, excluded_value)
+    div = (mask).sum().float()
+    div = div + ((div == const_zero).float())  # removing this cause nan
+    return torch.where(isclose(div, const_zero), const_zero, x.sum() / div)
 
 
 def standardize_labels(labels: np.array, width: int, height: int) -> np.array:

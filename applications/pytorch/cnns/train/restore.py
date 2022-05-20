@@ -23,9 +23,8 @@ if __name__ == '__main__':
     train_data = datasets.get_data(args, opts, train=True, async_dataloader=True)
 
     logging.info(f"Restore the {args.model} model to epoch {checkpoint['epoch']} on {args.data} dataset(Loss:{checkpoint['loss']}, train accuracy:{checkpoint['train_accuracy']})")
-    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled)
+    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled, with_loss=True, inference_mode=False)
     models.load_model_state_dict(model, checkpoint['model_state_dict'])
-    model.train()
 
     optimizer = get_optimizer(args, model)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

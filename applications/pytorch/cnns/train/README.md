@@ -24,7 +24,7 @@ To reproduce the published Mk2 throughput benchmarks, please follow the setup in
     * ImageNet dataset (available at [http://www.image-net.org/](http://www.image-net.org/))
     * CIFAR10 dataset downloads automatically
 
-The ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 1000 classes, can be downloaded from [http://www.image-net.org/download](the ImageNet website). It is approximately 150GB for the training and validation sets. Please note you need to register and request permission to download this dataset on the Imagenet website. You cannot download the dataset until ImageNet confirms your registration and sends you a confirmation email. If you do not get the confirmation email within a couple of days, contact [support@imagenet.org](ImageNet support) to see why your registration has not been confirmed. Once your registration is confirmed, go to the download site. The dataset is available for non-commercial use only. Full terms and conditions and more information are available on the [http://www.image-net.org/download-faq](ImageNet download FAQ)
+The ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 1000 classes, can be downloaded from [http://www.image-net.org/download](the ImageNet website). It is approximately 150GB for the training and validation sets. Please note you need to register and request permission to download this dataset on the Imagenet website. You cannot download the dataset until ImageNet confirms your registration and sends you a confirmation email. If you do not get the confirmation email within a couple of days, contact [support@imagenet.org](ImageNet support) to see why your registration has not been confirmed. Once your registration is confirmed, go to the download site. The dataset is available for non-commercial use only. Full terms and conditions and more information are available on the [http://www.image-net.org/download](ImageNet download)
 
 3) Run the training:
 
@@ -32,26 +32,19 @@ The ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 100
        python3 train.py --data imagenet --imagenet-data-path <path-to/imagenet>
 ```
 
-#### Supported ImageNet formats:
-* Raw ImageNet: without any modifications
-* WebDataset(recommended): you can use the given script to generate it (see datasets folder).
-* TFRecord format, to generate see the TensorFlow applications
-
 
 ### Training examples
-
-NOTE: It is suggested to generate the webdataset format of the ImageNet dataset to avoid host side bottlenecks.
 
 #### ImageNet
 
 |IPU configuration|Model  | Config name| Note |
 |-------|----------|---------|---------|
-|Mk2 IPU-POD16|ResNet50| `resnet50_mk2`| single IPU, 16 replicas |
-|Mk2 IPU-POD64|ResNet50| `resnet50_mk2_pod64`| single IPU, 64 replicas |
-|Mk2 IPU-POD16|EfficientNet-B0 (Group Norm, Group Conv)| `efficientnet-b0-g16-gn-16ipu-mk2`| 2 IPUs, 8 replicas |
-|Mk2 IPU-POD16|EfficientNet-B4 (Group Norm, Group Conv)| `efficientnet-b4-g16-gn-16ipu-mk2`| 4 IPUs, 4 replicas |
-|Mk2 IPU-POD4|MobileNet v3 small | `mobilenet-v3-small-pod4`| single IPU, 4 replicas |
-|Mk2 IPU-POD16|MobileNet v3 large | `mobilenet-v3-large-pod16`| single IPU, 16 replicas |
+|IPU-POD16|ResNet50| `resnet50`| single IPU, 16 replicas |
+|IPU-POD64|ResNet50| `resnet50-pod64`| single IPU, 64 replicas |
+|IPU-POD16|EfficientNet-B0 (Group Norm, Group Conv)| `efficientnet-b0-g16-gn-pod16`| 2 IPUs, 8 replicas |
+|IPU-POD16|EfficientNet-B4 (Group Norm, Group Conv)| `efficientnet-b4-g16-gn-pod16`| 4 IPUs, 4 replicas |
+|IPU-POD4|MobileNet v3 small | `mobilenet-v3-small-pod4`| single IPU, 4 replicas |
+|IPU-POD16|MobileNet v3 large | `mobilenet-v3-large-pod16`| single IPU, 16 replicas |
 
 
 ```console
@@ -112,7 +105,9 @@ The program has a few command line options:
 
 `--recompute-checkpoints`       List of recomputation checkpoints. List of regex rules for the layer names. (Example: Select convolutional layers: `.*conv.*`)
 
-`--offload-optimizer`           Store the optimizer status off-chip
+`--offload-optimizer`           Store the optimizer state off-chip.
+
+`--enable-optimizer-rts`        Use replicated tensor sharding for optimizer state.
 
 `--lr-schedule`                 Select learning rate schedule from [`step`, `cosine`, `exponential`] options
 
@@ -179,8 +174,6 @@ The program has a few command line options:
 `--cutmix-lambda-high`          Higher bound for the cutmix lambda coefficient (lambda is sampled uniformly from [low, high)). If both bounds are set to 0.0 or 1.0, cutmix is disabled. If both bounds are equal, lambda always equals that value.
 
 `--cutmix-disable-prob`         Probability that cutmix is disabled for a particular batch.
-
-`--webdataset-memory-cache-ratio` Determines the portion of the webdataset, which is cached in memory.
 
 `--input-image-padding`        Pad input images to be 4 channel images. This could speed up the model.
 

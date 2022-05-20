@@ -80,7 +80,8 @@ class WrappedDALLE(nn.Module):
                  embedding_serialization_factor = 1,
                  layers_per_ipu = [0, 0, 8, 8],
                  cls_ipu_id = None,
-                 fp16 = False):
+                 fp16 = False,
+                 byteio = False):
         super().__init__()
         self.model = DALLE(dim=dim,
                            vae=vae,
@@ -95,7 +96,8 @@ class WrappedDALLE(nn.Module):
                            attn_types=attn_types,
                            loss_img_weight=loss_img_weight,
                            sandwich_norm=sandwich_norm,
-                           fp16=fp16)
+                           fp16=fp16,
+                           byteio=byteio)
 
         assert(sum(layers_per_ipu) == depth)
         if embedding_serialization_factor > 1:

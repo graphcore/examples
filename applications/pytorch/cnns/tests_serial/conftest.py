@@ -3,7 +3,7 @@ import os
 import pytest
 import gc
 import import_helper
-from utils import get_cifar10_dataset, get_models
+from utils import get_cifar10_dataset, get_models, install_turbo_jpeg
 from examples_tests.execute_once_per_fs import ExecuteOncePerFS
 
 
@@ -19,6 +19,7 @@ def init_tests():
     """Get the data required for the tests."""
     get_cifar10_dataset()
     get_models()
+    install_turbo_jpeg()
 
 
 def pytest_sessionstart(session):

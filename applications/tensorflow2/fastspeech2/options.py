@@ -48,7 +48,7 @@ def add_common_arguments(parser, required=True):
                        help="Base learning rate exponent (2**N). blr = lr /  bs")
     group.add_argument('--loss-scaling', type=float, default=1,
                        help="Loss scaling factor.")
-    group.add_argument('--optimizer', type=str, default="adamw", choices=['adam', 'adamw'],
+    group.add_argument('--optimizer', type=str, default="adamw", choices=['sgd', 'adam', 'adamw'],
                        help="Optimizer")
     group.add_argument('--beta1', type=float, default=0.9,
                        help="Adam/AdamW beta1 coefficient.")
@@ -154,9 +154,9 @@ def add_common_arguments(parser, required=True):
                        help="""The maximum sequence length that this model might ever be used with. Typically set this to something large just in case (e.g., 512 or 1024 or 2048).""")
     group.add_argument('--initializer-range', type=float, default=0.02,
                        help="""The stdev of the truncated-normal-initializer for initializing all weight matrices.""")
-    group.add_argument('--max-seq-length', type=int, default=135,
+    group.add_argument('--max-seq-length', type=int, default=189,
                        help='The maximuim sequence length.')
-    group.add_argument('--max-wave-length', type=int, default=1000,
+    group.add_argument('--max-wave-length', type=int, default=870,
                        help='The maximuim wave length.')
     group.add_argument('--num-mels', type=int, default=80,
                        help='The number of mel-spectrograms dimensions.')
@@ -183,8 +183,6 @@ def add_common_arguments(parser, required=True):
                        help="Enable offloading of training variables into remote memory.")
     group.add_argument('--stochastic-rounding', type=_str_to_bool, default=True,
                        help="Enable stochastic rounding. Set to False when run evaluation.")
-    group.add_argument("--xla-recompute", default=True, action="store_true",
-                       help="Recompute activations during backward pass")
     group.add_argument('--fp-exceptions', default=False, action="store_true",
                        help="Enable floating-point exeptions.")
     group.add_argument('--partials-type', type=str, default="half", choices=["half", "float"],
@@ -197,6 +195,8 @@ def add_common_arguments(parser, required=True):
                        help='The reduction type applied to the pipeline, the choice is between summation and mean.')
     group.add_argument('--weight-norm-clip', type=float, default=0.,
                        help='The value from which we want to clip the w_norm value, value of 0 is no weight clipping.')
+    group.add_argument('--num-io-tiles', type=int, default=0,
+                       help='The number of IO tiles, default is 0 which means no IO tiles are used.')
 
     # Dataset options
     group.add_argument('--data-path', type=str, required=False,
@@ -242,7 +242,6 @@ def make_global_options(task_specific_parsers=[]):
         all_options_parser = task_parser(all_options_parser)
 
     known_command_line_args, unknown_command_line_args = command_line_parser.parse_known_args()
-
     if known_command_line_args.help or known_command_line_args.config is None:
         all_options_parser.print_help()
         sys.exit(os.EX_OK)

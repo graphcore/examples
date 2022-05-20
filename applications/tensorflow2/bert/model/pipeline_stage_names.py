@@ -1,17 +1,16 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 
-from tensorflow.python.keras.layers.core import TFOpLambda, SlicingOpLambda
+from tensorflow.python.keras.layers.core import SlicingOpLambda, TFOpLambda
 from transformers.models.bert.modeling_tf_bert import (
-    TFBertLayer,
-    TFBertPooler,
     TFBertEmbeddings,
+    TFBertLayer,
+    TFBertMLMHead,
     TFBertNSPHead,
-    TFBertMLMHead
+    TFBertPooler
 )
 
 from model.ipu_embeddings_layer import IpuTFBertEmbeddings
 from model.ipu_pretraining_model import GatherSubsetOutput
-
 
 # List of layers classes that will be assigned to the same pipeline stage as the previous layer (or zero if the layer
 # being assigned is the first one). This list contains layers build from tf.ops, typically when transforming a Keras
@@ -27,4 +26,5 @@ PIPELINE_NAMES = {
     "enc_out": [GatherSubsetOutput],
     "heads": [TFBertNSPHead, TFBertMLMHead],
     "qa_head": ["qa_outputs", 'start_positions', 'end_positions'],
+    "glue_head": ["labels"]
 }

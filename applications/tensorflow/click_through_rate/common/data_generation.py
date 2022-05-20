@@ -101,19 +101,19 @@ def data_generator(opts, is_training, return_neg=False):
     uid_voc = "./common/uid_voc.pkl"
     mid_voc = "./common/mid_voc.pkl"
     cat_voc = "./common/cat_voc.pkl"
-    batch_size = opts['batch_size']
+    micro_batch_size = opts['micro_batch_size']
 
-    data_itr = DataIterator(file, uid_voc, mid_voc, cat_voc, batch_size, opts["max_seq_len"], shuffle_each_epoch=False)
+    data_itr = DataIterator(file, uid_voc, mid_voc, cat_voc, micro_batch_size, opts["max_seq_len"], shuffle_each_epoch=False)
     tf_log.info(f"data n: {data_itr.get_n()}")
     i = 0
     for src, tgt in data_itr:
-        i += batch_size
+        i += micro_batch_size
         uids, mids, cats, mid_his, cat_his, mid_mask, target, seqlen = prepare_data(opts, src, tgt, opts["max_seq_len"], return_neg=return_neg)
         if i >= data_size:
             raise StopIteration
-        if len(uids) < opts['batch_size']:
+        if len(uids) < opts['micro_batch_size']:
             raise StopIteration
-        for j in range(batch_size):
+        for j in range(micro_batch_size):
             yield np.squeeze(np.array(uids[j])), np.squeeze(np.array(mids[j])), np.squeeze(np.array(cats[j])), np.squeeze(mid_his[j]), np.squeeze(cat_his[j]), np.squeeze(mid_mask[j]), np.squeeze(np.array(target[j])), np.squeeze(np.array(seqlen[j]))
 
 
@@ -124,13 +124,13 @@ def parse_data(opts):
     uid_voc = "./common/uid_voc.pkl"
     mid_voc = "./common/mid_voc.pkl"
     cat_voc = "./common/cat_voc.pkl"
-    batch_size = opts['batch_size']
+    micro_batch_size = opts['micro_batch_size']
 
-    data_itr = DataIterator(file, uid_voc, mid_voc, cat_voc, batch_size, opts["max_seq_len"], shuffle_each_epoch=False)
+    data_itr = DataIterator(file, uid_voc, mid_voc, cat_voc, micro_batch_size, opts["max_seq_len"], shuffle_each_epoch=False)
     tf_log.debug("Start to prepare data.")
     i = 0
     for src, tgt in data_itr:
-        i += batch_size
+        i += micro_batch_size
         items = prepare_data(opts, src, tgt, opts["max_seq_len"], return_neg=True)
         for j in range(len(items[0])):
             for i, key in enumerate(data.keys()):

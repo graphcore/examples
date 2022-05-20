@@ -55,6 +55,7 @@
     "init_checkpoint": "",
 
     "static_mask": false, 
+    "use_qkv_split": true,
 
     "do_training": false,
     "do_predict": false,

@@ -13,7 +13,7 @@ import popdist
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).absolute().parent.parent))
-from utilities import verify_all_params_present
+from utilities import verify_params_present
 
 AVAILABLE_OPTIMIZERS = ['sgd', 'lars']
 
@@ -25,11 +25,11 @@ class OptimizerFactory:
                       optimizer_params: dict,
                       loss_scaling: Optional[float],
                       l2_regularization: float,
-                      bn_momentum: float,
                       batch_config: BatchConfig,
                       lr_scheduler: LearningRateSchedule,
                       wd_scheduler: LearningRateSchedule,
-                      distributed_training: bool):
+                      distributed_training: bool,
+                      norm_layer_params: dict):
 
         if optimizer_name not in AVAILABLE_OPTIMIZERS:
             raise NameError(f'Optimizer {optimizer_name} not supported. Supported optimizers: {AVAILABLE_OPTIMIZERS}')
@@ -38,32 +38,33 @@ class OptimizerFactory:
 
         if optimizer_name == 'sgd':
             expected_params = ['momentum']
-            verify_all_params_present(list(optimizer_params.keys()), expected_params, optimizer_name, '--optimizer-params')
+            verify_params_present(list(optimizer_params.keys()), expected_params, optimizer_name, '--optimizer-params')
             optimizer_class = tfa.optimizers.SGDW
             optimizer_params['weight_decay'] = wd_scheduler
 
         elif optimizer_name == 'lars':
             expected_params = ['momentum', 'weight_decay', 'eeta', 'epsilon']
-            verify_all_params_present(list(optimizer_params.keys()), expected_params, optimizer_name, '--optimizer-params')
+            verify_params_present(list(optimizer_params.keys()), expected_params, optimizer_name, '--optimizer-params')
             optimizer_class = LARSIpuOptimizer
             optimizer_params['exclude_from_layer_adaptation'] = ['beta', 'gamma', 'bias']
 
         if distributed_training:
-            def gradient_normalizer(grads_and_vars): return \
-                [(grad / batch_config.gradient_accumulation_count, var)
-                    for grad, var in grads_and_vars]
+            def gradient_normalizer(grads_and_vars): return grads_and_vars
         else:
             def gradient_normalizer(grads_and_vars): return \
-                [(grad / popdist.getNumTotalReplicas() / batch_config.gradient_accumulation_count, var)
+                [(grad / batch_config.num_replicas, var)
                     for grad, var in grads_and_vars]
 
         optimizer_params['learning_rate'] = lr_scheduler
         optimizer_params['gradient_transformers'] = [gradient_normalizer]
         if l2_regularization:
             optimizer_class = add_l2_regularization(optimizer_class, l2_regularization)
-        optimizer_class = batch_norm.add_bn_moving_vars_updates_to_optimizer(optimizer_class,
-                                                                             bn_momentum=bn_momentum,
-                                                                             loss_scaling=loss_scaling)
+
+        if norm_layer_params['name'] == 'custom_batch_norm':
+            optimizer_class = batch_norm.add_bn_moving_vars_updates_to_optimizer(optimizer_class,
+                                                                                 loss_scaling=loss_scaling,
+                                                                                 bn_momentum=norm_layer_params['momentum'])
+
         optimizer = optimizer_class(**optimizer_params)
         if loss_scaling:
             optimizer = tf.keras.mixed_precision.LossScaleOptimizer(optimizer,

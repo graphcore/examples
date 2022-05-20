@@ -336,7 +336,7 @@ def bert_session_options(args, model):
 
     # These options are necessary to allow poplar to overlap processing of
     # multiple iterations in the host side
-    options.defaultPrefetchBufferingDepth = 3
+    options.defaultBufferingDepth = args.buffering_depth
     options.rearrangeAnchorsOnHost = False
     engine_options["exchange.streamBufferOverlap"] = "hostRearrangeOnly"
 

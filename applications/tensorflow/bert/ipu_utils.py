@@ -15,7 +15,7 @@
 
 import math
 import tensorflow as tf
-from tensorflow.python.ipu.config import IPUConfig, DeviceConnectionType, SchedulingAlgorithm, MergeRemoteBuffersBehaviour
+from tensorflow.python.ipu.config import IPUConfig, DeviceConnectionType, SchedulingAlgorithm, MergeRemoteBuffersBehaviour, StochasticRoundingBehaviour
 from collections import OrderedDict
 from tensorflow.python.ipu import horovod as hvd
 
@@ -56,6 +56,11 @@ def get_config(fp_exceptions,
     cfg.norms.use_stable_statistics = True
     cfg.matmuls.clear_pass_type = True
 
+    if compile_only:
+        cfg.device_connection.type = tf.python.ipu.utils.DeviceConnectionType.PRE_COMPILE
+        cfg.device_connection.version = "ipu2"
+        cfg.device_connection.enable_remote_buffers = True
+
     # Floating-point exceptions
     cfg.floating_point_behaviour.inv = fp_exceptions
     cfg.floating_point_behaviour.div0 = fp_exceptions
@@ -63,7 +68,10 @@ def get_config(fp_exceptions,
     cfg.floating_point_behaviour.nanoo = fp_exceptions
 
     # Stochastic rounding
-    cfg.floating_point_behaviour.esr = enable_stochastic_rounding
+    if enable_stochastic_rounding:
+        cfg.floating_point_behaviour.esr = StochasticRoundingBehaviour.ON
+    else:
+        cfg.floating_point_behaviour.esr = StochasticRoundingBehaviour.OFF
     cfg.optimizations.merge_remote_buffers = MergeRemoteBuffersBehaviour.MERGE
     cfg.optimizations.maximum_cross_replica_sum_buffer_size = max_cross_replica_sum_buffer_size
     cfg.optimizations.maximum_reduce_scatter_buffer_size = max_reduce_scatter_buffer_size

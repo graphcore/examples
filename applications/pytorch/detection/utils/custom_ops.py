@@ -7,10 +7,9 @@ from typing import List
 from yacs.config import CfgNode
 
 import torch
+from torchvision.ops.boxes import nms as torchvision_nms
 
 import poptorch
-
-from utils.tools import nms as cpu_nms
 
 
 def load_custom_ops_lib(path_custom_op: str):
@@ -62,10 +61,46 @@ class Nms(torch.nn.Module):
         self.nms_max_detections = inference_cfg.nms_max_detections
         self.cpu_mode = cpu_mode
 
+    def cpu_nms(self, scores: torch.Tensor, boxes: torch.Tensor, classes: torch.Tensor, iou_threshold: float, max_detections: int) -> List[torch.Tensor]:
+        """
+        Perform non maximum suppression on predictions
+        Parameters:
+            scores (torch.Tensor): objectness scores per box
+            boxes (torch.Tensor): (xmin, ymin, xmax, ymax)
+            classes (torch.Tensor): classes per box
+            iou_threshold (float):  Predictions that overlap by more than this threshold will be discarded
+            max_detections (int) : Maximum number of detections per image
+        Returns:
+            List[torch.Tensor]: Predictions filtered after NMS, indexes, scores, boxes, classes, and the number of detection per image
+        """
+        batch = scores.shape[0]
+        selected_box_indx = torch.full((batch, max_detections), -1, dtype=torch.long)
+        cpu_classes = torch.full((batch, max_detections), torch.iinfo(torch.int32).max, dtype=int)
+        cpu_boxes = torch.zeros((batch, max_detections, 4))
+        cpu_scores = torch.zeros((batch, max_detections))
+        cpu_true_max_detections = torch.full((batch,), max_detections)
+
+        for i, (bscores, bboxes, bclasses) in enumerate(zip(scores, boxes, classes)):
+            nms_preds = torchvision_nms(bboxes, bscores, iou_threshold)
+
+            if nms_preds.shape[0] > max_detections:
+                selected_box_indx[i] = nms_preds[:max_detections]
+            else:
+                selected_box_indx[i, :nms_preds.shape[0]] = nms_preds
+                cpu_true_max_detections[i] = nms_preds.shape[0]
+
+            batch_indices = selected_box_indx[i, :cpu_true_max_detections[i]]
+
+            cpu_classes[i, :cpu_true_max_detections[i]] = bclasses[batch_indices]
+            cpu_boxes[i, :cpu_true_max_detections[i]] = bboxes[batch_indices]
+            cpu_scores[i, :cpu_true_max_detections[i]] = bscores[batch_indices]
+
+        return [selected_box_indx, cpu_scores, cpu_boxes, cpu_classes.int(), cpu_true_max_detections.int()]
+
     def forward(self, scores: torch.Tensor, boxes: torch.Tensor, classes: torch.Tensor = None) -> List[torch.Tensor]:
         batch = scores.shape[0]
         if self.cpu_mode:
-            cpu_output = cpu_nms(scores, boxes, classes, self.iou_threshold, self.nms_max_detections)
+            cpu_output = self.cpu_nms(scores, boxes, classes, self.iou_threshold, self.nms_max_detections)
             return cpu_output
 
         return poptorch.custom_op(

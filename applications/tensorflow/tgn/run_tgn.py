@@ -19,15 +19,27 @@ import utils
 
 
 def stats(outputs: Iterable[Dict[str, np.ndarray]],
-          start_time: float) -> Dict[str, float]:
-    """Accumulate statistics from train/val/test batches."""
+          start_time: float, first_epoch: bool) -> Dict[str, float]:
+    """
+    Accumulate statistics from train/val/test batches.
+
+    Notes:
+        Compile time:
+        During the first training epoch, we can measure the compile time by
+        measuring the latency of the first batch. This is due to how TF
+        implicitly leaves compilation of the graph until just before its
+        required, which in this case is the execution of the first batch.
+        The compute time for the data itself is orders of magnitude less than
+        the time taken to compile, so the measurement is a very good
+        approximation.
+    """
     total = 0
     loss = 0.0
     metrics_total = 0
     average_precision = 0.0
     roc_auc = 0.0
 
-    for output in outputs:
+    for n_batch, output in enumerate(outputs):
         count = int(output["count"])
         total += count
         loss += count * float(output["loss"])
@@ -40,6 +52,10 @@ def stats(outputs: Iterable[Dict[str, np.ndarray]],
                 labels, probs)
             roc_auc += count * sklearn.metrics.roc_auc_score(labels, probs)
 
+        # Measuring compile time
+        if first_epoch and n_batch == 0:
+            compile_time = time.time() - start_time
+
     result = dict(loss=loss / total)
     if metrics_total:
         result.update(
@@ -47,6 +63,14 @@ def stats(outputs: Iterable[Dict[str, np.ndarray]],
             roc_auc=roc_auc / metrics_total,
         )
     result.update(count=total, duration=time.time() - start_time)
+
+    if first_epoch:
+        result.update(compile_time=compile_time)
+
+    # Throughput measurement (predictions/sec)
+    throughput = total / result["duration"]
+    result.update(throughput=throughput)
+
     return result
 
 
@@ -166,7 +190,11 @@ def run_training(
         def epoch(n_epoch: int, part: str) -> Dict[str, Any]:
             t0 = time.time()
             outputs = tqdm.tqdm(runners[part](session))
-            return dict(n_epoch=n_epoch, part=part, **stats(outputs, t0))
+
+            # Include compilation stats if its the first training epoch
+            epoch_stats = stats(outputs, t0, n_epoch == 1 and part == "train")
+
+            return dict(n_epoch=n_epoch, part=part, **epoch_stats)
 
         def should_validate(n_epoch: int) -> bool:
             if validate_every is None:
@@ -217,6 +245,24 @@ def _main() -> None:
         "; 'benchmark' - enable dataset caching (slight metrics degradation)"
         " and infrequent validation",
     )
+    parser.add_argument(
+        "--n-epoch",
+        default=None,
+        type=int,
+        help=(
+            "Number of epochs to train for. If provided, overrides number "
+            "specified by choice of --mode."
+        )
+    )
+    parser.add_argument(
+        "--validate-every",
+        default=None,
+        type=int,
+        help=(
+            "Number of epochs to validate after. If provided, overrides number "
+            "specified by choice of --mode."
+        )
+    )
     parser.add_argument("--load", type=Path, help="path to load model")
     parser.add_argument("--save", type=Path, help="path to save model")
 
@@ -225,31 +271,39 @@ def _main() -> None:
     if args["dtype"] is None:
         args["dtype"] = np.float16 if args[
             "target"] is utils.Target.IPU else np.float32
-    args.update(
-        dict(
-            train=dict(
-                n_epoch=50,
-                n_batch=None,
-                validate_every=1,
-                cache_dataset=False,
-            ),
-            profile=dict(
-                n_epoch=1,
-                n_batch=5,
-                validate_every=None,
-                cache_dataset=False,
-            ),
-            benchmark=dict(
-                n_epoch=25,
-                n_batch=None,
-                validate_every=25,
-                cache_dataset=True,
-            ),
-        )[args.pop("mode")])
+
+    all_configs = dict(
+        train=dict(
+            n_epoch=50,
+            n_batch=None,
+            validate_every=1,
+            cache_dataset=False,
+        ),
+        profile=dict(
+            n_epoch=1,
+            n_batch=5,
+            validate_every=None,
+            cache_dataset=False,
+        ),
+        benchmark=dict(
+            n_epoch=25,
+            n_batch=None,
+            validate_every=25,
+            cache_dataset=True,
+        ),
+    )
+
+    # Merge configs into args, except where values are specified in the cmd
+    for key, value in all_configs[args.pop("mode")].items():
+        if args.get(key) is None:
+            args[key] = value
 
     # Run
     for log in run_training(**args):
-        print(json.dumps(log), flush=True)
+        # Printing epoch results individually
+        for k, v in log.items():
+            print(f"{k}: {v}, ", end="")
+        print("\n", flush=True)
 
 
 if __name__ == "__main__":

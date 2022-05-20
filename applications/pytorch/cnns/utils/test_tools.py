@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 from torchvision import datasets
-from models.models import available_models
+from models.factory import available_models
 
 
 def run_script(script_name, parameters, python=True):
@@ -92,3 +92,15 @@ def get_cifar10_dataset():
         train=False,
         download=True
     )
+
+
+def install_turbo_jpeg():
+    print("Installing turbojpeg...")
+    try:
+        cwd = Path(__file__).parent.parent.absolute()
+        subprocess.run(["make", "install-turbojpeg"], cwd=cwd, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        print(f"TEST FAILED")
+        print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
+        print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
+        raise

@@ -97,7 +97,7 @@ def get_synthetic_dataset(opts):
 
     dataset = dataset.cache()
     dataset = dataset.repeat()
-    dataset = dataset.batch(opts['batch_size'], drop_remainder=True)
+    dataset = dataset.batch(opts['micro_batch_size'], drop_remainder=True)
     dataset = dataset.prefetch(1024)
 
     return dataset
@@ -112,9 +112,9 @@ def get_dataset_embed(opts, is_training=True):
 
     dataset = dataset.cache()
     dataset = dataset.repeat()
-    dataset = dataset.batch(opts['batch_size'], drop_remainder=True)
+    dataset = dataset.batch(opts['micro_batch_size'], drop_remainder=True)
     dataset = dataset.prefetch(1024)
-    tf_log.info(f"batch_size={opts['batch_size']}")
+    tf_log.info(f"micro_batch_size={opts['micro_batch_size']}")
     return dataset
 
 

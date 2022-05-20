@@ -4,26 +4,28 @@
 # This file has been modified by Graphcore
 
 
-import argparse
+import sys
 from pathlib import Path
 import datetime
 import time
 from glob import glob
 import os
-import shutil
+from functools import partial
 from log import Logger
 import torch
 import poptorch
 import popart
 import wandb  # Quit early if user doesn't have wandb installed.
-from poptorch.optim import Adam, AdamW
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 
 from models.dalle import default
 from models import VQGanVAE, WrappedDALLE
-from models.loader import TextImageDataset
+from models.loader import get_data
 from models.tokenizer import SimpleTokenizer, YttmTokenizer
-from args import parse_args
+from models.optimization import get_optimizer
+from models.optimization import get_lr_sched
+from args import parse_args, sync_metrics
+from ipu_options import get_options
 
 
 # helpers
@@ -31,25 +33,6 @@ from args import parse_args
 
 def exists(val):
     return val is not None
-
-
-def get_trainable_params(model, weight_decay=0):
-    # Do not apply weight_decay for one-dimensional parameters
-    regularized_params = []
-    non_regularized_params = []
-    for param in model.parameters():
-        if param.requires_grad:
-            if len(param.shape) == 1:
-                non_regularized_params.append(param)
-            else:
-                regularized_params.append(param)
-
-    params = [
-        {"params": regularized_params, "weight_decay": weight_decay},
-        {"params": non_regularized_params, "weight_decay": 0}
-    ]
-
-    return params
 
 
 def cp_path_to_dir(cp_path, tag):
@@ -66,7 +49,7 @@ def cp_path_to_dir(cp_path, tag):
 
 
 def main(args):
-    if not args.synthetic_data:
+    if not args.generated_data and not args.synthetic_data:
         assert Path(args.input_folder).exists(), f'The path {args.input_folder} was not found.'
 
     abs_pathd = os.path.abspath(args.checkpoint_output_dir)
@@ -74,13 +57,15 @@ def main(args):
     log = Logger(abs_pathd+"/"+datetime.datetime.now().strftime('%Y.%m.%d-%H:%M:%S')+'.log',
                  level='INFO')
 
-    # tokenizer
+    # vocab size
 
     if exists(args.bpe_path):
         klass = YttmTokenizer
         tokenizer = klass(args.bpe_path)
     else:
         tokenizer = SimpleTokenizer()
+    vocab_size = tokenizer.vocab_size
+    del tokenizer
 
     # reconstitute vae
     if exists(args.pretrained_checkpoint):
@@ -106,7 +91,7 @@ def main(args):
         vae = VQGanVAE(args.vqgan_model_path, args.vqgan_config_path)
 
         dalle_params = dict(
-            num_text_tokens=tokenizer.vocab_size,
+            num_text_tokens=vocab_size,
             text_seq_len=args.text_seq_len,
             dim=args.hidden_size,
             depth=args.num_hidden_layers,
@@ -121,65 +106,16 @@ def main(args):
             embedding_serialization_factor=args.embedding_serialization_factor,
             layers_per_ipu=args.layers_per_ipu,
             cls_ipu_id=args.cls_ipu_id,
-            fp16=args.fp16
+            fp16=args.fp16,
+            byteio=args.byteio
         )
         resume_epoch = 0
 
+    # Execution parameters
+    opts = get_options(args)
 
-    # create dataset and dataloader
-
-    ds = TextImageDataset(
-        args.input_folder,
-        text_len=args.text_seq_len,
-        image_size=vae.image_size,
-        resize_ratio=1.0,
-        truncate_captions=args.truncate_captions,
-        tokenizer=tokenizer,
-        shuffle=True,
-        synthetic=args.synthetic_data,
-        fp16=args.fp16
-    )
-
-    assert len(ds) > 0, 'dataset is empty'
-    print(f'{len(ds)} image-text pairs found for training')
-
-
-    opts = poptorch.Options()
-    opts.autoRoundNumIPUs(True)
-    opts.deviceIterations(args.batches_per_step)
-    opts.replicationFactor(args.replication_factor)
-    opts.Training.gradientAccumulation(args.gradient_accumulation)
-    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
-    opts.Precision.enableStochasticRounding(args.stochastic_rounding)
-    opts.anchorMode(poptorch.AnchorMode.Final)
-    opts.TensorLocations.setOptimizerLocation(
-        poptorch.TensorLocationSettings().useOnChipStorage(True))
-
-    if args.enable_rts:
-        opts.TensorLocations.setOptimizerLocation(
-            poptorch.TensorLocationSettings().useReplicatedTensorSharding(True).minElementsForReplicatedTensorSharding(args.replication_factor))
-
-    opts.randomSeed(args.random_seed)
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
-
-    mem_prop = {
-        f'IPU{i}': args.matmul_proportion[i]
-        for i in range(args.ipus_per_replica)
-    }
-    opts.setAvailableMemoryProportion(mem_prop)
-
-    # PopART options
-    opts._Popart.set("disableGradAccumulationTensorStreams", True)
-    opts._Popart.set("outlineThreshold", 10.0)
-
-    if args.enable_half_partials:
-        opts.Precision.setPartialsType(torch.float16)
-    else:
-        opts.Precision.setPartialsType(torch.float32)
-
-    dl = poptorch.DataLoader(options=opts, dataset=ds, batch_size=args.batch_size, num_workers=args.dataloader_workers,
-                             persistent_workers=True, shuffle=True, drop_last=True, sampler=None)
+    # Dataloader
+    dl = get_data(args, opts, vae.image_size, train=True, async_dataloader=args.async_dataloader)
     steps_per_epoch = len(dl)
 
     # initialize DALL-E
@@ -194,22 +130,13 @@ def main(args):
         dalle.load_state_dict(weights)
 
     # optimizer
-    first_order_type = torch.float16 if args.enable_half_first_order_momentum else torch.float32
-    accum_type = torch.float16 if args.fp16 else torch.float32
-    if args.optimizer == "Adam":
-        opt = Adam(get_trainable_params(dalle, args.weight_decay), lr=args.learning_rate, eps=1e-6, loss_scaling=args.loss_scaling,
-                   accum_type=accum_type, first_order_momentum_accum_type=first_order_type, second_order_momentum_accum_type=torch.float32)
-    elif args.optimizer == "AdamW":
-        opt = AdamW(get_trainable_params(dalle, args.weight_decay), lr=args.learning_rate, eps=1e-6, loss_scaling=args.loss_scaling,
-                    accum_type=accum_type, first_order_momentum_accum_type=first_order_type, second_order_momentum_accum_type=torch.float32)
-    else:
-        raise ValueError("Unknown Optimizer:", args.optimizer)
+    opt = get_optimizer(args, dalle)
     if exists(args.pretrained_checkpoint) and opt_state:
         opt.load_state_dict(opt_state)
     poptorch_dalle = poptorch.trainingModel(dalle,
                                             options=opts,
                                             optimizer=opt)
-    if args.lr_decay:
+    if args.lr_scheduler == "ReduceLROnPlateau":
         scheduler = ReduceLROnPlateau(
             opt,
             mode="min",
@@ -219,10 +146,14 @@ def main(args):
             min_lr=1e-6,
             verbose=True,
         )
-        if exists(args.pretrained_checkpoint) and scheduler_state:
-            scheduler.load_state_dict(scheduler_state)
     else:
-        scheduler = None
+        lr_lambda = partial(get_lr_sched, scheduler=args.lr_scheduler,
+                            num_train_steps=args.epochs,
+                            warmup_ratio=0.2)
+        scheduler = LambdaLR(opt, lr_lambda=lr_lambda)
+
+    if exists(args.pretrained_checkpoint) and scheduler_state:
+        scheduler.load_state_dict(scheduler_state)
 
     # experiment tracker
 
@@ -232,7 +163,7 @@ def main(args):
         dim_head=args.dim_head
     )
 
-    if args.wandb:
+    if args.wandb and (not args.use_popdist or args.popdist_rank == 0):
         run = wandb.init(
             project=args.wandb_project_name,
             entity=None,
@@ -271,6 +202,11 @@ def main(args):
     log.logger.info(f"Compiled model in {duration_compilation} secs")
     log.logger.info("---------------------------------------")
 
+    # Exit here if compile only mode is enabled
+    if args.compile_only:
+        log.logger.info("Model successfully compiled. Exiting now as '--compile-only' argument was passed.")
+        sys.exit(0)
+
     # Training loop
     log.logger.info("---------- Training Started -----------")
 
@@ -278,59 +214,70 @@ def main(args):
     global_batch_size = args.batch_size * args.gradient_accumulation * args.replication_factor
     samples_per_step = global_batch_size * args.batches_per_step
     training_steps = args.epochs * steps_per_epoch
+
+    # Track approx. IPU compute time
+    total_compute_time = 0
+    # Track total train time
     start_train = time.perf_counter()
-    start_step = time.perf_counter()
     for epoch in range(resume_epoch, args.epochs):
         for i, (text, images) in enumerate(dl):
             current_step = i + epoch * steps_per_epoch
-            loss = poptorch_dalle(text, images)
-            # Average loss across replicas
-            if args.replication_factor == 1:
-                mean_loss = loss
-            else:
-                mean_loss = loss.mean()
-            step_length = time.perf_counter() - start_step
-            step_throughput = samples_per_step / step_length
-            msg = ("Epoch: {:.2f}/{} "
-                   "Step: {}/{} "
-                   "Lr: {:.6f} "
-                   "Loss: {:.3f} "
-                   "Throughput: {:.2f} samples/sec"
-                   ).format(epoch, args.epochs,
-                            current_step, training_steps,
-                            opt.param_groups[0]['lr'],
-                            mean_loss.item(),
-                            step_throughput)
-            log.logger.info(msg)
-            if args.wandb:
-                wandb.log({"LR": opt.param_groups[0]['lr'],
-                           "Throughput": step_throughput,
-                           "Loss": mean_loss.item()})
 
             start_step = time.perf_counter()
-            if i % args.checkpoint_save_steps == 0:
-                save_model(args.checkpoint_output_dir, epoch=epoch)
+            loss = poptorch_dalle(text, images)
+            step_length = sync_metrics(time.perf_counter() - start_step)
+            mean_loss = sync_metrics(loss.mean().item())
+            if epoch > 0 or i > 0:  # The throughput of the first step is unstable
+                total_compute_time += step_length
 
-        if args.lr_decay:
+            if not args.use_popdist or args.popdist_rank == 0:
+                num_instances = args.popdist_size if args.use_popdist else 1
+                step_throughput = samples_per_step * num_instances / step_length
+                msg = ("Epoch: {:.2f}/{} "
+                       "Step: {}/{} "
+                       "Lr: {:.6f} "
+                       "Loss: {:.3f} "
+                       "Throughput: {:.2f} samples/sec"
+                       ).format(epoch, args.epochs,
+                                current_step, training_steps,
+                                opt.param_groups[0]['lr'],
+                                mean_loss,
+                                step_throughput)
+                log.logger.info(msg)
+                if args.wandb and (not args.use_popdist or args.popdist_rank == 0):
+                    wandb.log({"LR": opt.param_groups[0]['lr'],
+                               "Throughput": step_throughput,
+                               "Loss": mean_loss})
+
+            start_step = time.perf_counter()
+            if i != 0 and i % args.checkpoint_save_steps == 0:
+                save_model(args.checkpoint_output_dir, epoch=epoch+1)
+
+        if args.lr_scheduler == "ReduceLROnPlateau":
             scheduler.step(mean_loss)
+        else:
+            scheduler.step()
+        poptorch_dalle.setOptimizer(opt)
 
-        save_model(args.checkpoint_output_dir, epoch=epoch)
+        save_model(args.checkpoint_output_dir, epoch=epoch+1)
 
-    if args.wandb:
+    if args.wandb and (not args.use_popdist or args.popdist_rank == 0):
         wandb.finish()
 
     stop_train = time.perf_counter()
-    log.logger.info("---------------------------------------")
+    if not args.use_popdist or args.popdist_rank == 0:
+        log.logger.info("---------------------------------------")
 
-    log.logger.info("---------- Training Metrics -----------")
-    log.logger.info(f"global_batch_size: {global_batch_size}")
-    log.logger.info(f"batches_per_step: {args.batches_per_step}")
-    log.logger.info(f"training_steps: {training_steps}")
-    duration_run = stop_train - start_train
-    num_samples = samples_per_step * training_steps
-    log.logger.info(f"Training time: {duration_run:.3f} secs")
-    log.logger.info("Throughput: {:5f} samples/sec.".format(num_samples / duration_run))
-    log.logger.info("---------------------------------------")
+        log.logger.info("---------- Training Metrics -----------")
+        log.logger.info(f"global_batch_size: {global_batch_size}")
+        log.logger.info(f"batches_per_step: {args.batches_per_step}")
+        log.logger.info(f"training_steps: {training_steps}")
+        duration_run = stop_train - start_train
+        num_samples = samples_per_step * num_instances * (training_steps-1)
+        overall_throughput = num_samples / total_compute_time
+        log.logger.info(f"Training time: {duration_run:.3f} secs")
+        log.logger.info("Throughput: {:5f} samples/sec.".format(overall_throughput))
+        log.logger.info("---------------------------------------")
 
 if __name__ == "__main__":
     # argument parsing

@@ -78,6 +78,7 @@
     "static_mask": false,
     "steps_per_ckpts": 50000,
     "steps_per_logs": 500,
+    "steps_per_tensorboard": -1,
     "stochastic_rounding": true,
     "task": "pretraining",
     "train_file": "data/tf_wikipedia/lower_case_1_seq_len_384_max_pred_60_masked_lm_prob_0.15_random_seed_12345_dupe_factor_5_shard_256_test_split_10/books_wiki_en_corpus/training/*.tfrecord",

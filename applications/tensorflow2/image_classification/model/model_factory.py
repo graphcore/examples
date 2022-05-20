@@ -1,13 +1,19 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 
 import bisect
+from math import gamma
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.python.ipu.ops import pipelining_ops
+from tensorflow.python.ipu import ipu_outfeed_queue
+from tensorflow.python.ipu import optimizers
 import logging
-from typing import Optional
+from typing import Optional, List
+import tensorflow_addons as tfa
+from ipu_tensorflow_addons.keras.layers import GroupNormalization
 
-from .toy_model import ToyModel
+from .toy_model import ToyModel, ToyModelBn
 from .resnet_models import ResNet18, ResNet34, ResNet50
 from .cifar_resnet_models import CifarResNet8, CifarResNet20, CifarResNet32, CifarResNet44, CifarResNet56
 from .model_editor import ModelEditor
@@ -15,7 +21,7 @@ from eight_bit_transfer import EightBitTransfer
 from custom_exceptions import DimensionError
 from .model_editor import ModelEditor
 from normalization import batch_norm
-import numpy as np
+from utilities import verify_params_present
 
 
 AVAILABLE_MODELS = {'resnet50': ResNet50,
@@ -26,7 +32,8 @@ AVAILABLE_MODELS = {'resnet50': ResNet50,
                     'cifar_resnet32': CifarResNet32,
                     'cifar_resnet44': CifarResNet44,
                     'cifar_resnet56': CifarResNet56,
-                    'toy_model': lambda weights, input_shape, classes: ToyModel(input_shape=input_shape, classes=classes)}
+                    'toy_model': lambda weights, input_shape, classes: ToyModel(input_shape=input_shape, classes=classes),
+                    'toy_model_bn': lambda weights, input_shape, classes: ToyModelBn(input_shape=input_shape, classes=classes)}
 
 
 class ModelFactory:
@@ -38,6 +45,7 @@ class ModelFactory:
                      input_shape: tuple,
                      classes: int,
                      weights: Optional[str] = None,
+                     norm_layer_params: dict = {'name': 'custom_batch_norm'},
                      accelerator_side_preprocessing_fn=None,
                      eight_bit_transfer: Optional[EightBitTransfer] = None):
 
@@ -50,8 +58,10 @@ class ModelFactory:
                                              input_shape=input_shape,
                                              classes=classes)
 
-        if 'cifar' not in model_name:
-            model = replace_bn_layers(model)
+        if norm_layer_params['name'] == 'group_norm':
+            model = replace_bn_with_gn_layers(model, norm_layer_params)
+        elif norm_layer_params['name'] == 'custom_batch_norm':
+            model = replace_bn_with_custom_bn_layers(model)
 
         if accelerator_side_preprocessing_fn is not None:
             model = preappend_fn_as_lambda_layer(model, accelerator_side_preprocessing_fn,
@@ -100,11 +110,13 @@ class ModelFactory:
                 kwargs = {}
 
             model.set_pipelining_options(gradient_accumulation_steps_per_replica=gradient_accumulation_count,
+                                         gradient_accumulation_reduction_method=optimizers.GradientAccumulationReductionMethod.RUNNING_MEAN,
                                          pipeline_schedule=pipeline_schedule, device_mapping=device_mapping,
                                          offload_weight_update_variables=optimizer_state_offloading, **kwargs)
 
         else:
             model.set_gradient_accumulation_options(gradient_accumulation_steps_per_replica=gradient_accumulation_count,
+                                                    gradient_accumulation_reduction_method=optimizers.GradientAccumulationReductionMethod.RUNNING_MEAN,
                                                     offload_weight_update_variables=optimizer_state_offloading)
 
         return model
@@ -153,6 +165,58 @@ class ModelFactory:
             k += 1
         return split_list
 
+    @staticmethod
+    def debug_layers(model, debug_layers_names: List[str]):
+
+        debug_outfeed_queues = []
+
+        if len(debug_layers_names) > 0:
+            def model_editor_fn(current_layer, sub_input):
+                if current_layer.name in debug_layers_names:
+                    inputs_outfeed = ipu_outfeed_queue.IPUOutfeedQueue()
+                    outputs_outfeed = ipu_outfeed_queue.IPUOutfeedQueue()
+                    debug_outfeed_queues.append((f'{current_layer.name}_input', inputs_outfeed))
+                    debug_outfeed_queues.append((f'{current_layer.name}_output', outputs_outfeed))
+                    outputs = ModelFactory.LayerDebugger(current_layer, inputs_outfeed, outputs_outfeed)(sub_input)
+                    return outputs
+
+            model_editor = ModelEditor(model)
+            model = model_editor.update_model_with_func(model_editor_fn, copy_weights=False)
+
+        return model, debug_outfeed_queues
+
+    class LayerDebugger(tf.keras.layers.Layer):
+        def __init__(self, layer, inputs_outfeed, outputs_outfeed):
+            super(ModelFactory.LayerDebugger, self).__init__(name=f'{layer.name}_debugger')
+            self.layer = layer.from_config(layer.get_config())
+            self.inputs_outfeed = inputs_outfeed
+            self.outputs_outfeed = outputs_outfeed
+
+        def build(self, input_shape):
+            super().build(input_shape)
+            self.layer.build(input_shape)
+
+        def call(self, *args, **kwargs):
+            self.inputs_outfeed.enqueue(args)
+            outputs = self.layer(*args, **kwargs)
+            self.outputs_outfeed.enqueue(outputs)
+            return outputs
+
+        def get_config(self):
+            config = self.layer.get_config()
+            config['inputs_outfeed'] = self.inputs_outfeed
+            config['outputs_outfeed'] = self.outputs_outfeed
+            config['layer_type'] = type(self.layer)
+            return config
+
+        @classmethod
+        def from_config(cls, config):
+            inputs_outfeed = config.pop('inputs_outfeed')
+            outputs_outfeed = config.pop('outputs_outfeed')
+            inner_layer_type = config.pop('layer_type')
+            inner_layer = inner_layer_type(**config)
+            return cls(inner_layer, inputs_outfeed, outputs_outfeed)
+
 
 def preappend_fn_as_lambda_layer(model, fn, name='preappended_lambda_layer'):
 
@@ -164,7 +228,7 @@ def preappend_fn_as_lambda_layer(model, fn, name='preappended_lambda_layer'):
 
     model_editor = ModelEditor(model)
 
-    return model_editor.update_model_with_func(model_editor_fn)
+    return model_editor.update_model_with_func(model_editor_fn, copy_weights=False)
 
 
 def replace_preprocess_layer_with_fn(model, fn):
@@ -183,11 +247,51 @@ def replace_preprocess_layer_with_fn(model, fn):
         return model
 
 
-def replace_bn_layers(model):
+def replace_bn_with_custom_bn_layers(model):
 
     def model_editor_fn(current_layer, layer_input):
         if isinstance(current_layer, tf.keras.layers.BatchNormalization):
-            output = batch_norm.BatchNormIPU(name=current_layer.name, axis=3, epsilon=1.001e-5)(layer_input)
+            output = batch_norm.BatchNormIPU(name=current_layer.name,
+                                             axis=current_layer.axis,
+                                             gamma_initializer=current_layer.gamma_initializer,
+                                             beta_initializer=current_layer.beta_initializer,
+                                             epsilon=1.001e-5)(layer_input)
+            return output
+
+    model_editor = ModelEditor(model)
+
+    return model_editor.update_model_with_func(model_editor_fn)
+
+
+def replace_bn_with_gn_layers(model, params):
+
+    verify_params_present(params=list(params.keys()),
+                          expected_params=['channels_per_group', 'num_groups'],
+                          object_name='group_norm_layers',
+                          arg_name='--norm-layer',
+                          all_or_any='any')
+
+    if 'num_groups' in params.keys():
+        if 'channels_per_group' in params.keys():
+            raise ValueError('Both num_groups and channels_per_group cannot be specified at the same time '
+                             'in defining group norm layers. Use only one of them.')
+        num_groups = params['num_groups']
+        channels_per_group = None
+    else:
+        num_groups = None
+        channels_per_group = params['channels_per_group']
+
+    def model_editor_fn(current_layer, layer_input):
+
+        if isinstance(current_layer, tf.keras.layers.BatchNormalization):
+            name = current_layer.name.replace('bn', 'gn')
+            groups = num_groups or layer_input.shape[-1] // channels_per_group
+            output = GroupNormalization(name=name,
+                                        groups=groups,
+                                        channels_axis=len(layer_input.shape) - 1,
+                                        epsilon=1.001e-5,
+                                        beta_initializer=current_layer.beta_initializer,
+                                        gamma_initializer=current_layer.gamma_initializer)(layer_input)
             return output
 
     model_editor = ModelEditor(model)

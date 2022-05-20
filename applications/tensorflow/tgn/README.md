@@ -48,7 +48,7 @@ env POPLAR_ENGINE_OPTIONS='{"autoReport.all":"true", "autoReport.directory":"rep
 | Path | Description |
 | ---- | ----------- |
 | [`run_tgn.py`](run_tgn.py) | training loop and entry point for running the TGN |
-| [`model.py`](model.py) | Tensorflow model and single training step |
+| [`model.py`](model.py) | TensorFlow model and single training step |
 | [`optimiser.py`](optimiser.py) | low-precision Adam optimiser |
 | [`utils.py`](utils.py) | helpers for defining portable training loops |
 | [`dataloader.py`](dataloader.py) | dataset download, batching and neighbour sampling |

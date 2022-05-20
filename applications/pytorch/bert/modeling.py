@@ -21,6 +21,7 @@ import transformers
 
 from bert_fused_attention import BertFusedSelfAttention
 from utils import logger
+from transformers.models.bert.modeling_bert import BertLMPredictionHead
 
 
 class OnehotGather(nn.Module):
@@ -245,6 +246,99 @@ class PipelinedBertForPretraining(transformers.BertForPreTraining):
             outputs = (total_loss, masked_lm_loss, next_sentence_loss, masked_lm_acc, next_sentence_acc)
 
         return outputs
+
+
+class PipelinedPackedBertForPretraining(PipelinedBertForPretraining):
+    def __init__(self, config):
+        super().__init__(config)
+        self.bert.pooler = PackedBertPooler(config)
+        self.cls = PackedBertPreTrainingHeads(config)
+        # Since we're redefining the output embedding in self.cls, we need to make sure we are sharing the input and output embeddings.
+        self.tie_weights()
+
+    def forward(self, packed_input_ids, packed_input_mask, packed_segment_ids, packed_position_ids, packed_masked_lm_positions,
+                packed_masked_lm_ids, packed_masked_lm_mask, packed_next_sentence_labels, packed_next_sentence_mask):
+        bs, seq_len = packed_input_mask.shape
+        # bs, seq_len -> bs, 1, seq_len -> bs, seq_len, seq_len
+        attention_mask = packed_input_mask[:, None, :].repeat(1, seq_len, 1)
+        attention_mask = attention_mask == attention_mask.transpose(1, 2)
+
+        outputs = self.bert(input_ids=packed_input_ids,
+                            attention_mask=attention_mask,
+                            token_type_ids=packed_segment_ids,
+                            position_ids=packed_position_ids)
+        sequence_output, pooled_output_list = outputs[:2]
+
+        # Select only the masked tokens for the classifier
+        masked_output = self.gather_indices(sequence_output, packed_masked_lm_positions)
+
+        prediction_scores, seq_relationship_scores = self.cls(masked_output, pooled_output_list)
+        outputs = (prediction_scores, seq_relationship_scores,) + outputs[2:]
+
+        if packed_masked_lm_ids is not None and packed_next_sentence_labels is not None:
+            masked_lm_loss = F.cross_entropy(
+                prediction_scores.view(-1, self.config.vocab_size),
+                packed_masked_lm_ids.view(-1),
+                ignore_index=0).float()
+            next_sentence_loss = F.cross_entropy(seq_relationship_scores.transpose(1, 2), packed_next_sentence_labels, reduction='none').float()
+            next_sentence_loss *= packed_next_sentence_mask
+            next_sentence_loss = next_sentence_loss.sum() / packed_next_sentence_mask.sum()
+            total_loss = poptorch.identity_loss(masked_lm_loss + next_sentence_loss, reduction="none")
+
+            next_sentence_acc = accuracy_packed(seq_relationship_scores.transpose(1, 2), packed_next_sentence_labels, packed_next_sentence_mask)
+            masked_lm_acc = accuracy_masked(prediction_scores.view([-1, self.config.mask_tokens, self.config.vocab_size]), packed_masked_lm_ids, 0)
+            packing_ratio = torch.mean(torch.sum(packed_next_sentence_mask, 1))
+            outputs = (total_loss, masked_lm_loss, next_sentence_loss, masked_lm_acc, next_sentence_acc, packing_ratio)
+
+        return outputs
+
+
+def accuracy_packed(out, targ, packed_next_sentence_mask):
+    # acc: (bs, max_sequences_per_pack)
+    acc = (out.argmax(dim=-2) == targ).float()
+    acc *= packed_next_sentence_mask
+    acc = acc.sum() / packed_next_sentence_mask.sum()
+    return acc
+
+
+class PackedBertPooler(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.max_sequences_per_pack = config.max_sequences_per_pack
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.Tanh()
+
+    def forward(self, hidden_states):
+        # We "pool" the model by simply taking the hidden states corresponding
+        # to the last max_sequences_per_pack tokens. Note that the [CLS] tokens
+        # are always located at the end of the pack. When the actual number of
+        # sequences is lower than max_sequences_per_pack, we still slice out
+        # the last max_sequences_per_pack tokens, but we will not use all of
+        # them during loss calculation.
+        last_tokens_tensors = hidden_states[:, -self.max_sequences_per_pack:]
+        pooled_output_list = []
+        for i in range(self.max_sequences_per_pack):
+            output = self.dense(last_tokens_tensors[:, i])
+            output = self.activation(output)
+            pooled_output_list.append(output)
+        return pooled_output_list
+
+
+class PackedBertPreTrainingHeads(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.max_sequences_per_pack = config.max_sequences_per_pack
+        self.predictions = BertLMPredictionHead(config)
+        self.seq_relationship = nn.Linear(config.hidden_size, 2)
+
+    def forward(self, sequence_output, pooled_output_list):
+        prediction_scores = self.predictions(sequence_output)
+        seq_relationship_score_list = []
+        for i in range(self.max_sequences_per_pack):
+            score = self.seq_relationship(pooled_output_list[i])
+            seq_relationship_score_list.append(score)
+        seq_relationship_scores = torch.stack(seq_relationship_score_list, dim=1)
+        return prediction_scores, seq_relationship_scores
 
 
 class SerializedEmbedding(nn.Module):

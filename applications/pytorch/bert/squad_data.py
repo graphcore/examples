@@ -243,10 +243,9 @@ class PadCollate:
         pad_size[0] = self.batch_size - x.size(0)
         return torch.cat([x, val*torch.ones(*pad_size, dtype=x.dtype)], dim=0)
 
-    def __call__(self, batch):
-        size = len(batch)
-        batch = default_data_collator(batch)
-        if size < self.batch_size:
+    def __call__(self, items):
+        batch = default_data_collator(items)
+        if len(items) < self.batch_size:
             for k in batch.keys():
                 batch[k] = self.pad_tensor(batch[k], self.padding_val_dict[k])
         return batch

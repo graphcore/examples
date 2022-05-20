@@ -36,7 +36,7 @@ from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu import sharding
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.tools.import_pb_to_tensorboard import import_to_tensorboard
-from tensorflow.python.ipu.config import IPUConfig
+from tensorflow.python.ipu.config import IPUConfig, DeviceConnectionType
 
 from data import get_dataset
 from inference_network_base import InferenceNetwork
@@ -76,6 +76,7 @@ def run_inference(loop_op: tf.Operation, infeed_queue_initializer: tf.Operation,
     """
     # Set compile and device options
     opts = IPUConfig()
+    opts.device_connection.type = DeviceConnectionType.ON_DEMAND
     opts.matmuls.poplar_options = {'availableMemoryProportion': str(
         available_memory_proportion)}
     opts.convolutions.poplar_options = {'availableMemoryProportion': str(

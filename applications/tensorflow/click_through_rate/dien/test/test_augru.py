@@ -39,9 +39,9 @@ class TestDIENAUGRU(unittest.TestCase):
     """
     Test the augru layer
     The gru layer is implemented by PopnnAUGRU, test it working correctly with
-      - inputs, a tensor with dimension: (batch_size, sequence_length, hidden_size)
-      - seq_len, a tensor with dimension: (batch_size, )
-      - alphas, a tensor with dimension: (sequence_length, batch_size)
+      - inputs, a tensor with dimension: (micro_batch_size, sequence_length, hidden_size)
+      - seq_len, a tensor with dimension: (micro_batch_size, )
+      - alphas, a tensor with dimension: (sequence_length, micro_batch_size)
 
     To check the output value as expected
     """

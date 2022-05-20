@@ -94,7 +94,7 @@ class VCDVAE(VAE):
                          Z_cond_X_samples, Z_cond_X_samples_hmc, step_size):
                 enc_loss = neg_elbo_loss(X_in, logits_out, z_cond_x_mean, z_cond_x_std, Z_cond_X_samples)
                 dec_loss = enc_loss
-                cv_update = tf.zeros((self.batch_size,), dtype=self.experiment.dtype)
+                cv_update = tf.zeros((self.micro_batch_size,), dtype=self.experiment.dtype)
                 step_size = 0.
                 diagnostics = {}
                 return [enc_loss, dec_loss], cv_update, step_size, diagnostics
@@ -149,7 +149,7 @@ class VCDVAE(VAE):
             self.maybe_update_control_variate = dont_update_cv
 
         # HMC config
-        self.hmc_train = HamiltonianMonteCarlo(self.config.training.mcmc, self.config.batch_size)
+        self.hmc_train = HamiltonianMonteCarlo(self.config.training.mcmc, self.config.micro_batch_size)
 
         # Set config for normal VAE stuff
         super().set_training_config()
@@ -163,7 +163,7 @@ class VCDVAE(VAE):
         super().set_test_config()
 
         self.hmc_test = HamiltonianMonteCarlo(self.config.testing.mcmc,
-                                              self.batch_size_te,
+                                              self.micro_batch_size_test,
                                               testing=True,
                                               keep_samples=True)
 
@@ -208,8 +208,8 @@ class VCDVAE(VAE):
         else:
             return new_cv_value
 
-    def get_control_var(self, i_tr):
-        """Get the control_variate variable and, if using local control_variate, the elements indexed by i_tr"""
+    def get_control_var(self, i_train):
+        """Get the control_variate variable and, if using local control_variate, the elements indexed by i_train"""
         cv_shp = (self.experiment.data_meta['train_size'],) if self.use_local_control_variate else ()
         with self.control_var_device():
             with tf.variable_scope('cv_scope', reuse=tf.AUTO_REUSE, use_resource=True):
@@ -219,10 +219,10 @@ class VCDVAE(VAE):
                                          initializer=tf.zeros_initializer(),
                                          use_resource=True,
                                          trainable=False)
-            cv_idxed = tf.gather(cv_var, i_tr) if self.use_local_control_variate else cv_var
+            cv_idxed = tf.gather(cv_var, i_train) if self.use_local_control_variate else cv_var
             return cv_var, cv_idxed
 
-    def get_train_ops(self, graph_ops, infeed_queue, i_tr, X_b_tr, y_b_tr):
+    def get_train_ops(self, graph_ops, infeed_queue, i_train, X_micro_batch_train, y_micro_batch_train):
         with self.graph.as_default():
             # Global step counter update
             graph_ops['incr_global_step'] = tf.assign_add(self.global_step, self.iters_per_sess_run)
@@ -257,24 +257,24 @@ class VCDVAE(VAE):
                 with tf.control_dependencies([tr_loss, update_cv]):
                     return [tf.identity(tr_loss), update_cv, elbo_hmc, hmc_step_size]
 
-            def train_op_batch(X, idx_tr, cvar):
+            def train_op_batch(X, idx_train, cvar):
                 with self.device_config['scoper']():   # TODO: could this scope be removed?
-                    return self.vcd_train_ops(X, idx_tr, cvar)
+                    return self.vcd_train_ops(X, idx_train, cvar)
 
             def tr_infeed(cvar):
 
                 if self.device_config['on_ipu'] or not self.device_config['do_xla']:
-                    batch_size = X_b_tr.get_shape()[0]
+                    micro_batch_size = X_micro_batch_train.get_shape()[0]
                 else:
                     # If using XLA on GPU/CPU, infeed queue is replaced by stacked tensor,
                     # which is iterated over in loops_repeat()
-                    batch_size = X_b_tr.get_shape()[0] // self.iters_per_sess_run
+                    micro_batch_size = X_micro_batch_train.get_shape()[0] // self.iters_per_sess_run
 
                 # Initialise loop inputs
                 tr_loss = tf.zeros(self.loss_shape, self.experiment.dtype, name='loss')
                 inputs = [tr_loss,
                           cvar,
-                          tf.zeros(batch_size, self.experiment.dtype, name='elbo'),
+                          tf.zeros(micro_batch_size, self.experiment.dtype, name='elbo'),
                           tf.constant(0., self.experiment.dtype, name='stepsize')]
 
                 loop_out = loops_repeat(self.device_config['device'],
@@ -287,7 +287,7 @@ class VCDVAE(VAE):
 
             if self.experiment.config.training:
                 # retrieve control variate (on correct device)
-                cv_var, cv = self.get_control_var(i_tr)
+                cv_var, cv = self.get_control_var(i_train)
                 if self.use_infeed:
                     with self.device_config['scoper']():
                         loss, cv_update, hmc_elbo, hmc_step_size = possible_xla(tr_infeed, [cv_var])
@@ -297,13 +297,13 @@ class VCDVAE(VAE):
                                               tf.reduce_mean(hmc_elbo),
                                               hmc_step_size]
                 else:
-                    loss, hmc_elbo, hmc_step_size, diags = possible_xla(train_op_batch, [X_b_tr, i_tr, cv])
+                    loss, hmc_elbo, hmc_step_size, diags = possible_xla(train_op_batch, [X_micro_batch_train, i_train, cv])
                     if self.use_local_control_variate and self.device_config['on_ipu']:
                         # If using global control variate, or not using IPU, CV update is already
                         # executed within training loop. Otherwise, it is updated here
                         with self.control_var_device():
                             cv_update = self.maybe_update_control_variate(cv_var,
-                                                                          i_tr,
+                                                                          i_train,
                                                                           hmc_elbo,
                                                                           decay=self.control_var_decay)
                     else:
@@ -355,7 +355,7 @@ class VCDVAE(VAE):
             """
             def p1_sample(means, stds, shape):
                 proposal_1 = tfd.MultivariateNormalDiag(means, 1.2 * stds)
-                return proposal_1.sample((self.iwae_samples_te_batch_size,))
+                return proposal_1.sample((self.iwae_samples_test_micro_batch_size,))
 
             def p1_log_prob(samples, means, stds):
                 proposal_1 = tfd.MultivariateNormalDiag(means, 1.2 * stds)
@@ -372,8 +372,8 @@ class VCDVAE(VAE):
             """
             def p2_sample(means, stds, shape):
                 proposal_2 = tfd.MultivariateNormalDiag(mu_hmc, 1.2 * stds)
-                samps = proposal_2.sample(self.iwae_samples_te_batch_size)
-                return tf.reshape(samps, (self.iwae_samples_te_batch_size, tf.shape(X)[0], self.Z_dim))
+                samps = proposal_2.sample(self.iwae_samples_test_micro_batch_size)
+                return tf.reshape(samps, (self.iwae_samples_test_micro_batch_size, tf.shape(X)[0], self.Z_dim))
 
             def p2_log_prob(samples, means, stds):
                 proposal_2 = tfd.MultivariateNormalDiag(mu_hmc, 1.2 * stds)
@@ -390,8 +390,8 @@ class VCDVAE(VAE):
             """
             def p3_sample(means, stds, shape):
                 proposal_3 = tfd.MultivariateNormalDiag(mu_hmc, 1.2 * sigma_hmc)
-                samps = proposal_3.sample(self.iwae_samples_te_batch_size)
-                return tf.reshape(samps, (self.iwae_samples_te_batch_size, tf.shape(X)[0], self.Z_dim))
+                samps = proposal_3.sample(self.iwae_samples_test_micro_batch_size)
+                return tf.reshape(samps, (self.iwae_samples_test_micro_batch_size, tf.shape(X)[0], self.Z_dim))
 
             def p3_log_prob(samples, means, stds):
                 proposal_3 = tfd.MultivariateNormalDiag(mu_hmc, 1.2 * sigma_hmc)
@@ -403,14 +403,14 @@ class VCDVAE(VAE):
                 possible_xla(iwelbo_2, [X, means_hmc]),
                 possible_xla(iwelbo_3, [X, means_hmc, stds_hmc])]
 
-    def get_test_ops(self, graph_ops, i_te, X_b_te, y_b_te):
+    def get_test_ops(self, graph_ops, i_test, X_micro_batch_test, y_micro_batch_test):
         """Add model testing operations to the graph"""
 
         with self.graph.as_default():
 
             if self.experiment.config.testing:
                 with self.device_config['scoper']():
-                    graph_ops['iwae_elbos_test'] = self.get_log_likelihood_ops(i_te, X_b_te, y_b_te)
+                    graph_ops['iwae_elbos_test'] = self.get_log_likelihood_ops(i_test, X_micro_batch_test, y_micro_batch_test)
 
             if not self.experiment.config.training:
                 # To avoid KeyError when testing loaded model
@@ -418,12 +418,12 @@ class VCDVAE(VAE):
                 graph_ops['lr'] = self.get_current_learning_rate()
         return graph_ops
 
-    def get_validation_ops(self, graph_ops, i_te, X_b_te, y_b_te):
+    def get_validation_ops(self, graph_ops, i_test, X_micro_batch_test, y_micro_batch_test):
         """Add model validation operations to the graph"""
         with self.graph.as_default():
             if self.experiment.config.validation:
                 with self.device_config['scoper']():
-                    graph_ops['iwae_elbos_val'] = self.get_log_likelihood_ops(i_te, X_b_te, y_b_te)
+                    graph_ops['iwae_elbos_val'] = self.get_log_likelihood_ops(i_test, X_micro_batch_test, y_micro_batch_test)
 
             if not self.experiment.config.training:
                 # To avoid KeyError when testing loaded model
@@ -434,7 +434,7 @@ class VCDVAE(VAE):
     def test(self, max_iwae_batches=None):
         """Find model performance on full train and test sets"""
         # Test set LL, KL, ELBO
-        n_te_batches = int(np.ceil(self.experiment.data_meta['test_size'] / self.batch_size_te))
+        n_test_micro_batches = int(np.ceil(self.experiment.data_meta['test_size'] / self.micro_batch_size_test))
 
         # Test set importance-weighted ELBO
         op_name_dict = {'iwae_elbos_test': ['te_iwae_elbo_overdisp',
@@ -442,21 +442,21 @@ class VCDVAE(VAE):
                                             'te_iwae_elbo_hmc_mean_std_overdisp']}
 
         self.experiment.log.info(f'Running test IWAE for log-likelihood estimation...')
-        record_iwae_te = self.evaluation_scores(ops_sets_names=op_name_dict,
-                                                iters_to_init=('test',),
-                                                n_batches=n_te_batches,
-                                                verbose=True)
+        record_iwae_test = self.evaluation_scores(ops_sets_names=op_name_dict,
+                                                  iters_to_init=('test',),
+                                                  n_batches=n_test_micro_batches,
+                                                  verbose=True)
         self.experiment.log.info('...done\n')
 
         # Print and save results
-        self.experiment.log.info(f'Test results:\n{json.dumps(record_iwae_te, indent=4, default=serialize)}\n\n')
-        self.experiment.save_record(record_iwae_te, scope='test')
-        self.experiment.observer.store(f'test_results_{self.iters}_iters.json', record_iwae_te)
+        self.experiment.log.info(f'Test results:\n{json.dumps(record_iwae_test, indent=4, default=serialize)}\n\n')
+        self.experiment.save_record(record_iwae_test, scope='test')
+        self.experiment.observer.store(f'test_results_{self.iters}_iters.json', record_iwae_test)
 
     def validation(self):
         """Calculate evaluation metrics of model on validation set"""
         self.experiment.log.info('Running model validation...\n')
-        n_val_batches = int(np.ceil(self.experiment.data_meta['validation_size'] / self.batch_size_te))
+        n_val_micro_batches = int(np.ceil(self.experiment.data_meta['validation_size'] / self.micro_batch_size_test))
 
         # Validation set importance-weighted ELBO
         op_name_dict = {'iwae_elbos_val': ['val_iwae_elbo_overdisp',
@@ -466,7 +466,7 @@ class VCDVAE(VAE):
         self.experiment.log.info(f'Running validation IWAE for log-likelihood estimation...')
         record_iwae_val = self.evaluation_scores(ops_sets_names=op_name_dict,
                                                  iters_to_init=('test',),
-                                                 n_batches=n_val_batches,
+                                                 n_batches=n_val_micro_batches,
                                                  verbose=True)
         self.experiment.log.info('...done\n')
 
@@ -475,9 +475,9 @@ class VCDVAE(VAE):
         self.experiment.save_record(record_iwae_val, scope='validation')
         self.experiment.observer.store(f'test_results_{self.iters}_iters.json', record_iwae_val)
 
-    def vcd_train_ops(self, X_b, i_b, control_var):
+    def vcd_train_ops(self, X_micro_batch, i_b, control_var):
         """Single training update"""
-        [enc_loss, dec_loss], elbo_hmc, step_size, diagnostics = self.vcd_network_loss(X_b, i_b, control_var)
+        [enc_loss, dec_loss], elbo_hmc, step_size, diagnostics = self.vcd_network_loss(X_micro_batch, i_b, control_var)
         losses = {'encoder': enc_loss, 'decoder': dec_loss}
         ops = self.get_grad_ops(losses)
         with tf.control_dependencies(ops):    # Update VAE params

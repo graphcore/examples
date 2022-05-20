@@ -4,7 +4,7 @@ pytest-pythonpath>=0.7.3
 pyyaml>=5.4.1
 wandb>=0.12.1
 pandas>=1.1.4
--e git+https://github.com/mlcommons/logging.git#egg=mlperf-logging
+-e git+https://github.com/mlcommons/logging.git@44767a7aec43ed70dfe3c37f34f27412dcac2c2d#egg=mlperf-logging
 scipy
 pytest-cov>=2.12.1
 pytest-forked>=1.3.0

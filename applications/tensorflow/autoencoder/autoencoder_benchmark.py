@@ -12,14 +12,14 @@ import time
 from collections import namedtuple
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from autoencoder_data import AutoencoderData
 from autoencoder_model import AutoencoderModel
 from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu import loops, ipu_infeed_queue
 from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu.scopes import ipu_scope
-from tensorflow.python.ipu.config import IPUConfig
+from tensorflow.python.ipu.config import IPUConfig, StochasticRoundingBehaviour
 
 GraphOps = namedtuple(
     'graphOps', ['graph',
@@ -152,7 +152,7 @@ def training_graph(opts, training_data, device_index=0, learning_rate=0.001):
     ipu_options.floating_point_behaviour.inv = opts.fp_exceptions
     ipu_options.floating_point_behaviour.div0 = opts.fp_exceptions
     ipu_options.floating_point_behaviour.oflo = opts.fp_exceptions
-    ipu_options.floating_point_behaviour.esr = opts.prng
+    ipu_options.floating_point_behaviour.esr = StochasticRoundingBehaviour.from_bool(opts.prng)
     ipu_options.floating_point_behaviour.nanoo = True
     ipu_options.auto_select_ipus = 1
     ipu_options.configure_ipu_system()

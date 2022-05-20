@@ -14,5 +14,5 @@ Run the following command from inside the applications/tensorflow/contrastive_di
 
 Command:
 ```console
-python3 main.py --config-file=configs/benchmark_config.json --no-testing --batch-size 3072
+python3 main.py --config-file=configs/benchmark_config.json --no-testing --micro-batch-size 3072
 ```

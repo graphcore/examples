@@ -62,7 +62,7 @@ def stack(x, filters, n, downsampling, name=None):
     """A stack consists of n blocks which each contain a residual connection."""
 
     x = block(x, filters, downsampling, name=f'{name}_block1')
-    for i in range(2, n+1):
+    for i in range(2, n + 1):
         x = block(x, filters, downsampling=False, name=f'{name}_block{i}')
     return x
 
@@ -91,8 +91,27 @@ def layer(x, filters, name, downsampling):
                                use_bias=False, name=f'{name}{name_append}',
                                kernel_initializer=tf.keras.initializers.VarianceScaling())(x)
 
-    x = normalization.batch_norm.BatchNormIPU(axis=3, epsilon=1.001e-5, name=f'{name}_bn')(x)
+    x = tf.keras.layers.BatchNormalization(axis=3, epsilon=1.001e-5, name=f'{name}_bn')(x)
     return x
+
+
+class Downsampling(tf.keras.layers.Layer):
+
+    def __init__(self, trainable, name, dtype):
+        super(Downsampling, self).__init__(
+            trainable=trainable,
+            name=name,
+            dtype=dtype
+        )
+
+    def call(self, x):
+        _, height, width, channels = x.shape
+        shortcut = x[:, 0:height:2, 0:width:2, :]
+        shortcut = tf.pad(shortcut, paddings=[[0, 0], [0, 0], [0, 0], [0, channels]], name=f'{self.name}_pad')
+        return shortcut
+
+    def get_config(self):
+        return super().get_config()
 
 
 def residual_connection(x, filters, name, downsampling=False):
@@ -100,11 +119,8 @@ def residual_connection(x, filters, name, downsampling=False):
     Downsampled using 2D convolution with a 1x1 kernel and stride of 2."""
 
     if downsampling:
-        batches, height, width, channels = x.shape
-        assert(channels*2 == filters)
-        shortcut = x[:, 0:height:2, 0:width:2, :]
-        shortcut = tf.pad(shortcut, paddings=[[0, 0], [0, 0], [0, 0], [0, channels]], name=f'{name}_pad')
-        assert(shortcut.shape[1:] == (height//2, width//2, channels*2))
+        downsampling = Downsampling(trainable=False, name=name, dtype=x.dtype)
+        shortcut = downsampling(x)
     else:
         shortcut = x
     return shortcut

@@ -5,11 +5,14 @@ import tensorflow_datasets as tfds
 import os
 import logging
 import popdist
+from mpi4py import MPI
+from tensorflow.python.ipu import horovod as hvd
 
 from custom_exceptions import UnsupportedFormat, DimensionError
 from . import imagenet_processing
 from . import build_imagenet_data
 import glob
+from typing import Optional
 
 
 AVAILABLE_DATASET = {'mnist', 'cifar10', 'cifar100', 'imagenet'}
@@ -39,17 +42,42 @@ class DataGenerator:
             )
 
         if ds_name == 'imagenet':
-            return DataGenerator.get_imagenet(ds_path, split)
+            return DataGenerator.get_imagenet(ds_path, split, seed=seed)
 
         else:
-            ds, info_ds = tfds.load(
-                ds_name,
-                data_dir=ds_path,
-                split=split,
-                # If true, returns `(img, label)` instead of dict(image=, ...)
-                as_supervised=True,
-                with_info=True
-            )
+            if popdist.getNumInstances() > 1:
+                # This is to allow downloading from 1 host only at a time
+                if hvd.local_rank() == 0:
+                    ds, info_ds = tfds.load(
+                        ds_name,
+                        data_dir=ds_path,
+                        split=split,
+                        download=True,
+                        # If true, returns `(img, label)` instead of dict(image=, ...)
+                        as_supervised=True,
+                        with_info=True
+                    )
+                # This barrier forces the other instances to wait until the root instance has downloaded the data
+                MPI.COMM_WORLD.Barrier()
+                if hvd.local_rank() != 0:
+                    ds, info_ds = tfds.load(
+                        ds_name,
+                        data_dir=ds_path,
+                        split=split,
+                        download=False,
+                        # If true, returns `(img, label)` instead of dict(image=, ...)
+                        as_supervised=True,
+                        with_info=True
+                    )
+            else:
+                ds, info_ds = tfds.load(
+                    ds_name,
+                    data_dir=ds_path,
+                    split=split,
+                    # If true, returns `(img, label)` instead of dict(image=, ...)
+                    as_supervised=True,
+                    with_info=True
+                )
 
             if not isinstance(ds, tf.data.Dataset):
                 raise UnsupportedFormat(
@@ -74,6 +102,9 @@ class DataGenerator:
             else:
                 raise UnsupportedFormat(
                     f'This function only handle datasets like (features, labels) not {info_ds.supervised_keys}')
+
+            if popdist.getNumInstances() > 1:
+                ds = ds.shard(num_shards=popdist.getNumInstances(), index=popdist.getInstanceIndex())
 
             return ds, img_shape, num_examples, num_classes
 
@@ -136,23 +167,30 @@ class DataGenerator:
             height: int,
             width: int,
             num_classes: int,
-            data_type: tf.dtypes.DType = tf.float32):
+            data_type: tf.dtypes.DType = tf.float32,
+            eight_bit_transfer: bool = False):
         images: tf.Tensor = tf.random.truncated_normal([height, width, 3],
                                                        dtype=data_type,
                                                        mean=127,
                                                        stddev=60,
                                                        name='generated_inputs')
+        if eight_bit_transfer:
+            images = tf.cast(images, tf.uint8)
+
         labels = tf.random.uniform([],
                                    minval=0,
                                    maxval=num_classes - 1,
                                    dtype=data_type,
                                    name='generated_labels')
+
         ds = tf.data.Dataset.from_tensors((images, labels))
+        ds = ds.cache()
+        ds = ds.repeat()
 
         return ds
 
     @staticmethod
-    def get_imagenet(path: str, split: str, cycle_length: int = 4, block_length: int = 4):
+    def get_imagenet(path: str, split: str, seed: Optional[int], cycle_length: int = 4, block_length: int = 4):
 
         # The path is the one of dataset under TFRecord format
         if not os.path.exists(path):
@@ -181,12 +219,12 @@ class DataGenerator:
         DataGenerator.logger.debug(f'filenames = {filenames}')
         ds = tf.data.Dataset.from_tensor_slices(filenames)
 
-        if split == 'train':
-            # Shuffle the input files
-            ds = ds.shuffle(buffer_size=num_files)
-
         if popdist.getNumInstances() > 1:
             ds = ds.shard(num_shards=popdist.getNumInstances(), index=popdist.getInstanceIndex())
+
+        if split == 'train':
+            # Shuffle the input files
+            ds = ds.shuffle(buffer_size=num_files // popdist.getNumInstances(), seed=seed)
 
         ds = ds.interleave(tf.data.TFRecordDataset,
                            cycle_length=cycle_length,

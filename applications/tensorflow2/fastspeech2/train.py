@@ -15,6 +15,7 @@ import time
 import random
 import logging
 import os
+import json
 import numpy as np
 import tensorflow as tf
 
@@ -23,6 +24,7 @@ from tensorflow.python import ipu
 from tensorflow import keras
 from wandb.keras import WandbCallback
 from datetime import datetime
+from tensorflow.keras.mixed_precision import LossScaleOptimizer
 from fastspeech2 import build_model, build_pipeline_model
 from dataloader import LJSpeechCharLevelDataset
 from utils import create_ipu_config, ThroughputCallback, ModelCheckpoint, LearningRateLogger, CompilationTimeCallback
@@ -33,7 +35,7 @@ from optimizer import AdamWeightDecay, WarmUp
 def setup_logger():
     logFormatter = logging.Formatter(
         '%(asctime)s.%(msecs)06d: %(levelname)-1.1s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-    logger = logging.getLogger()
+    logger = logging.getLogger("FastSpeech2 Training")
     logger.setLevel(logging.INFO)
     consoleHandler = logging.StreamHandler()
     consoleHandler.setFormatter(logFormatter)
@@ -49,6 +51,22 @@ def set_randome_seed(seed=1989):
     ipu.utils.reset_ipu_seed(seed)
 
 
+def set_poplar_engine_options():
+    # load the user defined json object
+    if os.environ.get('POPLAR_ENGINE_OPTIONS'):
+        poplar_engine_options = json.loads(
+            os.environ.get('POPLAR_ENGINE_OPTIONS').encode())
+    else:
+        poplar_engine_options = {}
+    # Specifies how the invocation of stream callbacks is parallelised.
+    # This would speed up the throughput for multiple replicas/instances.
+    streamcallbacks = {
+        "streamCallbacks.multiThreadMode": "collaborative",
+        "streamCallbacks.numWorkerThreads": "auto"}
+    poplar_engine_options.update(streamcallbacks)
+    os.environ['POPLAR_ENGINE_OPTIONS'] = json.dumps(poplar_engine_options)
+
+
 def masked_loss(y_gt, y_pred, loss_fn, **kwargs):
     """Calculate 2d loss by removing mask, normally it's durrations/f0s/energys loss."""
     real_len = tf.reduce_sum(tf.cast(tf.math.not_equal(
@@ -60,11 +78,10 @@ def masked_loss(y_gt, y_pred, loss_fn, **kwargs):
         # Mel shape is [B, MelLength, num_mels], every element should be same in last dimension
         real_len = tf.reduce_mean(real_len, axis=-1)
     ratio = max_len / tf.reduce_max(real_len)
-    # loss = tf.losses.mean_squared_error(y_gt, y_pred)
     loss = loss_fn(y_gt, y_pred)
     if len(loss.shape) == 2:
         loss = tf.reduce_mean(loss, axis=-1)
-    loss = tf.math.multiply(loss, ratio)
+    loss = tf.math.multiply(loss, tf.cast(ratio, loss.dtype))
     return loss
 
 
@@ -86,6 +103,7 @@ def masked_log_duration_loss(y_gt, y_pred, **kwargs):
     loss_fn = tf.keras.losses.MeanSquaredError(
         reduction=tf.keras.losses.Reduction.NONE)
     log_y_gt = tf.math.log(tf.cast(tf.math.add(y_gt, 1), tf.float32))
+    log_y_gt = tf.cast(log_y_gt, y_pred.dtype)
     loss = masked_loss(log_y_gt, y_pred, loss_fn, **kwargs)
     return loss
 
@@ -117,12 +135,17 @@ def get_lr_scheduler(schedule):
 
 
 def get_optimizer(opts):
-    if opts["optimizer"].lower() == "adam":
+    if opts["optimizer"].lower() == "sgd":
+        optim = tf.keras.optimizers.SGD(
+            learning_rate=opts["base_learning_rate"],
+            momentum=0.0,
+        )
+    elif opts["optimizer"].lower() == "adam":
         optim = tf.keras.optimizers.Adam(
             learning_rate=opts["base_learning_rate"],
             beta_1=opts["beta1"],
             beta_2=opts["beta2"],
-            epsilon=opts["epsilon"])
+            epsilon=opts["epsilon"] if opts["precision"] == "16" else 1e-3)
     elif opts["optimizer"].lower() == "adamw":
         lr_schedule = get_lr_scheduler(opts["lr_schedule"])
         lr_schedule = WarmUp(
@@ -137,13 +160,19 @@ def get_optimizer(opts):
             weight_decay_rate=opts["weight_decay_rate"],
             beta_1=opts["beta1"],
             beta_2=opts["beta2"],
-            epsilon=opts["epsilon"],
+            epsilon=opts["epsilon"] if opts["precision"] == "16" else 1e-3,
             exclude_from_weight_decay=[
                 "GroupNorm", "Group_Norm", "LayerNorm", "layer_norm", "bias"],
         )
+
     else:
         raise NotImplementedError(
             f"Optimizer {opts['optimizer']} not support yet.")
+
+    if opts["precision"] == "16":
+        optim = LossScaleOptimizer(optim,
+                                   dynamic=False,
+                                   initial_scale=int(opts["loss_scaling"]))
 
     return optim
 
@@ -160,13 +189,12 @@ def setup_loss_dict():
 
 
 def train(model, train_datasets, opts, wandb=None):
-    samples_per_epoch = opts["batch_size"] * opts["steps_per_epoch"]
-
+    steps_per_epoch = opts["steps_per_epoch"]
+    samples_per_epoch = opts["batch_size"] * steps_per_epoch
     callbacks = [
         ThroughputCallback(samples_per_epoch=samples_per_epoch),
-        CompilationTimeCallback(),
-        LearningRateLogger()
-        ]
+        LearningRateLogger(steps_per_epoch=steps_per_epoch)
+    ]
     if wandb is not None:
         callbacks.append(WandbCallback())
 
@@ -186,8 +214,10 @@ def train(model, train_datasets, opts, wandb=None):
     history = model.fit(
         train_datasets(),
         epochs=opts["epochs"],
-        steps_per_epoch=opts["steps_per_epoch"],
+        steps_per_epoch=steps_per_epoch,
         callbacks=callbacks,
+        workers=64,
+        use_multiprocessing=True,
         verbose=2)
 
     if wandb is not None:
@@ -210,13 +240,13 @@ def evaluation(model, valid_datasets, opts, ckpt_path, wandb=None):
     for i in range(opts["epochs"]):
         if i % opts["epochs_per_save"] == 0:
             print(f"Evaluation on epoch {i+1}/{opts['epochs']}...")
-            cpath = ckpt_path + f"/epoch{i+1:02d}-ckpt"
+            cpath = ckpt_path + f"/epoch{i+1:02d}.h5"
             if i == opts["epochs"] - 1:
-                cpath = ckpt_path + f"/model-ckpt"
+                cpath = ckpt_path + f"/model.h5"
             model.load_weights(cpath)
             print(f"{model.metrics_names}")
             eval_results = model.evaluate(
-                valid_datasets(), steps=1, callbacks=callbacks)
+                valid_datasets(), steps=opts["steps_per_epoch"], callbacks=callbacks)
             for name, res in zip(model.metrics_names, eval_results):
                 print(f"{name} = {res}")
             if wandb is not None:
@@ -234,7 +264,7 @@ def init_wandb(opts):
         wandb.init(project=opts["wandb_name"],
                    dir=opts["log_dir"], sync_tensorboard=True)
         wandb.config.update(opts)
-        wandb.run.name = f"bs{opts['batch_size']}_ga{opts['gradient_accumulation_count']}_r{opts['replicas']}_spe{opts['steps_per_epoch']}_ep{opts['epochs']}"
+        wandb.run.name = f"[FP{opts['precision']}]bs{opts['batch_size']}_ga{opts['gradient_accumulation_count']}_r{opts['replicas']}_spe{opts['steps_per_epoch']}"
         return wandb
     return None
 
@@ -242,11 +272,16 @@ def init_wandb(opts):
 def run_model(opts, use_pipeline_model=True):
     wandb = init_wandb(opts)
     set_randome_seed(int(opts["seed"]))
+    set_poplar_engine_options()
     logger = setup_logger()
     data_type = tf.float16 if opts["precision"] == "16" else tf.float32
+    if opts["precision"] == "16":
+        policy = tf.keras.mixed_precision.Policy("float16")
+        tf.keras.mixed_precision.set_global_policy(policy)
     num_ipus_per_replica = 2
     num_ipus = num_ipus_per_replica * int(opts["replicas"])
-    assert num_ipus & (num_ipus-1) == 0, f"You‘re trying to apply {num_ipus} IPUs, but we only support to apply the power of 2 IPUs."
+    assert num_ipus & (
+        num_ipus-1) == 0, f"You‘re trying to apply {num_ipus} IPUs, but we only support to apply the power of 2 IPUs."
     logger.info(f"Options: {opts}")
     # Set up the IPU system.
     cfg = create_ipu_config(
@@ -254,8 +289,8 @@ def run_model(opts, use_pipeline_model=True):
         num_required_ipus=num_ipus,
         partials_type=opts["partials_type"],
         fp_exceptions=opts["fp_exceptions"],
-        xla_recompute=opts["xla_recompute"],
-        enable_stochastic_rounding=opts["stochastic_rounding"])
+        enable_stochastic_rounding=opts["stochastic_rounding"],
+        num_io_tiles=opts["num_io_tiles"])
 
     train_datasets = LJSpeechCharLevelDataset(opts, is_train=True)
     val_datasets = LJSpeechCharLevelDataset(opts, is_train=False)
@@ -267,11 +302,11 @@ def run_model(opts, use_pipeline_model=True):
     optim = get_optimizer(opts)
     loss_dict = setup_loss_dict()
     strategy = ipu.ipu_strategy.IPUStrategy()
+
     with strategy.scope():
         if num_ipus == 1:
             fastspeech2 = tf.keras.Model(*build_model(opts, training=True))
         else:
-            # For TF2.4
             fastspeech2 = keras.Model(
                 *build_pipeline_model(opts, training=True))
             fastspeech2.set_pipelining_options(
@@ -282,6 +317,9 @@ def run_model(opts, use_pipeline_model=True):
                 offload_weight_update_variables=opts["variable_offloading"],
                 device_mapping=[0, 1],
             )
+            # Set the infeed and outfeed options.
+            fastspeech2.set_infeed_queue_options(prefetch_depth=2)
+            fastspeech2.set_outfeed_queue_options(buffer_depth=2)
             fastspeech2.print_pipeline_stage_assignment_summary()
 
         fastspeech2.compile(optimizer=optim,

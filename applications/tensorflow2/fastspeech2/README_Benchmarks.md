@@ -25,3 +25,18 @@ Command:
 for: [replicas, ga_count] [2, 8], and [8, 4]
 
 
+## Inference
+
+Command:
+```console
+    python3 infer.py \
+            --config config/fastspeech2.json \
+            --generated-data \
+            --batch-size {batch_size} \
+            --replicas 1 \
+            --epochs 10 \
+            --steps-per-batch 100 \
+            --precision {prec}
+```
+
+for: [batch_size, prec] [1, 16], and [1, 32]

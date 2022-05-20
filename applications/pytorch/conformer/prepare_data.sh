@@ -1,6 +1,6 @@
 # Install espnet dependency package
 sudo apt-get install cmake sox libsndfile1-dev ffmpeg flac libfreetype6-dev libpng-dev bc;
-git clone https://github.com/espnet/espnet.git;
+git clone -b v.0.10.1 --depth 1 https://github.com/espnet/espnet.git;
 # If 2-10 lines are redundant, delete
 sed -i '2,10d' ./espnet/egs2/aishell/asr1/local/path.sh
 export CONFORMER_ROOT=`pwd`

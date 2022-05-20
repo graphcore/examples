@@ -14,8 +14,9 @@
 
 import glob
 import multiprocessing
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import numpy as np
-
 import torch
 from torch.utils.data import IterableDataset, Dataset
 from poptorch import DataLoader
@@ -27,11 +28,23 @@ from tfrecord.reader import tfrecord_loader
 
 TFRECORD_KEYS = (           # Torch Model Keys
     'input_ids',            # input_ids                  : tokens after masking
-    'input_mask',           # attention_mask             : 1 if padding token, 0 otherwise
+    'input_mask',           # attention_mask             : 0 if padded token, 1 otherwise
     'segment_ids',          # token_type_ids             : sentence 0 or 1
     'masked_lm_positions',  # masked_lm_positions        : position of masked tokens in input_ids
-    'masked_lm_ids',        # masked_lm_labels=None      : label of masked tokens with padding as 0.
+    'masked_lm_ids',        # masked_lm_labels=None      : label of masked tokens with padding as 0
     'next_sentence_labels'  # next_sentence_label=None   : 1 if next sentence, 0 otherwise
+)
+
+TFRECORD_KEYS_PACKED = (
+    'packed_input_ids',             # : tokens after masking
+    'packed_input_mask',            # : 0 if padded token. 1, 2 or 3 if token belongs to 1st, 2nd or 3rd sequence resp.
+    'packed_segment_ids',           # : sentence 0 or 1 for each sequence in the pack
+    'packed_position_ids',          # : position of tokens relative to each sequence
+    'packed_masked_lm_positions',   # : absolute position of masked tokens in input_ids
+    'packed_masked_lm_ids',         # : label of masked tokens with padding as 0
+    'packed_masked_lm_mask',     # : 0 if padded token. 1, 2 or 3 if masked token belongs to 1st, 2nd or 3rd sequence resp.
+    'packed_next_sentence_labels',  # : 1 if next sentence, 0 otherwise
+    'packed_next_sentence_mask'  # : 1 if sequence is present in pack, 0 if not
 )
 
 
@@ -69,12 +82,18 @@ class TFRecordPretrainingDataset(IterableDataset):
     ----------
     files: List of TFRecord files containing the preprocessed pretraining data
     shuffle: Shuffle the data?
+    packed_data: Use packed data?
     """
     def __init__(self,
                  input_files,
-                 shuffle=True):
+                 shuffle=True,
+                 packed_data=False):
         self.files = expand_glob_files(input_files)
         self.shuffle = shuffle
+        if packed_data:
+            self.tfrecord_keys = TFRECORD_KEYS_PACKED
+        else:
+            self.tfrecord_keys = TFRECORD_KEYS
         self.reset()
 
     def reset(self):
@@ -120,11 +139,11 @@ class TFRecordPretrainingDataset(IterableDataset):
                 raise StopIteration
             self.reader = tfrecord_loader(self.files[self.file_index],
                                           self.files[self.file_index].replace(".tfrecord", ".index"),
-                                          list(TFRECORD_KEYS),
+                                          list(self.tfrecord_keys),
                                           self.shard)
             self.file_index += 1
             datum = next(self.reader)
-        datum = [datum[key] for key in TFRECORD_KEYS]
+        datum = [datum[key] for key in self.tfrecord_keys]
         return datum
 
 
@@ -147,31 +166,40 @@ class GeneratedPretrainingDataset(Dataset):
     mask_tokens: the number of mask tokens
     length: Length of generated dataset
     seed: Random seed
+    packed_data: Use packed data?
     """
-    def __init__(self, vocab_size, sequence_length, mask_tokens, length=1, seed=42):
+    def __init__(self, vocab_size, sequence_length, mask_tokens, length=1, seed=42, packed_data=False):
         self.vocab_size = vocab_size
         self.sequence_length = sequence_length
         self.mask_tokens = mask_tokens
         self.length = length
         self.seed = seed
+        self.packed_data = packed_data
         self.data = self.generate_data()
 
     def generate_data(self):
         with torch.random.fork_rng():
             torch.manual_seed(self.seed)
-            tokens = torch.randint(0, self.vocab_size,
-                                   [self.sequence_length],
-                                   dtype=torch.long)
-            mask = torch.ones_like(tokens)
-            types = torch.zeros_like(tokens)
+            input_ids = torch.randint(0, self.vocab_size,
+                                      [self.sequence_length],
+                                      dtype=torch.long)
+            input_mask = torch.ones_like(input_ids)
+            segment_ids = torch.zeros_like(input_ids)
             masked_lm_positions = torch.randint(0, self.sequence_length,
                                                 [self.mask_tokens],
                                                 dtype=torch.long)
-            masked_lm_label = torch.randint(0, self.vocab_size,
-                                            [self.mask_tokens],
-                                            dtype=torch.long)
-            next_sentence_label = torch.randint(0, 2, [1], dtype=torch.long)
-        return tokens, mask, types, masked_lm_positions, masked_lm_label, next_sentence_label
+            masked_lm_ids = torch.randint(0, self.vocab_size,
+                                          [self.mask_tokens],
+                                          dtype=torch.long)
+            if self.packed_data:
+                packed_position_ids = torch.arange(self.sequence_length)
+                packed_masked_lm_mask = torch.ones_like(masked_lm_ids, dtype=torch.float)
+                packed_next_sentence_labels = torch.randint(0, 2, [3], dtype=torch.long)
+                packed_next_sentence_mask = torch.ones_like(packed_next_sentence_labels, dtype=torch.float)
+                return input_ids, input_mask, segment_ids, packed_position_ids, masked_lm_positions, masked_lm_ids, packed_masked_lm_mask, packed_next_sentence_labels, packed_next_sentence_mask
+            else:
+                next_sentence_labels = torch.randint(0, 2, [1], dtype=torch.long)
+                return input_ids, input_mask, segment_ids, masked_lm_positions, masked_lm_ids, next_sentence_labels
 
     def __len__(self):
         return self.length
@@ -184,7 +212,8 @@ def get_generated_datum(config):
     result = []
     dataset = GeneratedPretrainingDataset(config.vocab_size,
                                           config.sequence_length,
-                                          config.mask_tokens)
+                                          config.mask_tokens,
+                                          packed_data=config.packed_data)
     data = (dataset[i] for i in range(config.samples_per_step))
     for batches in zip(*data):
         result.append(torch.stack(batches))
@@ -205,9 +234,10 @@ def get_dataloader(config, opts):
                                               config.sequence_length,
                                               config.mask_tokens,
                                               config.samples_per_step,
-                                              config.random_seed)
+                                              config.random_seed,
+                                              packed_data=config.packed_data)
     elif config.dataset == 'pretraining':
-        dataset = TFRecordPretrainingDataset(config.input_files)
+        dataset = TFRecordPretrainingDataset(config.input_files, packed_data=config.packed_data)
     else:
         raise RuntimeError(f"Unknown dataset '{config.dataset}', aborting.")
 

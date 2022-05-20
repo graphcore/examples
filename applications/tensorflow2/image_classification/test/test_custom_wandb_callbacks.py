@@ -52,12 +52,12 @@ class WandBCallbackMissingArgumentTest(unittest.TestCase):
     def test_missing_model_name(self):
         with self.assertRaises(MissingArgumentException):
             callback = CustomWandbCallback(log_period=10, model=tf.keras.Sequential(),
-                                           args={'dataset': 'random'})
+                                           hyperparams={'dataset': 'random', 'wandb_params': {}})
 
     def test_missing_dataset(self):
         with self.assertRaises(MissingArgumentException):
             callback = CustomWandbCallback(log_period=10, model=tf.keras.Sequential(),
-                                           args={'model_name': 'toy_example'})
+                                           hyperparams={'model_name': 'toy_example', 'wandb_params': {}})
 
 
 class LogPeriodTest(unittest.TestCase):
@@ -69,8 +69,8 @@ class LogPeriodTest(unittest.TestCase):
     def test_log_period(self):
 
         log_period = 3
-        args = {'dataset': 'random', 'model_name': 'toy_example', 'micro_batch_size': 1}
-        callback = CustomWandbCallback(log_period=log_period, model=tf.keras.Sequential(), args=args)
+        args = {'dataset': 'random', 'model_name': 'toy_example', 'micro_batch_size': 1, 'wandb_params': {}}
+        callback = CustomWandbCallback(log_period=log_period, model=tf.keras.Sequential(), hyperparams=args)
 
         callback.on_train_begin()
         callback.on_train_batch_begin(0)

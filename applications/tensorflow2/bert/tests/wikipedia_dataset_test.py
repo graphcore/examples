@@ -78,7 +78,7 @@ config = {
     'test_file': '/localdata/datasets/wikipedia/128_test/',
     'seq_length': 128,
     'masked_tokens': 20,
-    'vocab_size': 30528,
+    'vocab_size': 30522,
     'max_predictions_per_seq': 20,
     'distributed_worker_count': 1
 }
@@ -227,8 +227,18 @@ def check_nsp(nsp):
 def test_wikipedia_dataset():
     num_tokens = 0
     replacement_counts = Counter({"103": 0, "same": 0, "random": 0})
-    dataset, filenames = get_pretraining_dataset(config, tf.float16, debug=True)
-    total_samples = int(get_dataset_files_count(filenames))
+    dataset, total_samples = get_pretraining_dataset(micro_batch_size=config["batch_size"],
+                                                     dataset_dir=config["train_files_path"],
+                                                     max_seq_length=config["seq_length"],
+                                                     max_predictions_per_seq=config["masked_tokens"],
+                                                     vocab_size=config["vocab_size"],
+                                                     seed=1222,
+                                                     data_type=tf.float16,
+                                                     generated_dataset=False,
+                                                     distributed_worker_count=1,
+                                                     distributed_worker_index=0,
+                                                     debug=True)
+    total_samples = int(total_samples)
     total_samples = min(total_samples, 500000)
     i = 0
     for datum in dataset:

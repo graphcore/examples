@@ -564,7 +564,7 @@ class Bert(Model):
     def generate_transformer_periodic_pos_data(self, dtype, shape, min_timescale=1.0, max_timescale=1.0e4):
         """
         Periodic position initialiser, from 3.5 of "Attention is All You Need". Adapted from:
-        https://github.com/tensorflow/models/tree/master/official/transformer/v2
+        https://github.com/tensorflow/models/tree/v2.1.0/official/transformer/v2
         """
         position = np.arange(0, shape[0], dtype=dtype)
         num_timescales = shape[1] // 2

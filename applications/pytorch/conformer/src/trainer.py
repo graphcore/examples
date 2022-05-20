@@ -20,7 +20,10 @@ import poptorch
 from poptorch import trainingModel
 from poptorch import inferenceModel
 from src.iterator.cycle import cycle
-from src.utils.score import get_kl_acc, get_cer
+from src.utils.score import get_cer
+import horovod.torch as hvd
+import popdist
+import popdist.poptorch
 
 
 class Trainer:
@@ -71,6 +74,7 @@ class Trainer:
         self.save_checkpoint_path = self.args['checkpoints']['save_checkpoint_path']
         self.save_ck_epoch = self.args['checkpoints']['save_ck_epoch']
         self.resume = False
+        self.num_instance = 1
 
     def _prepare_val(self):
         self.logger.info(f'preparing val.')
@@ -97,8 +101,20 @@ class Trainer:
             self.val_model = inferenceModel(model=self.torch_model, options=self.ipu_options)
             self.logger.info(f'wrapped inference model.')
 
+    def sync_duration(self, outputs, factor=1, average=True):
+        if popdist.isPopdistEnvSet():
+            if isinstance(outputs, float):
+                return float(hvd.allreduce(torch.Tensor([outputs]), average=average).item())
+            else:
+                return [hvd.allreduce(output.div(factor), average=average).mean().item() for output in outputs]
+        else:
+            if isinstance(outputs, float):
+                return outputs
+            else:
+                return [output.div(factor).mean().item() for output in outputs]
+
+
     def _train_one_epoch(self, current_epoch):
-        acc = []
         for step in range(self.steps_per_epoch):
             start = time.time()
             feature, feature_length, target_in, target_out, target_length = next(
@@ -107,14 +123,18 @@ class Trainer:
             target_in = target_in.int()
             target_out = target_out.int()
             data_time = time.time()
+            start_step = time.perf_counter()
+            if self.args['ipu_options']['compile_only']:  # Compile model
+                start_compile = time.perf_counter()
+                self.training_model.compile(feature, feature_length, target_in, target_out, target_length)
+                duration_compilation = time.perf_counter() - start_compile
+                self.logger.info(f"Compiled/Loaded model in {duration_compilation} secs")
+                self.logger.info("-----------------------------------------------------------")
+                self.logger.info("Model successfully compiled. Exiting now as '--compile-only' argument was passed.")
+                exit(0)
             loss, outputs = self.training_model(
                 feature, feature_length, target_in, target_out, target_length
             )
-            end = time.time()
-            acc.append(get_kl_acc(outputs, target_out))
-            tput = self.samples_per_step / (end - start)
-            prue_tput = self.samples_per_step / (end - data_time)
-            data_consumption_ratio = (data_time - start) / (end - start)
             if self.resume:
                 self.scheduler.resume = True
                 self.scheduler.steps_per_epoch = self.steps_per_epoch
@@ -126,24 +146,29 @@ class Trainer:
             lr = self.scheduler.get_last_lr()[0]
             self.scheduler.resume = False
             self.training_model.setOptimizer(self.optimizer)
+            end = time.time()
+            if popdist.isPopdistEnvSet():
+                pure_tput = self.sync_duration(self.samples_per_step / (time.perf_counter() - start_step), average=False)
+                tput = self.sync_duration(self.samples_per_step / (end - start), average=False)
+            else:
+                tput = self.samples_per_step / (end - start)
+                pure_tput = self.samples_per_step / (end - data_time)
+            data_consumption_ratio = (data_time - start) / (end - start)
             if self.scheduler.global_step % self.log_every_n_step == 0:
-                self.logger.info(f'Epochs: {current_epoch}/{self.num_epochs}, step: {self.scheduler.global_step}/{self.steps_per_epoch*self.num_epochs}, tput: {tput:3.0f}, data consumption ratio: {data_consumption_ratio:0.3f}, pure_tput: {prue_tput:0.3f}, loss: {loss.mean().item():3.3f}, lr: {lr:.2e}')
+                self.logger.info(f'Epochs: {current_epoch}/{self.num_epochs}, step: {self.scheduler.global_step}/{self.steps_per_epoch*self.num_epochs}, tput: {tput:3.0f}, data consumption ratio: {data_consumption_ratio:0.3f}, pure_tput: {pure_tput:0.3f}, loss: {loss.mean().item():3.3f}, lr: {lr:.2e}')
             if self.wandb:
                 self.wandb.log(
                     {
                         'step': self.scheduler.global_step,
                         'tput': tput,
                         'data consumption ratio': data_consumption_ratio,
-                        'pure_tput': prue_tput,
+                        'pure_tput': pure_tput,
                         'loss': loss.mean().item(),
                         'lr': lr,
                     }
                 )
-        average_acc = sum(acc)/len(acc)
-        self.logger.info(f'Epochs: {current_epoch}/{self.num_epochs}, acc: {average_acc}')
-
         if self.wandb:
-                self.wandb.log({'Epochs': current_epoch, 'acc': average_acc})
+                self.wandb.log({'Epochs': current_epoch})
 
 
     def _train_epochs(self):
@@ -161,8 +186,12 @@ class Trainer:
             start = time.time()
             self._train_one_epoch(epoch)
             end = time.time()
+            if popdist.isPopdistEnvSet():
+                epoch_tput = self.sync_duration(self.steps_per_epoch * self.samples_per_step / (end - start), average=False)
+            else:
+                epoch_tput = self.steps_per_epoch * self.samples_per_step / (end - start)
             self.logger.info(
-                f'training epoch: {epoch} done, epoch time: {end-start:.3f}, sample num: {self.steps_per_epoch*self.samples_per_step}, epoch average tput: {self.steps_per_epoch*self.samples_per_step/(end-start):3.0f}'
+                f'training epoch: {epoch} done, epoch time: {end-start:.3f}, sample num: {self.steps_per_epoch*self.samples_per_step}, epoch average tput: {epoch_tput:3.0f}'
             )
 
             if self.save_ck_epoch and (epoch % self.save_ck_epoch) == 0:
@@ -170,10 +199,10 @@ class Trainer:
 
         self.save(self.num_epochs - 1)
 
+
     def _valid_one_epoch(self, current_epoch):
         self.pretrained_checkpoint = self.save_checkpoint_path + '/epoch_' + str(current_epoch) + '/training_state.pt'
         self.load_pretrain(False)
-        acc = []
         loss_ = []
         cer_ = []
         copyWeightsToDevice_flag = 0
@@ -186,16 +215,14 @@ class Trainer:
                 self.val_model.model.load_state_dict(self.torch_model.state_dict())
                 self.val_model.copyWeightsToDevice()
                 copyWeightsToDevice_flag = 1
-            acc.append(get_kl_acc(output, target_out))
             loss_.append(torch.mean(loss))
             cer_.append(get_cer(output, target_out, self.args['vocab']['vocab_path']))
-        average_acc = np.mean(acc)
         average_loss = np.mean(loss_)
         cer = np.mean(cer_)
-        self.logger.info(f'Epochs: {current_epoch}/{self.num_epochs}, loss_valid: {average_loss}, acc_valid: {average_acc}, cer: {cer}')
+        self.logger.info(f'Epochs: {current_epoch}/{self.num_epochs}, loss_valid: {average_loss},  cer: {cer}')
 
         if self.wandb:
-            self.wandb.log({'Epochs': current_epoch,  'loss_valid': average_loss, 'acc_valid': average_acc, 'cer': cer})
+            self.wandb.log({'Epochs': current_epoch,  'loss_valid': average_loss, 'cer': cer})
 
 
     def _valid_epochs(self):

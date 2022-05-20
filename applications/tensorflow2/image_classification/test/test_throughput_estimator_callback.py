@@ -21,11 +21,10 @@ class ThroughputEstimatorTest(unittest.TestCase):
 
     @unittest.mock.patch('callbacks.throughput_estimator_callback.time', Mock_time)
     def test_throughput(self):
-        steps_per_execution = 2
-        micro_batch_size = 2
+        images_per_execution = 4
 
         callback = ThroughputEstimatorCallback(
-            steps_per_execution=steps_per_execution, micro_batch_size=micro_batch_size)
+            images_per_execution=images_per_execution)
 
         callback.on_train_begin()
         logs = {}

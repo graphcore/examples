@@ -25,52 +25,6 @@ import datasets
 import datasets.augmentations as augmentations
 
 
-class TrainingModelWithLoss(torch.nn.Module):
-    def __init__(self, model, label_smoothing=0.0, use_mixup=False, use_cutmix=False):
-        super().__init__()
-        self.model = model
-        self.label_smoothing = label_smoothing
-        self.use_mixup = use_mixup
-        self.use_cutmix = use_cutmix
-        if self.use_mixup or self.use_cutmix:
-            self.loss = models.loss.weighted_nll_loss
-        else:
-            self.loss = torch.nn.NLLLoss(reduction='mean')
-        # Use human readable names for each layer.
-        models.NameScopeHook(self)
-
-    def forward(self, input_data, labels=None):
-        if self.use_mixup or self.use_cutmix:
-            output, coeffs = self.model(input_data)
-        else:
-            output = self.model(input_data)
-        # Calculate loss in full precision.
-        output = output.float()
-        if labels is None:
-            return output
-
-        loss_items = {}
-        log_preds = torch.nn.functional.log_softmax(output, dim=1)
-
-        if self.use_mixup or self.use_cutmix:
-            all_labels, weights = self.model.mix_labels(labels, coeffs)
-            classification_loss = self.loss(log_preds, all_labels, weights)
-        else:
-            classification_loss = self.loss(log_preds, labels)
-        loss_items['classification_loss'] = (1.0 - self.label_smoothing) * classification_loss
-
-        if self.label_smoothing > 0.0:
-            # Cross entropy between uniform distribution and output distribution.
-            loss_items["smoothing_loss"] = -torch.mean(log_preds) * self.label_smoothing
-            final_loss = loss_items["smoothing_loss"] + loss_items["classification_loss"]
-        else:
-            final_loss = loss_items["classification_loss"]
-
-        with torch.no_grad():
-            acc = utils.accuracy(output, labels)
-        return acc, poptorch.identity_loss(final_loss, reduction='none'), tuple(loss_items.values())
-
-
 def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, validation_function=None):
     logging.info("Training the model")
 
@@ -114,7 +68,7 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
                 logging.info("Graph compilation complete, --compile-only was set, exiting.")
                 sys.exit(0)
 
-            accuracy, loss, sublosses = training_model(input_data, labels)
+            loss, sublosses, metric_values = training_model(input_data, labels)
             if args.profile:
                 # Profile report is only generated for one iteration.
                 sys.exit(0)
@@ -123,7 +77,7 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
                 metrics,
                 loss,
                 sublosses,
-                accuracy,
+                metric_values[0],  # First item in the tuple is accuracy
                 state,
                 bar,
                 validation_function,
@@ -311,8 +265,7 @@ def create_training_opts(args):
 
 def convert_to_ipu_model(model, args, optimizer):
     opts = create_training_opts(args)
-    model_with_loss = TrainingModelWithLoss(model, label_smoothing=args.label_smoothing, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled)
-    training_model = poptorch.trainingModel(model_with_loss, opts, optimizer=optimizer)
+    training_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
     return training_model
 
 
@@ -363,7 +316,7 @@ def get_validation_function(args, model):
         assert isinstance(model, augmentations.AugmentationModel)
         model = model.model
 
-    opts = create_validation_opts(args, use_popdist=args.use_popdist)
+    opts = create_validation_opts(args, use_popdist=False)
     test_data = datasets.get_data(args, opts, train=False, async_dataloader=True, return_remaining=True)
     inference_model = poptorch.inferenceModel(model, opts)
 
@@ -409,7 +362,7 @@ def fine_tune(args):
     opts = create_training_opts(args)
 
     train_data = datasets.get_data(args, opts, train=True, fine_tuning=True, async_dataloader=True)
-    model_fine_tune = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled)
+    model_fine_tune = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled, with_loss=True, inference_mode=False)
 
     if not args.use_popdist or args.popdist_rank == 0:
         avg_checkpoint_file = os.path.join(args.checkpoint_path, f"{args.model}_{args.data}_{args.epoch}_averaged.pt")
@@ -420,7 +373,7 @@ def fine_tune(args):
         hvd.broadcast_parameters(models.get_model_state_dict(model_fine_tune), root_rank=0)
 
     model_fine_tune.train()
-    nested_model = models.get_nested_model(model_fine_tune)
+    nested_model = model_fine_tune.nested_model[0]
 
     # Freeze relevant parameters.
     for param_name, param in nested_model.named_parameters():
@@ -452,10 +405,9 @@ if __name__ == '__main__':
     opts = create_training_opts(args)
     train_data = datasets.get_data(args, opts, train=True, async_dataloader=True)
 
-    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled)
+    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled, with_loss=True, inference_mode=False)
     if args.use_popdist:
         hvd.broadcast_parameters(models.get_model_state_dict(model), root_rank=0)
-    model.train()
 
     optimizer = get_optimizer(args, model)
     lr_scheduler = get_lr_scheduler(args, optimizer, len(train_data))

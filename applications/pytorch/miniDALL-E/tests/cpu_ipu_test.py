@@ -39,7 +39,7 @@ def test_ipu_cpu_match():
     opts.deviceIterations(config.batches_per_step)
     opts.Training.gradientAccumulation(config.gradient_accumulation)
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
-    opts.anchorMode(poptorch.AnchorMode.Final)
+    opts.outputMode(poptorch.OutputMode.Final)
     opts.TensorLocations.setOptimizerLocation(
         poptorch.TensorLocationSettings()
         .useOnChipStorage(True)

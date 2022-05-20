@@ -154,6 +154,7 @@ class AugmentationModel(torch.nn.Module):
             "AugmentationModel needs to use at least one "
             "augmentation technique.")
 
+
     @staticmethod
     def _permute(tensor, shifts):
         return torch.roll(tensor, shifts=shifts, dims=0)

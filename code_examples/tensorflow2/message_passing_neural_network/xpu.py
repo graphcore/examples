@@ -48,7 +48,7 @@ def configure_and_get_strategy():
     if IS_IPU:
         config = ipu.config.IPUConfig()
         config.auto_select_ipus = FLAGS.num_ipus
-        config.floating_point_behaviour.esr = True
+        config.floating_point_behaviour.esr = ipu.config.StochasticRoundingBehaviour.ON
         config.allow_recompute = False
         config.matmuls.poplar_options['partialsType'] = 'half'
         config.matmuls.poplar_options["availableMemoryProportion"] = str(FLAGS.available_memory_proportion)

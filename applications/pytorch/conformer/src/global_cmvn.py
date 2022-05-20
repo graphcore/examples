@@ -39,6 +39,7 @@ class GlobalMVN(torch.nn.Module):
         eps: float = 1.0e-3,
     ):
         super().__init__()
+        self.use_generate = use_generate
         if not use_generate:
             self.norm_means = norm_means
             self.norm_vars = norm_vars
@@ -67,10 +68,12 @@ class GlobalMVN(torch.nn.Module):
 
 
     def extra_repr(self):
-        return (
-            f"stats_file={self.stats_file}, "
-            f"norm_means={self.norm_means}, norm_vars={self.norm_vars}"
-        )
+        if not self.use_generate:
+            return (
+                f"stats_file={self.stats_file}, "
+                f"norm_means={self.norm_means}, norm_vars={self.norm_vars}")
+        else:
+            return
 
     def forward(
         self, x: torch.Tensor, ilens: torch.Tensor = None

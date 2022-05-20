@@ -108,21 +108,24 @@ class AdamWeightDecay(tf.keras.optimizers.Adam):
         super(AdamWeightDecay, self)._prepare_local(
             var_device, var_dtype, apply_state)
         apply_state["weight_decay_rate"] = tf.constant(
-            self.weight_decay_rate, name="adam_weight_decay_rate"
+            self.weight_decay_rate, name="adam_weight_decay_rate", dtype=var_dtype
         )
 
     def _decay_weights_op(self, var, learning_rate, apply_state):
         do_decay = self._do_use_weight_decay(var.name)
         if do_decay:
+            vsub = tf.cast(learning_rate, tf.float32) * tf.cast(var, tf.float32) * tf.cast(apply_state["weight_decay_rate"], tf.float32)
+            vsub = tf.cast(vsub, var.dtype)
             return var.assign_sub(
-                learning_rate * var * apply_state["weight_decay_rate"],
+                # learning_rate * var * apply_state["weight_decay_rate"],
+                vsub,
                 use_locking=self._use_locking,
             )
         return tf.no_op()
 
-    def apply_gradients(self, grads_and_vars, clip_norm=0.5, **kwargs):
+    def apply_gradients(self, grads_and_vars, clip_norm=1.0, **kwargs):
         grads, tvars = list(zip(*grads_and_vars))
-        (grads, _) = tf.clip_by_global_norm(grads, clip_norm=clip_norm)
+        (grads, _) = tf.clip_by_global_norm(grads, clip_norm=1.0)
         return super(AdamWeightDecay, self).apply_gradients(zip(grads, tvars), **kwargs)
 
     def _get_lr(self, var_device, var_dtype, apply_state):

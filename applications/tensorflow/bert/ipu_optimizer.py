@@ -19,7 +19,7 @@ import re
 import logging
 import operator
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.python.training import optimizer
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -31,7 +31,7 @@ from math import sqrt
 from functools import reduce
 
 
-class AdamWeightDecayOptimizer(tf.compat.v1.train.Optimizer):
+class AdamWeightDecayOptimizer(tf.train.Optimizer):
     """A basic Adam optimizer that includes "correct" L2 weight decay."""
     def __init__(self,
                  learning_rate,
@@ -191,6 +191,7 @@ class MixedPrecisionAdamWeightDecayOptimizer(tf.train.Optimizer):
         self.epsilon = epsilon * self.loss_scaling
         self.exclude_from_weight_decay = exclude_from_weight_decay
         self.debiasing = debiasing
+        self.outline_grad_fn = outline_grad_fn
         if self.debiasing:
             self.step = tf.get_variable('adam_step_counter',
                                         dtype=tf.int32,
@@ -292,7 +293,7 @@ class MixedPrecisionAdamWeightDecayOptimizer(tf.train.Optimizer):
         return param_name
 
 
-class LAMBOptimizer(tf.compat.v1.train.Optimizer):
+class LAMBOptimizer(tf.train.Optimizer):
     """LAMB (Layer-wise Adaptive Moments optimizer for Batch training).
 
     This class has been adapted by Graphcore Ltd from NVIDIA code at
@@ -313,7 +314,7 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                  weight_decay_rate=0.0,
                  beta_1=0.9,
                  beta_2=0.999,
-                 epsilon=1e-4,
+                 epsilon=1e-6,
                  exclude_from_weight_decay=None,
                  exclude_from_layer_adaptation=None,
                  name="LAMBOptimizer",
@@ -322,6 +323,7 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                  debiasing=True,
                  weight_clipping=0,
                  clipping_value=1.0,
+                 high_precision_lr=False,
                  outline_grad_fn=True):
         """Constructs a LAMBOptimizer."""
         super(LAMBOptimizer, self).__init__(False, name)
@@ -333,7 +335,7 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
         self.beta_1 = tf.cast(beta_1, dtype=tf.float32)
         self.beta_2 = tf.cast(beta_2, dtype=tf.float32)
         self.loss_scaling = loss_scaling
-        self.epsilon = tf.cast(epsilon, dtype=tf.float16)
+        self.epsilon = tf.cast(epsilon, dtype=tf.float32)
         logging.info("Setting Epsilon to {}".format(epsilon))
 
         self.high_precision = high_precision
@@ -375,6 +377,30 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
         # -----
         self.clipping_value = tf.cast(clipping_value, dtype=tf.float32)
         self.outline_grad_fn = outline_grad_fn
+        self.high_precision_lr = high_precision_lr
+
+    def forward_transform(self, input_tensor):
+        # Input tensor dimension is [H, 3H]
+        # In the code from the modeling the transformation is
+        # [H, 3H] -> [H, 3, H] -> [3, H^2]
+        hidden_dim = input_tensor.shape.as_list()[0]
+        reshaped_param = tf.reshape(input_tensor, [hidden_dim, 3, hidden_dim])
+        reshaped_param = tf.transpose(reshaped_param, [1, 0, 2])
+        reshaped_param = tf.reshape(reshaped_param,
+                                    [3, hidden_dim * hidden_dim])
+        return reshaped_param
+
+    def backward_transform(self, input_tensor):
+        # This function performs the opposite transformation as the previous one
+        # [3, H^2] -> [3, H, H] -> [H, 3, H] -> [H, 3H]
+        hidden_dim = int(sqrt(input_tensor.shape.as_list()[-1]))
+        backward_transformed_tensor = tf.reshape(input_tensor,
+                                                 [3, hidden_dim, hidden_dim])
+        backward_transformed_tensor = tf.transpose(backward_transformed_tensor,
+                                                   [1, 0, 2])
+        backward_transformed_tensor = tf.reshape(backward_transformed_tensor,
+                                                 [hidden_dim, 3 * hidden_dim])
+        return backward_transformed_tensor
 
     def clipped_norm(self, gradients_list):
         # We compute the total norm of the gradient
@@ -470,12 +496,17 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                     update += tf.cast(self.weight_decay_rate,
                                       dtype=update.dtype) * tf.cast(
                                           param, dtype=update.dtype)
-
-                reshaped_update = tf.reshape(update, [-1])
+                if 'qkv' in param_name:
+                    reshaped_update = self.forward_transform(update)
+                else:
+                    reshaped_update = tf.reshape(update, [-1])
 
                 ratio = 1.0
                 if self._do_layer_adaptation(param_name):
-                    reshaped_param = tf.reshape(param, [-1])
+                    if 'qkv' in param_name:
+                        reshaped_param = self.forward_transform(param)
+                    else:
+                        reshaped_param = tf.reshape(param, [-1])
 
                     # Norms are then computed in fp32
                     w_norm = linalg_ops.norm(tf.cast(reshaped_param,
@@ -500,15 +531,23 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
                     # We reshape the ration in order to be broadcastable
                     ratio = tf.reshape(ratio, shape=ratio.shape.as_list() + [1])
 
-                # We combine the learning rate and the ratio at fp32
-                ratio = ratio * self.learning_rate
+                if self.high_precision_lr:
+                    lr_32 = tf.cast(self.learning_rate, tf.float32)
+                    # We combine the learning rate and the ratio at fp32
+                    ratio = ratio * lr_32
+                else:
+                    ratio = ratio * self.learning_rate
+
                 # We now downcast to do the next operation
                 # If the scaledd is present we do not need this operation
                 ratio = tf.cast(ratio, dtype=self.target_type)
                 reshaped_update = tf.cast(reshaped_update, dtype=self.target_type)
                 update_with_lr = ratio * reshaped_update
                 # Backward transform to the same as param
-                update_with_lr = tf.reshape(update_with_lr, shape=param.shape)
+                if 'qkv' in param_name:
+                    update_with_lr = self.backward_transform(update_with_lr)
+                else:
+                    update_with_lr = tf.reshape(update_with_lr, shape=param.shape)
                 update_with_lr = tf.cast(update_with_lr, dtype=param.dtype)
 
                 next_param = param - update_with_lr
@@ -556,7 +595,7 @@ class LAMBOptimizer(tf.compat.v1.train.Optimizer):
         return param_name
 
 
-class StageMomentumOptimizer(tf.compat.v1.train.Optimizer):
+class StageMomentumOptimizer(tf.train.Optimizer):
     """
     Given different decay of learning rate and momentum to different weights at different pipeline stages.
     """
@@ -683,7 +722,7 @@ def mixed_precision_clip_by_global_norm(t_list, clip_norm):
     norm = mixed_precision_global_norm(t_list, tf.float32)
 
     scale_for_finite = clip_norm * tf.minimum(1.0 / norm, 1.0 / clip_norm)
-    scale = tf.where(tf.is_finite(norm), scale_for_finite, float("nan"))
+    scale = tf.where(tf.math.is_finite(norm), scale_for_finite, float("nan"))
     t_list_clipped = []
     for t in t_list:
         _scale = tf.cast(scale, t.dtype)
@@ -800,6 +839,10 @@ def get_optimizer(learning_rate, loss_scaling, num_replicas, opts):
         optimizer = GlobalNormClippingOptimizer(
             optimizer, clip_norm=scale_down_grads_factor * num_replicas)
     elif opts['optimizer'].lower() == 'lamb':
+        if opts["groupbert"]:
+            exclusion_list = ["bias", "beta", "gamma"]
+        else:
+            exclusion_list = ["bias", "beta"]
         optimizer = LAMBOptimizer(
             learning_rate,
             loss_scaling=scale_down_grads_factor,
@@ -811,9 +854,13 @@ def get_optimizer(learning_rate, loss_scaling, num_replicas, opts):
             epsilon=opts["epsilon"],
             debiasing=opts["use_debiasing"],
             exclude_from_layer_adaptation=["bias", "beta", "gamma"],
-            exclude_from_weight_decay=["bias", "beta"],
+            exclude_from_weight_decay=exclusion_list,
+            high_precision_lr=opts["use_lr_fp32"],
             outline_grad_fn=outline_optimizer_grad_fn,
         )
+        if opts['use_mpclip']:
+            logging.info("Using MP Clipping.")
+            optimizer = GlobalNormClippingOptimizer(optimizer, clip_norm=scale_down_grads_factor * num_replicas)
     elif opts['optimizer'].lower() == 'custom':
         tvars = tf.trainable_variables()
         stage_weights = {}

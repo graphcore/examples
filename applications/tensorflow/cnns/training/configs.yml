@@ -17,7 +17,10 @@ mk2_resnet50_mlperf_pod16: &mk2_resnet50_mlperf_pod16
   micro_batch_size: 16
   pipeline: True
   shards: 1
-  pipeline_splits: [b1/0/relu, b1/2/relu, b2/3/relu]
+  pipeline_splits: [
+    stage1/unit1/relu, 
+    stage1/unit3/relu, 
+    stage2/unit4/relu]
   gradient_accumulation_count: 9
   enable_recomputation: True
   optimiser: momentum
@@ -57,7 +60,13 @@ mk2_resnet50_mlperf_pod16_bs20:
   gather_conv_output: True
   abs_learning_rate: 3.824
   epochs: 40
-  pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+  pipeline_splits: [
+    stage1/unit1/relu, 
+    stage1/unit3/relu, 
+    stage2/unit1/relu, 
+    stage2/unit3/relu, 
+    stage3/unit1/relu, 
+    stage3/unit4/relu]
 
 mk2_resnet50_mlperf_pod64_bs20:
   <<: *mk2_resnet50_mlperf_pod16
@@ -71,7 +80,13 @@ mk2_resnet50_mlperf_pod64_bs20:
   ckpt_epochs_offset: 1
   replicas: 64
   batches_per_step: 100000
-  pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+  pipeline_splits: [
+    stage1/unit1/relu, 
+    stage1/unit3/relu, 
+    stage2/unit1/relu, 
+    stage2/unit3/relu, 
+    stage3/unit1/relu, 
+    stage3/unit4/relu]
 
 mk2_resnet50_mlperf_pod128_bs20:
   <<: *mk2_resnet50_mlperf_pod16
@@ -85,7 +100,13 @@ mk2_resnet50_mlperf_pod128_bs20:
   ckpt_epochs_offset: 1
   replicas: 128
   batches_per_step: 100000
-  pipeline_splits: [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+  pipeline_splits: [
+    stage1/unit1/relu, 
+    stage1/unit3/relu, 
+    stage2/unit1/relu, 
+    stage2/unit3/relu, 
+    stage3/unit1/relu, 
+    stage3/unit4/relu]
   epochs_per_ckpt: 1
 
 mk2_resnet50_base: &mk2_resnet50_base
@@ -126,7 +147,10 @@ mk2_resnet50_bn_16ipus: &mk2_resnet50_bn_16ipus
   pipeline_num_parallel: 32
   pipeline_schedule: Grouped
   shards: 4
-  pipeline_splits: [b1/2/relu, b2/3/relu, b3/3/relu]
+  pipeline_splits: [
+    stage1/unit3/relu, 
+    stage2/unit4/relu, 
+    stage3/unit4/relu]
   pipeline: True
   batch_norm: True
   available_memory_proportion: ["0.15"]
@@ -157,7 +181,7 @@ mk2_resnext101_16ipus:
   gradient_accumulation_count: 16
   epochs: 120
   enable_recomputation: True
-  pipeline_splits: [b3/3/relu]
+  pipeline_splits: [stage3/unit4/relu]
   pipeline_schedule: Grouped
   pipeline: True
   optimiser: momentum
@@ -198,7 +222,7 @@ mk2_efficientnet_b4_16ipus_base: &mk2_efficientnet_b4_16ipus_base
   pipeline: True
   replicas: 4
   eight_bit_io: True
-  
+
 mk2_efficientnet_b4_g1_16ipus: &mk2_efficientnet_b4_g1_16ipus
   <<: *mk2_efficientnet_b4_16ipus_base
   group_dim: 1
@@ -206,6 +230,11 @@ mk2_efficientnet_b4_g1_16ipus: &mk2_efficientnet_b4_g1_16ipus
   micro_batch_size: 3
   gradient_accumulation_count: 64
   pipeline_splits: [block2b, block4b, block6c]
+
+mk2_efficientnet_b4_g1_32ipus:
+  <<: *mk2_efficientnet_b4_g1_16ipus
+  gradient_accumulation_count: 32
+  replicas: 8
 
 mk2_efficientnet_b4_g1_64ipus:
   <<: *mk2_efficientnet_b4_g1_16ipus
@@ -231,17 +260,22 @@ efficientnet_b4_g16_large_batch_size_high_throughput: &efficientnet_b4_g16_large
   momentum: 0.885
   lars_weight_decay: 2.5e-6
 
-mk2_efficientnet_b4_g16_16ipus: 
+mk2_efficientnet_b4_g16_16ipus:
   <<: *efficientnet_b4_g16_large_batch_size_high_throughput
   replicas: 8
   gradient_accumulation_count: 256
 
-mk2_efficientnet_b4_g16_64ipus: 
+mk2_efficientnet_b4_g16_32ipus:
+  <<: *efficientnet_b4_g16_large_batch_size_high_throughput
+  replicas: 16
+  gradient_accumulation_count: 128
+
+mk2_efficientnet_b4_g16_64ipus:
   <<: *efficientnet_b4_g16_large_batch_size_high_throughput
   replicas: 32
   gradient_accumulation_count: 64
 
-mk2_efficientnet_b4_g16_128ipus: 
+mk2_efficientnet_b4_g16_128ipus:
   <<: *efficientnet_b4_g16_large_batch_size_high_throughput
   replicas: 64
   gradient_accumulation_count: 32
@@ -261,7 +295,10 @@ mk1_resnet50_16ipus:
   gradient_accumulation_count: 64
   epochs: 65
   shards: 4
-  pipeline_splits: [b1/2/relu, b2/3/relu, b3/5/relu]
+  pipeline_splits: [
+    stage1/unit3/relu, 
+    stage2/unit4/relu,  
+    stage3/unit6/relu]
   pipeline: True
   pipeline_schedule: Grouped
   enable_recomputation: True
@@ -283,7 +320,13 @@ mk2_resnet50_mlperf_pod16_lars: &mk2_resnet50_mlperf_pod16_lars
   replicas: 16
   pipeline: True
   shards: 1
-  pipeline_splits:  [b1/0/relu, b1/2/relu, b2/0/relu, b2/2/relu, b3/0/relu, b3/3/relu]
+  pipeline_splits: [
+    stage1/unit1/relu, 
+    stage1/unit3/relu, 
+    stage2/unit1/relu, 
+    stage2/unit3/relu, 
+    stage3/unit1/relu, 
+    stage3/unit4/relu]
   enable_recomputation: True
   optimiser: LARS
   momentum: 0.9
@@ -312,7 +355,6 @@ mk2_resnet50_mlperf_pod16_lars: &mk2_resnet50_mlperf_pod16_lars
   epochs: 38
   micro_batch_size: 20
   disable_variable_offloading: True
-  ckpt_epochs_offset: 2
   lars_weight_decay: 0.00005
 
 mk2_resnet50_mlperf_pod64_lars:
@@ -324,7 +366,6 @@ mk2_resnet50_mlperf_pod64_lars:
   abs_learning_rate: 12.15
   max_reduce_many_buffer_size: 216
   warmup_epochs: 2
-  ckpt_epochs_offset: 2
 
 mk2_resnet50_mlperf_pod128_lars:
   <<: *mk2_resnet50_mlperf_pod16_lars
@@ -334,7 +375,6 @@ mk2_resnet50_mlperf_pod128_lars:
   epochs: 41
   abs_learning_rate: 12.1
   max_reduce_many_buffer_size: 216
-  ckpt_epochs_offset: 3
 
 mk2_resnet50_mlperf_pod256_lars:
   <<: *mk2_resnet50_mlperf_pod16_lars
@@ -344,4 +384,3 @@ mk2_resnet50_mlperf_pod256_lars:
   epochs: 45
   abs_learning_rate: 20.2
   max_reduce_many_buffer_size: 216
-  ckpt_epochs_offset: 3

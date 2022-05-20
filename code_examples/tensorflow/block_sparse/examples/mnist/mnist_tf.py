@@ -277,7 +277,7 @@ def run_model(opts):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Train and Test the simple Tensorflow model with MNIST dataset',
+        description='Train and Test the simple TensorFlow model with MNIST dataset',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(

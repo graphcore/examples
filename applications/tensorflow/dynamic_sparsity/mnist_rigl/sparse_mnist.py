@@ -6,7 +6,7 @@ from functools import partial
 import tensorflow.compat.v1 as tf
 from tensorflow.python.ipu import utils, ipu_compiler, scopes, loops, ipu_infeed_queue, ipu_outfeed_queue
 from tensorflow.python.ipu import rand_ops, pipelining_ops
-from tensorflow.python.ipu.config import IPUConfig
+from tensorflow.python.ipu.config import IPUConfig, StochasticRoundingBehaviour
 import argparse
 import json
 import time
@@ -639,7 +639,7 @@ def run_mnist(opts):
     config.floating_point_behaviour.inv = False
     config.floating_point_behaviour.div0 = False
     config.floating_point_behaviour.oflo = False
-    config.floating_point_behaviour.esr = True
+    config.floating_point_behaviour.esr = StochasticRoundingBehaviour.ON
     config.floating_point_behaviour.nanoo = False
     config.configure_ipu_system()
 
@@ -780,7 +780,7 @@ def run_mnist(opts):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Train and Test the simple Tensorflow model with MNIST dataset',
+        description='Train and Test the simple TensorFlow model with MNIST dataset',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(

@@ -315,11 +315,14 @@ if __name__ == "__main__":
         description="evaluation in TensorFlow", add_help=False)
     parser.add_argument("--config", type=str, default="config/config_800.json",
                         help="json config file for yolov3.")
-    parser.add_argument("--test_path", type=str, default="./data/dataset/voc_test.txt",
+    parser.add_argument("--test-annot-path", type=str,
                         help="data path for test")
+    parser.add_argument("--weight-file", type=str,
+                        help="path for test weights")
 
     arguments = parser.parse_args()
     with open(arguments.config) as f:
         opts = json.load(f)
-    opts['test']['annot_path'] = arguments.test_path
+    opts['test']['annot_path'] = arguments.test_annot_path or opts['test']['annot_path']
+    opts['test']['weight_file'] = arguments.weight_file or opts['test']['weight_file']
     YoloTest(opts).evaluate()

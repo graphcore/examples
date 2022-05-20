@@ -10,6 +10,7 @@
    "num_attention_heads": 2,
    "num_hidden_layers": 2,
    "use_attention_projection_bias": false,
+   "use_qkv_split": true,
    "use_cls_layer": false,
    "use_prediction_bias": false,
    "pipeline_stages": [

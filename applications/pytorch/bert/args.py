@@ -65,7 +65,7 @@ def parse_bert_args(args=None):
     parser.add_argument("--micro-batch-size", type=int,
                         help="Set the micro-batch-size. This is the single forward-backward path batch-size on one replica")
     parser.add_argument("--training-steps", type=int, help="Number of training steps")
-    parser.add_argument("--batches-per-step", type=int, help="Number of batches per training step")
+    parser.add_argument("--device-iterations", type=int, help="Number of batches per training step")
     parser.add_argument("--replication-factor", type=int, help="Number of replicas")
     parser.add_argument("--gradient-accumulation", type=int, help="Number of gradients to accumulate before updating the weights")
     parser.add_argument("--embedding-serialization-factor", type=int, help="Matmul serialization factor the embedding layers")
@@ -97,6 +97,8 @@ def parse_bert_args(args=None):
     parser.add_argument("--lr-schedule", type=str, choices=["constant", "linear"],
                         help="Type of learning rate schedule. --learning-rate will be used as the max value")
     parser.add_argument("--lr-warmup", type=float, help="Proportion of lr-schedule spent in warm-up. Number in range [0.0, 1.0]")
+    parser.add_argument("--auto-loss-scaling", type=str_to_bool, nargs="?", const=True, default=False, help="Enable automatic loss scaling\
+                             for half precision training. Note that this is an experimental feature.")
     parser.add_argument("--loss-scaling", type=float, help="Loss scaling factor (recommend using powers of 2).\
                              If using automatic loss scaling, this value will be the initial value.")
     parser.add_argument("--weight-decay", type=float, help="Set the weight decay")
@@ -126,6 +128,12 @@ def parse_bert_args(args=None):
                         help="dataset to use for the training")
     parser.add_argument("--synthetic-data", type=str_to_bool, nargs="?", const=True, default=False,
                         help="No Host/IPU I/O, random data created on device")
+    parser.add_argument("--squad-v2", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Use SQuAD v2 dataset (run_squad only)")
+    parser.add_argument("--packed-data", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Use packed data")
+    parser.add_argument("--max-sequences-per-pack", type=int, choices=[2, 3], default=3,
+                        help="The maximum number of sequences per packed example.")
 
     # Misc
     parser.add_argument("--dataloader-workers", type=int, help="The number of dataloader workers")
@@ -213,7 +221,7 @@ def parse_bert_args(args=None):
     else:
         args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.micro_batch_size
 
-    args.samples_per_step = args.replication_factor * args.gradient_accumulation * args.micro_batch_size * args.batches_per_step
+    args.samples_per_step = args.replication_factor * args.gradient_accumulation * args.micro_batch_size * args.device_iterations
     args.intermediate_size = args.hidden_size * 4
 
     return args

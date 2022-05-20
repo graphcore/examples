@@ -15,6 +15,7 @@
 #
 # This file has been modified by Graphcore Ltd.
 
+import logging
 
 import tensorflow as tf
 import tensorflow_datasets as tfds
@@ -92,15 +93,18 @@ def convert_to_features(dataset, tokenizer, convert_example_func):
     return features, labels
 
 
-def get_squad_data(micro_batch_size, cache_dir):
-    raw_datasets = tfds.load("squad", data_dir=cache_dir)
-    num_train_samples = raw_datasets['train'].cardinality()
-    num_eval_samples = raw_datasets['validation'].cardinality()
-
-    # Get tokenizer used for pretraining, which was based on "bert-base-uncased".
+def get_squad_data(micro_batch_size, cache_dir, generated_dataset=False):
+    if generated_dataset:
+        logging.info("Generating artificial data for SQuAD.")
+        raw_datasets = generated_squad_dataset()
+        num_train_samples = raw_datasets['train'].cardinality()
+        num_eval_samples = raw_datasets['validation'].cardinality()
+    else:
+        raw_datasets = tfds.load("squad", data_dir=cache_dir)
+        num_train_samples = raw_datasets['train'].cardinality()
+        num_eval_samples = raw_datasets['validation'].cardinality()
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", use_fast=True)
-
-    print('Computing features for the training dataset')
+    logging.info('Computing features for the training dataset')
     train_features, train_labels = convert_to_features(
         raw_datasets['train'],
         tokenizer,
@@ -111,7 +115,7 @@ def get_squad_data(micro_batch_size, cache_dir):
     train_dataset = train_dataset.repeat()
     train_dataset = train_dataset.batch(micro_batch_size, drop_remainder=True)
 
-    print('Computing features for the validation dataset')
+    logging.info("Computing features for the validation dataset")
     eval_features, eval_labels = convert_to_features(
         raw_datasets['validation'],
         tokenizer,
@@ -126,8 +130,8 @@ def get_squad_data(micro_batch_size, cache_dir):
 #  Functions for data validation
 #  =============================
 
-def get_prediction_dataset(dataset, max_samples):
-    pred_dataset = dataset.take(max_samples)
+def get_prediction_dataset(dataset, max_batches):
+    pred_dataset = dataset.take(max_batches)
     pred_dataset = pred_dataset.map(
         lambda inputs, labels:
         ({key: val for key, val in inputs.items() if key != 'offset_mapping'},
@@ -148,3 +152,17 @@ def format_raw_data_for_metric(dataset):
         for ex in dataset
     ]
     return references
+
+
+def generated_squad_dataset():
+    """Generate fake SQuAD examples for tests and debugging."""
+    num_generated = 12000
+    dummy_text = {"id": [tf.constant(str(dummy_id)) for dummy_id in range(0, num_generated)],
+                  "title": [tf.constant("Dummy Graphcore Text")] * num_generated,
+                  "context": [tf.constant("SQUAD is a question answer dataset. There are loads of questions.")] * num_generated,
+                  "question": [tf.constant("What is SQUAD?")] * num_generated,
+                  "answers": {"text": [[tf.constant("dataset")]] * num_generated,
+                              "answer_start": [[tf.constant(27)]] * num_generated}}
+    generated_data = {"train": tf.data.Dataset.from_tensor_slices(dummy_text),
+                      "validation": tf.data.Dataset.from_tensor_slices(dummy_text)}
+    return generated_data

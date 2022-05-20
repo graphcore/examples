@@ -45,7 +45,7 @@ class TestInference:
 
     @pytest.mark.ipus(1)
     def test_IO_overlap(self):
-        out = run_script("inference/run_benchmark.py", f"--config resnet50-mk2 --data generated --replicas 1 --batch-size 1 --iterations 10 --num-io-tiles 32")
+        out = run_script("inference/run_benchmark.py", f"--config resnet50 --data generated --replicas 1 --batch-size 1 --iterations 10 --num-io-tiles 32")
         max_thoughput = get_max_thoughput(out)
         assert max_thoughput > 0
 
@@ -76,7 +76,7 @@ def test_normlayer_efficientnet(norm_layer):
 
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize("precision", ["16.16", "32.32"])
-@pytest.mark.parametrize("model_name", ["resnet18", "resnet50", "efficientnet-b0", "efficientnet-b4"])
+@pytest.mark.parametrize("model_name", ["resnet18", "resnet50", "efficientnet-b0", pytest.param("efficientnet-b4", marks=pytest.mark.ipu_version("ipu2"))])
 def test_pretrained_prediction(precision, model_name):
     ground_truth = [('zebra.jpg', 340), ('jay.jpg', 17), ('polar_bear.jpg', 296), ('banana.jpg', 954),
                     ('hippo.jpg', 344), ('ostrich.jpg', 9), ('ping-pong_ball.jpg', 722), ('pelican.jpg', 144)]

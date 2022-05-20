@@ -145,18 +145,14 @@ def get_device(conf):
             "tilesPerIPU": 1216
         }
         device = device_manager.createIpuModelDevice(ipu_options)
-        if device is None:
-            raise OSError("Failed to acquire IPU.")
     else:
         logger.info("Acquiring IPU")
         if conf.select_ipu == 'AUTO':
             device = device_manager.acquireAvailableDevice(conf.num_ipus)
         else:
             device = device_manager.acquireDeviceById(conf.select_ipu)
-        if device is None:
-            raise OSError("Failed to acquire IPU.")
-        else:
-            logger.info("Acquired IPU: {}".format(device))
+
+        logger.info("Acquired IPU: {}".format(device))
 
     return device
 

@@ -1,0 +1,134 @@
+encoder:
+  input_size: 80
+  output_size: &encoder_output_size 512
+  attention_heads: 8
+  linear_units: &linear_units 2048
+  num_blocks: 12
+  dropout_rate: 0.1
+  positional_dropout_rate:  0.1
+  attention_dropout_rate: 0.0
+  normalize_before: true
+  concat_after: false
+  zero_triu: false
+  cnn_module_kernel: 15
+  max_len: &feature_max_length 1200
+
+decoder:
+  vocab_size: &vocab_size 4233
+  encoder_output_size: *encoder_output_size
+  dropout_rate: 0.1
+  positional_dropout_rate: 0.1
+  use_output_layer: true
+  normalize_before: true
+  attention_heads: 8
+  linear_units: *linear_units
+  num_blocks: 6
+  self_attention_dropout_rate: 0.0
+  src_attention_dropout_rate: 0.0
+  concat_after: false
+  max_len: &target_max_length 100
+
+normalizer:
+  stats_file: 'espnet/egs2/aishell/asr1/exp/asr_stats_raw_zh_char_sp/train/feats_stats.npz'
+  norm_means: true
+  norm_vars: true
+  eps: 1.0e-4
+
+loss_fn:
+  vocab_size: *vocab_size
+  smoothing: 0.0
+
+vocab:
+  vocab_path: espnet/egs2/aishell/asr1/data/zh_token_list/char/tokens.txt
+  blank: <blank>
+  pad: <blank>
+  unk: <unk>
+  sos: <sos/eos>
+  eos: <sos/eos>
+
+train_dataset:
+  data_root: 'espnet/egs2/aishell/asr1/'
+  feats_file: 'espnet/egs2/aishell/asr1/exp/asr_stats_raw_zh_char_sp/train/collect_feats/feats.scp'
+  feats_length_file: 'espnet/egs2/aishell/asr1/exp/asr_stats_raw_zh_char_sp/train/collect_feats/feats_lengths.scp'
+  target_file: 'espnet/egs2/aishell/asr1/dump/raw/train_sp/text'
+  target_length_file: 'espnet/egs2/aishell/asr1/exp/asr_stats_raw_zh_char_sp/train/text_shape'
+  feature_max_length: *feature_max_length
+  target_max_length: *target_max_length
+  cached_data_path: 'train_cached_data.json'
+  dtype: &type_data 'FLOAT16' 
+  use_generated_data: false
+  random_seed: &random_seed 42
+  is_spec_aug: false
+
+train_iterator:
+  batch_size: 3
+  num_workers: 8
+  async_mode: false
+
+val_dataset:
+  data_root: 'espnet/egs2/aishell/asr1/'
+  feats_file: 'espnet/egs2/aishell/asr1/exp/asr_stats_raw_zh_char_sp/valid/collect_feats/feats.scp'
+  feats_length_file: 'espnet/egs2/aishell/asr1/exp/asr_stats_raw_zh_char_sp/valid/collect_feats/feats_lengths.scp'
+  target_file: 'espnet/egs2/aishell/asr1/dump/raw/dev/text'
+  target_length_file: 'espnet/egs2/aishell/asr1/exp/asr_stats_raw_zh_char_sp/valid/text_shape'
+  feature_max_length: *feature_max_length
+  target_max_length: *target_max_length
+  cached_data_path: 'val_cached_data.json'
+  dtype: *type_data
+  random_seed: *random_seed
+
+
+val_iterator:
+  batch_size: 1
+  num_workers: 4
+  async_mode: false
+
+ipu_options:
+  num_replicas: 4
+  gradient_accumulation: 1344
+  num_io_tiles: 0
+  compile_only: false
+  batches_per_step: 10
+  auto_loss_scaling: true
+  available_memory_proportion: 0.15
+  optimizer_state_offchip: true
+  replicated_tensor_sharding: true
+  executable_cache_dir: null
+  enable_half_partials: true
+  enable_stochastic_rounding: true
+  enable_synthetic_data: false
+  enable_profiling: false
+
+checkpoints:
+  pretrained_checkpoint: null
+  save_checkpoint_path: "./checkpoint"
+  save_ck_epoch: 1
+
+
+trainer:
+  dtype: *type_data
+  num_epochs: 5
+  log_every_n_step: 1
+  random_seed: *random_seed
+  init_type: "pytorch"
+
+optimizer:
+  lr: 0.001
+  eps: 0.0001
+  loss_scaling: 1024
+
+scheduler:
+  warmup_steps: 5000
+
+wandb:
+  name: null
+
+logger:
+  name: 'conformer_logger'
+  log_file: 'log.txt'
+  level: 'info'
+
+pipeline:
+  - ['encoder.encoders__4', 1]
+  - ['encoder.encoders__8', 2]
+  - ['decoder.decoders__0', 3]

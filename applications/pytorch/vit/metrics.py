@@ -13,8 +13,21 @@
 # limitations under the License.
 
 
-def accuracy(pred, targ):
+import torch
+
+
+def _accuracy(pred, targ):
     """
     Compute accuracy score of predicted labels `pred` and target labels `targ`
     """
     return (pred == targ).float().mean()
+
+
+def accuracy(pred, targ, targ_b=None, lam=None):
+    """
+    Support accuracy calculation when mixup is enabled.
+    """
+    if targ_b is None:
+        return _accuracy(pred, targ)
+    lam = lam[0]
+    return lam * _accuracy(pred, targ) + (1 - lam) * _accuracy(pred, targ_b)

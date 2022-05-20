@@ -10,20 +10,36 @@ ONE_OFF_METRICS = ['Compilation Time']
 
 
 class CustomWandbCallback(tf.keras.callbacks.Callback):
-    def __init__(self, log_period: int, args: dict, model: tf.keras.Model):
+
+    def __init__(self, log_period: int, hyperparams: dict, model: tf.keras.Model):
         self.log_period = log_period
         self.model = model
         self.__current_batch_operations = self.__first_batch_operations
-        self.initialise_wandb(args)
+        self.initialise_wandb(args=hyperparams)
 
     def initialise_wandb(self, args: dict):
-        project = 'TF2-classification'
+
+        # validate wandb args
+        wandb_params_keys = set(args['wandb_params'].keys())
+        possible_keys = {'entity', 'project_name', 'run_name', 'tags'}
+        unexpected_keys = wandb_params_keys - possible_keys
+        if len(unexpected_keys) > 0:
+            raise ValueError(f'wandb params contains unexpected fields: {unexpected_keys}')
+
+        entity = args['wandb_params'].get('entity', 'sw-apps')
+
+        project = args['wandb_params'].get('project_name', 'TF2-classification')
+
         if 'model_name' not in args.keys():
             raise MissingArgumentException('Argument \'model_name\' is missing for W&B.')
         if 'dataset' not in args.keys():
             raise MissingArgumentException('Argument \'dataset\' is missing for W&B.')
         name = f"{args['model_name']}-{args['dataset']}-{str(datetime.datetime.now())}"
-        wandb.init(entity='sw-apps', project=project, name=name, config=args)
+        name = args['wandb_params'].get('run_name', name)
+
+        tags = args['wandb_params'].get('tags', [])
+
+        wandb.init(entity=entity, project=project, name=name, config=args, tags=tags)
 
     def on_train_begin(self, logs=None):
         wandb.run.summary['graph'] = wandb.Graph.from_keras(self.model)

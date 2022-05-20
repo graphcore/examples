@@ -8,19 +8,19 @@ common: &common
   normalization_location: ipu
 
 
-resnet50-mk2:
+resnet50:
   <<: *common
   model: resnet50
   batch_size: 90
 
 
-efficientnet-b0-mk2:
+efficientnet-b0:
   <<: *common
   model: efficientnet-b0
   batch_size: 49
 
 
-efficientnet-b4-mk2:
+efficientnet-b4:
   <<: *common
   model: efficientnet-b4
   batch_size: 12
@@ -37,26 +37,26 @@ efficientnet-g16-gn: &efficientnet-g16-gn
   random_weights: true
 
 
-efficientnet-b0-g16-gn-mk2:
+efficientnet-b0-g16-gn:
   <<: *efficientnet-g16-gn
   model: efficientnet-b0
   batch_size: 106
 
 
-efficientnet-b4-g16-gn-mk2:
+efficientnet-b4-g16-gn:
   <<: *efficientnet-g16-gn
   model: efficientnet-b4
   batch_size: 26
 
 
-mobilenet-v3-small-mk2:
+mobilenet-v3-small:
   <<: *common
   model: mobilenet-v3-small
   batch_size: 224
   device_iterations: 64
 
 
-mobilenet-v3-large-mk2:
+mobilenet-v3-large:
   <<: *common
   model: mobilenet-v3-large
   batch_size: 64

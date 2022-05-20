@@ -162,7 +162,7 @@ class BertEmbeddings(nn.Module):
     def __init__(self, config):
         super(BertEmbeddings, self).__init__()
         self.word_embeddings = nn.Embedding(
-            config.vocab_size, config.hidden_size, padding_idx=0)
+            config.vocab_size, config.hidden_size)
         self.position_embeddings = nn.Embedding(
             config.max_position_embeddings, config.hidden_size)
         self.token_type_embeddings = nn.Embedding(

@@ -53,11 +53,19 @@ def get_options(config):
         opts.replicationFactor(config.replication_factor)
 
     opts.autoRoundNumIPUs(True)
-    opts.deviceIterations(config.batches_per_step)
+    opts.deviceIterations(config.device_iterations)
 
     # Set gradient accumulation factor
     opts.Training.gradientAccumulation(config.gradient_accumulation)
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
+
+    # Enable automatic loss scaling
+    # Note that this is an experimental feature. Note also that it expects
+    # accumulationAndReplicationReductionType to be set to Mean as above,
+    # and for accumulation by the optimizer to be done in half precision
+    # using accum_type=torch.float16 during optimizer instatiation.
+    if config.auto_loss_scaling is True:
+        opts.Training.setAutomaticLossScaling(True)
 
     # For efficiency return the sum of the outputs from IPU to host
     opts.outputMode(poptorch.OutputMode.Sum)

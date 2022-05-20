@@ -28,7 +28,7 @@ tf_log = logging.getLogger('common')
 
 
 def get_dataset_embed_from_tensors(opts, data_type):
-    parsed_data_path = 'train_parsed_data_bs{}_maxlen{}.npz'.format(opts['batch_size'], opts['max_seq_len'])
+    parsed_data_path = 'train_parsed_data_bs{}_maxlen{}.npz'.format(opts['micro_batch_size'], opts['max_seq_len'])
     if os.path.exists(parsed_data_path):
         tf_log.debug('Use parsed data.')
         data = np.load(parsed_data_path)
@@ -62,7 +62,7 @@ def get_dataset_embed_from_tensors(opts, data_type):
     dataset = tf.data.Dataset.from_tensor_slices(tuple(placeholders))
     dataset = dataset.cache()
     dataset = dataset.repeat()
-    dataset = dataset.batch(opts['batch_size'], drop_remainder=True)
+    dataset = dataset.batch(opts['micro_batch_size'], drop_remainder=True)
     dataset = dataset.prefetch(1024)
 
     feed_dict_values = {}
@@ -159,7 +159,7 @@ def get_synthetic_dataset(opts, return_neg=False):
 
     dataset = dataset.cache()
     dataset = dataset.repeat()
-    dataset = dataset.batch(opts['batch_size'], drop_remainder=True)
+    dataset = dataset.batch(opts['micro_batch_size'], drop_remainder=True)
     dataset = dataset.prefetch(1024)
 
     return dataset
@@ -173,9 +173,9 @@ def get_dataset_embed(opts, is_training=True, return_neg=False, data_type = 'flo
 
     dataset = dataset.cache()
     dataset = dataset.repeat()
-    dataset = dataset.batch(opts['batch_size'], drop_remainder=True)
+    dataset = dataset.batch(opts['micro_batch_size'], drop_remainder=True)
     dataset = dataset.prefetch(1024)
-    tf_log.info(f"batch_size={opts['batch_size']}")
+    tf_log.info(f"micro_batch_size={opts['micro_batch_size']}")
     return dataset
 
 

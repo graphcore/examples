@@ -53,16 +53,16 @@ class DataIterator:
                  uid_voc,
                  mid_voc,
                  cat_voc,
-                 batch_size=128,
+                 micro_batch_size=128,
                  maxlen=100,
                  skip_empty=False,
                  shuffle_each_epoch=False,
                  sort_by_length=True,
-                 max_batch_size=20,
+                 max_num_micro_batches=20,
                  minlen=None):
         if shuffle_each_epoch:
             self.source_orig = source
-            self.source = shuffle.main(self.source_orig, temporary=True)
+            self.source = common.shuffle.main(self.source_orig, temporary=True)
         else:
             self.source = fopen(source, 'r')
 
@@ -99,7 +99,7 @@ class DataIterator:
                 tmp_idx = self.source_dicts[1][arr[1]]
             self.mid_list_for_random.append(tmp_idx)
 
-        self.batch_size = batch_size
+        self.micro_batch_size = micro_batch_size
         self.maxlen = maxlen
         self.minlen = minlen
         self.skip_empty = skip_empty
@@ -112,7 +112,7 @@ class DataIterator:
         self.sort_by_length = sort_by_length
 
         self.source_buffer = []
-        self.k = batch_size * max_batch_size
+        self.k = micro_batch_size * max_num_micro_batches
 
         self.end_of_data = False
 
@@ -125,7 +125,7 @@ class DataIterator:
 
     def reset(self):
         if self.shuffle:
-            self.source = shuffle.main(self.source_orig, temporary=True)
+            self.source = common.shuffle.main(self.source_orig, temporary=True)
         else:
             self.source.seek(0)
 
@@ -142,7 +142,7 @@ class DataIterator:
         target = []
 
         if len(self.source_buffer) == 0:
-            for k_ in range(self.k):
+            for _ in range(self.k):
                 ss = self.source.readline()
                 if ss == "":
                     break
@@ -218,7 +218,7 @@ class DataIterator:
                 source.append([uid, mid, cat, mid_list, cat_list, noclk_mid_list, noclk_cat_list])
                 target.append([float(ss[0]), 1-float(ss[0])])
 
-                if len(source) >= self.batch_size or len(target) >= self.batch_size:
+                if len(source) >= self.micro_batch_size or len(target) >= self.micro_batch_size:
                     break
         except IOError:
             self.end_of_data = True

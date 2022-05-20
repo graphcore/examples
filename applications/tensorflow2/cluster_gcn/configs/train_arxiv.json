@@ -1,0 +1,47 @@
+{
+    "model":{
+        "hidden_size": 256,
+        "num_layers": 5,
+        "dropout": 0.4,
+        "adjacency": {
+            "transform_mode": "normalised",
+            "diag_lambda": -1
+        },
+        "first_layer_precalculation": true
+    },
+    "training": {
+        "num_clusters": 1500,
+        "clusters_per_batch": 50,
+        "lr": 0.005,
+        "epochs": 600,
+        "gradient_accumulation_steps_per_replica": 1,
+        "steps_per_execution": 1,
+        "ipu_config": {
+            "pipeline_stages": [
+                ["adj_proc", "hid", "hid", "hid", "hid", "hid"]
+            ],
+            "pipeline_device_mapping": [0],
+            "matmul_available_memory_proportion_per_pipeline_stage": [0.3]
+        }
+    },
+    "validation": {
+        "num_clusters": 1500,
+        "clusters_per_batch": 20,
+        "gradient_accumulation_steps_per_replica": 1,
+        "steps_per_execution": 1,
+        "ipu_config": {
+            "pipeline_stages": [
+                ["adj_proc", "hid", "hid", "hid", "hid", "hid"]
+            ],
+            "pipeline_device_mapping": [0],
+            "matmul_available_memory_proportion_per_pipeline_stage": [0.3]
+        },
+        "device": "cpu"
+    },
+    "data_path": "/a/scratch/software-apps-datasets/graph_datasets/arxiv",
+    "dataset_name": "arxiv",
+    "name": "Cluster-GCN",
+    "wandb": true,
+    "executions_per_log": 1,
+    "seed": 1984
+}

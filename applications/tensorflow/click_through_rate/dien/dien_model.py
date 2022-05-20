@@ -50,7 +50,7 @@ class DIEN(object):
         self.augru_type = opts['augru_type']
         self.maxlen = opts['max_seq_len']
         self.optimizer_type = optimizer
-        self.batch_size = opts['batch_size']
+        self.micro_batch_size = opts['micro_batch_size']
         self.use_ipu_emb = opts['use_ipu_emb']
         self.embedding_dim = 18
         self.use_negsampling = use_negsampling
@@ -137,7 +137,7 @@ class DIEN(object):
             click_loss_ = - tf.reshape(tf.log(click_prop_), [-1, tf.shape(click_seq)[1]]) * mask
             noclick_loss_ = - tf.reshape(tf.log(1.0 - noclick_prop_), [-1, tf.shape(noclick_seq)[1]]) * mask
             loss_ = tf.reduce_mean(click_loss_ + noclick_loss_)
-            loss_ = self.batch_size * self.maxlen / tf.reduce_sum(mask) * loss_
+            loss_ = self.micro_batch_size * self.maxlen / tf.reduce_sum(mask) * loss_
             return loss_
 
 

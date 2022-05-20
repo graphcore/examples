@@ -23,9 +23,10 @@ class LearningRate:
         self.power = opts["poly_lr_decay_power"]
         self.warmup_iterations = total_iterations * opts["warmup_epochs"] // opts["epochs"]
         self.decay_steps = total_iterations - self.warmup_iterations
-
+        self.total_iterations = total_iterations
 
     def feed_dict_lr(self, iteration):
+        iteration = min(iteration, self.total_iterations)
         if iteration <= self.warmup_iterations and self.warmup_iterations > 0:
             return (iteration * self.initial_lr) / self.warmup_iterations
         cycle_step = iteration - self.warmup_iterations
@@ -47,7 +48,8 @@ def add_arguments(parser):
 
 def set_defaults(opts):
     if opts['abs_end_learning_rate'] is not None:
-        opts['poly_lr_end_ratio'] = opts['abs_end_learning_rate'] / ((2 ** opts["base_learning_rate_exponent"]) * opts["global_batch_size"])
+        opts['poly_lr_end_ratio'] = opts['abs_end_learning_rate'] / \
+            ((2 ** opts["base_learning_rate_exponent"]) * opts["global_batch_size"])
 
     opts['summary_str'] += "Polynomial decay applied to learning rate with exponent {poly_lr_decay_power}.\n"
     opts['summary_str'] += " Ratio of end and initial learning rates: {poly_lr_end_ratio}\n"

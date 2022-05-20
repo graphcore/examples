@@ -18,7 +18,7 @@ argp.add_argument('-R', '--repeats',
                   help='How many runs of the experiment to do.',
                   type=int,
                   default=1)
-argp.add_argument('-b', '--batch-size',
+argp.add_argument('-b', '--micro-batch-size',
                   help='Batch size to use during training. This will override the config file',
                   type=int,
                   default=100)
@@ -82,25 +82,25 @@ VALIDATION_SIZE = 10000   # Only used if args.validation is True
 
 def update_model_config(conf):
     """Update the model configuration with the parameters specified above"""
-    conf[0]['args']['batch_size'] = args.batch_size
+    conf[0]['args']['micro_batch_size'] = args.micro_batch_size
 
     # Calculate number of iterations from number of epochs and batch size
     conf[0]['args']['training']['n_iter'] = \
-        int(conf[0]['args']['training']['n_epoch'] * EXAMPLES_PER_EPOCH / args.batch_size)
+        int(conf[0]['args']['training']['n_epoch'] * EXAMPLES_PER_EPOCH / args.micro_batch_size)
 
     # How often to do validation and testing
     conf[0]['args']['training']['n_batch_freq_val'] = \
-        int(conf[0]['args']['training']['n_epoch_freq_val'] * EXAMPLES_PER_EPOCH / args.batch_size)
-    conf[0]['args']['testing']['n_batch_freq_te'] = \
-        int(conf[0]['args']['testing']['n_epoch_freq_te'] * EXAMPLES_PER_EPOCH / args.batch_size)
+        int(conf[0]['args']['training']['n_epoch_freq_val'] * EXAMPLES_PER_EPOCH / args.micro_batch_size)
+    conf[0]['args']['testing']['n_batch_freq_test'] = \
+        int(conf[0]['args']['testing']['n_epoch_freq_test'] * EXAMPLES_PER_EPOCH / args.micro_batch_size)
 
     if args.learning_rate is None:
         if conf[0]['args']['training']['base_lr']['encoder']['mean'] == "":
-            conf[0]['args']['training']['base_lr']['encoder']['mean'] = TUNED_LEARNING_RATE[args.batch_size]
+            conf[0]['args']['training']['base_lr']['encoder']['mean'] = TUNED_LEARNING_RATE[args.micro_batch_size]
         if conf[0]['args']['training']['base_lr']['encoder']['std'] == "":
-            conf[0]['args']['training']['base_lr']['encoder']['std'] = TUNED_LEARNING_RATE[args.batch_size] * 0.5
+            conf[0]['args']['training']['base_lr']['encoder']['std'] = TUNED_LEARNING_RATE[args.micro_batch_size] * 0.5
         if conf[0]['args']['training']['base_lr']['decoder'] == "":
-            conf[0]['args']['training']['base_lr']['decoder'] = TUNED_LEARNING_RATE[args.batch_size]
+            conf[0]['args']['training']['base_lr']['decoder'] = TUNED_LEARNING_RATE[args.micro_batch_size]
     else:
         conf[0]['args']['training']['base_lr'] = {'encoder':
                                                   {'mean': args.learning_rate,
@@ -109,7 +109,7 @@ def update_model_config(conf):
 
     # Rescale HMC step size adaption rate proportional to batch size
     conf[0]['args']['training']['mcmc']['step_size_adaption_rate'] = \
-        float(args.batch_size) / 100. * conf[0]['args']['training']['mcmc']['step_size_adaption_rate']
+        float(args.micro_batch_size) / 100. * conf[0]['args']['training']['mcmc']['step_size_adaption_rate']
     conf[0]['args']['results_location'] = args.results_dir
     conf[0]['args']['only_ipu'] = args.only_ipu if args.only_ipu else False
     conf[0]['args']['task_name'] = args.run_name

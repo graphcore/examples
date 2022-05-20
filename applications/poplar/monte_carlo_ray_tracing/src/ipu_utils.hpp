@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <functional>
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
@@ -351,6 +352,52 @@ private:
   }
 };
 
+/// Utility class that can be used to wrap a poplar::Engine::ProgressFunc
+/// callback in a filter that reduces the amount of output produced.
+class CallbackFilter {
+
+public:
+  CallbackFilter(std::function<void(int, int)> progressFunc, int stageGap = 15, double timeGap = 10.0)
+    : wrappedCallback(progressFunc),
+      stageFilterCount(stageGap), timeFilterSecs(timeGap),
+      lastStage(0), lastTime(std::chrono::system_clock::now()) {}
+
+  // Return the filtered callback function:
+  std::function<void(int,int)> getFilteredCallback() {
+    return std::bind(&CallbackFilter::callback, this, std::placeholders::_1, std::placeholders::_2);
+  }
+
+private:
+  // Callback that can be used as a poplar::Engine::ProgressFunc (via std::bind):
+  void callback(int done, int todo) {
+    if (done == 0) {
+      // Reset in case this ever gets used in multiple calls to compile:
+      lastStage = 0;
+      lastTime = std::chrono::system_clock::now();
+    }
+
+    // If nothing has been reported for some time print
+    // the progress regardless of the other filtering:
+    auto currentTime = std::chrono::system_clock::now();
+    double secs = std::chrono::duration<double>(currentTime - lastTime).count();
+
+    // Filters to reduce excessive logging:
+    if (done - lastStage > stageFilterCount || secs > timeFilterSecs || done == todo) {
+      lastStage = done;
+      lastTime  = currentTime;
+      wrappedCallback(done, todo);
+    }
+  }
+
+  std::function<void(int, int)> wrappedCallback;
+
+  // Member variables used in filtering the callback rate:
+  const int stageFilterCount;
+  const double timeFilterSecs;
+  int lastStage;
+  std::chrono::time_point<std::chrono::system_clock> lastTime;
+};
+
 /// Class that manages graph creation, engine creation and execution, and provides a consistent interface
 /// for saving and loading graph executables. In effect it manages all the host side and runtime activity
 /// of a Poplar program.
@@ -395,7 +442,11 @@ public:
 
         logger()->info("Graph compilation started");
         pvti::Tracepoint::begin(&traceChannel, "compiling_graph");
-        poplar::Executable exe = poplar::compileGraph(graph, builder.getPrograms().getList());
+        CallbackFilter progress([] (int done, int todo) {
+          logger()->debug("Compilation step {}/{}", done, todo);
+        });
+        poplar::Executable exe = poplar::compileGraph(graph, builder.getPrograms().getList(), {},
+                                                      progress.getFilteredCallback(), "ipu_utils_engine");
         pvti::Tracepoint::end(&traceChannel, "compiling_graph");
         logger()->info("Graph compilation finished");
 

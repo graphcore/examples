@@ -438,8 +438,6 @@ def test_per_tensor_lr(steps_per_epoch, lr_schedule_by_step, layer_inputs, pipel
             1,
             connectionType=popart.DeviceConnectionType.OnDemand,
             selectionCriterion=popart.DeviceSelectionCriterion.Random)
-        if device is None:
-            raise OSError("Failed to acquire IPU.")
 
         # The stage->tensor map would come from the Bert model in reality
         # (see model.tensors)

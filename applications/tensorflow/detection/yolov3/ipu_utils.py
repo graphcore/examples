@@ -22,6 +22,7 @@ import tensorflow as tf
 from core import common
 from tensorflow.python import ipu
 from tensorflow.python.ipu import utils
+from tensorflow.python.ipu.config import StochasticRoundingBehaviour
 
 
 def get_ipu_config(ipu_id=-1,
@@ -62,7 +63,8 @@ def get_ipu_config(ipu_id=-1,
     config.floating_point_behaviour.inv = fp_exceptions
     config.floating_point_behaviour.div0 = fp_exceptions
     config.floating_point_behaviour.oflo = fp_exceptions
-    config.floating_point_behaviour.esr = stochastic_rounding
+    config.floating_point_behaviour.esr = StochasticRoundingBehaviour.from_bool(stochastic_rounding)
+
     config.floating_point_behaviour.nanoo = fp_exceptions
     return config
 

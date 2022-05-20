@@ -127,7 +127,5 @@ def _acquire_device(args, num_ipus):
 
 def acquire_device(args, num_ipus):
     device = _acquire_device(args, num_ipus)
-    if device is None:
-        raise OSError("Failed to acquire IPU.")
     logger.info(f"Acquired device: {device}")
     return device

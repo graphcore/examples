@@ -11,7 +11,7 @@ from schedules.decorators import ShiftWarmup, FadingMaskWarmup, FP32StepLearning
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).absolute().parent.parent))
-from utilities import verify_all_params_present
+from utilities import verify_params_present
 
 
 logger = logging.getLogger('scheduler_builder')
@@ -41,7 +41,7 @@ def get_lr_scheduler(scheduler_name: str,
 
     if scheduler_name == 'cosine':
         expected_params = ['epochs_to_total_decay', 'initial_learning_rate']
-        verify_all_params_present(list(schedule_params.keys()), expected_params, scheduler_name, '--lr-schedule-params')
+        verify_params_present(list(schedule_params.keys()), expected_params, scheduler_name, '--lr-schedule-params')
 
         # convert epochs to weight updates
         schedule_params['weight_updates_to_total_decay'] = int(
@@ -53,7 +53,7 @@ def get_lr_scheduler(scheduler_name: str,
 
     elif scheduler_name == 'stepped':
         expected_params = ['boundaries', 'values']
-        verify_all_params_present(list(schedule_params.keys()), expected_params, scheduler_name, '--lr-schedule-params')
+        verify_params_present(list(schedule_params.keys()), expected_params, scheduler_name, '--lr-schedule-params')
         if not len(schedule_params['boundaries']) == len(schedule_params['values']) - 1:
             raise ValueError(
                 'When using --lr-schedule=\'stepped\', number of elements in \'boundaries\' has to be one less than \'values\'.')
@@ -67,7 +67,7 @@ def get_lr_scheduler(scheduler_name: str,
 
     elif scheduler_name == 'polynomial':
         expected_params = ['initial_learning_rate', 'epochs_to_total_decay', 'end_learning_rate_ratio', 'power']
-        verify_all_params_present(list(schedule_params.keys()), expected_params, scheduler_name, '--lr-schedule-params')
+        verify_params_present(list(schedule_params.keys()), expected_params, scheduler_name, '--lr-schedule-params')
         schedule_params['initial_learning_rate'] *= float(global_batch_size * factor)
         schedule_params['decay_steps'] = float(schedule_params['epochs_to_total_decay'] * weight_updates_per_epoch)
         schedule_params.pop('epochs_to_total_decay')
@@ -81,7 +81,7 @@ def get_lr_scheduler(scheduler_name: str,
     if warmup_params:
         warmup_params = warmup_params.copy()
         expected_params = ['warmup_mode', 'warmup_epochs']
-        verify_all_params_present(list(warmup_params.keys()), expected_params, 'warmup', '--lr-warmup-params')
+        verify_params_present(list(warmup_params.keys()), expected_params, 'warmup', '--lr-warmup-params')
 
         # convert epochs to weight updates
         warmup_params['warmup_weight_updates'] = int(warmup_params['warmup_epochs'] * weight_updates_per_epoch)

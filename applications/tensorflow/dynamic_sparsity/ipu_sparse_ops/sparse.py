@@ -414,7 +414,7 @@ def _get_or_create_metainfo(data_type, shape, values=None, constant=False) -> Un
 
 def _get_or_create_dummy_dense_weights(spec: MatmulSpec) -> tf.Variable:
     # Whilst we do not want to ever instantiate the full dense weights we do need
-    # a dummy variable to represent them in the Tensorflow graph that allows us
+    # a dummy variable to represent them in the TensorFlow graph that allows us
     # to request gradients with respect to them. Because this variable is never
     # read/written will be removed by Poplar's graph optimisations.
     ns = tf.get_default_graph().get_name_scope()

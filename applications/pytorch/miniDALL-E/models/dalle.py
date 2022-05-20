@@ -90,7 +90,8 @@ class DALLE(nn.Module):
                  attn_types = None,
                  loss_img_weight = 7,
                  sandwich_norm = False,
-                 fp16 = False):
+                 fp16 = False,
+                 byteio = False):
         super().__init__()
         assert isinstance(vae, (VQGanVAE)), 'vae must be an instance of DiscreteVAE'
 
@@ -155,6 +156,7 @@ class DALLE(nn.Module):
 
         self.loss_img_weight = loss_img_weight
         self.fp16 = fp16
+        self.byteio = byteio
 
 
     @torch.no_grad()
@@ -263,6 +265,11 @@ class DALLE(nn.Module):
 
             if is_raw_image:
                 image_size = self.vae.image_size
+                if self.byteio:
+                    if self.fp16:
+                        image = image.half()
+                    else:
+                        image = image.float()
                 image = self.vae.get_codebook_indices(image)
 
             image_len = image.shape[1]

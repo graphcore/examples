@@ -1,36 +1,31 @@
-# Copyright (c) 2021 Graphcore Ltd. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 #----------------------------------------------------------------------------------
 defaults: &defaults
+  byteio: False
   random_seed: 42
   dataloader_workers: 64
   ipus_per_replica: 4
   synthetic_data: False
   optimizer: SGD
+  auto_loss_scaling: False
   weight_decay: 0.0
   recompute_checkpoint_every_layer: True
   attention_probs_dropout_prob: 0.0
   hidden_dropout_prob: 0.1
   layer_norm_eps: 1e-6
+  resume_training_from_checkpoint: False
   enable_rts: True
   optimizer_state_offchip: False
-  enable_half_first_order_momentum: True
   prefetch_depth: 2
   precision: "16.16"
   stochastic_rounding: True
   wandb: False
+  representation_size: null
+  pretrain: False
+  mixup: False
+  loss: CELoss
+  extra_aug: null
+  reduction_type: "mean"
+  recompute_mid_layers: [1, 4, 7, 10]
 
 #----------------------------------------------------------------------------------
 b16_cifar10: &b16_cifar10
@@ -38,6 +33,7 @@ b16_cifar10: &b16_cifar10
 
   # Execution
   micro_batch_size: 17
+  rebatched_worker_size: 128
   training_steps: 2000
   batches_per_step: 1
   replication_factor: 4
@@ -63,13 +59,14 @@ b16_cifar10: &b16_cifar10
   loss_scaling: 1.0
   weight_decay: 0.0
   momentum : 0.9
+  first_order_type: "fp16"
 
   # Dataset
   dataset: cifar10
   dataset_path: "./data/cifar10"
   pretrained_checkpoint: "google/vit-base-patch16-224-in21k"
   checkpoint_output_dir: "./output/b16_cifar10"
-  checkpoint_steps: 500
+  checkpoint_save_steps: 500
 
 #----------------------------------------------------------------------------------
 b16_cifar10_valid: &b16_cifar10_valid
@@ -86,7 +83,7 @@ b16_cifar10_valid: &b16_cifar10_valid
   hidden_size: 768
   num_hidden_layers: 12
   num_attention_heads: 12
-  matmul_proportion: [0.25, 0.3, 0.3, 0.3]
+  matmul_proportion: [0.3, 0.3, 0.3, 0.3]
   mlp_dim: 3072
   patches_size: 16
   num_labels: 10
@@ -95,7 +92,6 @@ b16_cifar10_valid: &b16_cifar10_valid
   dataset: cifar10
   dataset_path: "./data/cifar10"
   pretrained_checkpoint: "./output/b16_cifar10/step_1000"
-  checkpoint_output_dir: "./output/b16_cifar10_valid"
 
 #----------------------------------------------------------------------------------
 b16_imagenet1k: &b16_imagenet1k
@@ -103,6 +99,7 @@ b16_imagenet1k: &b16_imagenet1k
 
   # Execution
   micro_batch_size: 17
+  rebatched_worker_size: 256
   training_steps: 625
   batches_per_step: 8
   replication_factor: 4
@@ -128,13 +125,22 @@ b16_imagenet1k: &b16_imagenet1k
   loss_scaling: 0.25
   weight_decay: 0.00001
   momentum : 0.9
+  first_order_type: "fp16"
 
   # Dataset
   dataset: imagenet1k
   dataset_path: "./data/imagenet1k/"
   pretrained_checkpoint: "google/vit-base-patch16-224-in21k"
   checkpoint_output_dir: "./output/b16_imagenet1k"
-  checkpoint_steps: 100
+  checkpoint_save_steps: 100
+
+#----------------------------------------------------------------------------------
+b16_imagenet1k_ALS:
+  <<: *b16_imagenet1k
+
+  # Optimizer
+  loss_scaling: 1.0
+  auto_loss_scaling: True
 
 #----------------------------------------------------------------------------------
 b16_imagenet1k_valid: &b16_imagenet1k_valid
@@ -160,4 +166,139 @@ b16_imagenet1k_valid: &b16_imagenet1k_valid
   dataset: imagenet1k
   dataset_path: "./data/imagenet1k/"
   pretrained_checkpoint: "./output/b16_imagenet1k/step_625"
-  checkpoint_output_dir: "./output/b16_imagenet_1k_valid"
+
+#----------------------------------------------------------------------------------
+b16_in1k_pretrain: &b16_in1k_pretrain
+  <<: *defaults
+
+  # Execution
+  micro_batch_size: 8
+  # When rebatching with mixup enabled, global batch size needs to be divisible by rebatched_worker_size needs
+  rebatched_worker_size: 256
+  epochs: 300
+  batches_per_step: 1
+  replication_factor: 4
+  gradient_accumulation: 128
+  layers_per_ipu: [3,3,3,3]
+  enable_rts: True
+  wandb: False
+  wandb_project_name: "torch-vit-pretrain"
+  checkpoint_save_steps: 500
+  pretrain: True
+  mixup: True
+  extra_aug: "imagenet_policy"
+  reduction_type: "sum"
+
+  # Model
+  hidden_size: 768
+  representation_size: 768
+  num_hidden_layers: 12
+  num_attention_heads: 12
+  matmul_proportion: [0.3, 0.3, 0.3, 0.3]
+  mlp_dim: 3072
+  patches_size: 16
+  num_labels: 1000
+  attention_probs_dropout_prob: 0.1
+  drop_path_rate: 0.0
+
+  # Loss
+  alpha: 0.5
+
+  # Optimizer
+  optimizer: Adam
+  warmup_steps: 10000
+  lr_schedule: cosine
+  learning_rate: 0.001
+  loss_scaling: 128
+  weight_decay: 0.004
+  momentum : 0.9
+
+  # Dataset
+  dataset: imagenet1k
+  dataset_path: "./data/imagenet1k/"
+  pretrained_checkpoint: ""
+  checkpoint_output_dir: "./output/ckpt-in1k-pretrain"
+
+#----------------------------------------------------------------------------------
+b16_in1k_pretrain_lamb: &b16_in1k_pretrain_lamb
+  <<: *defaults
+
+  # Execution
+  micro_batch_size: 8
+  rebatched_worker_size: 2048
+  training_steps: 11730
+  epochs: 600
+  batches_per_step: 1
+  replication_factor: 4
+  gradient_accumulation: 2048
+  layers_per_ipu: [3,3,3,3]
+  enable_rts: True
+  wandb: False
+  wandb_project_name: "torch-vit-pretrain"
+  checkpoint_save_steps: 40
+  pretrain: True
+  mixup: True
+  extra_aug: "imagenet_policy"
+  reduction_type: "sum"
+
+  # Model
+  hidden_size: 768
+  representation_size: 768
+  num_hidden_layers: 12
+  num_attention_heads: 12
+  matmul_proportion: [0.3, 0.3, 0.3, 0.3]
+  mlp_dim: 3072
+  patches_size: 16
+  num_labels: 1000
+  attention_probs_dropout_prob: 0.1
+  drop_path_rate: 0.0
+
+  # Loss
+  alpha: 0.5
+
+  # Optimizer
+  optimizer: LAMB
+  warmup_steps: 1200
+  lr_schedule: cosine
+  learning_rate: 0.006
+  loss_scaling: 1024
+  weight_decay:  0.01
+  momentum: 0.9
+  adam_betas: [0.9, 0.999]
+  adam_eps: 1e-6
+  bias_correction: True
+  accum_type: "fp32"
+  first_order_type: "fp32"
+  second_order_type: "fp32"
+
+  # Dataset
+  dataset: imagenet1k
+  dataset_path: "./data/imagenet1k/"
+  pretrained_checkpoint: ""
+  checkpoint_output_dir: "./output/ckpt-in1k-pretrain"
+#----------------------------------------------------------------------------------
+b16_in1k_pretrain_valid: &b16_in1k_pretrain_valid
+  <<: *defaults
+
+  # Execution
+  micro_batch_size: 8
+  batches_per_step: 1
+  replication_factor: 1
+  gradient_accumulation: 1
+  layers_per_ipu: [3,3,3,3]
+  pretrain: True
+
+  # Model
+  hidden_size: 768
+  representation_size: 768
+  num_hidden_layers: 12
+  num_attention_heads: 12
+  matmul_proportion: [0.3, 0.3, 0.3, 0.3]
+  mlp_dim: 3072
+  patches_size: 16
+  num_labels: 1000
+
+  # Dataset
+  dataset: imagenet1k
+  dataset_path: "./data/imagenet1k/"
+  pretrained_checkpoint: "./output/ckpt-in1k-pretrain/step_93599"

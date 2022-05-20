@@ -100,7 +100,7 @@ The default configuration is as follows:
 
 `--batches-per-step` = 1600
 
-`--batch-size` = 32
+`--micro-batch-size` = 32
 
 `--learning-rate` = 0.6
 
@@ -115,9 +115,9 @@ The default configuration is as follows:
 
 `--attention-size` : the size of attention
 
-`--gru-type` : where we use a Tensorflow GRU or a Popnn GRU
+`--gru-type` : where we use a TensorFlow GRU or a Popnn GRU
 
-`--augru-type` : where we use a Tensorflow AUGRU or a Popnn AUGRU
+`--augru-type` : where we use a TensorFlow AUGRU or a Popnn AUGRU
 
 `--precision` : Chosse the precision type (support 32.32 for now)
 
@@ -129,7 +129,7 @@ The default configuration is as follows:
 `--epochs` : set epoch number
 
 ##### Training options
-`--batch-size` : set batch size for training graph
+`--micro-batch-size` : set batch size for training graph
 
 `--seed` : set random seed
 
@@ -166,7 +166,7 @@ The default configuration is as follows:
 
 `--batches-per-step` = 1600
 
-`--batch-size` = 128
+`--micro-batch-size` = 128
 
 `--use-ipu-emb` = False
 
@@ -177,9 +177,9 @@ The default configuration is as follows:
 
 `--attention-size` : the size of attention
 
-`--gru-type` : where we use a Tensorflow GRU or a Popnn GRU
+`--gru-type` : where we use a TensorFlow GRU or a Popnn GRU
 
-`--augru-type` : where we use a Tensorflow AUGRU or a Popnn AUGRU
+`--augru-type` : where we use a TensorFlow AUGRU or a Popnn AUGRU
 
 `--precision` : Chosse the precision type (support 32.32 for now)
 
@@ -191,11 +191,11 @@ The default configuration is as follows:
 `--epochs` : set epoch number
 
 ##### Inference options
-`--batch-size` : set batch size for inference graph
+`--micro-batch-size` : set batch size for inference graph
 
 `--model-path` : Place to store and restore model
 
-`--batch-size` : set batch size for training graph
+`--micro-batch-size` : set batch size for training graph
 
 `--seed` : set random seed
 

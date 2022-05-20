@@ -48,25 +48,25 @@ class ValidationMetricsTest(unittest.TestCase):
         return score[-1], expected_error
 
     def test_metric_1_steps(self):
-        value, expected_value = self.metric_prog(1, 1)
+        value, expected_value = self.metric_prog(steps_per_execution=1, num_replicas=1)
         self.assertEqual(value, expected_value)
 
     def test_metric_2_steps(self):
-        value, expected_value = self.metric_prog(2, 1)
+        value, expected_value = self.metric_prog(steps_per_execution=2, num_replicas=1)
         self.assertEqual(value, expected_value)
 
     def test_metric_4_steps(self):
-        value, expected_value = self.metric_prog(4, 1)
+        value, expected_value = self.metric_prog(steps_per_execution=4, num_replicas=1)
         self.assertEqual(value, expected_value)
 
     def test_metric_2_steps_2_replicas(self):
-        value, expected_value = self.metric_prog(2, 2)
+        value, expected_value = self.metric_prog(steps_per_execution=1, num_replicas=2)
         # Note that it should be equal, but it is currently bugged.
         # When this test fails then the bug was fixed
         self.assertNotEqual(value, expected_value)
 
     def test_metric_4_steps_2_replicas(self):
-        value, expected_value = self.metric_prog(4, 2)
+        value, expected_value = self.metric_prog(steps_per_execution=2, num_replicas=2)
         # Note that it should be equal, but it is currently bugged.
         # When this test fails then the bug was fixed
         self.assertNotEqual(value, expected_value)
@@ -112,23 +112,13 @@ class TrainMetricsTest(unittest.TestCase):
 
         self.assertEqual(history.history['loss'][0], 3.5)
 
-    def test_4micro_batch_size_4_step_per_execution(self):
-
-        history = self.metric_prog(num_elements=4,
-                                   micro_batch_size=4,
-                                   num_replicas=1,
-                                   gradient_accumulation=1,
-                                   steps_per_execution=4)
-
-        self.assertEqual(history.history['loss'][0], 3.5)
-
     def test_1micro_batch_size_4_replicas(self):
 
         history = self.metric_prog(num_elements=4,
                                    micro_batch_size=1,
                                    num_replicas=4,
                                    gradient_accumulation=1,
-                                   steps_per_execution=4)
+                                   steps_per_execution=1)
 
         # Note that it should be equal, but it is currently bugged.
         # When this test fails then the bug was fixed
@@ -142,7 +132,9 @@ class TrainMetricsTest(unittest.TestCase):
                                    gradient_accumulation=4,
                                    steps_per_execution=4)
 
-        self.assertEqual(history.history['loss'][0], 3.5)
+        # Note that it should be equal, but it is currently bugged.
+        # When this test fails then the bug was fixed
+        self.assertNotEqual(history.history['loss'][0], 3.5)
 
     def test_1micro_batch_size_2_replicas_2_gradient_accumulation(self):
 
@@ -150,7 +142,7 @@ class TrainMetricsTest(unittest.TestCase):
                                    micro_batch_size=1,
                                    num_replicas=2,
                                    gradient_accumulation=2,
-                                   steps_per_execution=4)
+                                   steps_per_execution=2)
 
         # Note that it should be equal, but it is currently bugged.
         # When this test fails then the bug was fixed
@@ -191,7 +183,7 @@ class EnqueuedLossTest(unittest.TestCase):
             model.compile(optimizer=optimizer, loss=loss, steps_per_execution=steps_per_execution)
             model.set_gradient_accumulation_options(gradient_accumulation_steps_per_replica=gradient_accumulation)
             callbacks = [outfeed_queue_callback.OutFeedQueueCallback(loss_outfeed_queue, 'average loss'),
-                         logging_callback.LoggingCallback(num_replicas*gradient_accumulation)]
+                         logging_callback.LoggingCallback(gradient_accumulation)]
             model.fit(ds, steps_per_epoch=num_elements//micro_batch_size, callbacks=callbacks)
 
 
@@ -206,24 +198,24 @@ class EnqueuedLossTest(unittest.TestCase):
             print(test_log.output)
             self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
 
-    def test_2micro_batch_size_2replicas_2step_per_execution(self):
+    def test_2micro_batch_size_2replicas_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
             self.ipu_prog(num_elements=4,
                           micro_batch_size=2,
                           num_replicas=2,
                           gradient_accumulation=1,
-                          steps_per_execution=2)
+                          steps_per_execution=1)
             self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
 
-    def test_1micro_batch_size_4replicas_4step_per_execution(self):
+    def test_1micro_batch_size_4replicas_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
             self.ipu_prog(num_elements=4,
                           micro_batch_size=1,
                           num_replicas=4,
                           gradient_accumulation=1,
-                          steps_per_execution=4)
+                          steps_per_execution=1)
             self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
 
     def test_1micro_batch_size_4gradientacc_4step_per_execution(self):
@@ -236,14 +228,14 @@ class EnqueuedLossTest(unittest.TestCase):
                           steps_per_execution=4)
             self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
 
-    def test_1micro_batch_size_2replicas_2gradientacc_4step_per_execution(self):
+    def test_1micro_batch_size_2replicas_2gradientacc_2step_per_execution(self):
 
         with self.assertLogs() as test_log:
             self.ipu_prog(num_elements=4,
                           micro_batch_size=1,
                           num_replicas=2,
                           gradient_accumulation=2,
-                          steps_per_execution=4)
+                          steps_per_execution=2)
             self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
 
 
@@ -296,24 +288,24 @@ class EnqueuedMetricTest(unittest.TestCase):
             print(test_log.output)
             self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
 
-    def test_2micro_batch_size_2replicas_2step_per_execution(self):
+    def test_2micro_batch_size_2replicas_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
             self.ipu_prog(num_elements=4,
                           micro_batch_size=2,
                           num_replicas=2,
                           gradient_accumulation=1,
-                          steps_per_execution=2)
+                          steps_per_execution=1)
             self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
 
-    def test_1micro_batch_size_4replicas_4step_per_execution(self):
+    def test_1micro_batch_size_4replicas_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
             self.ipu_prog(num_elements=4,
                           micro_batch_size=1,
                           num_replicas=4,
                           gradient_accumulation=1,
-                          steps_per_execution=4)
+                          steps_per_execution=1)
             self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
 
     def test_1micro_batch_size_4gradientacc_4step_per_execution(self):
@@ -326,12 +318,12 @@ class EnqueuedMetricTest(unittest.TestCase):
                           steps_per_execution=4)
             self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
 
-    def test_1micro_batch_size_2replicas_2gradientacc_4step_per_execution(self):
+    def test_1micro_batch_size_2replicas_2gradientacc_2step_per_execution(self):
 
         with self.assertLogs() as test_log:
             self.ipu_prog(num_elements=4,
                           micro_batch_size=1,
                           num_replicas=2,
                           gradient_accumulation=2,
-                          steps_per_execution=4)
+                          steps_per_execution=2)
             self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))

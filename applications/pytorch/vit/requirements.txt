@@ -1,8 +1,11 @@
 --find-links https://download.pytorch.org/whl/torch_stable.html
 transformers>=4.12.0
-datasets>=1.15.0
 pyyaml==5.4.1
 wandb==0.12.1
 pytest==6.2.4
 pytest-pythonpath==0.7.3
 torchvision==0.11.1+cpu
+pillow==8.2.0
+attrdict==2.0.1
+horovod==0.24.0
+randaugment==1.0.2

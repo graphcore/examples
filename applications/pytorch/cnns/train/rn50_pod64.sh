@@ -8,7 +8,7 @@ HOST3=$OCT123.`expr $OCT4 + 2`
 HOST4=$OCT123.`expr $OCT4 + 3`
 HOSTS=$HOST1,$HOST2,$HOST3,$HOST4
 VIPU_SERVER=${VIPU_SERVER:=$HOST1}
-FIRST_PARTITION=`vipu-admin list partitions --api-host $VIPU_SERVER| grep ACTIVE | cut -d '|' -f 2 | cut -d ' ' -f 2 | head -1`
+FIRST_PARTITION=`vipu-admin list partitions --api-host $VIPU_SERVER| grep ACTIVE | cut -d '|' -f 3 | cut -d ' ' -f 2 | head -1`
 PARTITON=${PARTITION:=$FIRST_PARTITION}
 # POPLAR options saves a bit of memory.
 POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false", "target.hostSyncTimeout": 900}' \
@@ -24,7 +24,7 @@ poprun -vv --num-instances=16 --num-replicas=64 \
        --remove-partition=no \
        --reset-partition=no \
        --print-topology=yes \
-       --executable-cache-path cache/rn50_pod64 \
+       --executable-cache-path cache/rn50-pod64 \
        --mpi-global-args="--tag-output \
                           --allow-run-as-root \
                           --mca btl_tcp_if_include eno1" \
@@ -35,4 +35,4 @@ poprun -vv --num-instances=16 --num-replicas=64 \
                          -x PYTHONPATH \
                          -x IPUOF_VIPU_API_TIMEOUT=800 \
                          -x POPLAR_ENGINE_OPTIONS" \
-python3 train.py --config resnet50_mk2_pod64 --dataloader-worker 24 --dataloader-rebatch-size 256 --webdataset-memory-cache-ratio 0.95 $@
+python3 train.py --config resnet50-pod64 --dataloader-worker 14 --dataloader-rebatch-size 256 $@

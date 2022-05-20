@@ -127,7 +127,7 @@ def create_policy(*infeed_data):
     # make action selection op (outputs int actions, sampled from policy)
     actions = tf.random.categorical(logits=tf.reshape(
         logits, (-1, NUM_ACTIONS)), num_samples=1)
-    actions = tf.reshape(actions, (args.batch_size, args.time_steps))
+    actions = tf.reshape(actions, (args.micro_batch_size, args.time_steps))
 
     action_masks = tf.one_hot(actions, NUM_ACTIONS, dtype=DTYPE)
     action_prob = tf.reduce_sum(action_masks * log_prob, axis=-1)
@@ -143,7 +143,7 @@ def build_train_op(previous_loss, *infeed_data):
         opt = tf.train.GradientDescentOptimizer(LEARNING_RATE)
         if args.accumulate_grad:
             opt = GradientAccumulationOptimizer(
-                opt, num_mini_batches=args.num_mini_batches)
+                opt, num_mini_batches=args.gradient_accumulation_count)
         opt = CrossReplicaOptimizer(opt)
         train_op = opt.minimize(loss)
         with tf.control_dependencies([train_op]):
@@ -151,12 +151,12 @@ def build_train_op(previous_loss, *infeed_data):
         return previous_loss + loss
 
 
-def train(replication_factor, batch_size, batch_per_step, num_iter, time_steps):
+def train(replication_factor, micro_batch_size, batch_per_step, num_iter, time_steps):
     """Launch training."""
 
     # Set up in-feeds for the data
     with tf.device('cpu'):
-        data_generator = EnvGenerator(batch_size, time_steps)
+        data_generator = EnvGenerator(micro_batch_size, time_steps)
         items = next(data_generator)
         output_types = tuple((tf.dtypes.as_dtype(i.dtype) for i in items))
         output_shapes = tuple((tf.TensorShape(i.shape) for i in items))
@@ -189,6 +189,13 @@ def train(replication_factor, batch_size, batch_per_step, num_iter, time_steps):
     utils.move_variable_initialization_to_cpu()
     sess.run([tf.global_variables_initializer(), data_init])
 
+    # Calculate global-batch size, which includes micro-batch size, the number of micro-batches per replica accumulated
+    # when computing the gradient, and the replication factor.
+    if args.accumulate_grad:
+        global_batch_size = micro_batch_size * args.gradient_accumulation_count * replication_factor
+    else:
+        global_batch_size = micro_batch_size * replication_factor
+
     # Run training and time
     total_time = 0.0
     total_samples = 0
@@ -202,26 +209,36 @@ def train(replication_factor, batch_size, batch_per_step, num_iter, time_steps):
 
         if iters > skip_iterations:
             total_time += (t1 - t0)
-            total_samples += (batch_size * batch_per_step * replication_factor)
+            total_samples += global_batch_size * batch_per_step
             print("Average %.1f items/sec" % (total_samples / total_time))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size per device.")
+    parser.add_argument(
+        "--micro_batch_size",
+        type=int,
+        default=16,
+        help="Number of samples used in one full forward/backward pass of the algorithm per device."
+    )
     parser.add_argument("--time_steps", type=int, default=16, help="Input sequence length.")
     parser.add_argument("--batch_per_step", type=int, default=10000,
-                        help="Number of batches to run per step (on the device)")
+                        help="Number of micro-batches per replica performed sequentially on device before returning to "
+                             "the host. Increase this number to improve accelerator utilization.")
     parser.add_argument("--num_iter", type=int, default=10, help="Number of training steps.")
     parser.add_argument("--num_ipus", type=int, default=16,
                         help="Number of IPUs to use for data-parallel replication")
     parser.add_argument('--accumulate_grad', default=False, dest='accumulate_grad',
                         action='store_true', help="Flag that turns on gradient accumulation.")
-    parser.add_argument('--num_mini_batches', type=int, default=128,
-                        help="Number of batches to accumulate gradients over, if accumulate_grad flag is on")
+    parser.add_argument(
+        '--gradient_accumulation_count',
+        type=int,
+        default=128,
+        help="Number of micro-batches to accumulate gradients over, if accumulate_grad flag is on."
+    )
     parser.add_argument('--data', dest="data", type=str, default="generated",
                         help="Run inference on generated data (transfer images host -> device) "
-                             "or using on-device synthetic data",
+                             "or using on-device synthetic data.",
                         choices=["generated", "synthetic"])
     args = parser.parse_args()
     if args.data == "synthetic":
@@ -230,4 +247,4 @@ if __name__ == '__main__':
             os.environ["TF_POPLAR_FLAGS"] += syn_flags
         else:
             os.environ["TF_POPLAR_FLAGS"] = syn_flags
-    train(args.num_ipus, args.batch_size, args.batch_per_step, args.num_iter, args.time_steps)
+    train(args.num_ipus, args.micro_batch_size, args.batch_per_step, args.num_iter, args.time_steps)

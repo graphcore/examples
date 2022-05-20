@@ -42,7 +42,7 @@ An example sample text and a corresponding `tfrecord` file can be found in the `
 
 **2) Configure Python virtual environment**
 
-Create a virtual environment and install the appropriate Graphcore TensorFlow 2.4 wheel from inside the SDK directory:
+Create a virtual environment and install the appropriate Graphcore TensorFlow 2.4 wheels from inside the SDK directory:
 ```shell
 virtualenv --python python3.6 .bert_venv
 source .bert_venv/bin/activate
@@ -64,7 +64,7 @@ The `tests/pretrain_tiny_test.json` file is a small model that can be used for s
 
 
 ```shell
-python run_pretraining.py tests/pretrain_tiny_test.json --dataset-dir data_utils/wikipedia/
+python run_pretraining.py --config tests/pretrain_tiny_test.json --dataset-dir data_utils/wikipedia/
 ```
 
 
@@ -89,7 +89,7 @@ Provided configs are for `BASE` and `LARGE`, tuned to run on a Graphcore IPU POD
 To run pre-training for BERT Base use the following command:
 
 ```shell
-python run_pretraining.py configs/pretrain_base_128_phase1.json
+python run_pretraining.py --config configs/pretrain_base_128_phase1.json
 ```
 Swapping the config for `pretrain_large_128.phase1.json` will train the BERT Large model. 
 The path to the dataset is specified in the config, so ensure the path is correct for your machine, or give the path directly in the command-line with `--dataset-dir /localdata/datasets/wikipedia/128/`.
@@ -106,11 +106,11 @@ Phase 2 of pre-training is done using a sequence length of 384 with the masked W
 To run pre-training phase 2 starting from a phase 1 checkpoint for BERT Base use the following command:
 
 ```shell
-python run_pretraining.py configs/pretrain_base_384_phase2.json --pretrained-ckpt-path <PATH TO PHASE 1 CHECKPOINT>
+python run_pretraining.py --config configs/pretrain_base_384_phase2.json --pretrained-ckpt-path <PATH TO PHASE 1 CHECKPOINT>
 ```
 
 
-# Fine-Tuning BERT for Question Answereing with SQuAD 1.1 <a name="large_squad"></a>
+# Fine-Tuning BERT for Question Answering with SQuAD 1.1 <a name="large_squad"></a>
 Provided are the scripts to fine-tune BERT on the Stanford Question Answering Dataset (SQuAD 1.1), a popular question answering benchmark dataset. In version 1.1 there are no unanswerable questions.
 
 To run on SQuAD, you will first need to download the dataset. The necessary training data can be found at the following link:
@@ -129,7 +129,7 @@ You should expect to see results for BERT Base approximately as:
 `{"f1": 87.97, "exact_match": 80.60}`.
 
 
-# Detailed overview of the config file format. <a name="config"></a>
+# Detailed overview of the config file format <a name="config"></a>
 The config files are how the bulk of the interaction with the model is conducted. These config files have two sections; firstly parameters that describe the model architecture (hidden layer size, number of attention heads, etc.) and differentiate between different BERT models; secondly, the parameters that describe the optimisation of the model for the IPU are given (such as batch size, loss scaling, outlining, and the pipeline configuration.)
 
 To see the available configurations for both SQuAD and pre-training see the `JSON` files in the `config/` directory, and
@@ -144,13 +144,88 @@ python3 run_squad.py --help
 For advanced users wanting to customise the models, you may wish to update the config.
 
 Key parameters to consider  if customising the model are:
-* `replicas` - the number of times to replicate the model. e.g for a 4 IPU pipeline, 4x replication will use all 16 IPUs on an IPU-POD 16
+* `replicas` - the number of times to replicate the model, e.g., for a 4 IPU pipeline, 4x replication will use all 16 
+   IPUs on an IPU-POD 16. Replicating a model is known as _data parallelism_, since each replica process a part of the 
+   batch of samples. We call _micro batch_, the number of samples processed by each replica at a time, so they have to 
+   fit in memory during the forward and backward passes; and we call _global batch_ the total number of samples  used 
+   to estimate the gradient, which can include multiple micro batches per replica. 
 * `micro_batch_size` - the size of the micro-batch that is seen by each replica
-    * `global batch size` - this is not a direct parameter in the config file, but is derived from the product `micro_batch_size * replicas * grad_acc_steps_per_replica`. This is the total number of sequences that will be processed in each batch, the loss is accumilated over these samples, and is used to compute the single gradient update step. By accumilating over multiple micro batches and over replicas it allows a much larger functional batch size to be used. 
-* `grad_acc_steps_per_replica` - the number of micro-batches that are accumulated on each replica before performing the gradient update. This allows the use of extremely large batch sizes that facilitates extremely fast training. (https://arxiv.org/pdf/1904.00962.pdf)
-* `loss_scaling` - a factor used to scale the losses and improve stability over replicated training.
-* `matmul_available_memory_proportion_per_pipeline_stage` - the available memory proportion per IPU that that `Poplar` reserves for temporary values, or intermediate sums, in operations such as matrix multiplications or convolutions. This can help the model layout and improve performance. 
-* `pipeline_stages` - a nested list describing which model blocks are placed on which IPUs. The name abbreviations are found in `model/pipeline_stage_names.py` and can be customised with different layers.
-* `device_mapping` - a list mapping each of the pipeline stages onto each physical IPUs. An example of how this can be customised can be seen in the BERT configurations where the pooler layer and the heads are placed on IPU 0 with the embeddings layer to improve performance.
+* `grad_acc_steps_per_replica` - the number of micro-batches that are accumulated on each replica before performing the 
+   gradient update. 
+* `global batch size` - this is not a direct parameter in the config file, but is derived from the product: 
+   `global_batch_size = micro_batch_size * replicas * grad_acc_steps_per_replica`. In other words, this is the total 
+   number of samples used to compute the single gradient update step. By accumulating over multiple micro batches and 
+   over multiple replicas, we can use very large batch sizes, even if they don't fit in memory, which has been proved 
+   to speed up training (see, e.g., https://arxiv.org/pdf/1904.00962.pdf). 
+* `loss_scaling` - scaling factor used to scale the losses down to improve stability when training with large global  
+   batch sizes and partial precision (float16) computations. 
+* `matmul_available_memory_proportion_per_pipeline_stage` - the available memory proportion per IPU that `Poplar` 
+   reserves for temporary values, or intermediate sums, in operations such as matrix multiplications or convolutions. 
+   Reducing the memory proportion, reduces the memory footprint which allows to fit a larger micro batch in memory; but 
+   it also constraints the `Poplar` planner, which can lead to lower throughput. 
+* `pipeline_stages` - a nested list describing which model blocks are placed on which IPUs. The name abbreviations are 
+   found in `model/pipeline_stage_names.py` and can be customised with different layers.
+* `device_mapping` - a list mapping each of the pipeline stages onto each physical IPUs. An example of how this can be 
+   customised can be seen in the BERT configurations where the _pooler_ layer and the heads are placed on IPU 0 with 
+   the embeddings layer to improve performance.
 
 
+# Multi-Host training using PopDist <a name="popdist"></a>
+As explained in section [Detailed overview of the config file format](#config) above, the `replicas` parameter allows 
+for _data parallelism_, replicating the model multiple times, such that each replica processes a part of the batch size. 
+
+BERT Large with 8 samples per replica (micro batch) fits in 4 IPUs. Hence, we can use 4 replicas in a POD16 or 16 
+replicas in a POD64. Both POD16 and POD64 are usually built in a rack system that includes a single host, hence they
+can be run by simply setting the `replica` parameter to 4 or 16, respectively.  
+
+In order to scale up to 32 or 64 replicas, we need a POD128 or a POD256, respectively, which consist of multiple (2 or
+4, respectively) rack systems, each one with at least one host.
+Hence, in addition to increase the value of the `replicas` parameter, we can use PopDist. 
+PopDist is the tool shipped with the SDK that allows to run multiple SDK instances at the same time on the same or 
+different hosts. 
+
+The script in `scripts/pretrain_distributed.sh` uses `poprun` to trains BERT for pretraining with 16, 32 or 64 replicas, 
+in a POD64 (recall this could be done without `poprun` too), a POD128, or a POD256, respectively. 
+
+
+The config  files ending with '_POD64', '_POD128', and '_POD256' have been specifically designed to 
+be trained using PopDist.
+
+Before launching this we need to set up the V-IPU cluster and eventually a V-IPU partition, the procedure for which can 
+be found in the [V-IPU user-guide](https://docs.graphcore.ai/projects/vipu-user/en/latest/). 
+We need then to set up the dataset and the SDKs, it is important that these components are found on each host in the 
+same global path. The same is valid for the virtual environment and for the `run_pretraining.py` script.
+
+Further details on how to set up `poprun`, and the arguemnts used, can be found in the 
+[docs]( https://docs.graphcore.ai/projects/poprun-user-guide/en/latest/index.html).
+The relevant set up is provided in the script given in `scripts/pretrain_distributed.sh`. This will be detailed in the 
+following section.
+
+
+## Script to train BERT Large on Graphcore IPU-POD64 <a name="popdist_script"></a>
+
+We provide a utility script to run Phase 1 and Phase 2 pre-training on an IPU-POD64 machine. This script manages the 
+config and checkpoints required for both phases of pre-training.
+This can be executed as:
+
+``` shell
+./scripts/pretrain_distributed.sh <MODEL> <CONFIG> <VIPU_CLUSTER_NAME> <VIPU_PARTITION_NAME> <VIPU_HOST> <HOSTS>
+```
+
+`MODEL`: One of 'base' or 'large'.
+
+`CONFIG`: One of 'POD64' or 'POD128'.
+
+`VIPU_CLUSTER_NAME`: The name of the cluster in the POD. It can be obtained with `$ vipu list partition`, 
+once logged in the POD.
+
+`VIPU_PARTITION_NAME` : The name of the partition of the POD. It can be obtained with `$ vipu list partition`, 
+once logged in the POD.
+
+`VIPU_HOST`: IP address of VIPU host. Once logged in the POD, the host name can be obtained with 
+`$ vipu --server-version`; then the IP can be obtained with `host <hostname>`. 
+
+`HOSTS`: Space separated list of IP addresses where the instances will be run.
+
+Inside this script the ssh keys will be copied across the hosts                                                                                                                                                                                                                                                                                                                                                                                                                                          , as will the files in the BERT directory, as well as 
+SDKs. Ensure your directory structure aligns with that used in the script, including the path to the wikipedia dataset.

@@ -28,7 +28,7 @@ class CheckpointCallback(tf.keras.callbacks.Callback):
 
         if (batch + 1) % self.ckpt_period == 0:
             filepath = os.path.join(self.checkpoint_dir,
-                                    f'_epoch_{self.epochs_since_last_save}_global_batch_{self.global_batch_counter}.h5')
+                                    f'epoch_{self.epochs_since_last_save}_global_batch_{self.global_batch_counter}.h5')
             self.model.save_weights(filepath)
 
         self.global_batch_counter += 1

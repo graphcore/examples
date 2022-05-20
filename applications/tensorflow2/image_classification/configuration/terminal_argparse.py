@@ -7,6 +7,7 @@ from precision import Precision
 from tensorflow.python.ipu.ops import pipelining_ops
 from schedules.scheduler_builder import AVAILABLE_SCHEDULERS
 from optimizers.optimizer_factory import AVAILABLE_OPTIMIZERS
+from ipu_config import AVAILABLE_SR_OPTIONS
 
 
 def add_arguments(parser):
@@ -25,6 +26,8 @@ def add_arguments(parser):
                         help='If true, it will save weights to files at each callback')
     parser.add_argument('--checkpoint-dir', type=str, default=None,
                         help='Path to checkpoints, if no argument is provided, directory /tmp/checkpoints_current_time/ will be used')
+    parser.add_argument('--ckpt-all-instances', type=str_to_bool, nargs='?', const=True, default=False,
+                        help='Allow all instances to create a checkpoint. By default only local instance 0 does checkpointing.')
     parser.add_argument('--clean-dir', type=str_to_bool, nargs='?', const=True, default=True,
                         help='If true, it will delete the checkpoint directory (and all the files inside)')
 
@@ -37,6 +40,8 @@ def add_arguments(parser):
                         help='Name of model to use')
     parser.add_argument('--eight-bit-transfer', type=str_to_bool, nargs="?", const=True, default=False,
                         help='Enable/disable input transfer in 8 bit')
+    parser.add_argument('--synthetic-data', type=str, default=None,
+                        help='Enable usage of synthetic data on the host or ipu. Corresponding options are \'host\' or \'ipu\'')
 
     # Training parameter arguments
     parser.add_argument('--training', type=str_to_bool, nargs="?", const=True, default=True,
@@ -45,7 +50,7 @@ def add_arguments(parser):
                         help="Micro batch size, in number of samples")
     parser.add_argument('--num-epochs', type=int, default=1,
                         help="Number of training epochs")
-    parser.add_argument('--logs-per-epoch', type=float, default=1,
+    parser.add_argument('--logs-per-epoch', type=str_to_float, default='1',
                         help="Logging frequency, per epoch")
     parser.add_argument('--weight-updates-per-epoch', type=int, default=-1,
                         help="number of weight updates per run on the device for one epoch")
@@ -79,8 +84,11 @@ def add_arguments(parser):
     parser.add_argument('--accelerator-side-preprocess', type=str_to_bool, nargs="?", const=True, default=False,
                         help='When enabled some preprocessing steps (depending on the chosen dataset), are run '
                              'on the accelerator rather on the host.')
-    parser.add_argument('--stochastic-rounding', type=str_to_bool, nargs='?', const=True, default=True,
-                        help='Enable/disable stochastic rounding.')
+    parser.add_argument('--accelerator-side-reduction', type=str_to_bool, nargs="?", const=True, default=False,
+                        help='Requires distributed training. When enabled the reduction over replicas for logging '
+                             'is performed on the device rather than the host.')
+    parser.add_argument('--stochastic-rounding', type=str, default='ON', choices=AVAILABLE_SR_OPTIONS.keys(),
+                        help='Enable one of three different stochastic rounding modes: ON, OFF or RI (Replica Identical).')
     parser.add_argument('--optimizer-state-offloading', type=str_to_bool, nargs='?', const=True, default=True,
                         help='Enable/disable the offloading of the optimizer state to the IPU remote memory.')
     parser.add_argument('--fp-exceptions', type=str_to_bool, nargs='?', const=True, default=False,
@@ -100,12 +108,15 @@ def add_arguments(parser):
                         help='Distributed Batch Norm (DBN) option specifies how many replicas to aggregate the batch statistics across. '
                              'DBN is disabled when ==1. It can be enabled only if model fits on a single ipu (num ipus per replica ==1), '
                              'model is replicated (num replicas > 1) and replication factor is divisible by dbn replica group size.')
-    parser.add_argument('--bn-momentum', type=float, default=0.97,
-                        help='Batch Norm moving statistics momentum.')
     parser.add_argument('--label-smoothing', type=float, default=None,
                         help='Smoothing factor added to each zero label')
     parser.add_argument('--pipeline-num-parallel', type=int, default=48,
                         help='Number of images to process in parallel on the host side.')
+    parser.add_argument('--norm-layer', type=yaml.safe_load, default='{"name": "custom_batch_norm", "momentum": 0.97}',
+                        help='Type of normalisation layer to use. When using group norm specify either num_groups or channels_per_group. '
+                             'When using batch norm specify momentum.')
+    parser.add_argument('--fused-preprocessing', type=str_to_bool, nargs='?', const=True, default=False,
+                        help='Use fused operations for preprocessing images on device.')
 
     # Poplar optimizations
     parser.add_argument('--half-partials', type=str_to_bool, nargs='?', const=True, default=False,
@@ -128,12 +139,18 @@ def add_arguments(parser):
     # Evaluation and logging choice arguments
     parser.add_argument('--wandb', type=str_to_bool, nargs="?", const=True, default=False,
                         help='Enable/disable logging to Weights & Biases')
+    parser.add_argument('--wandb-params', type=yaml.safe_load, default='{}',
+                        help='Parameters to configure Weights & Biases. Available options include "project_name" and "run_name", '
+                        'passed a dictionary --wandb-params \'{"entity": <str>, "project_name": <str>, "run_name": <str>, "tags": [<str>, ...]}\'.')
     parser.add_argument('--validation', type=str_to_bool, nargs="?", const=True, default=True,
                         help='Enable/disable validation')
     parser.add_argument('--validation-micro-batch-size', type=int, default=None,
                         help="Validation micro batch size, in number of samples")
     parser.add_argument('--validation-num-replicas', type=int, default=None,
                         help="Number of validation replicas")
+    parser.add_argument('--pipeline-validation-model', type=str_to_bool, nargs="?", const=True, default=False,
+                        help='Reuse the training pipeline splits for validation')
+
     return parser
 
 
@@ -146,3 +163,23 @@ def str_to_bool(value):
     elif value.lower() in {'true', 't', '1', 'yes', 'y', 'on'}:
         return True
     raise argparse.ArgumentTypeError(f'{value} is not a valid boolean value')
+
+
+def str_to_float(frac_str):
+
+    list_string = frac_str.split('/')
+
+    if len(list_string) == 1:
+        return float(list_string[0])
+
+    elif len(list_string) == 2:
+        try:
+            num, denom = float(list_string[0]), float(list_string[1])
+        except:
+            raise argparse.ArgumentTypeError(
+                f'Could not parse {frac_str} as a fraction. The fraction numerator or denominator could be missing or one of those could not be parsed as a floating point number.')
+
+        return num / denom
+
+    else:
+        raise argparse.ArgumentTypeError(f'Number should be provided as float or fraction like a/b')

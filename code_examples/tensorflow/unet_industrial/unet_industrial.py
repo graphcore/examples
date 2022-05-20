@@ -251,7 +251,7 @@ def create_estimator(args):
     cfg.floating_point_behaviour.inv = True
     cfg.floating_point_behaviour.div0 = True
     cfg.floating_point_behaviour.oflo = True
-    cfg.floating_point_behaviour.esr = bool(args.stochastic_rounding)
+    cfg.floating_point_behaviour.esr = ipu.config.StochasticRoundingBehaviour.from_bool(bool(args.stochastic_rounding))
     cfg.floating_point_behaviour.nanoo = True
 
     cfg.optimizations.maximum_cross_replica_sum_buffer_size = 20000000

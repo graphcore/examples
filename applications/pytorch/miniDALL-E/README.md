@@ -51,14 +51,24 @@ The captions files are generated in ./data/COCO/train2017\_captions.
 
 Setup your environment as explained above. You can run mini DALL-E training on MS COCO 2017 datasets.
 
-MS COCO training:
+For training on M2000:
 ```console
 python train.py --config L16
 ```
 
+For training on POD16:
+```console
+python train.py --config L16_POD16
+```
+
+For training on POD64:
+```console
+python train.py --config L16_POD64
+```
+
 Afterwards run text-image generation, for example:
 ```console
-python generate.py --dalle_path ./output/ckpt/dalle_199.pt --text "A plate of food has potatoes and fruit." --outputs_dir ./output --bpe_path models/bpe/bpe_yttm_vocab.txt
+python generate.py --dalle_path ./output/ckpt/dalle_799.pt --text "A plate of food has potatoes and fruit." --outputs_dir ./output --bpe_path models/bpe/bpe_yttm_vocab.txt
 ```
 
 ## Run the unit test

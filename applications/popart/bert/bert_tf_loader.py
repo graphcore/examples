@@ -238,7 +238,7 @@ def load_initializers_from_tf(
     task
 ):
     """
-    Loads weights, etc. from Tensorflow files into a dictionary of Numpy Arrays.
+    Loads weights, etc. from TensorFlow files into a dictionary of Numpy Arrays.
 
     Can read either checkpoint files, or frozen graphs, according to the
     `is_checkpoint` flag, passed in as the second argument.
@@ -264,7 +264,7 @@ def load_model_from_tf(
     task
 ):
     """
-    Loads weights, etc. from Tensorflow files into the Graphcore IPU BERT
+    Loads weights, etc. from TensorFlow files into the Graphcore IPU BERT
     implementation.
 
     Can read either checkpoint files, or frozen graphs, according to the

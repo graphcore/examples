@@ -20,11 +20,16 @@ import tensorflow as tf
 from tensorflow.python.ipu.ops import embedding_ops
 from transformers.models.bert.modeling_tf_bert import (
     shape_list,
-    TFBertEmbeddings,
+    TFBertEmbeddings
 )
 
 
 class IpuTFBertEmbeddings(TFBertEmbeddings):
+    """Modified IpuTFBertEmbeddings object that contains a serialized
+       input embedding to improve memory layout. This is used in
+       conjuntion with the IpuTFBertLMPredictionHead which uses the input
+       embeddings weights in a serialized matmul. For best results, the
+       serialization factor should be the same in both cases."""
 
     def __init__(self, config, serialization_factor=1, **kwargs):
         super().__init__(config, **kwargs)

@@ -82,7 +82,7 @@ class TestBatchConfig:
                                    dataset_size=16,
                                    global_batches_per_log=1)
         assert batch_config.num_micro_batches_per_epoch == 8
-        assert batch_config.steps_per_execution == 4
+        assert batch_config.steps_per_execution == 2
         assert batch_config.epochs == 28803072
         assert batch_config.total_num_micro_batches == 230424576
 
@@ -92,7 +92,7 @@ class TestBatchConfig:
                                    dataset_size=16,
                                    global_batches_per_log=2)
         assert batch_config.num_micro_batches_per_epoch == 8
-        assert batch_config.steps_per_execution == 8
+        assert batch_config.steps_per_execution == 4
         assert batch_config.epochs == 28803072
         assert batch_config.total_num_micro_batches == 230424576
 
@@ -102,7 +102,7 @@ class TestBatchConfig:
                                    dataset_size=18,
                                    global_batches_per_log=2)
         assert batch_config.num_micro_batches_per_epoch == 8
-        assert batch_config.steps_per_execution == 8
+        assert batch_config.steps_per_execution == 4
         assert batch_config.total_num_micro_batches == 204821840
 
     def test_raise_error_for_no_phase(self):
@@ -112,3 +112,18 @@ class TestBatchConfig:
                         gradient_accumulation_count=2,
                         dataset_size=40,
                         task=Task.OTHER)
+
+    def test_raise_error_for_incompatible_pipeline_grad_acc(self):
+        # Num pipeline stages of 1 is allowed
+        BatchConfig(micro_batch_size=1,
+                    num_replicas=1,
+                    gradient_accumulation_count=2,
+                    num_pipeline_stages=1,
+                    dataset_size=40)
+        # Num pipeline stages greater than 1 is not allowed
+        with pytest.raises(ValueError):
+            BatchConfig(micro_batch_size=1,
+                        num_replicas=1,
+                        gradient_accumulation_count=2,
+                        num_pipeline_stages=2,
+                        dataset_size=40)

@@ -9,14 +9,16 @@ from pathlib import Path
 import shutil
 import random
 import import_helper
+from io import BytesIO
+from PIL import Image
 from datasets.augmentations import AugmentationModel
-from datasets.preprocess import IgnoreBboxIfPresent, NormalizeToTensor, RandomResizedFlipCrop, get_preprocessing_pipeline
-from datasets.webdataset_format import DistributeNode, match_preprocess
+from datasets.preprocess import IgnoreBboxIfPresent, NormalizeToTensor, get_preprocessing_pipeline
 from datasets.dataset import get_data, _WorkerInit
-from datasets.create_webdataset import parse_transforms
 import models
 from models.models import NormalizeInputModel
 from utils import run_script, get_current_interpreter_executable
+from datasets.optimised_jpeg import ExtendedTurboJPEG
+import turbojpeg
 
 
 class TestCustomAugmentations():
@@ -33,15 +35,6 @@ class TestCustomAugmentations():
         tensor = to_tensor(img) * 255.0  # Make sure the image is the same
         return img, tensor
 
-    def test_custom_flip(self):
-        """
-        Compares original and fast flip.
-        """
-        tensor = torch.rand(1, 3, 100, 100)
-        custom = RandomResizedFlipCrop.fast_hflip(tensor)
-        correct = transforms.functional.hflip(tensor)
-        assert torch.allclose(custom, correct, atol=1e-06)
-
     def test_NormalizeToTensor_pil(self):
         """
         Check the fused normalise+ToTensor steps against the original.
@@ -53,26 +46,15 @@ class TestCustomAugmentations():
         correct = correct_pipeline(img)
         assert torch.allclose(custom, correct, atol=1e-06)
 
-    def test_RandomResizedFlipCrop_pil(self):
-        """
-        Check the fused RandomResizedCrop+RandomFlip steps against the separate one.
-        """
-        img, tensor = TestCustomAugmentations._generate_img()
-        correct_pipeline = transforms.Compose([transforms.RandomResizedCrop(224), transforms.RandomHorizontalFlip(), transforms.ToTensor()])
-        custom_pipeline = transforms.Compose([RandomResizedFlipCrop(224), transforms.ToTensor()])
-        RandomResizedFlipCrop.get_params = self.deterministic_get_params
-        transforms.RandomResizedCrop.get_params = self.deterministic_get_params
-        torch.manual_seed(0)
-        custom = custom_pipeline(img)
-        torch.manual_seed(0)
-        correct = correct_pipeline(img)
-        assert torch.allclose(custom, correct, atol=1e-06)
 
     def test_inference_pipeline(self):
         """
         Compare original validation pipeline against the optimised one.
         """
         img, tensor = TestCustomAugmentations._generate_img(256)
+        jpeg_stream = BytesIO()
+        img.save(jpeg_stream, format='JPEG')
+        jpeg_stream = jpeg_stream.getvalue()
         ground_truth_preprocess = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
@@ -82,6 +64,7 @@ class TestCustomAugmentations():
         preprocess = get_preprocessing_pipeline(train=False, input_size=224, half_precision=False, normalize=True)
         result_img = preprocess(img)
         result_tensor = preprocess(tensor)
+        result_stream = preprocess(jpeg_stream)
         ground_truth = ground_truth_preprocess(img)
         assert torch.allclose(result_img, ground_truth, atol=1e-06)  # reference vs custom(img)
         assert torch.allclose(result_img, result_tensor, atol=1e-06)  # custom(img) vs custom(tensor)
@@ -96,22 +79,6 @@ class TestCustomAugmentations():
         preprocess((tensor, "bbox"))
         preprocess(tensor)
 
-
-    def test_RandomResizedFlipCrop_tensor(self):
-        img = torch.randint(low=0, high=255, size=(3, 256, 256), dtype=torch.uint8)
-        correct_pipeline = transforms.Compose([transforms.ToPILImage(),
-                                               transforms.RandomResizedCrop(100),
-                                               transforms.RandomHorizontalFlip(),
-                                               transforms.ToTensor(),
-                                               transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-        custom_pipeline = transforms.Compose([RandomResizedFlipCrop(100), NormalizeToTensor(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-        RandomResizedFlipCrop.get_params = self.deterministic_get_params
-        transforms.RandomResizedCrop.get_params = self.deterministic_get_params
-        torch.manual_seed(0)
-        custom = custom_pipeline(img)
-        torch.manual_seed(0)
-        correct = correct_pipeline(img)
-        assert torch.allclose(custom, correct, atol=1e-06)
 
     def test_ipu_side_normalization(self):
         img_host = torch.rand(3, 100, 100) * 255.0
@@ -320,118 +287,10 @@ def test_input_8bit(dataset, precision):
     assert result_normal.type() == result_8bit.type()
 
 
-def test_chunk_distribution():
-    """ Test the distributed webdataset, whether all the chunks are used.
-    """
-    nodes = []
-    urls = ["chunk{}".format(i) for i in range(1251)]
-    remaining = ["remain{}".format(i) for i in range(8)]
-    for i in range(8):
-        nodes.append(DistributeNode(remaining, i, 8))
-    for epoch in range(10):
-        splitted_url = []
-        for node_id in range(8):
-            splitted_url += nodes[node_id](urls)
-        assert len(splitted_url) == 8 + 1248
-        url_set = set(splitted_url)
-        for i in range(1248):
-            assert "chunk{}".format(i) in url_set
-        for i in range(8):
-            assert "remain{}".format(i) in url_set
-
-
-class TestWebDataset:
-    def test_webdataset_creation(self):
-        raw_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_raw")
-        converted_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("test_cifar10_webdata_creation")
-        # create train folder from validation
-        if not os.path.exists(os.path.join(raw_path, "train")):
-            shutil.copytree(os.path.join(raw_path, "validation"), os.path.join(raw_path, "train"))
-        run_script("datasets/create_webdataset.py", f"--source {raw_path} --target {converted_path} --shuffle --seed 0 --format tensor --samples-per-shard 200")
-        out = run_script("datasets/validate_dataset.py", f"--imagenet-data-path {converted_path}")
-        num_files = len(os.listdir(converted_path))
-        shutil.rmtree(converted_path)
-        shutil.rmtree(os.path.join(raw_path, "train"))
-        assert "Dataset OK." in out
-        assert num_files == 2 * 50 + 1
-
-    def test_webdataset_preprocess(self):
-        pipeline = parse_transforms(["Resize(200)", "CenterCrop(100)"])
-        assert len(pipeline) == 2
-        assert isinstance(pipeline[0], type(transforms.Resize(200)))
-        assert vars(pipeline[0]) == vars(transforms.Resize(200))
-        assert isinstance(pipeline[1], type(transforms.CenterCrop(100)))
-        assert vars(pipeline[1]) == vars(transforms.CenterCrop(100))
-
-
-    def test_webdataset_distribution(self):
-        """Smoke test for distributed webdataset generation.
-        """
-        webdata_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_webdata")
-        distributed_folder = os.path.join(webdata_path, "distributed", "8-instances")
-        if os.path.exists(distributed_folder):
-            shutil.rmtree(distributed_folder)
-        run_script("datasets/distributed_webdataset.py", f"--target {webdata_path} --num-instances 8")
-        assert os.path.exists(distributed_folder)
-        num_files = len(os.listdir(distributed_folder))
-        shutil.rmtree(distributed_folder)
-
-        assert num_files == 2 * 8
-
-
-    def test_webdata_cache(self):
-        """Test cache for webdata
-        """
-        class HelperClass:
-            def __init__(self):
-                pass
-        args = HelperClass()
-        args.precision = "16.16"
-        args.model = 'resnet50'
-        args.device_iterations = 1
-        args.replicas = 1
-        args.batch_size = 31
-        args.dataloader_worker = 8
-        args.normalization_location = 'ipu'
-        args.eight_bit_io = False
-        args.webdataset_percentage_to_use = 100
-        args.data = "imagenet"
-        args.webdataset_memory_cache_ratio = 0.8
-        args.imagenet_data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_webdata")
-
-        dataloader = get_data(args, poptorch.Options(), train=False, async_dataloader=True, return_remaining=True)
-        total_samples = 0
-        for data, label in dataloader:
-            total_samples += label.size()[0]
-        assert total_samples == 10000
-
-
-@pytest.mark.parametrize("first_step", ["", "Resize(200)", "Resize(256)"])
-@pytest.mark.parametrize("second_step", ["", "CenterCrop(224)"])
-def test_preprocess_match(first_step, second_step):
-    """
-    The webdataset may contain augmentations. Check wether the duplicated preprocessing steps are removed from the pipeline.
-    """
-    first_step = [] if first_step == "" else [first_step]
-    second_step = [] if second_step == "" else [second_step]
-    done_transform = first_step + second_step
-    pipeline = get_preprocessing_pipeline(train=False, input_size=224, half_precision=False, normalize=True)
-    len_pipeline = len(pipeline.transforms)
-    modified_pipeline = match_preprocess(pipeline, done_transform)
-    if len(first_step) == 0 or first_step[0] != "Resize(256)":
-        assert len_pipeline == len(modified_pipeline.transforms)
-    else:
-        if len(second_step) == 0:
-            assert len_pipeline - 1 == len(modified_pipeline.transforms)
-        else:
-            assert len_pipeline - 2 == len(modified_pipeline.transforms)
-
-
 @pytest.mark.parametrize("async_dataloader", [True, False])
 @pytest.mark.parametrize("return_remaining", [True, False])
-@pytest.mark.parametrize("data_type", ["raw", "webdata"])
 @pytest.mark.parametrize("num_instances", [1, 4])
-def test_get_data(async_dataloader, return_remaining, data_type, num_instances):
+def test_get_data(async_dataloader, return_remaining, num_instances):
     """
     Check whether all the samples are used.
     """
@@ -447,12 +306,7 @@ def test_get_data(async_dataloader, return_remaining, data_type, num_instances):
     args.dataloader_worker = 8
     args.normalization_location = 'ipu'
     args.eight_bit_io = False
-    args.webdataset_percentage_to_use = 100
-    if data_type == "webdata":
-        args.data = "imagenet"
-        args.imagenet_data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10_webdata")
-    else:
-        args.data = 'cifar10'
+    args.data = 'cifar10'
     lengths = []
     for instance_id in range(num_instances):
         opts = poptorch.Options()
@@ -514,3 +368,21 @@ def test_random_raw(random_generator, instances):
             elements.append(int(item))
     assert len(elements) == len(set(elements))
     assert len(augments) == len(set(augments))  # all augmentations must be unique
+
+
+class TestJpeg:
+    def test_crop_decode(self):
+        jpeg_decoder = ExtendedTurboJPEG()
+        test_img_path = os.path.abspath(os.path.dirname(__file__)) + "/../data/images/zebra.jpg"
+        with open(test_img_path, 'rb') as jpeg_file:
+            img = jpeg_file.read()
+
+        turbo_crop_img = jpeg_decoder.crop_decode(img, 40, 80, 80, 120)
+        turbo_crop_img = transforms.ToTensor()(turbo_crop_img)
+
+        img_array = jpeg_decoder.decode(img, pixel_format = turbojpeg.TJPF_RGB, flags=turbojpeg.TJFLAG_FASTUPSAMPLE | turbojpeg.TJFLAG_FASTDCT)
+        pil_crop_img = Image.fromarray(img_array)
+        pil_crop_img = pil_crop_img.convert("RGB")
+        pil_crop_img = transforms.ToTensor()(pil_crop_img)
+        pil_crop_img = transforms.functional.crop(pil_crop_img, 40, 80, 80, 120)
+        assert torch.allclose(turbo_crop_img, pil_crop_img, atol=1e-02, rtol=1e-02)

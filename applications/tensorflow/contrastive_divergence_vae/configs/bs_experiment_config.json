@@ -3,7 +3,7 @@
         {
             "args": {
                 "_evaluate": true,
-                "batch_size": 16,
+                "micro_batch_size": 16,
                 "data": {
                     "formats": {
                         "np": "np.float32",
@@ -31,10 +31,10 @@
                 },
                 "save_checkpoints": true,
                 "testing": {
-                    "batch_size_te": 128,
-                    "iwae_samples_te_batch_size": 50,
-                    "n_epoch_freq_te": 10000,
-                    "n_iwae_samples_te": 20000,
+                    "micro_batch_size_test": 128,
+                    "iwae_samples_test_micro_batch_size": 50,
+                    "n_epoch_freq_test": 10000,
+                    "n_iwae_samples_test": 20000,
                     "mcmc": {
                         "use_train_step_size_init": false,
                         "hmc_step_size_init": 0.05,

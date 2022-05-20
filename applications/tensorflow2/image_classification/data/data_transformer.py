@@ -2,10 +2,15 @@
 
 import tensorflow as tf
 from tensorflow.python.ops import math_ops
+from tensorflow.python import ipu
 import logging
 
 from . import imagenet_processing
 from custom_exceptions import UnsupportedFormat, DimensionError
+
+
+IMAGENET_NORMALISATION_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_NORMALISATION_STD = [0.229, 0.224, 0.225]
 
 
 class DataTransformer:
@@ -61,6 +66,7 @@ class DataTransformer:
                 f'Data dimension is not the one supported (2) {ds.element_spec}')
 
         ds = DataTransformer.cache_shuffle(ds, buffer_size, is_training, seed)
+
         preprocess_fn = cifar_preprocess_training_fn if is_training else cifar_preprocess_inference_fn
 
         if accelerator_side_preprocess:
@@ -89,7 +95,6 @@ class DataTransformer:
 
         ds = ds.map(lambda x, y: (cifar_preprocess_map_func(x), tf.cast(y, tf.int32)),
                     num_parallel_calls=pipeline_num_parallel)
-        accelerator_side_preprocess_fn = preprocess_fn if accelerator_side_preprocess is True else None
         return ds, accelerator_side_preprocess_fn
 
     @staticmethod
@@ -98,9 +103,17 @@ class DataTransformer:
                                is_training,
                                accelerator_side_preprocess=True,
                                pipeline_num_parallel=48,
+                               fused_preprocessing=False,
                                seed=None):
 
-        preprocessing_fn = imagenet_preprocess_training_fn if is_training else imagenet_preprocess_inference_fn
+        if fused_preprocessing is True and accelerator_side_preprocess is False:
+            raise ValueError('Fused preprocessing can only be done on the IPU. Please enable preprocessing on the IPU.')
+
+        if fused_preprocessing:
+            preprocessing_fn = imagenet_fused_preprocess_training_fn if is_training else imagenet_fused_preprocess_inference_fn
+        else:
+            preprocessing_fn = imagenet_preprocess_training_fn if is_training else imagenet_preprocess_inference_fn
+
         if accelerator_side_preprocess:
             host_side_preprocess_fn = None
             accelerator_side_preprocess_fn = preprocessing_fn
@@ -122,12 +135,22 @@ def _image_normalisation(image, mean, std, scale=255):
     return (image / scale - mean) / std
 
 
+def _fused_image_normalisation(image, mean, std, scale=1/255.):
+    mean = tf.cast(mean, dtype=image.dtype)
+    invstd = tf.cast([1./value for value in std], dtype=image.dtype)
+    return ipu.image_ops.normalise_image(image, mean, invstd, scale)
+
+
 def _imagenet_normalize(image):
-    IMAGENET_NORMALISATION_MEAN = [0.485, 0.456, 0.406]
-    IMAGENET_NORMALISATION_STD = [0.229, 0.224, 0.225]
     return _image_normalisation(image,
                                 IMAGENET_NORMALISATION_MEAN,
                                 IMAGENET_NORMALISATION_STD)
+
+
+def _imagenet_fused_normalize(image):
+    return _fused_image_normalisation(image,
+                                      IMAGENET_NORMALISATION_MEAN,
+                                      IMAGENET_NORMALISATION_STD)
 
 
 def _cifar_normalize(image):
@@ -140,8 +163,16 @@ def imagenet_preprocess_training_fn(image):
     return _imagenet_normalize(image)
 
 
+def imagenet_fused_preprocess_training_fn(image):
+    return _imagenet_fused_normalize(image)
+
+
 def imagenet_preprocess_inference_fn(image):
     return _imagenet_normalize(image)
+
+
+def imagenet_fused_preprocess_inference_fn(image):
+    return _imagenet_fused_normalize(image)
 
 
 def cifar_preprocess_training_fn(image):

@@ -47,6 +47,156 @@ def is_qkv_tensor(tensor_name):
     return False
 
 
+def convert_apps_ckpt_to_research(
+    ckpt_file,
+    output_dir,
+    num_embed_split,
+    vocab_size,
+    use_attention_bias,
+    use_qkv_bias,
+    use_cls_layer,
+    baseline,
+    dtype
+):
+    saved_variables = []
+    qkv = {'query': {}, 'key': {}, 'value': {}}
+    glu_weight = {'value': {}, 'gate': {}}
+    glu_bias = {'value': {}, 'gate': {}}
+
+    def add_variable(old_tensor, new_tensor):
+        logging.info(f"{old_tensor} -> {new_tensor}")
+        saved_variables.append(new_tensor)
+
+    graph = tf.Graph()
+    reader = pywrap_tensorflow.NewCheckpointReader(ckpt_file)
+    var_to_shape_map = reader.get_variable_to_shape_map()
+
+    with graph.as_default():
+        sess = tf.compat.v1.Session()
+        for old_tensor_name in sorted(var_to_shape_map):
+            # Filter out the optimizer variables
+            if 'global_step' in old_tensor_name:
+                continue
+            if filter_optimizer(old_tensor_name):
+                continue
+            if not use_cls_layer and "transform" in old_tensor_name:
+                logging.info("Discarding dense layer before MLM loss.")
+                continue
+            if not use_attention_bias and "output/dense/bias" in old_tensor_name:
+                logging.info("Discarding attention biases.")
+                continue
+
+            this_tensor_dtype = tf.float16
+            if 'cls/predictions/output_bias' in old_tensor_name:
+                this_tensor_dtype = tf.float32
+
+            tensor_value = tf.cast(reader.get_tensor(old_tensor_name), dtype=this_tensor_dtype)
+
+            new_name = old_tensor_name
+
+            new_name = 'all/' + new_name
+
+            if "Norm" in new_name:
+                new_name = new_name.replace("LayerNorm", "GroupNorm")
+
+            if "/layer_" in new_name and "encoder" in new_name:
+
+                if new_name.endswith('kernel') and '/dwconv/' not in new_name:
+                    new_name = new_name.replace("dense/kernel", "weight")
+                    new_name = new_name.replace("kernel", "weight")
+                if new_name.endswith('dense/bias'):
+                    new_name = new_name.replace("dense/bias", "bias")
+
+                if '/feed_forward_' in new_name:
+                    new_name = new_name.replace("feed_forward_", "boom")
+
+                    if '/intermediate/' in new_name:
+                        new_name = new_name.replace("/intermediate/", "/up/")
+                    if '/output/mixer/' in new_name:
+                        new_name = new_name.replace("/output/mixer/", "/mixer/")
+                    if '/output/' in new_name and '/output/mixer/' not in new_name:
+                        new_name = new_name.replace("/output/", "/down/")
+
+                    if baseline:
+                        raise NotImplementedError
+
+                if '/attention/' in new_name:
+                    new_name = new_name.replace("attention/projection", "attention/output")
+                    new_name = new_name.replace("/self/", "/qkv/")
+                    layer_num = int(new_name.split('layer_')[1].split('/')[0])
+                    if '/qkv/' in new_name and 'weight' in new_name:
+                        if 'query' in new_name:
+                            qkv['query'][layer_num] = tensor_value
+                        if 'key' in new_name:
+                            qkv['key'][layer_num] = tensor_value
+                        if 'value' in new_name:
+                            qkv['value'][layer_num] = tensor_value
+                        continue
+
+                    if '/qkv/' in new_name and '/key/bias' in new_name:
+                        continue
+
+                    if baseline:
+                        raise NotImplementedError
+
+
+                if '/convolution/' in new_name:
+                    new_name = new_name.replace("/convolution/", "/conv/")
+                    layer_num = int(new_name.split('layer_')[1].split('/')[0])
+
+                    if "/pre/glu/" in new_name:
+                        if '/values/' in new_name and 'weight' in new_name:
+                            glu_weight['value'][layer_num] = tensor_value
+                        if '/values/' in new_name and 'bias' in new_name:
+                            glu_bias['value'][layer_num] = tensor_value
+                        if '/gates/' in new_name and 'weight' in new_name:
+                            glu_weight['gate'][layer_num] = tensor_value
+                        if '/gates/' in new_name and 'bias' in new_name:
+                            glu_bias['gate'][layer_num] = tensor_value
+                        continue
+
+            elif new_name.startswith("all/GroupNorm"):
+                new_name = new_name.replace("all/", "all/bert/encoder/post_layers/")
+
+            elif "word_embeddings" in new_name and num_embed_split == 2:
+                vocab_dim = tensor_value.shape[0] // 2
+                top = tensor_value[:vocab_dim]
+                bottom = tensor_value[vocab_dim:]
+                top_name = new_name.replace("/word_embeddings", "/s0/word_embeddings")
+                bottom_name = new_name.replace("/word_embeddings", "/s1/word_embeddings")
+                top_var = tf.Variable(top, name=top_name)
+                bottom_var = tf.Variable(bottom, name=bottom_name)
+                add_variable(old_tensor_name, top_var)
+                add_variable(old_tensor_name, bottom_var)
+                continue
+
+            new_var = tf.Variable(tensor_value, name=new_name)
+            add_variable(old_tensor_name, new_var)
+
+        for n in range(len(qkv['query'])):
+            qkv_var = tf.concat([qkv['query'][n], qkv['key'][n], qkv['value'][n]], axis=-1)
+            new_var = tf.Variable(qkv_var, name=f"all/bert/encoder/layer_{n}/attention/qkv/weight")
+            add_variable(qkv['query'][n], new_var)
+
+        if not baseline:
+            for n in range(len(glu_weight['value'])):
+                glu_weight_tensor = tf.concat([glu_weight['value'][n], glu_weight['gate'][n]], axis=-1)
+                glu_bias_tensor = tf.concat([glu_bias['value'][n], glu_bias['gate'][n]], axis=-1)
+                glu_weight_var = tf.Variable(glu_weight_tensor, name=f"all/bert/encoder/layer_{n}/conv/pre/weight")
+                glu_bias_var = tf.Variable(glu_bias_tensor, name=f"all/bert/encoder/layer_{n}/conv/pre/bias")
+                add_variable(glu_weight['value'][n], glu_weight_var)
+                add_variable(glu_bias['value'][n], glu_bias_var)
+
+        sess.run(tf.compat.v1.global_variables_initializer())
+        saver = tf.compat.v1.train.Saver()
+        _dir_name, ckpt_name = os.path.split(ckpt_file)
+        output_file = os.path.join(output_dir, ckpt_name)
+        saver.save(sess, output_file)
+
+        num_params = np.sum([np.prod(v.shape) for v in saved_variables])
+        print(f"Number of parameters saved: {num_params}")
+
+
 def convert_research_ckpt_to_apps(
     ckpt_file,
     output_dir,
@@ -387,7 +537,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("action",
                         type=str,
-                        choices=["graphcore2google", "google2graphcore", "research2apps"],
+                        choices=["graphcore2google", "google2graphcore", "research2apps", "apps2research"],
                         help="""Type of conversion between models""")
     parser.add_argument("checkpoint_path",
                         type=str,
@@ -481,6 +631,19 @@ if __name__ == "__main__":
 
     elif args.action.lower() == "research2apps":
         convert_research_ckpt_to_apps(
+            args.checkpoint_path,
+            args.output_dir,
+            num_embed_split=args.num_embeddings_splits,
+            vocab_size=args.vocab_size,
+            use_attention_bias=args.use_attention_bias,
+            use_qkv_bias=args.use_qkv_bias,
+            use_cls_layer=args.use_cls_layer,
+            baseline=args.baseline,
+            dtype=precision_type,
+        )
+
+    elif args.action.lower() == "apps2research":
+        convert_apps_ckpt_to_research(
             args.checkpoint_path,
             args.output_dir,
             num_embed_split=args.num_embeddings_splits,

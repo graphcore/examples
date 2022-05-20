@@ -145,8 +145,6 @@ def run_py(proto: onnx.ModelProto,
         request_ipus,
         connectionType=popart.DeviceConnectionType.OnDemand,
         selectionCriterion=popart.DeviceSelectionCriterion.Random)
-    if device is None:
-        raise Exception("Failed to acquire IPU.")
 
     print("Compiling graph")
     if optimizer is not None:

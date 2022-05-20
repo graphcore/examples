@@ -13,9 +13,15 @@
 # limitations under the License.
 
 from torch import float16, float32
-from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
-from transformers import get_constant_schedule
-from poptorch.optim import SGD
+from poptorch.optim import SGD, Adam, LAMB
+from transformers import (get_constant_schedule,
+                          get_cosine_schedule_with_warmup,
+                          get_linear_schedule_with_warmup)
+
+data_types = {
+    'fp16': float16,
+    'fp32': float32
+}
 
 
 def get_lr_scheduler(optimizer,
@@ -52,17 +58,37 @@ def get_optimizer(config, model):
         {"params": non_regularized_params, "weight_decay": 0}
     ]
 
-    first_order_type = float16 if config.enable_half_first_order_momentum else float32
-
     if config.optimizer == "SGD":
         optimizer = SGD(params,
                         lr=config.learning_rate,
                         momentum=config.momentum,
                         weight_decay=config.weight_decay,
                         loss_scaling=config.loss_scaling,
-                        accum_type=float16,
-                        velocity_accum_type=first_order_type,
-                        use_combined_accum=False)
+                        accum_type=data_types[config.accum_type],
+                        velocity_accum_type=data_types[config.first_order_type],
+                        use_combined_accum=config.use_combined_accum)
+    elif config.optimizer == "Adam":
+        optimizer = Adam(params,
+                         lr=config.learning_rate,
+                         betas=None if config.adam_betas is None else (config.adam_betas[0], config.adam_betas[1]),
+                         weight_decay=config.weight_decay,
+                         eps=config.adam_eps,
+                         loss_scaling=config.loss_scaling,
+                         accum_type=data_types[config.accum_type],
+                         first_order_momentum_accum_type=data_types[config.first_order_type],
+                         second_order_momentum_accum_type=data_types[config.second_order_type])
+    elif config.optimizer == "LAMB":
+        optimizer = LAMB(params,
+                         lr=config.learning_rate,
+                         betas=None if config.adam_betas is None else (config.adam_betas[0], config.adam_betas[1]),
+                         weight_decay=config.weight_decay,
+                         eps=config.adam_eps,
+                         loss_scaling=config.loss_scaling,
+                         max_weight_norm=None,
+                         accum_type=data_types[config.accum_type],
+                         first_order_momentum_accum_type=data_types[config.first_order_type],
+                         second_order_momentum_accum_type=data_types[config.second_order_type],
+                         bias_correction=config.bias_correction)
     else:
         raise ValueError("Unknown Optimizer:", config.optimizer)
     return optimizer

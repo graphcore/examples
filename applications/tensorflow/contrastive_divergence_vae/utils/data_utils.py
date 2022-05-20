@@ -84,7 +84,7 @@ def flatten_2d_images(img_array):
 def load_binarised_mnist_data():
     """
     Load the dataset of pre-randomly-binarised MNIST, as originally released by Larochelle and Murray, 2011
-    (http://www.dmi.usherb.ca/~larocheh/publications/aistats2011_nade.pdf).
+    (http://proceedings.mlr.press/v15/larochelle11a/larochelle11a.pdf).
 
     Returns:
         tuple[np.array]: train set and test set
@@ -112,14 +112,14 @@ def load_binarised_mnist_data():
            (test, -1 * np.ones((test.shape[0],)))
 
 
-def make_iterator_from_np(np_arrays, batch_size, shuffle=True, shuffle_buffer=50000, rand_binarise=True,
+def make_iterator_from_np(np_arrays, micro_batch_size, shuffle=True, shuffle_buffer=50000, rand_binarise=True,
                           drop_remain=True, repeat=True):
     """
     Converts a numpy array to a tensorflow initialisable iterator over batches
 
     Args:
         np_arrays (np.array): dict of numpy arrays to split into batches. {'x': <input_array>, 'y': <outputs>}
-        batch_size (int): how many samples in each batch
+        micro_batch_size (int): how many samples in each batch
         shuffle (bool): whether to shuffle data
         shuffle_buffer (int): how many samples in buffer for shuffling, if `shuffle` is True
         rand_binarise (bool): whether to dynamically binarise data
@@ -131,9 +131,9 @@ def make_iterator_from_np(np_arrays, batch_size, shuffle=True, shuffle_buffer=50
     Returns:
         tuple: iterator.get_next() operator, iterator.initializer operator
     """
-    def _random_binarisation(i, x_batch, y_batch):
+    def _random_binarisation(i, x_batch, y_micro_batch):
         runif = tf.random_uniform(tf.shape(x_batch), 0., 1., dtype=x_batch.dtype)
-        return i, tf.cast(runif <= x_batch, x_batch.dtype), y_batch
+        return i, tf.cast(runif <= x_batch, x_batch.dtype), y_micro_batch
 
     # Zip index of training examples, which will be shuffled consistently with data
     tf_data = tf.data.Dataset.from_tensor_slices((np.arange(0, np_arrays['x'].shape[0], dtype=np.int32),
@@ -145,7 +145,7 @@ def make_iterator_from_np(np_arrays, batch_size, shuffle=True, shuffle_buffer=50
             tf_data = tf_data.apply(tf.data.experimental.shuffle_and_repeat(shuffle_buffer))
         else:
             tf_data = tf_data.repeat()
-    tf_data_batched = tf_data.batch(batch_size, drop_remainder=drop_remain)
+    tf_data_batched = tf_data.batch(micro_batch_size, drop_remainder=drop_remain)
 
     if rand_binarise:
         # Dynamic binarisation as introduced by Wu et al, 2016,

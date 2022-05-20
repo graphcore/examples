@@ -1,20 +1,4 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# This file has been modified by Graphcore Ltd.
 import os
 from pathlib import Path
 
@@ -24,7 +8,8 @@ import tensorflow as tf
 from tensorflow.python import ipu
 from transformers import BertConfig
 from transformers.models.bert.modeling_tf_bert import TFBertForPreTraining
-from transformers.modeling_tf_utils import shape_list
+from transformers.modeling_tf_utils import (TFMaskedLanguageModelingLoss,
+                                            TFNextSentencePredictionLoss)
 
 from model.convert_bert_model import convert_tf_bert_model, post_process_bert_input_layer
 from model.ipu_pretraining_model import gather_positions, IpuTFBertForPreTraining
@@ -33,42 +18,6 @@ from model.losses import mlm_loss, nsp_loss
 from model.pipeline_stage_names import PIPELINE_ALLOCATE_PREVIOUS, PIPELINE_NAMES
 from utilities.assign_pipeline_stages import PipelineStagesAssigner
 from utilities.ipu_utils import set_random_seeds
-
-
-def hf_mlm_compute_loss(labels, logits):
-    """
-    Adapted to our dataset with labels with non-masked-tokens marker=0.
-    """
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
-        from_logits=True, reduction=tf.keras.losses.Reduction.NONE
-    )
-    masked_lm_active_loss = tf.not_equal(tf.reshape(tensor=labels["mlm_long_labels"], shape=(-1,)), 0)
-    masked_lm_reduced_logits = tf.boolean_mask(
-        tensor=tf.reshape(tensor=logits[0], shape=(-1, shape_list(logits[0])[2])),
-        mask=masked_lm_active_loss,
-    )
-    masked_lm_labels = tf.boolean_mask(
-        tensor=tf.reshape(tensor=labels["mlm_long_labels"], shape=(-1,)), mask=masked_lm_active_loss
-    )
-    masked_lm_loss = loss_fn(y_true=masked_lm_labels, y_pred=masked_lm_reduced_logits)
-    masked_lm_loss = tf.reduce_mean(input_tensor=masked_lm_loss)
-    return masked_lm_loss
-
-
-def hf_nsp_compute_loss(labels, logits):
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
-        from_logits=True, reduction=tf.keras.losses.Reduction.NONE
-    )
-    next_sentence_active_loss = tf.not_equal(tf.reshape(tensor=labels["next_sentence_label"], shape=(-1,)), -100)
-    next_sentence_reduced_logits = tf.boolean_mask(
-        tensor=tf.reshape(tensor=logits[1], shape=(-1, 2)), mask=next_sentence_active_loss
-    )
-    next_sentence_label = tf.boolean_mask(
-        tensor=tf.reshape(tensor=labels["next_sentence_label"], shape=(-1,)), mask=next_sentence_active_loss
-    )
-    next_sentence_loss = loss_fn(y_true=next_sentence_label, y_pred=next_sentence_reduced_logits)
-    next_sentence_loss = tf.reduce_mean(input_tensor=next_sentence_loss)
-    return next_sentence_loss
 
 
 def get_path():
@@ -83,9 +32,12 @@ def load_dataset(micro_batch_size,
                                          dataset_dir=dataset_dir,
                                          max_seq_length=seq_length,
                                          max_predictions_per_seq=20,
-                                         distributed_worker_count=1,
+                                         vocab_size=30400,
                                          seed=42,
                                          data_type=tf.float16,
+                                         distributed_worker_count=1,
+                                         distributed_worker_index=1,
+                                         generated_dataset=False,
                                          test=True)
     iterator = iter(dataset)
     sample = next(iterator)
@@ -112,12 +64,11 @@ class TestConvertHFToFunctionalBertPretraining:
         with cls.strategy.scope():
 
             config = BertConfig(
-                vocab_size=30528,
+                vocab_size=30400,
                 num_hidden_layers=4,
                 num_attention_heads=4,
                 hidden_size=256,
                 intermediate_size=768,
-                max_predictions_per_seq=cls.max_predictions_per_seq,
             )
 
             set_random_seeds(seed=42)
@@ -138,7 +89,12 @@ class TestConvertHFToFunctionalBertPretraining:
                 post_process_bert_input_layer,
                 replace_layers=True,
                 use_outlining=True,
-                embedding_serialization_factor=2
+                embedding_serialization_factor=2,
+                use_prediction_bias=True,
+                use_cls_layer=True,
+                use_qkv_bias=True,
+                use_qkv_split=True,
+                use_projection_bias=True
             )
             cls.functional_model.compile(loss={'mlm___cls': mlm_loss, 'nsp___cls': nsp_loss})
             cls.func_outputs = cls.functional_model(cls.sample_inputs)
@@ -179,22 +135,45 @@ class TestConvertHFToFunctionalBertPretraining:
         )
 
     def test_inference_losses(self):
-        labels = {
-            "mlm_labels": self.sample_labels[0],
-            "next_sentence_label": self.sample_labels[1],
-            "mlm_long_labels": self.sample_labels[2]
-        }
-
-        orig_mlm_loss = hf_mlm_compute_loss(labels, self.orig_outputs)
-        orig_nsp_loss = hf_nsp_compute_loss(labels, self.orig_outputs)
-        orig_loss = orig_mlm_loss + orig_nsp_loss
-
-        func_mlm_loss = self.functional_model.loss['mlm___cls'](labels["mlm_labels"], self.func_outputs[0])
-        func_nsp_loss = self.functional_model.loss['nsp___cls'](labels["next_sentence_label"], self.func_outputs[1])
+        # Get the losses from our loss functions
+        func_mlm_loss = self.functional_model.loss['mlm___cls'](self.sample_labels[0], self.func_outputs[0])
+        func_nsp_loss = self.functional_model.loss['nsp___cls'](self.sample_labels[1], self.func_outputs[1])
         func_loss = func_mlm_loss + func_nsp_loss
 
-        np.testing.assert_almost_equal(orig_mlm_loss, func_mlm_loss, decimal=5)
-        np.testing.assert_almost_equal(orig_nsp_loss, func_nsp_loss, decimal=5)
+        # Map the labels to the format expected by the original loss functions
+        # Replace `0`s in mlm labels with `-100`s
+        def replace_elements(tensor, replace, replace_with):
+            mask = tf.equal(tensor, replace)
+            replace = tf.reshape(
+                tf.multiply(tf.ones(tf.size(tensor), tf.int32), replace_with),
+                tensor.shape)
+            return tf.where(mask, replace, tensor)
+
+        # Check separate loss function implementations
+        # Check MLM loss function
+        orig_mlm_loss = TFMaskedLanguageModelingLoss().compute_loss(
+            replace_elements(self.sample_labels[2], 0, -100),
+            self.orig_outputs["prediction_logits"])
+        # Mean reduce is not part of this loss function, so must be
+        # applied separately.
+        orig_mlm_loss = tf.reduce_mean(orig_mlm_loss)
+        np.testing.assert_almost_equal(orig_mlm_loss,
+                                       func_mlm_loss,
+                                       decimal=5)
+
+        # Check NSP loss function
+        orig_nsp_loss = TFNextSentencePredictionLoss().compute_loss(
+            self.sample_labels[1],
+            self.orig_outputs["seq_relationship_logits"])
+        # Mean reduce is not part of this loss function, so must be
+        # applied separately.
+        orig_nsp_loss = tf.reduce_mean(orig_nsp_loss)
+        np.testing.assert_almost_equal(orig_nsp_loss,
+                                       func_nsp_loss,
+                                       decimal=5)
+
+        # Check the separate losses summed
+        orig_loss = orig_mlm_loss + orig_nsp_loss
         np.testing.assert_almost_equal(orig_loss, func_loss, decimal=5)
 
 
@@ -218,7 +197,12 @@ class TestAssignPipelineStages:
                 sample_inputs,
                 post_process_bert_input_layer,
                 replace_layers=True,
-                use_outlining=True
+                use_outlining=True,
+                use_prediction_bias=True,
+                use_cls_layer=True,
+                use_qkv_bias=True,
+                use_qkv_split=True,
+                use_projection_bias=True
             )
 
     @pytest.mark.parametrize(

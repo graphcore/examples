@@ -34,6 +34,13 @@ from src.trainer import Trainer
 from src.utils.lr_scheduler import WarmupLR
 from src.utils.checkpoint import CheckPoint
 
+import popdist
+import popdist.poptorch
+import horovod.torch as hvd
+import ctypes
+import os
+
+
 
 def load_yaml(yaml_file):
     args = yaml.safe_load(open(yaml_file, 'r'))
@@ -101,21 +108,32 @@ class Workflow:
     def build_ipu_options(self, is_train=True):
         ipu_args = self.args['ipu_options']
         if is_train:
-            self.ipu_options = poptorch.Options()
-            self.ipu_options.replicationFactor(ipu_args['num_replicas'])
+            if popdist.isPopdistEnvSet():
+                hvd.init()
+                self.ipu_options = popdist.poptorch.Options(ipus_per_replica=4)
+                self.args['popdist_replicas'] = int(popdist.getNumLocalReplicas())
+                self.args['popdist_rank'] = popdist.getInstanceIndex()
+                self.args['NumInstances'] = popdist.getNumInstances()
+                self.ipu_options.randomSeed(1965)
+            else:
+                self.args['NumInstances'] = 1
+                self.ipu_options = poptorch.Options()
+                self.ipu_options.replicationFactor(ipu_args['num_replicas'])
+                self.ipu_options.outputMode(poptorch.OutputMode.Sum)
+
             self.ipu_options.autoRoundNumIPUs(True)
             self.ipu_options.deviceIterations(ipu_args['batches_per_step'])
             self.ipu_options.Training.gradientAccumulation(ipu_args['gradient_accumulation'])
             self.ipu_options.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
-            self.ipu_options.outputMode(poptorch.OutputMode.All)
             self.ipu_options.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
             self.ipu_options.setAvailableMemoryProportion({f'IPU{i}': ipu_args['available_memory_proportion'] for i in range(len(self.args['pipeline']) + 1)})
             self.ipu_options.TensorLocations.setOptimizerLocation(
                 poptorch.TensorLocationSettings()
                 .useOnChipStorage(not ipu_args['optimizer_state_offchip'])
-                .useReplicatedTensorSharding(ipu_args['replicated_tensor_sharding'])
+                .useReplicatedTensorSharding(ipu_args['replicated_tensor_sharding'] and ipu_args['num_replicas'] > 1)
             )
-
+            if ipu_args['num_io_tiles'] != 0:
+                self.ipu_options.TensorLocations.numIOTiles(ipu_args['num_io_tiles'])
             if ipu_args['executable_cache_dir']: self.ipu_options.enableExecutableCaching(ipu_args['executable_cache_dir'])
             if ipu_args['enable_stochastic_rounding']: self.ipu_options.Precision.enableStochasticRounding(True)
             if ipu_args['enable_half_partials']: self.ipu_options.Precision.setPartialsType(torch.float16)
@@ -149,13 +167,16 @@ class Workflow:
             # When #shouldDelayVarUpdates is true, the other ops in the proximity of the delayed var updates may inherit the -inf schedule priority used to delay the var updates.
             self.ipu_options._Popart.set('scheduleNonWeightUpdateGradientConsumersEarly', True)
             self.ipu_options._Popart.setPatterns({'TiedGather': True, 'TiedGatherAccumulate': True, 'UpdateInplacePrioritiesForIpu': True})
+            if 'compile_only' in self.args['ipu_options']:
+                if self.args['ipu_options']['compile_only']:
+                    self.ipu_options.useOfflineIpuTarget()
         else:
             self.ipu_options = poptorch.Options()
             self.ipu_options.replicationFactor(ipu_args['num_replicas'])
             self.ipu_options.autoRoundNumIPUs(True)
             self.ipu_options.deviceIterations(ipu_args['batches_per_step'])
             self.ipu_options.Training.gradientAccumulation(1)
-            self.ipu_options.outputMode(poptorch.OutputMode.All)
+            self.ipu_options.outputMode(poptorch.OutputMode.Sum)
             self.ipu_options.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
             self.ipu_options.setAvailableMemoryProportion({f'IPU{i}': ipu_args['available_memory_proportion'] for i in range(len(self.args['pipeline']) + 1)})
 
@@ -185,21 +206,22 @@ class Workflow:
         else:
             self.is_spec_aug = False
             collate_fn = CollateFn(self.vocab.sos_id, self.vocab.eos_id, self.is_spec_aug, self.args['val_dataset']['dtype'])
+        async_mode = self.args['train_iterator'].pop('async_mode', None)
         self.train_iterator = poptorch.DataLoader(
             self.ipu_options,
             dataset=self.train_dataset,
             collate_fn=collate_fn,
-            mode=poptorch.DataLoaderMode.Async,
-            shuffle=True,
+            mode= poptorch.DataLoaderMode.Async if async_mode else poptorch.DataLoaderMode.Sync,
+            shuffle=False if self.use_generate else True,
             **self.args['train_iterator'],
         )
         if not self.use_generate:
+            async_mode = self.args['val_iterator'].pop('async_mode', None)
             self.val_iterator = poptorch.DataLoader(
                 self.ipu_options,
                 dataset=self.val_dataset,
                 collate_fn=collate_fn,
-                mode=poptorch.DataLoaderMode.Async,
-                shuffle=True,
+                mode= poptorch.DataLoaderMode.Async if async_mode else poptorch.DataLoaderMode.Sync,
                 **self.args['val_iterator'],
             )
 

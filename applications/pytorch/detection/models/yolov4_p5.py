@@ -12,7 +12,7 @@ from models.head.yolov4_head import Yolov4Head
 from models.neck.yolov4_p5 import Yolov4P5Neck
 from models.layers import Mish
 from utils.anchors import AnchorBoxes
-from utils.postprocessing import PredictionsPostProcessing
+from utils.postprocessing import IPUPredictionsPostProcessing
 
 
 class PreprocessTargets(nn.Module):
@@ -204,7 +204,7 @@ class Yolov4P5(Detector):
         else:
             specific_mode_parameters = cfg.inference
             self.nms = specific_mode_parameters.nms
-            self.ipu_post_process = PredictionsPostProcessing(specific_mode_parameters, self.cpu_mode)
+            self.ipu_post_process = IPUPredictionsPostProcessing(specific_mode_parameters, self.cpu_mode)
 
         cfg = cfg.model
 

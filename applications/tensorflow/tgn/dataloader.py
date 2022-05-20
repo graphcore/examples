@@ -160,7 +160,7 @@ class Data:
         return map(self._pad_batch, self.unpadded_batches(partition))
 
     def dataset(self, partition: str) -> tf.data.Dataset:
-        """A Tensorflow dataset of batches."""
+        """A TensorFlow dataset of batches."""
         return tf.data.Dataset.from_generator(
             functools.partial(self.batches, partition=partition),
             {key: dtype

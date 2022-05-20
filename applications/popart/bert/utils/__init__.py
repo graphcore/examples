@@ -294,7 +294,7 @@ def parse_bert_args(args_string=None):
     group = parser.add_argument_group("Initialisation Config", "Flags for initialising the weights")
     group = group.add_mutually_exclusive_group()
     group.add_argument("--tf-checkpoint", type=str,
-                       help="Path to Tensorflow Checkpoint to initialise the model.")
+                       help="Path to TensorFlow Checkpoint to initialise the model.")
     group.add_argument("--onnx-checkpoint", type=str,
                        help="Path to .onnx file created by this application to initialise the model.")
     group.add_argument("--wandb-checkpoint", type=str,
@@ -380,6 +380,8 @@ def parse_bert_args(args_string=None):
     group.add_argument('--internal-exchange-optimisation-target', type=str, default=None,
                        choices=["balanced", "cycles", "memory"],
                        help="The optimisation approach for internal exchanges.")
+    group.add_argument("--buffering-depth", type=int, default=3,
+                       help="Set value for default buffering depth.")
 
     group = parser.add_argument_group("Logging Config")
     group.add_argument("--report-hw-cycle-count", action="store_true",

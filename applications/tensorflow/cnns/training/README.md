@@ -222,7 +222,7 @@ validation accuracy in 65 epochs.
 
     python train.py --model resnet --model-size 50 --dataset imagenet --data-dir .../imagenet-data \
     --shards 4 --replicas 4 --micro-batch-size 4 --gradient-accumulation-count 64 --epochs 65 \
-    --pipeline --pipeline-splits b1/2/relu b2/3/relu b3/5/relu --pipeline-schedule Grouped \
+    --pipeline --pipeline-splits stage1/unit3/relu stage2/unit4/relu stage3/unit6/relu --pipeline-schedule Grouped \
     --enable-recomputation --optimiser momentum --momentum 0.90 --ckpts-per-epoch 1 \
     --max-cross-replica-buffer-size 100000000 --available-memory-proportion 0.6 0.6 0.6 0.6 0.6 0.6 0.16 0.2 \
     --internal-exchange-optimisation-target balanced --normalise-input --stable-norm \
@@ -274,7 +274,7 @@ For example, to check inference for EfficientNet use:
     python validation.py --model efficientnet --model-size B0 --dataset imagenet --micro-batch-size 8 \
     --generated-data --repeat 10 --batch-norm
 
-There is also a possibility to run inference using the [embedded application runtime](https://docs.graphcore.ai/projects/tensorflow1-user-guide/en/latest/embedded_application_runtime.html#ipu-embedded-application-runtime) which allows us to save a
+There is also a possibility to run inference using the [embedded application runtime](https://docs.graphcore.ai/projects/tensorflow1-user-guide/en/latest/tensorflow/embedded_application_runtime.html#ipu-embedded-application-runtime) which allows us to save a
 precompiled graph to a file and skip the compilation in the subsequent runs. It can be tested
 using the `inference_embedded.py` script. Each time the script is executed it looks for the
 precompiled graph in the working directory, then loads it and executes for the given number of

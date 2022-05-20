@@ -51,9 +51,11 @@ def train_settings(args, opts):
         elif args.recompute_mode == "manual":
             opts._Popart.set("autoRecomputation", int(popart.RecomputationType.RecomputeAll))
 
-    if args.offload_optimizer:
-        tensor_location = poptorch.TensorLocationSettings().useOnChipStorage(False)
-        opts.TensorLocations.setOptimizerLocation(tensor_location)
+    if args.offload_optimizer or args.enable_optimizer_rts:
+        location_settings = poptorch.TensorLocationSettings()
+        location_settings.useOnChipStorage(not args.offload_optimizer)
+        location_settings.useReplicatedTensorSharding(args.enable_optimizer_rts)
+        opts.TensorLocations.setOptimizerLocation(location_settings)
 
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
 
@@ -61,7 +63,7 @@ def train_settings(args, opts):
     if len(args.available_memory_proportion) == 1:
         opts.setAvailableMemoryProportion({f'IPU{i}': args.available_memory_proportion[0] for i in range(num_stages)})
     elif len(args.available_memory_proportion) > 1:
-            opts.setAvailableMemoryProportion({f'IPU{i}': amp for i, amp in enumerate(args.available_memory_proportion)})
+        opts.setAvailableMemoryProportion({f'IPU{i}': amp for i, amp in enumerate(args.available_memory_proportion)})
 
     opts.outputMode(poptorch.OutputMode.Sum)
     return opts

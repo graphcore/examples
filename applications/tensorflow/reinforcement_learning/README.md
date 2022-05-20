@@ -38,7 +38,7 @@ The following files are included in this repo:
    Install the Poplar SDK following the the instructions in the Getting Started guide for your IPU system.
    Make sure to run the enable.sh script and activate a Python virtualenv with the tensorflow-1 wheel from the Poplar SDK installed.
 2. Run the training program.
-   `python3 rl_benchmark.py --batch_size 8 --time_steps 16 --num_ipus 8`
+   `python3 rl_benchmark.py --micro_batch_size 8 --time_steps 16 --num_ipus 8`
 
 Use `--help` to show all available options.
 

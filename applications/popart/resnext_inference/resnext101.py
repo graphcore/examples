@@ -115,8 +115,6 @@ def main(argv):
     deviceManager = popart.DeviceManager()
     device = deviceManager.acquireAvailableDevice(1)
     print(f"{device}\n")
-    if device is None:
-        raise Exception("Not enough IPUs available.")
 
     session = popart.InferenceSession(
         fnModel=proto,

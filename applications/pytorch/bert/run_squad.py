@@ -40,15 +40,20 @@ def main():
         elif not config.replicated_tensor_sharding:
             logger("[warning] With replicated_tensor_sharding=False you may need to set "
                    "embedding_serialization_factor > 1 for the model to fit")
-    samples_per_step = config.batches_per_step * config.micro_batch_size * \
+
+    samples_per_step = config.device_iterations * config.micro_batch_size * \
         config.gradient_accumulation * config.replication_factor
     do_training = config.squad_do_training
     do_validation = config.squad_do_validation
     opts = get_options(config)
     opts.outputMode(poptorch.OutputMode.All)
 
-    logger("Loading Dataset...")
-    datasets = load_dataset("squad")
+    squad_v2 = config.squad_v2
+    dataset_name = "squad_v2" if squad_v2 else "squad"
+    config.dataset = dataset_name
+
+    logger("Loading Dataset {} ...".format(dataset_name))
+    datasets = load_dataset(dataset_name)
     train_dataset = datasets["train"]
 
     # Create train features from dataset
@@ -143,10 +148,10 @@ def main():
 
     if do_validation:
         config.micro_batch_size = 2
-        config.batches_per_step = 16
+        config.device_iterations = 16
         config.gradient_accumulation = 1
         config.replication_factor = 1
-        samples_per_step = config.batches_per_step * config.micro_batch_size * \
+        samples_per_step = config.device_iterations * config.micro_batch_size * \
             config.gradient_accumulation * config.replication_factor
         opts = get_options(config)
         opts.outputMode(poptorch.OutputMode.All)
@@ -185,10 +190,13 @@ def main():
         raw_predictions[1] = torch.vstack(raw_predictions[1]).float().numpy()
         final_predictions = postprocess_qa_predictions(datasets["validation"],
                                                        validation_features,
-                                                       raw_predictions)
-        metric = load_metric("squad")
-        formatted_predictions = [{"id": k, "prediction_text": v}
-                                 for k, v in final_predictions.items()]
+                                                       raw_predictions,
+                                                       squad_v2=squad_v2)
+        metric = load_metric(dataset_name)
+        if squad_v2:
+            formatted_predictions = [{"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in final_predictions.items()]
+        else:
+            formatted_predictions = [{"id": k, "prediction_text": v} for k, v in final_predictions.items()]
         references = [{"id": ex["id"], "answers": ex["answers"]}
                       for ex in datasets["validation"]]
         metrics = metric.compute(predictions=formatted_predictions, references=references)

@@ -6,18 +6,28 @@ import pytest
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Dropout, LayerNormalization
 from tensorflow.python import ipu
-from tensorflow.python.ipu.keras.layers import Dropout as IpuDropout
-from tensorflow.python.ipu.keras.layers import LayerNormalization as IpuLayerNormalization
-from tensorflow.python.ipu.keras.layers import SerialDense
+from ipu_tensorflow_addons.keras.layers import Dropout as IpuDropout
+from ipu_tensorflow_addons.keras.layers import LayerNormalization as IpuLayerNormalization
+from ipu_tensorflow_addons.keras.layers import SerialDense
 from tensorflow.python.keras.utils.layer_utils import count_params
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_tf_bert import (
     TFBertEmbeddings,
     TFBertLMPredictionHead,
+    TFBertSelfOutput,
+    TFBertSelfAttention
 )
-
+from model.convert_bert_model import (
+    copy_weights_layer_with_input_shape_hidden_states_func,
+    copy_lm_prediction_head_weights_func,
+    copy_self_attention_weights_func,
+    copy_self_output_weights_func
+)
+from model.ipu_custom_keras_layers import IpuDropoutCustom, IpuLayerNormCustom
+from model.ipu_self_output import IpuTFBertSelfOutput
 from model.ipu_embeddings_layer import IpuTFBertEmbeddings
 from model.ipu_lm_prediction_head import IpuTFBertLMPredictionHead
+from model.ipu_self_attention import IpuTFBertSelfAttention
 from utilities.ipu_utils import set_random_seeds
 from keras_extensions.model_transformations import (
     convert_to_functional,
@@ -28,8 +38,10 @@ from keras_extensions.model_transformations import (
 )
 from tests.utils import (
     create_sample,
-    get_bert_embeddings_model,
-    get_bert_lm_prediction_head_model,
+    EmbeddingModel,
+    LMPredictionHeadModel,
+    TFBertSelfOutputModel,
+    SelfAttentionModel
 )
 
 
@@ -143,13 +155,28 @@ def func_model_with_multiple_custom_subclass_and_heads(batch_size):
 
 def func_model_tf_bert_embeddings(batch_size, len_seq, config):
     sample = create_sample(batch_size, len_seq)
-    model = get_bert_embeddings_model(TFBertEmbeddings, config)
+    model = EmbeddingModel(config, TFBertEmbeddings)
     model = convert_to_functional(model, sample)
     return model, sample
 
 
 def func_model_tf_bert_lm_prediction_head(batch_size, len_seq, config, model):
     sample = np.random.rand(batch_size, len_seq, config.hidden_size)
+    model = LMPredictionHeadModel(config, TFBertLMPredictionHead)
+    model = convert_to_functional(model, sample)
+    return model, sample
+
+
+def func_model_tf_bert_self_output(batch_size, len_seq, config):
+    sample = np.random.rand(batch_size, len_seq, config.hidden_size)
+    model = TFBertSelfOutputModel(config, TFBertSelfOutput, batch_size, len_seq)
+    model = convert_to_functional(model, sample)
+    return model, sample
+
+
+def func_model_tf_bert_self_attention(batch_size, len_seq, config):
+    sample = np.random.rand(batch_size, len_seq, config.hidden_size)
+    model = SelfAttentionModel(config, TFBertSelfAttention)
     model = convert_to_functional(model, sample)
     return model, sample
 
@@ -258,6 +285,25 @@ def test_replace_standard_layers_in_custom_layer():
         check_replace_layers(to_replace_dict, func_model_with_custom_subclass)
 
 
+@pytest.mark.parametrize('func', [
+    func_model_with_dense,
+    func_model_with_dense_dropout_and_layer_normalization,
+    func_model_with_no_dense,
+])
+def test_replace_standard_layers_with_extended_keras_layers(func):
+    to_replace_dict = {
+        Dropout: {'new_class': IpuDropoutCustom},
+        LayerNormalization: {'new_class': IpuLayerNormCustom}
+    }
+
+    cfg = ipu.config.IPUConfig()
+    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
+    cfg.configure_ipu_system()
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+        check_replace_layers(to_replace_dict, func)
+
+
 def test_replace_custom_layer():
     batch_size = 32
 
@@ -287,16 +333,18 @@ def test_replace_embeddings():
     config = BertConfig()
 
     def copy_weights_tf_bert_embeddings(layer, new_layer):
-        new_layer.build((batch_size, sequence_length, new_layer.hidden_size))
-        new_layer.set_weights(layer.get_weights())
+        copy_weights_layer_with_input_shape_hidden_states_func(layer, new_layer, batch_size, sequence_length)
 
     set_random_seeds()
     to_replace_dict = {
         TFBertEmbeddings: {
             "new_class": IpuTFBertEmbeddings,
-            "new_params": {"config": config, "serialization_factor": 2},
+            "new_params": {
+                "config": config,
+                "serialization_factor": 2,
+            },
             "copy_weights": True,
-            "copy_weights_func": copy_weights_tf_bert_embeddings
+            "copy_weights_func": copy_weights_tf_bert_embeddings,
         }
     }
     model_func_args = {"len_seq": sequence_length, "config": config}
@@ -316,19 +364,26 @@ def test_replace_lm_prediction_head():
     """
     batch_size = 2
     sequence_length = 128
+    use_cls_layer = True
+    use_prediction_bias = True
     config = BertConfig()
-
     cfg = ipu.config.IPUConfig()
     cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
 
-        model = get_bert_lm_prediction_head_model(config, TFBertLMPredictionHead)
+        model = LMPredictionHeadModel(config, TFBertLMPredictionHead)
 
         def copy_weights_tf_bert_lm_prediction_head(layer, new_layer):
-            new_layer.build((batch_size, sequence_length, new_layer.hidden_size))
-            new_layer.set_weights(layer.get_weights())
+            copy_lm_prediction_head_weights_func(
+                layer,
+                new_layer,
+                batch_size,
+                sequence_length,
+                use_cls_layer,
+                use_prediction_bias
+            )
 
         set_random_seeds()
         to_replace_dict = {
@@ -337,6 +392,8 @@ def test_replace_lm_prediction_head():
                 "new_params": {
                     "config": config,
                     "input_embeddings": lambda: model.embedding,
+                    "use_prediction_bias": use_prediction_bias,
+                    "use_cls_layer": use_cls_layer,
                     "serialization_factor": 2,
                 },
                 "copy_weights": True,
@@ -352,38 +409,128 @@ def test_replace_lm_prediction_head():
                              batch_size)
 
 
+@pytest.mark.parametrize("use_qkv_bias_flag, use_qkv_split_flag", [(True, True), (False, True)])
+def test_replace_self_attention(use_qkv_bias_flag, use_qkv_split_flag):
+    """
+    Replace a model with a TFBertSelfAttention layer.
+    :return: None
+    """
+    batch_size = 2
+    sequence_length = 128
+    use_qkv_bias = use_qkv_bias_flag
+    use_qkv_split = use_qkv_split_flag
+    config = BertConfig()
+    cfg = ipu.config.IPUConfig()
+    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
+    cfg.configure_ipu_system()
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+
+        def copy_weights_tf_bert_self_attention(layer, new_layer):
+            copy_self_attention_weights_func(layer, new_layer, use_qkv_bias, use_qkv_split)
+
+        set_random_seeds()
+        to_replace_dict = {
+            TFBertSelfAttention: {
+                "new_class": IpuTFBertSelfAttention,
+                "new_params": {
+                    "config": config,
+                    "use_qkv_bias": use_qkv_bias,
+                    "use_qkv_split": use_qkv_split},
+                "copy_weights": True,
+                "copy_weights_func": copy_weights_tf_bert_self_attention
+            },
+        }
+        model_func_args = {"len_seq": sequence_length,
+                           "config": config}
+        check_replace_layers(to_replace_dict,
+                             func_model_tf_bert_self_attention,
+                             model_func_args,
+                             batch_size)
+
+
+def test_replace_self_output():
+    """
+    Replace a model with a TFBertSelfOutput layer.
+    :return: None
+    """
+    batch_size = 2
+    sequence_length = 128
+    use_projection_bias = True
+    config = BertConfig()
+    cfg = ipu.config.IPUConfig()
+    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
+    cfg.configure_ipu_system()
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+
+        def copy_weights_self_output(layer, new_layer):
+            copy_self_output_weights_func(layer, new_layer, batch_size, sequence_length, use_projection_bias)
+
+        set_random_seeds()
+        to_replace_dict = {
+            TFBertSelfOutput: {
+                "new_class": IpuTFBertSelfOutput,
+                "new_params": {
+                    "config": config,
+                    "use_projection_bias": use_projection_bias,
+                },
+                "copy_weights": True,
+                "copy_weights_func": copy_weights_self_output
+            },
+        }
+        model_func_args = {"len_seq": sequence_length,
+                           "config": config}
+        check_replace_layers(to_replace_dict,
+                             func_model_tf_bert_self_output,
+                             model_func_args,
+                             batch_size)
+
+
 def check_replaced_layers_are_trackable(to_replace_dict,
                                         model_func,
                                         model_func_args=dict(),
                                         batch_size=32):
     model, _ = model_func(batch_size=batch_size, **model_func_args)
-    model.compile()
 
-    def append_original_ref(layer, list_of_layers):
+    def append_id(layer, list_of_layers, to_replace_dict, cond):
         if layer.submodules:
             for submodule in layer.submodules:
-                if any(isinstance(submodule, key) for key in to_replace_dict):
+                if cond(to_replace_dict, submodule):
                     list_of_layers.append(id(submodule))
-                append_original_ref(submodule, list_of_layers_for_replacing)
+                append_id(submodule, list_of_layers, to_replace_dict, cond)
 
     list_of_layers_for_replacing = []
-    append_original_ref(model, list_of_layers_for_replacing)
+    append_id(model,
+              list_of_layers_for_replacing,
+              to_replace_dict,
+              lambda to_replace_dict, submodule: any(isinstance(submodule, key)
+                                                     for key in to_replace_dict))
 
     model_replacing = ModelReplacing(to_replace_dict)
     new_outputs, _ = model_replacing.get_outputs_processed_model(model, 'all')
     new_model = tf.keras.Model(model.inputs, new_outputs)
-    new_model.compile()
+
+    list_of_new_layers = []
+    append_id(new_model,
+              list_of_new_layers,
+              to_replace_dict,
+              lambda to_replace_dict, submodule: any(isinstance(submodule, v["new_class"])
+                                                     for v in to_replace_dict.values()))
 
     for trackable_reference in new_model._trackable_saver._graph_view._breadth_first_traversal()[0]:
         assert id(trackable_reference) not in list_of_layers_for_replacing
+    for new_layer in list_of_new_layers:
+        assert new_layer in [id(t_ref) for t_ref in new_model._trackable_saver._graph_view._breadth_first_traversal()[0]]
 
 
 @pytest.mark.parametrize("func", [
     func_model_with_no_dense,
     func_model_with_dense,
     func_model_with_custom_subclass,
+    func_model_with_dense_dropout_and_layer_normalization,
 ])
-def test_replaced_layer_is_trackable(func):
+def test_replaced_standard_layer_is_trackable(func):
     to_replace_dict = {
         LayerNormalization: {'new_class': IpuLayerNormalization}
     }
@@ -394,6 +541,39 @@ def test_replaced_layer_is_trackable(func):
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
         check_replaced_layers_are_trackable(to_replace_dict, func)
+
+
+def test_replaced_custom_layer_is_trackable():
+    batch_size = 2
+    sequence_length = 128
+    config = BertConfig()
+
+    def copy_weights_tf_bert_embeddings(layer, new_layer):
+        new_layer.build((batch_size, sequence_length, new_layer.hidden_size))
+        new_layer.set_weights(layer.get_weights())
+
+    to_replace_dict = {
+        TFBertEmbeddings: {
+            "new_class": IpuTFBertEmbeddings,
+            "new_params": {
+                "config": config,
+                "serialization_factor": 2,
+            },
+            "copy_weights": True,
+            "copy_weights_func": copy_weights_tf_bert_embeddings,
+        }
+    }
+    model_func_args = {"len_seq": sequence_length, "config": config}
+
+    cfg = ipu.config.IPUConfig()
+    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
+    cfg.configure_ipu_system()
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+        check_replaced_layers_are_trackable(to_replace_dict,
+                                            func_model_tf_bert_embeddings,
+                                            model_func_args,
+                                            batch_size)
 
 
 @pytest.mark.parametrize("func", [

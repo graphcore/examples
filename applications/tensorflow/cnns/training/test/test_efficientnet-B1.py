@@ -15,6 +15,7 @@ from test_common import get_csv, run_train
 
 
 @pytest.mark.ipus(4)
+@pytest.mark.ipu_version("ipu2")
 class TestEfficientNetB1Pipelining2IPUs(SubProcessChecker):
     """EfficientNet-B1 example over 4 IPUs.
     """

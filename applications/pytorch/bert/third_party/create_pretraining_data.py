@@ -21,7 +21,7 @@ This script has been adapated from the original google-research/bert repo found 
 
 Main changes:
   Load tokeniser from transformers
-  Update to Tensorflow 2
+  Update to TensorFlow 2
 """
 
 from __future__ import absolute_import
@@ -43,7 +43,7 @@ from transformers import BertTokenizerFast
 try:
   import tensorflow as tf
 except ImportError:
-  raise ImportError("Tensorflow is required to generate data for this application. "
+  raise ImportError("TensorFlow is required to generate data for this application. "
                     "Please install with: 'pip install tensorflow'")
 
 
@@ -479,7 +479,7 @@ if __name__ == "__main__":
   parser.add_argument("--max-samples", type=int, default=-1)
   parser.add_argument("--ignore-index-value", type=int, default=0,
                       help="The value to set to be ignored in the masked_lm label. "
-                           "Tensorflow BERT typically uses 0. Whereas Pytorch uses -100 by default.")
+                           "TensorFlow BERT typically uses 0. Whereas Pytorch uses -100 by default.")
   args = parser.parse_args()
 
   main(args)

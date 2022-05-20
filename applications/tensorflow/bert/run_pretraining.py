@@ -63,7 +63,7 @@ GraphOps = namedtuple('graphOps',
 def create_popdist_strategy():
     """
     Creates a distribution strategy for use with popdist. We use the
-    Horovod-based IPUMultiReplicaStrategy. Horovod is used for the initial
+    Horovod-based PopDistStrategy. Horovod is used for the initial
     broadcast of the weights and when reductions are requested on the host.
     Imports are placed here so they are only done when required, as Horovod
     might not always be available.
@@ -74,8 +74,8 @@ def create_popdist_strategy():
     hvd.init()
 
     # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
-    # so disable them in the IPUMultiReplicaStrategy.
-    return popdist_strategy.IPUMultiReplicaStrategy(
+    # so disable them in the PopDistStrategy.
+    return popdist_strategy.PopDistStrategy(
         add_ipu_cross_replica_reductions=False)
 
 
@@ -344,7 +344,7 @@ def build_graph(opts, is_training=True):
         train_saver = tf.train.Saver(
             var_list=model_and_optimiser_variables
             if opts['save_optimiser_to_checkpoint'] else model_variables,
-            max_to_keep=5)
+            max_to_keep=opts["max_to_keep"])
 
         ipu.utils.move_variable_initialization_to_cpu()
         train_init = tf.global_variables_initializer()
@@ -372,11 +372,6 @@ def build_graph(opts, is_training=True):
 
     # Do not acquire a device, compile only.
     if opts["compile_only"]:
-        ipu_config.device_connection.version = "ipu2"
-        ipu_config.device_connection.enable_remote_buffers = True
-        # PRE_COMPILE allows for runing execuatables on graph without being online
-        ipu_config.device_connection.type = DeviceConnectionType.PRE_COMPILE
-
         # Enforce using a exe cache dir, defaulting if not given
         if ("TF_POPLAR_FLAGS" in os.environ):
             if ("--executable_cache_path" not in os.environ["TF_POPLAR_FLAGS"]):
@@ -658,16 +653,13 @@ def set_ipu_defaults(opts):
     logger.info(f"Current date/time: {str(datetime.datetime.now())}")
     commit_hash = log.get_git_revision()
     logger.info(f"Code revision: {commit_hash}")
-
-    if opts['seed']:
-        # Seed the various random sources
-        seed = opts['seed']
-        logger.info(f"Pseudo-random number generator seed specified: f{seed}")
-        random.seed(seed)
-        # Set other seeds to different values for extra safety
-        tf.set_random_seed(random.randint(0, 2**32 - 1))
-        np.random.seed(random.randint(0, 2**32 - 1))
-        ipu.utils.reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
+    seed = opts['seed']
+    logger.info(f"Pseudo-random number generator seed specified: f{seed}")
+    random.seed(seed)
+    # Set other seeds to different values for extra safety
+    tf.set_random_seed(random.randint(0, 2**32 - 1))
+    np.random.seed(random.randint(0, 2**32 - 1))
+    ipu.utils.reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
 
 
 def set_defaults(opts):
@@ -690,6 +682,11 @@ if __name__ == '__main__':
     opts = make_global_options([add_pretraining_options])
 
     opts['shards'] = ipu_utils.next_power_of_two(max(opts["device_mapping"]) + 1)
+
+    if opts['seed'] is None:
+        # Seed the various random sources
+        opts['seed'] = random.randint(0, 2 ** 32 - 1)
+        logger.info(f"Using random number generated seed: f{opts['seed']}")
 
     if popdist.isPopdistEnvSet():
         opts['use_popdist'] = True

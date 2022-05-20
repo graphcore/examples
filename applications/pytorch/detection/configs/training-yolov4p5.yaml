@@ -1,0 +1,51 @@
+system:
+  num_ipus: 1
+  num_workers: 20
+model:
+  input_channels: 3
+  activation: mish
+  normalization: group
+  pipeline_splits: [backbone.cspdark4, neck.SPP.maxp_modules.0, neck.cspDown2.csp_neck.bottleneck_conv1]
+  anchors:
+    p3width: [2, 3, 5, 5]
+    p3height: [3, 6, 4, 9]
+    p4width: [11, 10, 21, 14]
+    p4height: [8, 16, 14, 33]
+    p5width: [26, 52, 35, 75]
+    p5height: [29, 27, 52, 60]
+  n_classes: 80
+  class_name_path: ./configs/class_name.yaml
+  strides: [8, 16, 32]
+  half: true
+  image_size: 416
+  micro_batch_size: 1
+  mode: train
+  ipu: true
+ipuopts:
+  batches_per_step: 1
+  gradient_accumulation: 1
+inference:
+  class_conf_threshold: 0.4
+  obj_threshold: 0.4
+  iou_threshold: 0.65
+  plot_output: false
+  plot_step: 250
+  plot_dir: plots
+dataset:
+  name: coco
+  max_bbox_per_scale: 90
+  train:
+    cache_data: false
+    file: train2017.txt
+    cache_path: ./utils/data/train
+    data_aug: true
+  test:
+    cache_data: false
+    file: val2017.txt
+    cache_path: ./utils/data/test
+    data_aug: false
+  mosaic: true
+  color: false
+eval:
+  metrics: true
+  verbose: false

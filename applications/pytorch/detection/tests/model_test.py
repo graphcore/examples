@@ -6,7 +6,7 @@ import pytest
 import torch
 import poptorch
 
-from utils.postprocessing import PredictionsPostProcessing
+from utils.postprocessing import IPUPredictionsPostProcessing
 from tests.test_tools import get_image_and_label, prepare_model, get_cfg, post_process_and_eval
 
 
@@ -42,8 +42,8 @@ class TestYolov4P5:
         just_fwd_pass_cpu = prepare_model(cfg)
         predictions_just_fwd_cpu = just_fwd_pass_cpu(self.transformed_images)
 
-        just_nms_ipu = poptorch.inferenceModel(PredictionsPostProcessing(cfg_inference, cpu_mode=False))
-        just_nms_cpu = PredictionsPostProcessing(cfg_inference, cpu_mode=True)
+        just_nms_ipu = poptorch.inferenceModel(IPUPredictionsPostProcessing(cfg_inference, cpu_mode=False))
+        just_nms_cpu = IPUPredictionsPostProcessing(cfg_inference, cpu_mode=True)
 
         nms_stdaln_ipu = just_nms_ipu(torch.cat(predictions_just_fwd_ipu, axis=1))
         nms_stdaln_cpu = just_nms_cpu(torch.cat(predictions_just_fwd_cpu, axis=1))

@@ -1,5 +1,5 @@
 # Copyright (c) 2020 Graphcore Ltd. All rights reserved.
-from tensorflow.python.ipu.config import IPUConfig
+from tensorflow.python.ipu.config import IPUConfig, StochasticRoundingBehaviour
 
 
 def get_config(opts, training=True):
@@ -21,6 +21,6 @@ def get_config(opts, training=True):
             ipus = [ipus[0] if training else ipus[1]]
         config.select_ipus = ipus
 
-    config.floating_point_behaviour.esr = opts.prng
+    config.floating_point_behaviour.esr = StochasticRoundingBehaviour.from_bool(opts.prng)
 
     return config

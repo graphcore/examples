@@ -10,6 +10,47 @@ from ipu_tensorflow_addons.keras.optimizers import AdamIpuOptimizer, LAMBIpuOpti
 ALLOWED_OPTIMIZERS = ["AdamW", "LAMB"]
 
 
+class StaticLossScaleOptimizer(LossScaleOptimizer):
+    """
+    Modification of the Keras LossScaleOptimizer that only
+    supports a static loss scaling. It ensures the gradients
+    are in float32 before unscaling and applies this in the
+    inner optimizer's gradient_transformers, which we have
+    observed tends to be more memory efficient.
+    """
+    def __init__(self,
+                 inner_optimizer,
+                 loss_scaling):
+        """
+        Constructs loss scale optimizer.
+        :param inner_optimizer: The optimizer to wrap with this
+        functionality.
+        :param loss_scaling: Constant loss scaling factor to be applied.
+        """
+        super().__init__(inner_optimizer,
+                         dynamic=False,
+                         initial_scale=loss_scaling,
+                         dynamic_growth_steps=None)
+        self.inner_optimizer.gradient_transformers.insert(
+            0,
+            lambda grads_and_vars: [
+                (tf.cast(g, dtype=tf.float32) / loss_scaling, v)
+                for g, v in grads_and_vars
+            ]
+        )
+
+    def get_unscaled_gradients(self, grads):
+        # We do the gradient unscaling in the inner optimizer gradient
+        # transforms instead of here, which uses less memory.
+        return grads
+
+    def _raise_if_strategy_unsupported(self):
+        # This disallows the popdist distributed strategy to use
+        # the static loss scale optimizer. If dynamic is False, this
+        # can be skipped.
+        pass
+
+
 def get_optimizer(
     optimizer_name,
     gradient_accumulation_factor,
@@ -87,8 +128,6 @@ def get_optimizer(
             f" Choose one of {ALLOWED_OPTIMIZERS}")
 
     if loss_scaling is not None:
-        optimizer = LossScaleOptimizer(optimizer,
-                                       dynamic=False,
-                                       initial_scale=loss_scaling)
+        optimizer = StaticLossScaleOptimizer(optimizer, loss_scaling)
 
     return optimizer

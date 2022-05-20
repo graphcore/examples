@@ -9,7 +9,7 @@ poprun \
     --num-replicas=8 \
     --ipus-per-replica=2 \
 python3 train.py \
-    --config=efficientnet-b0-g16-gn-16ipu-mk2 \
+    --config=efficientnet-b0-g16-gn-pod16 \
     --batch-size 40 \
     --gradient-accumulation 3 \
     --half-res-training \

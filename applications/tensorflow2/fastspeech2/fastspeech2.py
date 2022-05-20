@@ -481,7 +481,7 @@ class SelfAttention(tf.keras.layers.Layer):
             extended_attention_mask = tf.cast(
                 extended_attention_mask, attention_scores.dtype
             )
-            extended_attention_mask = (1.0 - extended_attention_mask) * -1e9
+            extended_attention_mask = (1.0 - extended_attention_mask) * -1e4
             attention_scores = attention_scores + extended_attention_mask
 
         # Normalize the attention scores to probabilities.
@@ -1038,11 +1038,12 @@ def build_model(opts, training=True):
         x, [0, 2, 1]), name="length_regulator_outputs")(length_regulator_outputs)
 
     decoder_pos = tf.range(1, tf.shape(length_regulator_outputs)[
-                           1] + 1, dtype=tf.int32)
+        1] + 1, dtype=tf.int32)
     decoder_pos = keras.layers.Lambda(lambda x: tf.expand_dims(
-        x, 0), name="decoder_pos_expand")(decoder_pos)
-    masked_decoder_pos = keras.layers.Multiply(
-        name="masked_decoder_pos")([encoder_masks, tf.cast(decoder_pos, encoder_masks.dtype)])
+        x, 0))(decoder_pos)
+
+    masked_decoder_pos = tf.multiply(
+        encoder_masks, tf.cast(decoder_pos, encoder_masks.dtype))
 
     decoder_output = Decoder(
         config.decoder_self_attention_params,
@@ -1179,7 +1180,6 @@ def build_pipeline_model(opts, training=True):
 
         masked_decoder_pos = tf.multiply(
             encoder_masks, tf.cast(decoder_pos, encoder_masks.dtype))
-
         first_decoder_output = build_n_decoder_block(
             config=config.decoder_self_attention_params,
             inputs=[length_regulator_outputs,
@@ -1299,9 +1299,9 @@ def build_inference_model(opts):
     decoder_pos = tf.range(1, tf.shape(length_regulator_outputs)[
                            1] + 1, dtype=tf.int32)
     decoder_pos = keras.layers.Lambda(lambda x: tf.expand_dims(
-        x, 0), name="decoder_pos_expand")(decoder_pos)
-    masked_decoder_pos = keras.layers.Multiply(
-        name="masked_decoder_pos")([tf.cast(decoder_pos, tf.float32), tf.cast(encoder_masks, tf.float32)])
+        x, 0))(decoder_pos)
+    masked_decoder_pos = tf.multiply(
+        encoder_masks, tf.cast(decoder_pos, encoder_masks.dtype))
 
     first_decoder_output = build_n_decoder_block(
         config=config.decoder_self_attention_params,

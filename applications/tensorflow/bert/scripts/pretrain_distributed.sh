@@ -5,9 +5,9 @@
 set -x
 
 display_usage() {
-	echo "Pretrain BERT.Large on IPU-POD64 or IPU-POD128"
+	echo "Pretrain BERT.Large on IPU-POD32, IPU-POD64 or IPU-POD128"
 	echo "Usage: $0 CONFIG VIPU_HOST HOST1 HOST2 ..."
-	echo "CONFIG: \"POD64\" or \"POD128\"."
+	echo "CONFIG: \"POD32\", \"POD64\" or \"POD128\"."
 	echo "VIPU_HOST: VIPU IP address."
 	echo "HOSTn: a list of IP addresses on which the instances will be run."
 }
@@ -32,8 +32,18 @@ HOSTS_LIST="${HOSTS_LIST// /,}"
 
 NETIF_NETMASK__IP_PART=(${HOSTS[0]//./ })
 TCP_IF_NETMASK="${NETIF_NETMASK__IP_PART[0]}.${NETIF_NETMASK__IP_PART[1]}.0.0/16"
-
-if [[ "${CONFIG}" == "POD64" ]]; then
+if [[ "${CONFIG}" == "POD32" ]]; then
+   if [[ "${NUM_INSTANCES}" -ne 1 ]]; then
+      echo "To run on POD32 use a single host."
+      exit 1
+   fi
+   NUM_REPLICAS=8
+   NUM_ILDS=1
+   PHASE1_CONFIG_PATH='configs/pretrain_large_128_phase1_POD32.json'
+   PHASE2_CONFIG_PATH='configs/pretrain_large_384_phase2_POD32.json'
+   WANDB_NAME="POD32 Large"
+   VIPU_PARTITION_NAME='pod32'
+elif [[ "${CONFIG}" == "POD64" ]]; then
    if [[ "${NUM_INSTANCES}" -ne 1 ]]; then
       echo "To run on POD64 use a single host."
       exit 1

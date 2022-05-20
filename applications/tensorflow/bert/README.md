@@ -30,12 +30,12 @@ This README is structured to show the datasets required to train the model, how 
 
 ## Changelog <a name="changelog"></a>
 
-September 2021:
-- Added inference program using the IPU embedded application runtime.
-- Update LAMB to be disabled on bias parameters.
-
-October 2021:
+### October 2021
 - Use off chip replicated optimizer state sharding feature in pretraining.
+
+### September 2021
+- Added inference program using the IPU embedded application runtime
+- Update LAMB to be disabled on bias parameters.
 
 ## Benchmarking <a name="benchmarking"></a>
 
@@ -195,10 +195,15 @@ The typical loss curves for Phase 2 pre-training will look like:
 
 Note that the configuration flag `--static-mask` must be set if the datasets was [generated with the remasking option](#remasked-dataset). A dataset that does not require the `--static-mask` flag may end up using more memory than a dataset that does, like the ones presented in the config files folder. Reducing the `--available-memory-proportion` parameter may be required in this case.
 
+A note about epochs when pre-training BERT.
+When pre-training BERT with the Wikipedia dataset the usual definitions of an epoch as one pass through the entire dataset, and total number of epochs as the definition of training time, doesn't produce consistent results. As there is no universal Wikipedia dataset, and each Wikipedia 'dump' can vary in size (sometimes by an order of magnitude) specifying a number of epochs to train for would lead to different convergence results and make comparison impossible.
+Therefore the canonical BERT pre-training follows from the [original paper](https://arxiv.org/abs/1810.04805) as a total number of samples, the number of epochs this corresponds to will depend on the size of your Wikipedia dataset. 
+To change the duration of training the `steps` parameters should used rather than `epochs`. 
+
 ### Launch BERT Pre-Training Script <a name="pretrain_script"></a>
 For simplicity in the `scripts/` directory there is a script that manages BERT pre-training from a single command. This script can be used to pre-train BERT on a Graphcore IPU system with 16 IPUs.
 
-To run with the default configuration for `BERT Large` as given in `configs/pretrain_large_128_phase1.json` and `configs/pretrain_large_128_phase2.json` simply run:
+To run with the default configuration for `BERT Large` as given in `configs/pretrain_large_128_phase1.json` and `configs/pretrain_large_128_phase2.json` run:
 ```shell
 ./scripts/pretrain.sh large
 ```
@@ -336,12 +341,12 @@ This will output a fine-tuned checkpoint that can be used for evaluation in the 
 
 The evaluation on the development set accuracy can then be run with the following command:
 ``` shell
-python3 run_classifier.py --config configs/glue_large.json --task-name your_glue_task_name --data-dir glue_data/your_glue_datadir_name --do-eval --init-checkpoint /path/to/glue/finetuned/checkpoint.ckpt
+python3 run_classifier.py --config configs/glue_large.json --task-name your_glue_task_name --data-dir glue_data/your_glue_datadir_name --do-evaluation --init-checkpoint /path/to/glue/finetuned/checkpoint.ckpt
 ```
 for classification tasks
 and
 ``` shell
-python3 run_classifier.py --config configs/glue_large.json --task-name stsb --data-dir glue_data/STS-B --do-eval --init-checkpoint /path/to/glue/finetuned/large/checkpoint.ckpt
+python3 run_classifier.py --config configs/glue_large.json --task-name stsb --data-dir glue_data/STS-B --do-evaluation --init-checkpoint /path/to/glue/finetuned/large/checkpoint.ckpt
 ```
 for the regression task.
 
@@ -361,11 +366,11 @@ Note that for the tasks MNLI-mm and AX, fine-tuning is done on MNLI train data. 
 ***For simplicity the `run_classifier.py` script can be run straight through.***
 This means by running the following:
 ``` shell
-python3 run_classifier.py --config configs/glue_large.json --task-name your_glue_task_name --data-dir glue_data/your_glue_datadir_name --do-training --do-eval --do-predict --init-checkpoint /path/to/phase2/large/checkpoint.ckpt
+python3 run_classifier.py --config configs/glue_large.json --task-name your_glue_task_name --data-dir glue_data/your_glue_datadir_name --do-training --do-evaluation --do-predict --init-checkpoint /path/to/phase2/large/checkpoint.ckpt
 ```
 and
 ``` shell
-python3 run_classifier.py --config configs/glue_large.json --task-name stsb --data-dir glue_data/STS-B --do-training --do-eval --do-predict --init-checkpoint /path/to/phase2/large/checkpoint.ckpt
+python3 run_classifier.py --config configs/glue_large.json --task-name stsb --data-dir glue_data/STS-B --do-training --do-evaluation --do-predict --init-checkpoint /path/to/phase2/large/checkpoint.ckpt
 ```
 fine-tuning, evaluation, and prediction can be run with a single command. 
 As with pre-training and fine-tuning on SQuAD, `run_classifier.py` takes an option to log results to Weights and Biases, this functionality can be turned on by adding the command line options ` --wandb --wandb-name <DESIRED NAME>`.

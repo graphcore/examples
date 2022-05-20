@@ -9,10 +9,15 @@ import models
 import datasets
 
 
-def load_model(checkpoint_file):
+def load_model(checkpoint_file, model = None):
+    """Load a checkpoint
+    Parameters:
+        checkpoint_file: the path of the checkpoint
+        model: the model instance, if not defined, new insance is created"""
     checkpoint = torch.load(checkpoint_file)
     args = checkpoint['args']
-    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False)
+    if model is None:
+        model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, with_loss=True)
     models.load_model_state_dict(model, checkpoint['model_state_dict'])
     model.double()
     return model
@@ -38,7 +43,7 @@ def average_model_weights(checkpoint_path, average_fn, checkpoint_N):
 
     # loop through the remaining checkpoints and update averaged model
     for checkpoint in checkpoint_files:
-        model = load_model(checkpoint)
+        model = load_model(checkpoint, model)
         averaged_model.update_parameters(model)
 
     last_checkpoint = torch.load(checkpoint_files[-1])
@@ -53,7 +58,7 @@ def average_model_weights(checkpoint_path, average_fn, checkpoint_N):
 
     torch.save({
         'epoch': last_checkpoint['epoch'] + 1,
-        'model_state_dict': models.get_model_state_dict(averaged_model),
+        'model_state_dict': models.get_model_state_dict(averaged_model.module),
         'loss': 0,  # dummy just to work with validate script
         'train_accuracy': 0,  # dummy just to work with validate script
         'args': args

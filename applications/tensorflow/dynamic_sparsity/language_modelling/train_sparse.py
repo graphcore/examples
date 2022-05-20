@@ -20,7 +20,7 @@ from tensorflow.python.ipu import (
     pipelining_ops)
 from tensorflow.python.ipu.ipu_infeed_queue import IPUInfeedQueue
 from tensorflow.python.ipu.ipu_outfeed_queue import IPUOutfeedQueue
-from tensorflow.python.ipu.config import IPUConfig
+from tensorflow.python.ipu.config import IPUConfig, StochasticRoundingBehaviour
 
 import tf_utils
 from tf_utils import build_optimizer
@@ -248,6 +248,10 @@ def run_training(opts, transformer):
         if opts.pipeline:
             batch_size *= opts.gradient_accumulation_count
         batches_per_epoch = num_train // batch_size
+        if batches_per_epoch < opts.repeat_count:
+            raise ValueError(
+                f'The repeat_count ({opts.repeat_count}) is greater than the number of batches in an epoch ({batches_per_epoch}), '
+                f'lower the repeat_count to a value less than or equal to the batches in an epoch.')
         io_steps_per_epoch = batches_per_epoch // opts.repeat_count
         total_io_steps = opts.nepochs * io_steps_per_epoch
         total_global_steps = opts.nepochs * io_steps_per_epoch * opts.repeat_count
@@ -548,7 +552,7 @@ def run_language_model(opts):
     config.floating_point_behaviour.inv = False
     config.floating_point_behaviour.div0 = False
     config.floating_point_behaviour.oflo = False
-    config.floating_point_behaviour.esr = True
+    config.floating_point_behaviour.esr = StochasticRoundingBehaviour.ON
     config.floating_point_behaviour.nanoo = False
     config = sparse.set_system_config(config, custom_op_debug_printing=opts.debug_dense_grad)
     config.configure_ipu_system()

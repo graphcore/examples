@@ -205,5 +205,5 @@ def set_defaults(opts):
             opts["summary_str"] += "  Decay: {}\n".format(opts["BN_decay"])
 
     opts["name"] += "_{}{}".format(
-        opts["precision"], "_noSR" if opts["no_stochastic_rounding"] else ""
+        opts["precision"], "_noSR" if opts["stochastic_rounding"] == 'OFF' else ""
     )

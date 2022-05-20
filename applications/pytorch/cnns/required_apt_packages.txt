@@ -1,3 +1,2 @@
-cmake
-libjpeg-turbo8-dev
 libffi-dev
+nasm

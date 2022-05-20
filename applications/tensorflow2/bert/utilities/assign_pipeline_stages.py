@@ -57,3 +57,16 @@ class PipelineStagesAssigner:
                 return i
         raise Exception(f"No available slot for layer `{layer.name}` of type `{type(layer)}` "
                         f"with given pipeline stages.")
+
+
+class GluePipelineStagesAssigner(PipelineStagesAssigner):
+
+    def assign_glue_pipeline_stages(self, assignments, pipeline_stages):
+        dropout_layer_name = assignments[-2].layer.name
+        if "dropout" not in dropout_layer_name:
+            raise ValueError("Error in allocating the TFBertForSequenceClassification " +
+                             "model to pipeline stages.In attempting to replace the name " +
+                             "of the final dropout layer, a name containing 'dropout' was " +
+                             "expected. Found instead {dropout_layer_name}.")
+        self.pipeline_names["glue_head"].append(dropout_layer_name)
+        return super().assign_pipeline_stages(assignments, pipeline_stages)

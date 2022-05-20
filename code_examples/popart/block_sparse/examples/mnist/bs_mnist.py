@@ -207,9 +207,6 @@ def get_device(num_ipus, sim=True):
         device = deviceManager.createIpuModelDevice(options)
     else:
         device = deviceManager.acquireAvailableDevice(num_ipus)
-        if device is None:
-            print("Failed to acquire IPU. Exiting.")
-            quit()
     return device
 
 

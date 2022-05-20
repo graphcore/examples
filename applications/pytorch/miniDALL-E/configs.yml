@@ -4,7 +4,7 @@ defaults: &defaults
   loss_img_weight: 7
   text_seq_len: 80
   truncate_captions: True
-  lr_decay: True
+  lr_scheduler: "ReduceLROnPlateau"
   checkpoint_output_dir: "./output/ckpt"
   wandb: False
 #----------------------------------------------------------------------------------
@@ -31,6 +31,7 @@ L16_CLIP_vocab:
   optimizer: "Adam"
   learning_rate: 3e-4
   enable_half_first_order_momentum: True
+  loss_scaling: 16384
 
   # Model
   hidden_size: 512
@@ -42,7 +43,6 @@ L16_CLIP_vocab:
   sandwich_norm: True
   attn_types: "axial_row,axial_row,axial_col,axial_row,axial_row,axial_row,axial_col,axial_row,axial_row,axial_row,axial_col,full,axial_row,axial_row,axial_col,full"
   checkpoint_save_steps: 5000
-  loss_scaling: 16384
 
   # Dataset
   input_folder: "./data/COCO"
@@ -52,15 +52,15 @@ L16_CLIP_vocab:
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-L16:
+L16: &L16
   <<: *defaults
 
   # Execution
   batch_size: 3
-  epochs: 200
+  epochs: 800
   batches_per_step: 1
   replication_factor: 1
-  gradient_accumulation: 8
+  gradient_accumulation: 8192
   stochastic_rounding: True
   embedding_serialization_factor: 4
   enable_half_partials: True
@@ -70,8 +70,10 @@ L16:
 
   # Optimizer
   optimizer: "Adam"
-  learning_rate: 3e-4
+  learning_rate: 5e-3
+  lr_scheduler: "multi_step"
   enable_half_first_order_momentum: True
+  loss_scaling: 32768
 
   # Model
   hidden_size: 512
@@ -83,13 +85,72 @@ L16:
   attn_types: "axial_row,axial_row,axial_col,axial_row,axial_row,axial_row,axial_col,axial_row,axial_row,axial_row,axial_col,full,axial_row,axial_row,axial_col,full"
   bpe_path: ./models/bpe/bpe_yttm_vocab.txt
   checkpoint_save_steps: 5000
-  loss_scaling: 16384
 
   # Dataset
   input_folder: "./data/COCO"
+  byteio: False
 
   # Misc
   wandb_project_name: "miniDALL-E"
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+L16_POD16:
+  <<: *L16
+
+  # Execution
+  epochs: 800
+  replication_factor: 4
+  gradient_accumulation: 2048
+  enable_rts: True
+
+  # Optimizer
+  learning_rate: 5e-3
+  lr_scheduler: "multi_step"
+  loss_scaling: 32768
+
+  # Misc
+  dataloader_workers: 64
+  wandb_project_name: "miniDALL-E_POD16"
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+L16_POD64:
+  <<: *L16
+
+  # Execution
+  epochs: 800
+  replication_factor: 16
+  gradient_accumulation: 512
+  enable_rts: True
+
+  # Optimizer
+  learning_rate: 5e-3
+  lr_scheduler: "multi_step"
+  loss_scaling: 32768
+
+  # Misc
+  dataloader_workers: 64
+  wandb_project_name: "miniDALL-E_POD64"
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+L16_POD256:
+  <<: *L16
+
+  # Execution
+  epochs: 800
+  replication_factor: 64
+  gradient_accumulation: 128
+
+  # Optimizer
+  learning_rate: 5e-3
+  lr_scheduler: "multi_step"
+  loss_scaling: 32768
+
+  # Misc
+  dataloader_workers: 32
+  wandb_project_name: "miniDALL-E_POD256"
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------

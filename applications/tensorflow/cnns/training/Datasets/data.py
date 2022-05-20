@@ -19,6 +19,7 @@ from . import imagenet_preprocessing
 from functools import partial
 from math import ceil
 import relative_timer
+import warnings
 
 DATASET_CONSTANTS = {
     'imagenet': {
@@ -59,14 +60,17 @@ DATASET_CONSTANTS = {
             'TEST': ['test.bin']
         }
     },
- }
+}
 
 
 def reconfigure_dataset_constants(opts):
     if opts['dataset'] == 'imagenet' and opts['dataset_percentage_to_use'] < 100:
-        DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] = opts['dataset_percentage_to_use'] * DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] // 100
-        num_train_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TRAIN']) * opts['dataset_percentage_to_use'] // 100
-        num_test_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TEST']) * opts['dataset_percentage_to_use'] // 100
+        DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] = opts['dataset_percentage_to_use'] * \
+            DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] // 100
+        num_train_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']
+                              ['TRAIN']) * opts['dataset_percentage_to_use'] // 100
+        num_test_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TEST']
+                             ) * opts['dataset_percentage_to_use'] // 100
         DATASET_CONSTANTS['imagenet']['FILENAMES'] = {
             'TRAIN': ['train-%05d-of-01024' % i for i in range(num_train_files)],
             'TEST': ['validation-%05d-of-00128' % i for i in range(num_test_files)]
@@ -108,6 +112,17 @@ def data(opts, is_training=True):
 
         cycle_length = 1 if opts['seed_specified'] and opts['pipeline_num_parallel'] == 1 else 4
         if opts["dataset"] == 'imagenet':
+
+            if not opts['standard_imagenet'] and not is_training:
+
+                warnings.warn(
+                    "Non-standard preprocessing pipeline for validation on "
+                    "ImageNet is not currently enabled, defaulting to "
+                    "standard preprocessing pipeline."
+                )
+
+                opts['standard_imagenet'] = True
+
             if not opts['standard_imagenet'] and not is_distributed:
                 dataset = ImageNetData(opts, filenames=filenames).get_dataset(batch_size=batch_size,
                                                                               is_training=training_preprocessing,
@@ -125,7 +140,6 @@ def data(opts, is_training=True):
                 if opts['eight_bit_io']:
                     print("Using 8-bit IO between the IPU and host")
                     # mapping the casting -> UINT8 onto the data dictionary
-                    dataset = dataset.map(convert_image_8bit)
                 else:
                     print(f"Using {dtypes[0]}-bit IO between the IPU and host")
 
@@ -137,15 +151,16 @@ def data(opts, is_training=True):
             else:
                 preprocess_fn = partial(imagenet_preprocess, is_training=training_preprocessing,
                                         image_size=opts["image_size"],
-                                        dtype=datatype, seed=opts['seed'],
+                                        dtype=tf.uint8 if opts['eight_bit_io'] else datatype,
+                                        seed=opts['seed'],
                                         full_normalisation=opts['normalise_input'] if opts['hostside_norm'] else None)
                 dataset_fn = tf.data.TFRecordDataset
                 if is_distributed:
                     # Shuffle after sharding
                     dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
                     dataset = dataset.shard(
-                            num_shards=opts['distributed_worker_count'],
-                            index=opts['distributed_worker_index'])
+                        num_shards=opts['distributed_worker_count'],
+                        index=opts['distributed_worker_index'])
                     if is_training:
                         dataset = dataset.shuffle(
                             ceil(len(filenames) / opts['distributed_worker_count']),
@@ -166,7 +181,8 @@ def data(opts, is_training=True):
                                     dataset=opts['dataset'], seed=opts['seed'])
             dataset = tf.data.FixedLengthRecordDataset(filenames, DATASET_CONSTANTS[opts['dataset']]['RECORD_BYTES'])
             if is_distributed:
-                dataset = dataset.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
+                dataset = dataset.shard(num_shards=opts['distributed_worker_count'],
+                                        index=opts['distributed_worker_index'])
         else:
             raise ValueError("Unknown Dataset {}".format(opts["dataset"]))
 
@@ -193,11 +209,12 @@ def data(opts, is_training=True):
             count = (
                 opts["validation_batches_per_step"] *
                 opts["validation_iterations"] *
-                opts["validation_global_batch_size"])//opts['distributed_worker_count']
+                opts["validation_global_batch_size"]) // opts['distributed_worker_count']
             # Imagenet only: size diff by up to 1 for the 128 files.
             # Overhead required to process all samples.
             if opts['dataset'] == 'imagenet':
-                assert count*opts['distributed_worker_count'] >= val_size + 128 // opts['distributed_worker_count'], "All evaluation data needs to be processed!"
+                assert count * opts['distributed_worker_count'] >= val_size + \
+                    128 // opts['distributed_worker_count'], "All evaluation data needs to be processed!"
 
             dataset = dataset.map(
                 preprocess_fn,
@@ -207,24 +224,24 @@ def data(opts, is_training=True):
             # Fill up with zeros
             # Using cardinality of dataset instead does not work.
             dataset = dataset.concatenate(
-                    padding_sample.cache().repeat(count)).take(count)
+                padding_sample.cache().repeat(count)).take(count)
             dataset = dataset.batch(batch_size, drop_remainder=True)
             if not opts['no_dataset_cache']:
                 dataset = dataset.cache()
             dataset = dataset.repeat()
         else:
             dataset = dataset.apply(
-              tf.data.experimental.map_and_batch(
-                preprocess_fn,
-                batch_size=batch_size,
-                num_parallel_calls=parallel_calls,
-                drop_remainder=True
-              )
+                tf.data.experimental.map_and_batch(
+                    preprocess_fn,
+                    batch_size=batch_size,
+                    num_parallel_calls=parallel_calls,
+                    drop_remainder=True
+                )
             )
 
         if is_training and opts['mixup_alpha'] > 0:
             # always assign the mixup coefficients on the host
-            dataset = dataset.map(partial(augmentations.assign_mixup_coefficients, batch_size=batch_size,
+            dataset = dataset.map(partial(augmentations.assign_mixup_coefficients, batch_size=batch_size, datatype=datatype,
                                           alpha=opts['mixup_alpha']))
             if opts['hostside_image_mixing']:
                 dataset = dataset.map(augmentations.mixup_image, num_parallel_calls=parallel_calls)
@@ -313,7 +330,7 @@ def generate_zero_sample(opts):
     dtypes = opts["precision"].split('.')
     datatype = tf.float16 if dtypes[0] == '16' else tf.float32
 
-    images = tf.zeros([height, width, 3], dtype=datatype, name='generated_zero')
+    images = tf.zeros([height, width, 3], dtype=tf.uint8 if opts['eight_bit_io'] else datatype, name='generated_zero')
     labels = tf.constant(DATASET_CONSTANTS[opts['dataset']]['NUM_CLASSES'], dtype=tf.int32)
 
     return tf.data.Dataset.from_tensors({
@@ -421,7 +438,6 @@ def add_arguments(parser):
                        help="Use only a specified percentage of the full dataset for training")
     group.add_argument('--fused-preprocessing', action='store_true',
                        help="Use memory-optimized fused operations on the device to perform imagenet preprocessing.")
-
 
     return parser
 

@@ -8,7 +8,7 @@ import poptorch
 import popart
 from poptorch.optim import SGD
 import import_helper
-from train import TrainingModelWithLoss
+from models.loss import TrainingModelWithLoss, LabelSmoothing
 import datasets
 import models
 from utils import get_train_accuracy, get_test_accuracy, run_script
@@ -29,7 +29,7 @@ def test_recomputation_checkpoints():
         opts.randomSeed(0)
         opts.Training.gradientAccumulation(1)
         opts.Precision.enableStochasticRounding(False)
-        model_with_loss = TrainingModelWithLoss(model)
+        model_with_loss = TrainingModelWithLoss(model, LabelSmoothing(label_smoothing=0.0).get_losses_list())
         optimizer = SGD(model_with_loss.parameters(), lr=0.01, momentum=0., use_combined_accum=True)
         training_model = poptorch.trainingModel(model_with_loss, opts, optimizer=optimizer)
         predictions = []
@@ -52,11 +52,11 @@ def test_recomputation_checkpoints():
             self.num_io_tiles = 0
     args = Options()
     torch.manual_seed(0)
-    model = models.get_model(args, datasets.datasets_info["cifar10"], pretrained=True)
+    model = models.get_model(args, datasets.datasets_info["cifar10"], pretrained=False)
     no_recompute_predictions = train(model, False)
     args.recompute_checkpoints = ["conv", "norm"]
     torch.manual_seed(0)
-    model = models.get_model(args, datasets.datasets_info["cifar10"], pretrained=True)
+    model = models.get_model(args, datasets.datasets_info["cifar10"], pretrained=False)
     recompute_predictions = train(model, True)
     for pred1, pred2 in zip(no_recompute_predictions, recompute_predictions):
         assert torch.allclose(pred1, pred2, atol=1e-04)
@@ -78,11 +78,11 @@ def test_replicas_reduction():
         input_data = torch.ones(4, 1)
         labels_data = torch.ones(4).long()
         model = torch.nn.Linear(1, 2, bias=False)
-        model_with_loss = TrainingModelWithLoss(model, 0.1)
+        model_with_loss = TrainingModelWithLoss(model, LabelSmoothing(label_smoothing=0.0).get_losses_list())
         optimizer = SGD(model_with_loss.parameters(), lr=0.1, momentum=0., use_combined_accum=True)
         training_model = poptorch.trainingModel(model_with_loss, opts, optimizer=optimizer)
         for _ in range(3):
-            preds, loss, _ = training_model(input_data, labels_data)
+            loss, _, _ = training_model(input_data, labels_data)
         # return the weights of the model
         return list(model_with_loss.model.named_parameters())[0][1], loss
 
@@ -121,8 +121,8 @@ def test_loss_function(label_smoothing):
     # calculate the ground truth
     log_pred = torch.nn.functional.log_softmax(inp, dim=-1)
     ground_truth = - torch.mean(torch.sum((label_smoothing / 10.0) * log_pred, dim=1) + (1.0 - label_smoothing) * log_pred[:, 1])
-    model_with_loss = TrainingModelWithLoss(lambda x: x, label_smoothing=label_smoothing)
-    _, loss, _ = model_with_loss(inp, label)
+    model_with_loss = TrainingModelWithLoss(lambda x: x, LabelSmoothing(label_smoothing=label_smoothing).get_losses_list())
+    loss, _, _ = model_with_loss(inp, label)
     assert torch.allclose(ground_truth, loss, atol=1e-05)
 
 
@@ -177,6 +177,7 @@ class TestTrainCIFAR10:
 
 
     @pytest.mark.ipus(2)
+    @pytest.mark.ipu_version("ipu2")
     def test_efficient_net(self):
         gc.collect()
         out = run_script("train/train.py", "--data cifar10 --epoch 4 --model efficientnet-b0 --precision 16.32 --validation-mode none --optimizer sgd_combined --lr 0.1 --gradient-accumulation 64 "
@@ -268,6 +269,7 @@ class TestRestoreCheckpoint:
 
 
     @pytest.mark.ipus(1)
+    @pytest.mark.ipu_version("ipu2")
     def test_weight_avg(self):
         gc.collect()
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -284,6 +286,7 @@ class TestRestoreCheckpoint:
         shutil.rmtree(os.path.join(parent_dir, "restore_test_path_weight_avg"))
 
     @pytest.mark.ipus(1)
+    @pytest.mark.ipu_version("ipu2")
     def test_mixup_cutmix_validation_weight_avg(self):
         # Only make sure that checkpoint loading works with mixup model wrapper.
         gc.collect()

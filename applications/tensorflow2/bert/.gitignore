@@ -1,6 +1,7 @@
 !**/data
 !**/tests/*.json
 !**/configs/*.json
+!**/model
 **/checkpoints/*
 wandb
 profile

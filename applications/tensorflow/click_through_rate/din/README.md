@@ -93,7 +93,7 @@ The default configuration is as follows:
 
 `--batches-per-step` = 1600
 
-`--batch-size` = 32
+`--micro-batch-size` = 32
 
 `--learning-rate` = 0.1
 
@@ -112,7 +112,7 @@ The default configuration is as follows:
 `--epochs` : set epoch number
 
 ##### Training options
-`--batch-size` : set batch size for training graph
+`--micro-batch-size` : set batch size for training graph
 
 `--seed` : set random seed
 
@@ -141,7 +141,7 @@ The default configuration is as follows:
 
 `--batches-per-step` = 1600
 
-`--batch-size` = 128
+`--micro-batch-size` = 128
 
 `--data-type` = float32
 
@@ -154,7 +154,7 @@ The default configuration is as follows:
 `--batches-per-step` : batch number in one step
 
 ##### Inference options
-`--batch-size` : set batch size for inference graph
+`--micro-batch-size` : set batch size for inference graph
 
 `--model-path` : Place to store and restore model
 

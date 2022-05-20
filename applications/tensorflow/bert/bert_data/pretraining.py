@@ -18,7 +18,7 @@
 
 import numpy as np
 import tensorflow.compat.v1 as tf
-from tensorflow.contrib.data import map_and_batch, parallel_interleave
+from tensorflow.data.experimental import map_and_batch, parallel_interleave
 
 
 def _decode_record(record, name_to_features, data_type=None):
@@ -171,7 +171,7 @@ def get_pretraining_dataset(opts, data_type, is_training=True, num_cpu_threads=4
             d = d.shard(num_shards=opts['distributed_worker_count'], index=opts['distributed_worker_index'])
             d = d.shuffle(buffer_size=1000, seed=opts['seed'])
         else:
-            d = d.shuffle(buffer_size=1000)
+            d = d.shuffle(buffer_size=1000, seed=opts['seed'])
     else:
         d = tf.data.TFRecordDataset(input_files)
         d = d.repeat()

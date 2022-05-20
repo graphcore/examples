@@ -41,7 +41,7 @@ def load(opts, is_training=True):
         return get_glue_dataset(opts, is_training)
     else:
         raise ValueError(
-            "Conflict options between generated_data and input_file")
+            f"Conflict options between generated_data and input_file. Files are {opts['generated_data']} and {opts['input_data']}")
 
 
 def get_dataset_files_count(opts, is_training=True):

@@ -173,7 +173,7 @@ def validation_graph(model, opts):
         globalAMP = opts["available_memory_proportion"][0]
 
     ipu_options = get_config(ipu_id=opts["select_ipu"],
-                             prng=False,  # disable Stochastic Rounding for validation
+                             stochastic_rounding='OFF',  # disable Stochastic Rounding for validation
                              shards=opts['shards'],
                              number_of_replicas=opts['total_replicas'],
                              max_cross_replica_buffer_size=opts["max_cross_replica_buffer_size"],
@@ -357,6 +357,12 @@ def validation_only_process(model, opts):
         global_batch_size = opts['micro_batch_size']
 
     num_files = len(filenames)
+    if num_files == 0:
+        print(
+            f"Error: no files found in --restore-path={opts['restore_path']}. "
+            "Exiting."
+        )
+        sys.exit(1)
 
     if opts['use_popdist']:
         global_batch_size, num_files = valid.session.run(

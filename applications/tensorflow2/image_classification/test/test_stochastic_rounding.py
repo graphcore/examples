@@ -35,7 +35,7 @@ class StochasticRounding(unittest.TestCase):
 
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = 1
-        cfg.floating_point_behaviour.esr = stochastic_rounding
+        cfg.floating_point_behaviour.esr = ipu.config.StochasticRoundingBehaviour.from_bool(stochastic_rounding)
         cfg.device_connection.enable_remote_buffers = True
         cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()

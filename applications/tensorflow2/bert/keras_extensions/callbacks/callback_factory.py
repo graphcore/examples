@@ -1,11 +1,13 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
+import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import popdist.tensorflow
 import tensorflow as tf
 from tensorflow.python import ipu
 
-from data_utils.batch_config import BatchConfig
+from keras_extensions.callbacks.allreduce_metrics_callback import AllReduceMetricsCallback
 from keras_extensions.callbacks.batch_statistics_callback import BatchStatisticsCallback
 from keras_extensions.callbacks.checkpoint_callback import CheckpointCallback
 from keras_extensions.callbacks.compilation_time_callback import CompilationTimeCallback
@@ -17,46 +19,49 @@ from keras_extensions.callbacks.outfeed_queue_callback import OutFeedQueueCallba
 class CallbackFactory:
 
     @staticmethod
-    def get_callbacks(universal_run_name: str,
-                      batch_config: BatchConfig,
-                      model: tf.keras.Model,
-                      checkpoint_path: Path,
-                      ckpt_every_n_steps_per_execution: int,
-                      outfeed_queues: Optional[List[Tuple[str, ipu.ipu_outfeed_queue.IPUOutfeedQueue]]] = None,
-                      config: dict = {}):
+    def get_callbacks(universal_run_name,
+                      batch_config,
+                      model,
+                      checkpoint_path,
+                      ckpt_every_n_steps_per_execution,
+                      outfeed_queues=None,
+                      distributed_training=False,
+                      enable_wandb=False):
 
         callbacks = []
         log_period = batch_config.steps_per_execution
 
-        print("Creating callback to report batch statistics")
+        logging.info("Creating callback to report batch statistics")
         callbacks.append(BatchStatisticsCallback(batch_config))
 
-        print("Creating callback to report compilation time")
+        logging.info("Creating callback to report compilation time")
         callbacks.append(CompilationTimeCallback())
 
         if outfeed_queues is not None:
-            print(f"Creating callbacks to read outfeed queues: {outfeed_queues}")
+            logging.info(f"Creating callbacks to read outfeed queues: {outfeed_queues}")
             for outfeed_queue in outfeed_queues:
                 callbacks.append(OutFeedQueueCallback(outfeed_queue))
 
+        # For distributed validation peform all reduce on metrics
+        if distributed_training:
+            callbacks.append(AllReduceMetricsCallback())
+
         if log_period > 0:
-            print("Creating callback for logging to terminal with"
-                  f" a period of every {log_period} micro batches")
+            logging.info("Creating callback for logging to terminal with"
+                         f" a period of every {log_period} micro batches")
             callbacks.append(LoggingCallback(log_period=log_period))
 
-            if config["wandb_opts"]["log_to_wandb"]:
-                print("Creating callback for logging to weights and biases"
-                      f" a period of every {log_period} micro batches")
-                callbacks.append(CustomWandbCallback(name=universal_run_name,
-                                                     log_period=log_period,
-                                                     config=config,
+            if enable_wandb and popdist.getInstanceIndex() == 0:
+                logging.info("Creating callback for logging to weights and biases"
+                             f" a period of every {log_period} micro batches")
+                callbacks.append(CustomWandbCallback(log_period=log_period,
                                                      model=model))
-
-        print("Creating callback for creating checkpoints. Checkpoints"
-              f" will be saved to path: {checkpoint_path}")
-        callbacks.append(CheckpointCallback(universal_run_name=universal_run_name,
-                                            checkpoint_dir=checkpoint_path,
-                                            ckpt_every_n_steps_per_execution=ckpt_every_n_steps_per_execution,
-                                            batch_config=batch_config))
+        if popdist.getInstanceIndex() == 0:
+            logging.info("Creating callback for creating checkpoints. Checkpoints"
+                         f" will be saved to path: {checkpoint_path}")
+            callbacks.append(CheckpointCallback(universal_run_name=universal_run_name,
+                                                checkpoint_dir=checkpoint_path,
+                                                ckpt_every_n_steps_per_execution=ckpt_every_n_steps_per_execution,
+                                                batch_config=batch_config))
 
         return callbacks

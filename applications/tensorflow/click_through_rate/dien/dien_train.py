@@ -124,7 +124,7 @@ def train_process(opts, restore=False):
     path = opts['model_path']
     graph, uid_embedding, mid_embedding, cat_embedding = generic_init_graph(opts)
     epochs = opts['epochs']
-    iterations_per_epoch = TRAIN_DATA_SIZE / (opts['batch_size'] * opts['replicas'])
+    iterations_per_epoch = TRAIN_DATA_SIZE / (opts['micro_batch_size'] * opts['replicas'])
     steps = epochs * iterations_per_epoch // opts["batches_per_step"]
 
     total_time = 0
@@ -140,12 +140,12 @@ def train_process(opts, restore=False):
                 total_time += time_one_iteration * 2
             if i > 1:
                 total_time += time_one_iteration
-            batch_throughput = opts["batch_size"] * opts["batches_per_step"] / time_one_iteration
+            batch_throughput = opts["micro_batch_size"] * opts["batches_per_step"] / time_one_iteration
             logger.print_to_file_and_screen("index:{}, loss: {:.4f}, aux_loss: {:.4f}, accuracy: {:.4f}, time over batch: {:.4f}, sample/sec: {:.1f}, learning rate: {}".format(i, loss, aux_loss, accuracy, time_one_iteration, batch_throughput, lr), opts)
             i += 1
 
     if steps > 1:
-        throughput = steps * opts["batches_per_step"] * opts['batch_size'] / total_time
+        throughput = steps * opts["batches_per_step"] * opts['micro_batch_size'] / total_time
         tf_log.debug(f"TTT:{total_time}, Samples/second (averaged over steps):{throughput}")
     graph.saver.save(graph.session, save_path=path)
     graph.session.close()
@@ -172,8 +172,8 @@ def add_dataset_arguments(parser):
 def add_training_arguments(parser):
     group = parser.add_argument_group('Training')
     group.add_argument('--seed', type=int, default=3, help = "set random seed")
-    group.add_argument('--batch-size', type=int, default=32, help = "set batch-size for training graph")
-    group.add_argument('--replicas', type=int, default=1, help = "Replicate graph over N workers to increase batch to batch-size*N")
+    group.add_argument('--micro-batch-size', type=int, default=32, help = "set micro-batch-size for training graph")
+    group.add_argument('--replicas', type=int, default=1, help = "Replicate graph over N workers to increase batch to micro-batch-size*N")
     group.add_argument('--optimizer', type=str, default="SGD", choices=['SGD', 'Adam'], help="optimizer")
     group.add_argument('--learning-rate', type=float, default=0.6, help = "learning rate")
     group.add_argument('--large-embedding', default=False, action='store_true', help="set small or large embedding size")
@@ -184,7 +184,7 @@ def add_training_arguments(parser):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description = "CTR Model Training in Tensorflow", add_help = False)
+    parser = argparse.ArgumentParser(description = "CTR Model Training in TensorFlow", add_help = False)
     parser = add_model_arguments(parser)
     parser = add_dataset_arguments(parser)
     parser = add_training_arguments(parser)

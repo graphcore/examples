@@ -38,8 +38,10 @@ import numpy as np
 from tensorflow.python import ipu
 from tensorflow.python.ipu import loops, ipu_infeed_queue, ipu_outfeed_queue, \
                                   application_compile_op, embedded_runtime
+from tensorflow.python.ipu import horovod as hvd
 from tensorflow.python.ipu.scopes import ipu_scope
 import libpvti as pvti
+import popdist
 
 import configurations
 import log as logging
@@ -62,7 +64,7 @@ def get_exec_path(model, model_size, batch_size, batches_per_step, filenames, us
         poplar_exec_filepath = f"model_{random_part}.poplar_exec"
     else:
         ckpt_name = filenames[0].split('/')[-1] if len(filenames) else 'random'
-        label_phrase = "nolabels" if use_generated_data else "withlabels"
+        label_phrase = 'nolabels' if use_generated_data else 'withlabels'
         poplar_exec_filepath = (f"model_{model}{model_size}_bs_{str(batch_size)}_"
                                 f"bps_{str(batches_per_step)}_{str(ckpt_name)}_{label_phrase}"
                                 f".poplar_exec")
@@ -70,13 +72,12 @@ def get_exec_path(model, model_size, batch_size, batches_per_step, filenames, us
 
 
 def validation_graph_builder(model, data_dict, opts):
-    """Create a validation graph containing specified model and returning accuracy value."""
+    """Create a validation graph containing specified model and returning predictions."""
     train.ipuside_preprocessing(data_dict, opts, training=False)
     image = data_dict['image']
     logits = model(opts, training=False, image=image)
-    probabilities = tf.reduce_max(logits, axis=1)
     predictions = tf.argmax(logits, 1, output_type=tf.int32)
-    return probabilities, predictions
+    return predictions
 
 
 def get_ckpt_filenames(opts):
@@ -84,8 +85,8 @@ def get_ckpt_filenames(opts):
     Look for a saved checkpoint based on specified execution options.
     Return checkpoints filenames (possibly more than 1) and calculated batch size.
     """
-    ckpt_pattern_idx = re.compile(".*ckpt-([0-9]+).index$")
-    if opts['restore_path'] and opts['distributed_worker_index'] == 0:
+    ckpt_pattern_idx = re.compile('.*ckpt-([0-9]+).index$')
+    if opts['restore_path']:
         if os.path.isdir(opts['restore_path']):
             # search to a maximum depth of 1
             ckpts = glob(os.path.join(opts['restore_path'], '*.index')) \
@@ -96,9 +97,9 @@ def get_ckpt_filenames(opts):
 
             weight_avg_ckpts = [c for c in ckpts if not ckpt_pattern_idx.match(c)]
             filenames = training_ckpts + weight_avg_ckpts
-            filenames = [f[:-len(".index")] for f in filenames]
+            filenames = [f[:-len('.index')] for f in filenames]
         else:
-            filenames = sorted([f[:-len(".index")] for f in glob(opts['restore_path'] +
+            filenames = sorted([f[:-len('.index')] for f in glob(opts['restore_path'] +
                                                                  '*.index')])
 
         possible_args = os.path.join(opts['restore_path'], 'arguments.json')
@@ -144,11 +145,11 @@ def prepare_feed_dict(placeholders, images, labels, batch_size, use_generated_da
     idx = idx * batch_size
     if use_generated_data:
         return {
-            placeholders[0]: images
+            placeholders['image']: images
         }
     return {
-        placeholders[0]: images[idx:idx+batch_size],
-        placeholders[1]: labels[idx:idx+batch_size]
+        placeholders['image']: images[idx:idx+batch_size],
+        placeholders['label']: labels[idx:idx+batch_size]
     }
 
 
@@ -159,7 +160,7 @@ def configure_ipu(opts):
         global_amp = opts['available_memory_proportion'][0]
 
     ipu_options = get_config(ipu_id=opts['select_ipu'],
-                             prng=not opts['no_stochastic_rounding'],
+                             stochastic_rounding=opts['stochastic_rounding'],
                              shards=opts['shards'],
                              number_of_replicas=opts['total_replicas'],
                              max_cross_replica_buffer_size=opts['max_cross_replica_buffer_size'],
@@ -172,10 +173,10 @@ def configure_ipu(opts):
                              stable_norm=opts['stable_norm'],
                              compile_only=opts['compile_only'],
                              internalExchangeOptimisationTarget=opts[
-                                 "internal_exchange_optimisation_target"
+                                 'internal_exchange_optimisation_target'
                              ],
                              num_io_tiles=opts['num_io_tiles'],
-                             number_of_distributed_batch_norm_replicas=opts.get("BN_span", 1),
+                             number_of_distributed_batch_norm_replicas=opts.get('BN_span', 1),
                              nanoo=not opts['saturate_on_overflow'],
                              )
 
@@ -197,7 +198,7 @@ def create_poplar_exec(model, opts, poplar_exec_path):
             dummy_image = np.zeros((opts['micro_batch_size'], opts['image_size'],
                                     opts['image_size'], 3), dtype=np.uint8)
             inference_dataset = tf.data.Dataset.from_tensors({
-                "image": dummy_image
+                'image': dummy_image
             })
         else:
             # create dataset with images and labels
@@ -208,40 +209,39 @@ def create_poplar_exec(model, opts, poplar_exec_path):
             ipu_infeed_queue.IPUInfeedQueue(inference_dataset,
                                             prefetch_depth=opts['prefetch_depth'])
 
-        acc_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+        output_queue = ipu_outfeed_queue.IPUOutfeedQueue()
         with ipu_scope('/device:IPU:0'):
             def comp_fn():
                 def body(data_dict):
-                    accuracy = validation_graph_builder(model, data_dict, opts)
-                    accuracy_enqueue = acc_queue.enqueue(accuracy)
-                    return accuracy_enqueue
-                accuracy = loops.repeat(int(opts['validation_batches_per_step']),
-                                        body, [], inference_infeed_iterator)
-                return accuracy
+                    output = validation_graph_builder(model, data_dict, opts)
+                    output_enqueue = output_queue.enqueue(output)
+                    return output_enqueue
+                loop = loops.repeat(int(opts['validation_batches_per_step']),
+                                    body, [], inference_infeed_iterator)
+                return loop
 
         filenames, _ = get_ckpt_filenames(opts)
 
-        accuracy = application_compile_op.experimental_application_compile_op(
+        compile_op = application_compile_op.experimental_application_compile_op(
             comp_fn, output_path=poplar_exec_path, freeze_variables=True)
 
-        outfeed = acc_queue.dequeue()
         valid_saver = tf.train.Saver()
 
         ipu.utils.move_variable_initialization_to_cpu()
 
     with tf.Session(graph=valid_graph, config=tf.ConfigProto()) as sess:
         if len(filenames) == 1:
-            print("Restoring from a snapshot: ", filenames[0])
+            print('Restoring from a snapshot: ', filenames[0])
             sess.run(inference_infeed_iterator.initializer)
             init = tf.global_variables_initializer()
             sess.run(init)
             valid_saver.restore(sess, filenames[0])
         else:
-            print("Warning: no restore point found - randomly initialising weights instead")
+            print('Warning: no restore point found - randomly initialising weights instead')
             init = tf.global_variables_initializer()
             sess.run(init)
 
-        path = sess.run(accuracy)
+        path = sess.run(compile_op)
         print(f"Poplar executable: {path}")
 
     valid_graph.finalize()
@@ -249,31 +249,35 @@ def create_poplar_exec(model, opts, poplar_exec_path):
 
 def inference_run(exec_filename, ckpt_name, iteration, epoch, first_run, opts):
     """Run inference for multiple iterations and collect latency values."""
-    logging.mlperf_logging(key="EVAL_START", log_type="start",
-                           metadata={"epoch_num": round(epoch)})
-    engine_name = "my_engine"
+    logging.mlperf_logging(key='EVAL_START', log_type='start',
+                           metadata={'epoch_num': round(epoch)})
+    engine_name = 'my_engine'
     ctx = embedded_runtime.embedded_runtime_start(exec_filename, [],
                                                   engine_name, timeout=1000)
 
-    input_placeholder = tf.placeholder(tf.uint8, (opts['micro_batch_size'], opts['image_size'],
+    image_placeholder = tf.placeholder(tf.uint8, (opts['micro_batch_size'], opts['image_size'],
                                                   opts['image_size'], 3))
+
+    placeholders = {'image': image_placeholder}
+    placeholders_list = [image_placeholder]
 
     num_iters = opts['iterations']
     if opts['generated_data']:
-        placeholders = [input_placeholder]
         images = np.random.normal(size=(opts['micro_batch_size'], opts['image_size'],
                                         opts['image_size'], 3)).astype(np.uint8)
         labels = None
     else:
         label_placeholder = tf.placeholder(tf.int32, (opts['micro_batch_size']))
-        placeholders = [input_placeholder, label_placeholder]
+        placeholders['label'] = label_placeholder
+        placeholders_list.append(label_placeholder)
 
         with tf.Graph().as_default():
             inference_dataset = dataset.data(opts, is_training=False).map(lambda x:
                                                                           {'data_dict': x})
-            images, labels = dataset_to_list(inference_dataset, num_iters * opts['micro_batch_size'])
+            images, labels = dataset_to_list(inference_dataset,
+                                             num_iters * opts['micro_batch_size'])
 
-    call_result = embedded_runtime.embedded_runtime_call(placeholders, ctx)
+    call_result = embedded_runtime.embedded_runtime_call(placeholders_list, ctx)
 
     ipu.config.reset_ipu_configuration()
     gc.collect()
@@ -281,7 +285,8 @@ def inference_run(exec_filename, ckpt_name, iteration, epoch, first_run, opts):
     thread_queue = Queue()
     with tf.Session() as session:
         # do not include time of the first iteration in stats
-        initial_feed_dict = prepare_feed_dict(placeholders, images, labels, opts['micro_batch_size'],
+        initial_feed_dict = prepare_feed_dict(placeholders, images, labels,
+                                              opts['micro_batch_size'],
                                               opts['generated_data'], 0)
         session.run(call_result, initial_feed_dict)
 
@@ -290,11 +295,12 @@ def inference_run(exec_filename, ckpt_name, iteration, epoch, first_run, opts):
             latencies = []
             accuracies = []
             for iter_idx in range(num_iters):
-                feed_dict = prepare_feed_dict(placeholders, images, labels, opts['micro_batch_size'],
-                                              opts['generated_data'], iter_idx)
+                feed_dict = prepare_feed_dict(placeholders, images, labels,
+                                              opts['micro_batch_size'], opts['generated_data'],
+                                              iter_idx)
                 with pvti.Tracepoint(thread_channel, f"Iteration {iter_idx}"):
                     start_iter = time.time()
-                    _, predictions = session.run(call_result, feed_dict)
+                    predictions = session.run(call_result, feed_dict)
                     end_iter = time.time()
                 latencies.append(end_iter - start_iter)
                 if not opts['generated_data']:
@@ -313,7 +319,7 @@ def inference_run(exec_filename, ckpt_name, iteration, epoch, first_run, opts):
         for idx, _thread in enumerate(thp):
             _thread.join()
             print(f"Thread {idx} joined")
-        val_time = time.time() - inference_start
+        inference_time = time.time() - inference_start
 
     latencies, accuracies = [], []
     while not thread_queue.empty():
@@ -324,47 +330,72 @@ def inference_run(exec_filename, ckpt_name, iteration, epoch, first_run, opts):
     if opts['generated_data']:
         total_accuracy = -1
     else:
+        if opts['use_popdist']:
+            with tf.Graph().as_default(), tf.Session():
+                accuracies = hvd.allgather(tf.constant(accuracies, name='Accuracies',
+                                                       dtype = tf.float32)).eval()
         total_accuracy = sum(accuracies) / len(accuracies)
         total_accuracy *= 100
 
     # convert latencies to miliseconds
     latencies = [1000 * latency_s for latency_s in latencies]
 
-    max_latency = max(latencies)
-    mean_latency = np.mean(latencies)
-    perc_99 = np.percentile(latencies, 99)
-    perc_99_9 = np.percentile(latencies, 99.9)
+    if opts['use_popdist']:
+        with tf.Graph().as_default(), tf.Session():
+            latencies = hvd.allgather(tf.constant(latencies, name='Latencies',
+                                                  dtype = tf.float32)).eval()
 
-    print(f"Latencies - avg: {mean_latency:8.4f}, 99th percentile: {perc_99:8.4f}, "
-          f"99.9th percentile: {perc_99_9:8.4f}, max: {max_latency:8.4f}")
+    num_processed_samples = (num_iters * opts['num_inference_thread'] *
+                             opts['validation_local_batch_size'])
+    throughput = num_processed_samples / inference_time
+    if opts['use_popdist']:
+        with tf.Graph().as_default(), tf.Session():
+            throughputs = hvd.allgather(tf.constant([throughput], name='Throughputs',
+                                                    dtype = tf.float32)).eval()
+        throughput = sum(throughputs)
 
-    valid_format = (
-        "Validation top-1 accuracy [{name}] (iteration: {iteration:6d}, epoch: {epoch:6.2f}, "
-        "img/sec: {img_per_sec:6.2f}, time: {val_time:8.6f}, "
-        "latency (ms): {latency:8.4f}: {val_acc:6.3f}%")
+    if opts['distributed_worker_index'] == 0:
+        max_latency = max(latencies)
+        mean_latency = np.mean(latencies)
+        perc_99 = np.percentile(latencies, 99)
+        perc_99_9 = np.percentile(latencies, 99.9)
 
-    val_size = (num_iters * opts['num_inference_thread'] * opts['validation_total_batch_size'])
+        print(f"Latencies - avg: {mean_latency:8.4f}, 99th percentile: {perc_99:8.4f}, "
+              f"99.9th percentile: {perc_99_9:8.4f}, max: {max_latency:8.4f}")
 
-    stats = OrderedDict([
-                ('name', ckpt_name),
-                ('iteration', iteration),
-                ('epoch', epoch),
-                ('val_acc', total_accuracy),
-                ('val_time', val_time),
-                ('val_size', val_size),
-                ('img_per_sec', val_size / val_time),
-                ('latency', mean_latency),
-            ])
-    logging.print_to_file_and_screen(valid_format.format(**stats), opts)
-    logging.write_to_csv(stats, first_run, False, opts)
-    if opts['wandb'] and opts['distributed_worker_index'] == 0:
-        logging.log_to_wandb(stats)
-    logging.mlperf_logging(key="EVAL_STOP", log_type="stop",
-                           metadata={"epoch_num": round(epoch)})
-    logging.mlperf_logging(
-        key="EVAL_ACCURACY", value=float(stats['val_acc'])/100,
-        metadata={"epoch_num": round(epoch)})
-    return stats
+        valid_format = (
+            "Validation top-1 accuracy [{name}] (iteration: {iteration:6d}, epoch: {epoch:6.2f}, "
+            "img/sec: {img_per_sec:6.2f}, time: {inference_time:8.6f}, "
+            "latency (ms): {latency:8.4f}: {val_acc:6.3f}%")
+
+        stats = OrderedDict([
+                    ('name', ckpt_name),
+                    ('iteration', iteration),
+                    ('epoch', epoch),
+                    ('val_acc', total_accuracy),
+                    ('inference_time', inference_time),
+                    ('num_processed_samples', num_processed_samples),
+                    ('img_per_sec', throughput),
+                    ('latency', mean_latency),
+                ])
+        logging.print_to_file_and_screen(valid_format.format(**stats), opts)
+        logging.write_to_csv(stats, first_run, False, opts)
+        if opts['wandb'] and opts['distributed_worker_index'] == 0:
+            logging.log_to_wandb(stats)
+        logging.mlperf_logging(key='EVAL_STOP', log_type='stop',
+                               metadata={'epoch_num': round(epoch)})
+        logging.mlperf_logging(
+            key='EVAL_ACCURACY', value=float(stats['val_acc'])/100,
+            metadata={'epoch_num': round(epoch)})
+        return stats
+    return None
+
+
+def hvd_barrier():
+    """Synchronise all workers using Horovod."""
+    with tf.Graph().as_default(), tf.Session():
+        _ = hvd.allreduce(tf.constant(12.3, name='Broadcast', dtype = tf.float16),
+                          op=hvd.Sum).eval()
 
 
 def inference_only_process(model, opts):
@@ -375,16 +406,27 @@ def inference_only_process(model, opts):
                                      opts['validation_batches_per_step'], filenames,
                                      opts['generated_data'], opts['tmp_execs'])
     configure_ipu(opts)
-    if opts['force_recompile'] or opts['tmp_execs'] or not os.path.isfile(poplar_exec_path):
+
+    is_first_worker = opts['distributed_worker_index'] == 0
+    compiled_file_exists = os.path.isfile(poplar_exec_path)
+    # always recompile graph if using temporary executables
+    # else if it's necessary to compile, do it only in one process
+    if opts['tmp_execs'] or (is_first_worker and (opts['force_recompile'] or
+                                                  not compiled_file_exists)):
         create_poplar_exec(model.Model, opts, poplar_exec_path)
 
+    # if using multiple processes, synchronize after graph compilation so
+    # each process can use the same executable
+    if opts['use_popdist']:
+        hvd_barrier()
+
     # Validation block
-    logging.mlperf_logging(key="BLOCK_START", log_type="start",
-                           metadata={"first_epoch_num": 1,
-                                     "epoch_count": opts['epochs']})
+    logging.mlperf_logging(key='BLOCK_START', log_type='start',
+                           metadata={'first_epoch_num': 1,
+                                     'epoch_count': opts['epochs']})
 
     ckpt_name = filenames[0].split('/')[-1] if len(filenames) else 'random'
-    ckpt_pattern = re.compile(".*ckpt-([0-9]+)$")
+    ckpt_pattern = re.compile('.*ckpt-([0-9]+)$')
     pattern_match = ckpt_pattern.match(ckpt_name)
     if pattern_match:
         iteration = int(pattern_match.groups()[0])
@@ -396,16 +438,16 @@ def inference_only_process(model, opts):
     for _ in range(opts['repeat']):
         stats = inference_run(poplar_exec_path, ckpt_name, iteration, epoch, True, opts)
         # Handle skipped case
-        if stats and "val_size" in stats and "val_acc" in stats:
+        if stats and 'num_processed_samples' in stats and 'val_acc' in stats:
             if stats['val_acc'] > MLPERF_EVAL_TARGET:
                 success = True
 
-    logging.mlperf_logging(key="BLOCK_STOP", log_type="stop",
-                           metadata={"first_epoch_num": 1})
-    logging.mlperf_logging(key="RUN_STOP",
-                           value={"success": success},
-                           metadata={"epoch_num": round(epoch),
-                                     "status": "success" if success else "aborted"})
+    logging.mlperf_logging(key='BLOCK_STOP', log_type='stop',
+                           metadata={'first_epoch_num': 1})
+    logging.mlperf_logging(key='RUN_STOP',
+                           value={'success': success},
+                           metadata={'epoch_num': round(epoch),
+                                     'status': 'success' if success else 'aborted'})
 
     if opts['tmp_execs'] and os.path.isfile(poplar_exec_path):
         os.remove(poplar_exec_path)
@@ -413,14 +455,14 @@ def inference_only_process(model, opts):
 
 def add_main_arguments(parser):
     group = parser.add_argument_group('Main')
-    group.add_argument('--model', default='resnet', help="Choose model")
+    group.add_argument('--model', default='resnet', help='Choose model')
     group.add_argument('--restore-path', type=str,
-                       help="Path to a single checkpoint to restore from or directory "
-                            "containing multiple checkpoints")
+                       help='Path to a single checkpoint to restore from or directory '
+                            'containing multiple checkpoints')
     group.add_argument('--repeat', type=int, default=1,
-                       help="Repeat inference for debugging puposes")
+                       help='Repeat inference for debugging puposes')
     group.add_argument('--num-inference-thread', type=int, default=1,
-                       help="Number of inference threads to run in parallel")
+                       help='Number of inference threads to run in parallel')
     group.add_argument('--force-recompile', action='store_true', default=False,
                        help='Force application to recompile graph even if there '
                             'is one already on the drive')
@@ -432,13 +474,15 @@ def add_main_arguments(parser):
 
 
 def set_main_defaults(opts):
-    opts['summary_str'] = "\n"
+    opts['summary_str'] = '\n'
 
 
 def set_validation_defaults(opts):
-    opts['validation_total_batch_size'] = opts['micro_batch_size'] * opts['shards'] * \
-                                            opts['replicas'] * opts['distributed_worker_count']
-    opts['summary_str'] += f"Validation\n Batch Size: {opts['validation_total_batch_size']}\n"
+    opts['validation_local_batch_size'] = (opts['micro_batch_size'] * opts['shards'] *
+                                           opts['replicas'])
+    opts['validation_global_batch_size'] = (opts['validation_local_batch_size'] *
+                                            opts['distributed_worker_count'])
+    opts['summary_str'] += f"Validation\n Batch Size: {opts['validation_global_batch_size']}\n"
     opts['validation_iterations'] = opts['iterations']
     opts['validation_batches_per_step'] = opts['batches_per_step']
 
@@ -453,9 +497,12 @@ def create_parser(model, parser):
 
 
 def set_distribution_defaults(opts):
-    opts['distributed_worker_count'] = 1
-    opts['distributed_worker_index'] = 0
-    opts['distributed_cluster'] = None
+    if opts['use_popdist']:
+        opts['distributed_worker_count'] = popdist.getNumInstances()
+        opts['distributed_worker_index'] = popdist.getInstanceIndex()
+    else:
+        opts['distributed_worker_count'] = 1
+        opts['distributed_worker_index'] = 0
 
 
 def set_defaults(model, opts):
@@ -469,8 +516,8 @@ def set_defaults(model, opts):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Validation for previously generated "
-                                                 "checkpoints.", add_help=False)
+    parser = argparse.ArgumentParser(description='Validation for previously generated '
+                                                 'checkpoints.', add_help=False)
     parser = add_main_arguments(parser)
     parser = configurations.add_arguments(parser)
     args, unknown = parser.parse_known_args()
@@ -478,7 +525,7 @@ if __name__ == '__main__':
     args = vars(args)
 
     try:
-        model = importlib.import_module("Models." + args['model'])
+        model = importlib.import_module('Models.' + args['model'])
     except ImportError as ie:
         raise ValueError(f"Models/{args['model']}.py not found") from ie
 
@@ -498,8 +545,16 @@ if __name__ == '__main__':
                              'for backwards compatibility.')
         elif opts['batch_size']:
             opts['micro_batch_size'] = opts['batch_size']
-        opts['use_popdist'] = False
-        opts['total_replicas'] = opts['replicas']
+
+        if popdist.isPopdistEnvSet():
+            hvd.init()
+            opts['use_popdist'] = True
+            opts['replicas'] = popdist.getNumLocalReplicas()
+            opts['total_replicas'] = popdist.getNumTotalReplicas()
+            opts['select_ipu'] = str(popdist.getDeviceId())
+        else:
+            opts['use_popdist'] = False
+            opts['total_replicas'] = opts['replicas']
 
         opts['command'] = ' '.join(sys.argv)
         set_defaults(model, opts)
@@ -512,8 +567,8 @@ if __name__ == '__main__':
 
         if opts['wandb'] and opts['distributed_worker_index'] == 0:
             logging.initialise_wandb(opts)
-        logging.print_to_file_and_screen("Command line: " + opts['command'], opts)
+        logging.print_to_file_and_screen('Command line: ' + opts['command'], opts)
         logging.print_to_file_and_screen(opts['summary_str'].format(**opts), opts)
-        opts['summary_str'] = ""
+        opts['summary_str'] = ''
         logging.print_to_file_and_screen(opts, opts)
         inference_only_process(model, opts)

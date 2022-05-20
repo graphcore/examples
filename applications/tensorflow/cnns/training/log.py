@@ -175,7 +175,7 @@ def print_trainable_variables(opts):
     print_to_file_and_screen('Total Parameters:' + str(total_parameters) + '\n', opts)
 
 
-def mlperf_logging(key, value=None, log_type="event", metadata=None):
+def mlperf_logging(key, value=None, log_type="event", metadata=None, stack_offset=None):
     if not MLPERF_LOGGING:
         return
     if key not in mllog.constants.__dict__:
@@ -188,13 +188,13 @@ def mlperf_logging(key, value=None, log_type="event", metadata=None):
         key = mllog.constants.__dict__[key]
     if log_type is "start":
         MLLOGGER.start(
-            key=key, value=value, metadata=metadata)
+            key=key, value=value, metadata=metadata, stack_offset=stack_offset)
     elif log_type is "event":
         MLLOGGER.event(
-            key=key, value=value, metadata=metadata)
+            key=key, value=value, metadata=metadata, stack_offset=stack_offset)
     elif log_type is "stop" or log_type is "end":
         MLLOGGER.end(
-            key=key, value=value, metadata=metadata)
+            key=key, value=value, metadata=metadata, stack_offset=stack_offset)
     else:
         raise NotImplementedError("Unknown log type {}".format(log_type))
 

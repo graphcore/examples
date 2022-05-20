@@ -67,11 +67,11 @@ def test(inference_model, test_data):
     return acc
 
 
-def load_checkpoint_weights(inference_model, file_path):
+def load_checkpoint_weights(inference_model, model, file_path):
     checkpoint = torch.load(file_path)
     args = checkpoint['args']
     logging.info(f"Restore the {args.model} model to epoch {checkpoint['epoch']} on {args.data} dataset(Train loss:{checkpoint['loss']}, train accuracy:{checkpoint['train_accuracy']}%)")
-    models.load_model_state_dict(inference_model, checkpoint['model_state_dict'])
+    models.load_model_state_dict(model, checkpoint['model_state_dict'])
     inference_model.copyWeightsToDevice()
 
 
@@ -108,16 +108,14 @@ def validate_checkpoints(checkpoint_list, test_data=None):
 
     if test_data is None:
         test_data = datasets.get_data(args, opts, train=False, async_dataloader=True, return_remaining=True)
-
-    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False)
-    model.eval()
+    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, inference_mode=True)
     # Load the weights of the first checkpoint for the model
     models.load_model_state_dict(model, checkpoint['model_state_dict'])
-    inference_model = poptorch.inferenceModel(model, opts)
 
+    inference_model = poptorch.inferenceModel(model, opts)
     for checkpoint in checkpoint_list:
         if inference_model.isCompiled():
-            load_checkpoint_weights(inference_model, checkpoint)
+            load_checkpoint_weights(inference_model, model, checkpoint)
         val_accuracy = test(inference_model, test_data)
         epoch_nr = torch.load(checkpoint)["epoch"]
         log_data = {

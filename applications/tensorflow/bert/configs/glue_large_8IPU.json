@@ -66,7 +66,6 @@
     "do_predict": true,
     "do_lower_case": true,
     "verbose_logging": false,
-    "version_2_with_negative": false,
     "variable_offloading": true,
     "use_debiasing": false,
 

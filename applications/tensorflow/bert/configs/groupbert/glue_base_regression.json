@@ -60,10 +60,9 @@
     "glue_dropout_prob": 0.15,
     "do_training": false,
     "do_predict": false,
-    "do_eval": false,
+    "do_evaluation": false,
     "do_lower_case": true,
     "verbose_logging": false,
-    "version_2_with_negative": false,
     "variable_offloading": true,
 
     "output_dir": "tmp/groupbert/glue/",

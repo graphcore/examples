@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 from espnet2.asr.specaug.specaug import SpecAug
+import popdist
 
 
 def load_feat_length_npy(path):
@@ -54,19 +55,27 @@ class AishellDataset(Dataset):
         self.data = None
         self.args = args
         self.length = self.args['ipu_options']['gradient_accumulation'] * self.args['ipu_options']['num_replicas'] * self.args['train_iterator']['batch_size'] * self.args['ipu_options']['batches_per_step'] * 2
+        if popdist.isPopdistEnvSet():
+            self.length *= self.args['NumInstances']
+
         if not self.use_generated_data:
             self.load_real_data()
+        else:
+            self.random_seed = dataset['random_seed']
+            self.feature, self.feature_max_len, self.target, self.target_max_len = self.get_fixed_data()
         self.dtype = dataset['dtype']
-        self.random_seed = dataset['random_seed']
+
+
+    def get_fixed_data(self):
+        torch.manual_seed(self.random_seed)
+        input_size = self.args['encoder']['input_size']
+        feature_max_len = self.args['encoder']['max_len']
+        target_max_len = self.args['decoder']['max_len']
+        feature = torch.randn(feature_max_len, input_size)
+        return feature, feature_max_len, torch.ones(target_max_len).int(), target_max_len - 1
 
     def get_generated_data(self):
-        with torch.random.fork_rng():
-            torch.manual_seed(self.random_seed)
-            input_size = self.args['encoder']['input_size']
-            feature_max_len = self.args['encoder']['max_len']
-            target_max_len = self.args['decoder']['max_len']
-            feature = torch.randn(feature_max_len, input_size)
-        return (feature, feature_max_len, torch.ones(target_max_len).int(), target_max_len - 1)
+        return (self.feature, self.feature_max_len, self.target, self.target_max_len)
 
     def load_real_data(self):
         if self.cached_data_path:

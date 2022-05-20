@@ -77,11 +77,11 @@ class VAE(BaseModel):
 
     def set_test_config(self):
         super().set_test_config()
-        self.n_iwae_samples_te = self.config.testing.get('n_iwae_samples_te', N_IWAE_SAMPLES_TEST_DEFAULT)
-        self.iwae_samples_te_batch_size = self.config.testing.get('iwae_samples_te_batch_size',
-                                                                  IWAE_SAMPLES_TEST_BATCH_SIZE_DEFAULT)
-        assert self.n_iwae_samples_te % self.iwae_samples_te_batch_size == 0,\
-            'Number of IWAE samples must be integer multiple of iwae_samples_te_batch_size'
+        self.n_iwae_samples_test = self.config.testing.get('n_iwae_samples_test', N_IWAE_SAMPLES_TEST_DEFAULT)
+        self.iwae_samples_test_micro_batch_size = self.config.testing.get('iwae_samples_test_micro_batch_size',
+                                                                          IWAE_SAMPLES_TEST_BATCH_SIZE_DEFAULT)
+        assert self.n_iwae_samples_test % self.iwae_samples_test_micro_batch_size == 0,\
+            'Number of IWAE samples must be integer multiple of iwae_samples_test_micro_batch_size'
 
     def network(self, X_in):
         """End-to-end network from encoder input to decoder output"""
@@ -148,22 +148,22 @@ class VAE(BaseModel):
 
         return ll
 
-    def iwae_elbo(self, X_b, proposal_sampler=None, proposal_log_prob=None):
+    def iwae_elbo(self, X_micro_batch, proposal_sampler=None, proposal_log_prob=None):
         """
         More memory-efficient implementation of importance-weighted ELBO which accumulates IWELBO
         scores over latent samples (rather than storing all values and then doing log-sum-exp).
-        :param X_b: input tensor to calculate model IWELBO for
+        :param X_micro_batch: input tensor to calculate model IWELBO for
         :param proposal_sampler: function, which takes input of the required shape of tensor with samples, and returns
         samples to evaluate decoder output for
         :param proposal_log_prob: function, which takes same z_samples as input and returns their
         log-probability under proposal
         """
         # Get parameters of approximate latent posterior q(Z|X)
-        Z_cond_X_mu, Z_cond_X_sigma = self.encoder(tf.identity(X_b))
+        Z_cond_X_mu, Z_cond_X_sigma = self.encoder(tf.identity(X_micro_batch))
 
         # How many samples to process in each loop?
-        iwae_batch_size = self.iwae_samples_te_batch_size
-        n_iwae_loops = int(self.n_iwae_samples_te / iwae_batch_size)
+        iwae_micro_batch_size = self.iwae_samples_test_micro_batch_size
+        n_iwae_loops = int(self.n_iwae_samples_test / iwae_micro_batch_size)
 
         # If no proposal specified use the default (approx posterior)
         def _default_proposal_log_prob(z_samples, mean, std):
@@ -200,8 +200,8 @@ class VAE(BaseModel):
             def _body(sample_id, exp_elbo_accumulator, max_elbo):
                 # Reparameterisation trick: draw samples from standard normal and convert them to samples from q(Z|X)
                 Z_cond_X_samples = proposal_sampler(Z_cond_X_mu, Z_cond_X_sigma,
-                                                    (iwae_batch_size,
-                                                     tf.shape(X_b)[0],
+                                                    (iwae_micro_batch_size,
+                                                     tf.shape(X_micro_batch)[0],
                                                      self.Z_dim))
 
                 # Find log probability of posterior samples according to prior
@@ -216,7 +216,7 @@ class VAE(BaseModel):
                 ll_params = self.p_X_cond_Z_params(Z_cond_X_samples)
 
                 # Find log-likelihood at output
-                log_p_X_cond_Z = self.log_likelihood(X_b, ll_params)
+                log_p_X_cond_Z = self.log_likelihood(X_micro_batch, ll_params)
 
                 # Evaluate elbo for the current sample
                 elbo_batch = log_p_X_cond_Z + log_p_Z - log_q_Z_cond_X
@@ -228,11 +228,11 @@ class VAE(BaseModel):
                 return [sample_id, exp_elbo_accumulator, max_elbo]
 
             # Initialise accumulator and maximum tracker
-            exp_elbo_acc = tf.zeros((iwae_batch_size, tf.shape(X_b)[0],), self.experiment.dtype)
+            exp_elbo_acc = tf.zeros((iwae_micro_batch_size, tf.shape(X_micro_batch)[0],), self.experiment.dtype)
 
             # Set tracker to minimum possible value (so it will be updated in first step)
             most_negative_float = np.finfo(self.experiment.dtype_np).min
-            max_elbo_tracker = tf.ones((tf.shape(X_b)[0],), self.experiment.dtype) * most_negative_float
+            max_elbo_tracker = tf.ones((tf.shape(X_micro_batch)[0],), self.experiment.dtype) * most_negative_float
 
             # Accumulate exp(ELBO) terms
             _, sum_exp_elbo, max_elbo_offset = \
@@ -242,7 +242,7 @@ class VAE(BaseModel):
                               back_prop=False)
 
             # Normalise log(sum_i(exp(x_i)/exp(x_max)) -> log(mean_i(exp(x_i)))
-            log_n_cast = tf.log(tf.cast(self.n_iwae_samples_te, self.experiment.dtype))
+            log_n_cast = tf.log(tf.cast(self.n_iwae_samples_test, self.experiment.dtype))
             log_sum_exp_elbo = tf.log(tf.reduce_sum(sum_exp_elbo, axis=0))
             return log_sum_exp_elbo - log_n_cast + max_elbo_offset
 
@@ -272,9 +272,9 @@ class VAE(BaseModel):
 
         return new_distribution_samples
 
-    def train_ops(self, X_b):
+    def train_ops(self, X_micro_batch):
         """Single training update"""
-        loss = self.network_loss(X_b)
+        loss = self.network_loss(X_micro_batch)
         ops = self.get_grad_ops(loss)
         with tf.control_dependencies(ops):
             return loss
@@ -302,19 +302,19 @@ class VAE(BaseModel):
 
         return tr_ops
 
-    def network_loss(self, X_batch):
+    def network_loss(self, X_micro_batch):
         """Loss of full network. Helper method so as not to require loads of inputs in self.train_ops()"""
-        network_out = self.network(tf.identity(X_batch))
-        return self.loss(X_batch, *network_out)
+        network_out = self.network(tf.identity(X_micro_batch))
+        return self.loss(X_micro_batch, *network_out)
 
-    def validation_ops(self, X_b):
+    def validation_ops(self, X_micro_batch):
         """Evaluate network performance: KL, log-likelihood, ELBO"""
-        X_b_out, Z_cond_X_mu, Z_cond_X_sigma, Z_cond_X_samples = self.network(X_b)
+        X_micro_batch_out, Z_cond_X_mu, Z_cond_X_sigma, Z_cond_X_samples = self.network(X_micro_batch)
         kl = self.analytic_kl(Z_cond_X_mu, Z_cond_X_sigma, Z_cond_X_samples)
-        ll = self.log_likelihood(X_b, X_b_out)
+        ll = self.log_likelihood(X_micro_batch, X_micro_batch_out)
         return kl, ll, ll - kl
 
-    def get_train_ops(self, graph_ops, infeed_queue, i_tr, X_b_tr, y_b_tr):
+    def get_train_ops(self, graph_ops, infeed_queue, i_train, X_micro_batch_train, y_micro_batch_train):
         """Add training operations to the graph"""
         possible_xla = self.device_config['maybe_xla_compile']
 
@@ -341,12 +341,12 @@ class VAE(BaseModel):
                     if self.use_infeed:
                         graph_ops['train'] = tr_infeed()
                     else:
-                        graph_ops['train'] = possible_xla(tr, [X_b_tr])
+                        graph_ops['train'] = possible_xla(tr, [X_micro_batch_train])
                     graph_ops['lr'] = self.get_current_learning_rate()
                     graph_ops['epochs'] = self.get_epoch()
         return graph_ops
 
-    def get_validation_ops(self, graph_ops, i_val, X_b_val, y_b_val):
+    def get_validation_ops(self, graph_ops, i_val, X_micro_batch_val, y_micro_batch_val):
         """Add validation operations to the graph"""
         with self.graph.as_default():
             with self.device_config['scoper']():
@@ -359,11 +359,11 @@ class VAE(BaseModel):
                     return self.iwae_elbo(X)
 
                 if self.experiment.config.validation:
-                    graph_ops['validation'] = possible_xla(val, [X_b_val])
-                    graph_ops['iwae_elbo_val'] = possible_xla(iwelbo, [X_b_val])
+                    graph_ops['validation'] = possible_xla(val, [X_micro_batch_val])
+                    graph_ops['iwae_elbo_val'] = possible_xla(iwelbo, [X_micro_batch_val])
         return graph_ops
 
-    def get_test_ops(self, graph_ops, i_te, X_b_te, y_b_te):
+    def get_test_ops(self, graph_ops, i_test, X_micro_batch_test, y_micro_batch_test):
         """Add validation operations to the graph"""
         with self.graph.as_default():
             with self.device_config['scoper']():
@@ -373,19 +373,19 @@ class VAE(BaseModel):
                     return self.iwae_elbo(X)
 
                 if self.experiment.config.testing:
-                    graph_ops['iwae_elbo_test'] = possible_xla(iwelbo, [X_b_te])
+                    graph_ops['iwae_elbo_test'] = possible_xla(iwelbo, [X_micro_batch_test])
         return graph_ops
 
     def validation(self):
         """Calculate evaluation metrics of model on validation set"""
         # KL, LL and ELBO
-        n_val_batches = int(np.ceil(self.config.data.n_validation / self.batch_size))
+        n_val_micro_batches = int(np.ceil(self.config.data.n_validation / self.micro_batch_size))
 
         # Importance-weighted ELBO
         op_names = {'iwae_elbo_val': ['iwae_elbo_val']}
         record_iwae = self.evaluation_scores(ops_sets_names=op_names,
                                              iters_to_init=('validation',),
-                                             n_batches=n_val_batches)
+                                             n_batches=n_val_micro_batches)
         record = {}
         record.update(record_iwae)
         self.experiment.save_record(record, scope='validation')
@@ -394,22 +394,22 @@ class VAE(BaseModel):
         """Find model performance on full train and test sets"""
         # Test set LL, KL, ELBO
         self.experiment.log.info('Getting test accuracies for trained model...\n')
-        n_te_batches = int(np.ceil(self.experiment.data_meta['test_size'] / self.batch_size_te))
+        n_test_micro_batches = int(np.ceil(self.experiment.data_meta['test_size'] / self.micro_batch_size_test))
 
         # Test set importance-weighted ELBO
         self.experiment.log.info('Finding IWELBO on test set...\n')
         op_names = {'iwae_elbo_test': ['te_iwae_elbo']}
-        n_te_batches = max_iwae_batches or n_te_batches
-        record_iwae_te = self.evaluation_scores(ops_sets_names=op_names,
-                                                iters_to_init=('test',),
-                                                n_batches=n_te_batches,
-                                                verbose=True)
+        n_test_micro_batches = max_iwae_batches or n_test_micro_batches
+        record_iwae_test = self.evaluation_scores(ops_sets_names=op_names,
+                                                  iters_to_init=('test',),
+                                                  n_batches=n_test_micro_batches,
+                                                  verbose=True)
         self.experiment.log.info('...done.\n')
 
         # Print and save results
-        self.experiment.log.info(f'Test results:\n{json.dumps(record_iwae_te, indent=4, default=serialize)}\n\n')
-        self.experiment.save_record(record_iwae_te, scope='test')
-        # self.experiment.save_record(record_tr, scope='train')
+        self.experiment.log.info(f'Test results:\n{json.dumps(record_iwae_test, indent=4, default=serialize)}\n\n')
+        self.experiment.save_record(record_iwae_test, scope='test')
+        # self.experiment.save_record(record_train, scope='train')
 
         # Save test results
-        self.experiment.observer.store(f'test_results_{self.iters}_iters.json', record_iwae_te)
+        self.experiment.observer.store(f'test_results_{self.iters}_iters.json', record_iwae_test)

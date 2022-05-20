@@ -57,7 +57,6 @@ def get_common_parser():
     parser.add_argument('--normalization-location', choices=['host', 'ipu', 'none'], default='host', help='Location of the data normalization')
     parser.add_argument('--eight-bit-io', action='store_true', help="Image transfer from host to IPU in 8-bit format, requires normalisation on the IPU")
     parser.add_argument('--dataloader-worker', type=int, help="Number of worker for each dataloader")
-    parser.add_argument('--webdataset-memory-cache-ratio', type=float, default=0.0, help="Determines the portion of the webdataset, which is cached in memory.")
     parser.add_argument('--profile', action='store_true', help='Create PopVision Graph Analyzer report')
     parser.add_argument('--model-cache-path', type=str, help='Load the precompiled model from the given path. If the given path is empty / not existing the compiled model is saved to the given folder')
     parser.add_argument('--input-image-padding', action='store_true', help='Pad input images to be 4 channel images. This could speed up the model.')

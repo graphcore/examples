@@ -7,26 +7,23 @@ import wandb
 from keras_extensions.callbacks.periodic_metrics import PeriodicMetrics
 
 
-WANDB_ONE_OFF_METRICS = ['Compilation Time']
+WANDB_ONE_OFF_METRICS = ["Compilation Time"]
+WANDB_EXCLUDE_METRICS = ["nsp___cls_loss",
+                         "mlm___cls_loss",
+                         "loss",
+                         "mlm___cls_accuracy",
+                         "nsp___cls_accuracy",
+                         "classification_acc",
+                         "start_positions_end_positions_sparse_categorical_accuracy"]
 
 
 class CustomWandbCallback(tf.keras.callbacks.Callback):
     def __init__(self,
-                 name: str,
                  log_period: int,
-                 config: dict,
                  model: tf.keras.Model):
         self.log_period = log_period
         self.model = model
         self.__current_batch_operations = self.__first_batch_operations
-        self.initialise_wandb(name, config)
-
-    def initialise_wandb(self, name: str, config: dict):
-        wandb.init(entity="sw-apps",
-                   project="TF2-BERT",
-                   name=name,
-                   config=config,
-                   tags=config["wandb_opts"]["init"]["tags"])
 
     def on_train_batch_end(self, batch, logs=None):
         self.upload_to_wandb(batch, logs)
@@ -39,7 +36,7 @@ class CustomWandbCallback(tf.keras.callbacks.Callback):
 
         if (batch + 1) % self.log_period == 0:
             metrics = self.metrics.get_normalized()
-            wandb.log(metrics)
+            wandb.log({k: v for k, v in metrics.items() if k not in WANDB_EXCLUDE_METRICS})
 
             self.metrics.reset()
 

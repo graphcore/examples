@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import pytest
 import re
 import subprocess
@@ -100,6 +99,29 @@ def test_loss_down_accuracy_up(embedding_serialization_factor, replication):
         "--training-steps": 350,
         "--replication-factor": replication,
         "--embedding-serialization-factor": embedding_serialization_factor,
+        "--disable-progress-bar": True
+    })
+    losses, accs = parse_result_for_loss_accuracy(stderr)
+    loss_going_down(losses)
+    accuracy_going_up(accs)
+    accuracy_reached_threshold(accs, 0.9)
+
+
+@pytest.mark.ipus(8)
+@pytest.mark.parametrize("embedding_serialization_factor", [3, 1])
+def test_compile_and_train_with_als(embedding_serialization_factor):
+    """
+    For a 3 layer replicated toy model with and without serialised embeddings,
+    ensure that the model compiles, loss trends downwards, and that the accuracy
+    trends upwards when training with automatic loss scaling.
+    """
+    _, stderr = run_bert_cmdline({
+        "--config": "demo_tiny_128",
+        "--training-steps": 350,
+        "--replication-factor": 2,
+        "--embedding-serialization-factor": embedding_serialization_factor,
+        "--loss-scaling": 1,
+        "--auto-loss-scaling": True,
         "--disable-progress-bar": True
     })
     losses, accs = parse_result_for_loss_accuracy(stderr)

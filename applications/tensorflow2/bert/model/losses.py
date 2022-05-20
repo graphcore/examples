@@ -6,8 +6,12 @@ from tensorflow.python.keras.losses import LossFunctionWrapper
 def mlm_loss(labels, logits):
     """
     Compute Masked Language Model (MLM) loss.
-    :param labels: Tensor of shape: (batch size, max_predictions_per_seq * 2)
-    :param logits: Tensor of shape (batch size, seq length, vocab size).
+    A custom loss function is used here rather than sparse categorical
+    cross entropy, as using sparse categorical cross entropy converges to
+    a higher loss. The following is also more robust to corrupt data, if
+    label values outside the allowable range.
+    :param labels: Tensor of shape: (batch size, max_predictions_per_seq)
+    :param logits: Tensor of shape (batch size, max_predictions_per_seq, vocab size).
     :return: Scalar value corresponding to the MLM loss after averaging the batch.
     """
     micro_batch_size, max_predictions_per_seq, vocab_size = logits.shape
@@ -49,6 +53,21 @@ def question_answering_loss(labels, logits):
     return tf.reduce_mean(loss)
 
 
+def classification_loss(labels, logits):
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
+        from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
+
+    loss = loss_fn(labels, logits)
+    return tf.reduce_mean(loss)
+
+
+def classification_loss_regression(labels, logits):
+    loss_fn = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)
+
+    loss = loss_fn(labels, logits)
+    return tf.reduce_mean(loss)
+
+
 class NSPLossFunction(LossFunctionWrapper):
     """Keras Loss wrapper for the NSP Loss loss between the labels and predictions."""
     def __init__(self, name='NSP_LossCalculation'):
@@ -65,3 +84,15 @@ class QuestionAnsweringLossFunction(LossFunctionWrapper):
     """Keras loss wrapper for the question-answer loss."""
     def __init__(self, name='QuestionAnswerLossCalculation'):
         super().__init__(question_answering_loss, name=name)
+
+
+class ClassificationLossFunction(LossFunctionWrapper):
+    """Keras loss wrapper for the classification loss."""
+    def __init__(self, name='ClassificationLossFunction'):
+        super().__init__(classification_loss, name=name)
+
+
+class ClassificationLossFunctionRegression(LossFunctionWrapper):
+    """Keras loss wrapper for the classification loss for regression tasks."""
+    def __init__(self, name='ClassificationLossFunctionRegression'):
+        super().__init__(classification_loss_regression, name=name)

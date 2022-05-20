@@ -151,7 +151,7 @@ def pytorch_result_and_model(config, inputs, popart_proto, weight_transposed, is
                                    config.num_layers,
                                    config.attention_heads,
                                    layer_norm_eps=config.layer_norm_eps)
-    torch_model = nn.Embedding(torch_config.vocab_size, torch_config.hidden_size, padding_idx=0)
+    torch_model = nn.Embedding(torch_config.vocab_size, torch_config.hidden_size)
     # Turn off dropout
     torch_model.eval()
 

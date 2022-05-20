@@ -23,7 +23,7 @@ import os
 import six
 import numpy as np
 import tensorflow.compat.v1 as tf
-from tensorflow.contrib.data import map_and_batch
+from tensorflow.data.experimental import map_and_batch
 
 from . import tokenization
 from .pretraining import _decode_record

@@ -23,7 +23,7 @@ def update_step_size_constant(step_size, mean_accept_prob, adapt_rate=0.01, targ
 
 
 class HamiltonianMonteCarlo(object):
-    def __init__(self, config, batch_size, testing=False, keep_samples=False, Z_dim=10, dtype=tf.float32):
+    def __init__(self, config, micro_batch_size, testing=False, keep_samples=False, Z_dim=10, dtype=tf.float32):
         # Number of steps
         self.n_burn_in_steps = config.get('n_burn_in_steps', 300 if testing else 8)
         self.n_post_burn_steps = config.get('n_hmc_steps', 300 if testing else 0)
@@ -33,7 +33,7 @@ class HamiltonianMonteCarlo(object):
         self.hmc_step_size_init = config.get('hmc_step_size_init', 0.5 / Z_dim)
         target_acc_prob = config.get('acceptance_target', 0.9)
         adapt_fn_name = config.get('step_size_adaption_fn', 'ruiz')
-        adaption_rate = config.get('step_size_adaption_rate', 0.01 * batch_size / 100)
+        adaption_rate = config.get('step_size_adaption_rate', 0.01 * micro_batch_size / 100)
         adapt_fns = {'ruiz': update_step_size_ruiz,
                      'constant': update_step_size_constant}
 

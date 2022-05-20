@@ -31,7 +31,7 @@ class TestDIENValidation(unittest.TestCase):
         out = run_validation(**{'--use-synthetic-data': True,
                                 '--epochs': 0.1,
                                 '--seed': 3,
-                                '--batch-size': 4,
+                                '--micro-batch-size': 4,
                                 '--learning-rate': '0.1',
                                 '--batches-per-step': 160})
         cls.out = out

@@ -1,4 +1,4 @@
-# Pytorch [Conformer](https://arxiv.org/abs/2005.08100) on IPU
+# Pytorch [Conformer](https://arxiv.org/abs/2005.08100) on IPU, this project is slightly different from the original paper, in which there are slight changes to the configuration of ipu.
 
 ## Environment setup
 
@@ -56,46 +56,72 @@ Please make sure your dataset format is same as the aishell's format, then you s
 
 At present, we only support the format of this type of dataset. In the future, we will expand the format of compatible dataset
 
+# Example of choosing conformer large or small model
+There are two model of Conformer, they are large and small, the default version is small. When you want to choose the Conformer-L model, you can refer to the following command:
+
+
+```
+python main.py train --config_file configs/train_large.yaml
+
+```
+
 # Example of training the model
 
-If you want to execute the task of fp16 with 2 IPUs(pod2_fp16), you can refer to the following command, and the shell script is in scripts/run_fp16.sh:
+If you want to execute the task of Conformer-Small fp16 with 2 IPUs, you can refer to the following command, and the shell script is in scripts/run_conformer_small_fp16.sh:
 
 ```
-python main.py train --trainer.log_every_n_step 10
+python main.py train
 ```
 
-If you want to execute the task of fp32 with 2 IPUs(pod2_fp32), you can refer to the following command, and the shell script is in scripts/run_fp32.sh:
+If you want to execute the task of Conformer-Small fp32 with 2 IPUs, you can refer to the following command, and the shell script is in scripts/run_conformer_small_fp32.sh:
 
 ```
 python main.py train --trainer.log_every_n_step 10 --scheduler.warmup_steps 20000 --train_dataset.dtype 'FLOAT32' --val_dataset.dtype 'FLOAT32' --trainer.dtype 'FLOAT32'  --train_iterator.batch_size 4 --ipu_options.gradient_accumulation 12
 ```
 
-If you want to execute the 'generate_data' mode of fp16 with 2 IPUs, you can refer to the following command, and the shell script is in scripts/run_generate_data.sh:
+If you want to execute the Conformer-Small 'generate_data' mode of fp16 with 2 IPUs, you can refer to the following command, and the shell script is in scripts/run_conformer_small_generate.sh:
 
 ```
-python main.py train --trainer.log_every_n_step 10 --train_dataset.use_generated_data true
+python main.py train --train_dataset.use_generated_data true
+```
+If you want to execute the Conformer-Large 'generate_data' mode of fp16 with POD16, you can refer to the following command, and the shell script is in scripts/run_conformer_large_p16.sh:
+```
+bash scripts/run_generate_p16.sh
 ```
 
+If you want to execute the Conformer-Large 'generate_data' mode of fp16 with POD64, you can refer to the following command, and the shell script is in scripts/run_conformer_large_p64.sh, which used the poprun command to run on POD64:
+```
+bash scripts/run_generate_p64.sh
+```
 
 ## Example of training the model
 If you have finished training and want to execute the task of validate, please configure the saved checkpoints after training as shown below. You can refer to the following commands:
 
 ```
-python main.py train --checkpoints.save_checkpoint_path "./checkpoint" --trainer.log_every_n_step 10
+python main.py train --checkpoints.save_checkpoint_path "./checkpoint" --trainer.log_every_n_step 5
 ```
 
-Then the trained loss curve is shown in the table:
+Then the Conformer-Small trained loss curve is shown in the table:
 
 |      | 0     | 10     | 20    | 30    | 40    | 50    |
 | ---- | ----- | ------ | ----- | ----- | ----- | ----- |
 | fp16 | 8.431 | 0.3582 | 0.094 | 0.031 | 0.027 | 0.021 |
 | fp32 | 8.512 | 2.214  | 0.361 | 0.189 | 0.087 | 0.047 |
 
-The loss of float16 is shown in the figure below
+And the Conformer-Large trained loss curve is shown in the table:
+
+|      | 0     | 70     | 140    | 210    | 280    | 350   |
+| ---- | ----- | ------ | -----  | -----  | -----  | ----- |
+| fp16 | 8.672 | 0.2346 |0.1971  | 0.1812 | 0.1166 | 0.1055|
+
+The Conformer-Small float16 loss is shown in the figure below
 ![Image text](pic/fp16_loss.jpg)
 
-The loss of float32 is shown in the figure below
+The Conformer-Small float32 loss is shown in the figure below
 ![Image text](pic/fp32_loss.jpg)
+
+The Conformer-Large float16 loss is shown in the figure below
+![Image text](pic/fp16_loss_large.jpg)
 
 # Example of validating the model
 

@@ -55,5 +55,10 @@ class BatchConfig:
                            'num_micro_batches_per_weight_update',
                            self.gradient_accumulation_count * self.num_replicas)
 
+        logging.info(f'micro batch size {self.micro_batch_size}')
+        logging.info(f'global batch size {self.global_batch_size}')
+        logging.info(f'gradient accumulation {self.gradient_accumulation_count}')
+        logging.info(f'num replicas {self.num_replicas}')
+
     def get_num_micro_batches_per_epoch(self, dataset_size: int) -> int:
         return dataset_size // (self.micro_batch_size * self.num_micro_batches_per_weight_update) * (self.num_micro_batches_per_weight_update)

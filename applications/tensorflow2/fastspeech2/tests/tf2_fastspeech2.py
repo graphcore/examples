@@ -1117,21 +1117,20 @@ class TFFastSpeechVariantPredictor(tf.keras.layers.Layer):
                     config.variant_predictor_filter,
                     config.variant_predictor_kernel_size,
                     padding="same",
-                    name=kwargs["name"]+"/conv_._{}".format(i),
+                    name="{}/conv_._{}".format(kwargs["name"], i),
                 )
             )
             self.conv_layers.append(tf.keras.layers.Activation(tf.nn.relu))
             self.conv_layers.append(
                 tf.keras.layers.LayerNormalization(
-                    epsilon=config.layer_norm_eps, name=kwargs["name"]+"/LayerNorm_._{}".format(
-                        i)
+                    epsilon=config.layer_norm_eps,
+                    name="{}/LayerNorm_._{}".format(kwargs["name"], i)
                 )
             )
             self.conv_layers.append(
                 tf.keras.layers.Dropout(config.variant_predictor_dropout_rate)
             )
-        self.conv_layers_sequence = tf.keras.Sequential(
-            self.conv_layers, name=kwargs["name"])
+        self.conv_layers_sequence = tf.keras.Sequential(self.conv_layers)
         self.output_layer = tf.keras.layers.Dense(1)
 
         if config.n_speakers > 1:

@@ -18,3 +18,5 @@ inspecting_tensors/
 *.pkl
 *.ipynb
 *.tar.bz2
+profile.sh
+run_inference_benchmark.sh

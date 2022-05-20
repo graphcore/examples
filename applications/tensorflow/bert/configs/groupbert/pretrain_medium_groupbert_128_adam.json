@@ -74,6 +74,7 @@
     "static_mask": false,
     "steps_per_ckpts": 100000,
     "steps_per_logs": 1000,
+    "steps_per_tensorboard": -1,
     "stochastic_rounding": true,
     "task": "pretraining",
     "train_file": "data/bert_pretraining/tfrecord/lower_case_1_seq_len_128_max_pred_20_masked_lm_prob_0.15_random_seed_12345_dupe_factor_5_shard_256_test_split_10/books_wiki_en_corpus/training/*.tfrecord",

@@ -7,19 +7,17 @@ This example shows how to perform regression of molecular properties with the
 QM9 database, using a GNN based on edge-conditioned convolutions in batch mode.
 """
 import time
-from tensorflow.python.ipu.config import IPUConfig
+
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.layers import Input, Dense
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
-from tensorflow import keras
-from tensorflow.python import ipu
-
 from spektral.datasets import qm9
 from spektral.layers import EdgeConditionedConv, GlobalSumPool
 from spektral.utils import label_to_one_hot
+from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras.optimizers import Adam
+from tensorflow.python import ipu
+from tensorflow.python.ipu.config import IPUConfig
 
 from qm9_argparser import get_argparser
 
@@ -28,7 +26,7 @@ from qm9_argparser import get_argparser
 ################################################################################
 parser = get_argparser()
 args = parser.parse_args()
-gradient_accumulation_count, epochs = (1, 2) if args.profile else (6, args.epochs)
+gradient_accumulation_steps_per_replica, epochs = (1, 2) if args.profile else (6, args.epochs)
 
 ################################################################################
 # CONFIGURE THE DEVICE
@@ -71,11 +69,14 @@ data = train_test_split(A, X, E, y, test_size=0.1, random_state=0)
 
 A_train, A_test, X_train, X_test, E_train, E_test, y_train, y_test = [x.astype(np.float32) for x in data]
 
-train_data_len = A_train.shape[0]
-test_data_len = A_test.shape[0]
-
+# global_batch_size = args.micro_batch_size * num_replicas
 train_dataset = tf.data.Dataset.from_tensor_slices(((X_train, A_train, E_train), y_train))
-train_dataset = train_dataset.repeat().batch(args.batch_size, drop_remainder=True)
+train_dataset = train_dataset.batch(args.micro_batch_size, drop_remainder=True)
+
+# Dataset length must be must be divisible by num_replicas, then gradient accumulation count
+num_replicas = args.num_ipus
+compatible_data_len = len(train_dataset) - len(train_dataset) % (num_replicas * gradient_accumulation_steps_per_replica)
+train_dataset = train_dataset.take(compatible_data_len)
 
 test_dataset = tf.data.Dataset.from_tensor_slices(((X_test, A_test, E_test), y_test))
 test_dataset = test_dataset.batch(1, drop_remainder=True)
@@ -101,23 +102,27 @@ with strategy.scope():
                            outputs=output)
 
     model.set_gradient_accumulation_options(
-        gradient_accumulation_count=gradient_accumulation_count
+        gradient_accumulation_steps_per_replica=gradient_accumulation_steps_per_replica
     )
     optimizer = Adam(lr=args.learning_rate)
 
-    # `steps_per_execution` must divide the gradient accumulation count and the number of replicas
-    # so we use the lowest common denominator, which is the product divided by the greatest
-    #     common divisor
-    model.compile(optimizer=optimizer, loss='mse', steps_per_execution=args.num_ipus)
+    # `steps_per_execution` is per replica
+    steps_per_execution = len(train_dataset) // num_replicas
+    model.compile(optimizer=optimizer, loss='mse', steps_per_execution=steps_per_execution)
     model.summary()
 
     ############################################################################
     # FIT MODEL
     ############################################################################
-    train_steps_per_epoch = args.num_ipus if args.profile else (train_data_len - train_data_len % args.num_ipus)
+    train_steps_per_epoch = num_replicas if args.profile else None
 
     tic = time.perf_counter()
-    model.fit(train_dataset, batch_size=args.batch_size, epochs=epochs, steps_per_epoch=train_steps_per_epoch)
+    model.fit(
+        train_dataset,
+        batch_size=args.micro_batch_size,
+        epochs=epochs,
+        steps_per_epoch=train_steps_per_epoch
+    )
     toc = time.perf_counter()
     duration = toc - tic
     print(f"Training time duration {duration}")
@@ -128,10 +133,8 @@ with strategy.scope():
         ############################################################################
 
         print('Testing model')
-        test_steps = test_data_len - test_data_len % args.num_ipus
-
         tic = time.perf_counter()
-        model_loss = model.evaluate(test_dataset, batch_size=1, steps=test_steps)
+        model_loss = model.evaluate(test_dataset, batch_size=1)
         print(f"Done. Test loss {model_loss}")
 
         toc = time.perf_counter()

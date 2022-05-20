@@ -20,16 +20,14 @@ python train.py --config $config_path
 # start phase2
 config_path="./config/config_544_phase2.json"
 phase1_ckpt=$(ls -1 ./checkpoint|grep '.meta'|tail -n 1|sed 's/.meta//')
-sed -i "s#.*initial_weight.*#\"initial_weight\": \"./checkpoint/$phase1_ckpt\"#" $config_path
-python train.py --config $config_path
+python train.py --config $config_path --initial-weight ./checkpoint/$phase1_ckpt
 
 ckpt_paths=$(ls -1 ./checkpoint|grep '.meta'|tail -n 20|sed 's/.meta//')
 
 for ckpt_path in $ckpt_paths;
 do
 	echo evaluating checkpoint: $ckpt_path
-	sed -i "s#.*weight_file.*#\"weight_file\": \"./checkpoint/$ckpt_path\",#" $config_path
-	python evaluate.py --config $config_path
+	python evaluate.py --config $config_path --weight-file "./checkpoint/$ckpt_path"
 	pushd mAP
 		echo $ckpt_path |tee -a mAP.log
 		python main.py -na |tee -a  mAP.log 

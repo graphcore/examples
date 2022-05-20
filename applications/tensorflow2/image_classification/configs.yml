@@ -38,7 +38,40 @@ imagenet_config: &imagenet
   dataset: imagenet
   dataset-path: /localdata/datasets/imagenet-data
 
-mk2_resnet50_16k_bn_pipeline:
+cifar10_config: &cifar10
+  dataset: cifar10
+  dataset-path: /localdata/datasets
+
+resnet8_16ipus_bn: &resnet8_16ipus_bn
+  <<: *cifar10
+  num-epochs: 70
+  validation: True
+  num-replicas: 16
+  logs-per-epoch: 1
+  precision: '16.16'
+  half-partials: True
+  model: cifar_resnet8
+  micro-batch-size: 25
+  global-batch-size: 2000
+  norm-layer:
+    'name': 'batch_norm'
+  lr-schedule: 'cosine'
+  lr-warmup-params:
+    'warmup_mode': 'shift'
+    'warmup_epochs': 5
+  lr-schedule-params:
+    'initial_learning_rate': 0.0001220703125
+    'epochs_to_total_decay': 65
+  stochastic-rounding: 'ON'
+  eight-bit-transfer: True
+  l2-regularization: 0.0001
+  accelerator-side-preprocess: True 
+
+resnet8_16ipus_bn_dbn:
+  <<: *resnet8_16ipus_bn
+  dbn-replica-group-size: 16
+
+resnet50_16ipus_16k_bn_pipeline:
   <<: *imagenet
   model-name: resnet50
   half-partials: True
@@ -59,7 +92,7 @@ mk2_resnet50_16k_bn_pipeline:
   available-memory-proportion: [15]
   loss-scaling: 128
   l2-regularization: 0.0001
-  stochastic-rounding: True
+  stochastic-rounding: 'ON'
   lr-schedule: 'cosine'
   lr-warmup-params:
     'warmup_mode': 'shift'
@@ -69,7 +102,7 @@ mk2_resnet50_16k_bn_pipeline:
     'epochs_to_total_decay': 95
   lr-staircase: True
 
-mk2_resnet50_8k_bn_pipeline:
+resnet50_16ipus_8k_bn_pipeline: &resnet50_16ipus_8k_bn_pipeline
   <<: *imagenet
   model-name: resnet50
   micro-batch-size: 16
@@ -92,7 +125,7 @@ mk2_resnet50_8k_bn_pipeline:
   pipeline-schedule: Grouped
   pipeline-splits: [conv2_block2_out, conv3_block1_out, conv4_block2_out]
   available-memory-proportion: [15]
-  stochastic-rounding: True
+  stochastic-rounding: 'ON'
   lr-schedule: 'cosine'
   lr-schedule-params:
     'initial_learning_rate': 0.0001220703125
@@ -102,7 +135,21 @@ mk2_resnet50_8k_bn_pipeline:
     'warmup_epochs': 5
   lr-staircase: True
 
-mk2_resnet50_on1ipu_pod16:
+resnet56_16ipus_8k_bn_pipeline: 
+  <<: *resnet50_16ipus_8k_bn_pipeline
+  model: cifar_resnet56
+  available-memory-proportion: [13.5]
+  micro-batch-size: 16
+  pipeline-validation-model: True 
+  pipeline-splits: [conv2_block4_post_addition_relu, conv2_block7_post_addition_relu, conv3_block4_post_addition_relu]
+
+resnet50_16ipus_8k_gn_pipeline:
+  <<: *resnet50_16ipus_8k_bn_pipeline
+  norm-layer:
+    'name': 'group_norm'
+    'num_groups': 32
+
+mresnet50_on1ipu_pod16:
   <<: *imagenet
   model-name: resnet50
   micro-batch-size: 12

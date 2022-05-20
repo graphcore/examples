@@ -52,6 +52,7 @@ from weight_avg import average_ckpts, save_ckpt
 from optimisers import make_fp32_optimiser
 from Models.batch_norm import add_bn_moving_average_updates
 from Models.proxy_norm import make_pn_optimiser
+from Models.resnet_base import MLPerfInitializerWrapper
 import popdist
 import popdist.tensorflow
 from Datasets import augmentations
@@ -459,12 +460,12 @@ def configure_distribution(opts, sess_config):
 def create_popdist_strategy():
     """
     Creates a distribution strategy for use with popdist. We use the
-    Horovod-based IPUMultiReplicaStrategy. Horovod is used for the initial
+    Horovod-based PopDistStrategy. Horovod is used for the initial
     broadcast of the weights and when reductions are requested on the host.
     """
     # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
-    # so disable them in the IPUMultiReplicaStrategy.
-    return popdist_strategy.IPUMultiReplicaStrategy(
+    # so disable them in the PopDistStrategy.
+    return popdist_strategy.PopDistStrategy(
         add_ipu_cross_replica_reductions=False)
 
 
@@ -535,7 +536,7 @@ def training_graph(model, opts, iterations_per_step=1):
 
 
     ipu_options = get_config(ipu_id=opts["select_ipu"],
-                             prng=not opts["no_stochastic_rounding"],
+                             stochastic_rounding=opts["stochastic_rounding"],
                              shards=opts["shards"],
                              number_of_replicas=opts['replicas'],
                              max_cross_replica_buffer_size=opts["max_cross_replica_buffer_size"],
@@ -561,8 +562,9 @@ def training_graph(model, opts, iterations_per_step=1):
 
     if opts['use_popdist']:
         ipu_options = popdist.tensorflow.set_ipu_config(ipu_options, opts['shards'], configure_device=False)
+        MLPerfInitializerWrapper.popdist_instance = popdist
 
-    if opts['on_demand']:
+    if opts['on_demand'] and not opts['compile_only']:
         ipu_options.device_connection.enable_remote_buffers = True
         ipu_options.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
 
@@ -632,7 +634,14 @@ def train_process(model, LR_Class, opts):
                                if opts['epochs_per_ckpt'] else np.inf)
     if iterations_per_ckpt == 0:
         iterations_per_ckpt = 1
-    ckpt_offset = opts['ckpt_epochs_offset'] * iterations_per_epoch
+    if not opts['ckpt_epochs_offset'] and \
+        opts['epochs_per_ckpt'] and       \
+        type(opts['epochs']) is int and   \
+            type(opts['epochs_per_ckpt']) is int:
+        ckpt_offset = opts['epochs'] % opts['epochs_per_ckpt']
+    else:
+        ckpt_offset = opts['ckpt_epochs_offset']
+    ckpt_offset = ckpt_offset * iterations_per_epoch
 
     if type(opts['syncs_per_epoch']) is int:
         iterations_per_sync = (iterations_per_epoch // opts['syncs_per_epoch']
@@ -662,7 +671,6 @@ def train_process(model, LR_Class, opts):
     train_iterations = (iterations_per_step if opts['pipeline'] else
                         iterations_per_step * opts['gradient_accumulation_count'])
     train = training_graph(model, opts, train_iterations)
-    logging.mlperf_logging(key="WEIGHTS_INITIALIZATION", metadata=dict(tensor="all"))
     train.session.run(train.init)
     train.session.run(train.iterator.initializer)
 
@@ -867,8 +875,9 @@ def train_process(model, LR_Class, opts):
                                    metadata={"epoch_num": log_epoch})
 
     logging.mlperf_logging(key="BLOCK_STOP", log_type="stop",
-                           metadata={"first_epoch_num": 1}
-                           )
+                           metadata={"first_epoch_num": 1})
+    logging.print_to_file_and_screen(
+        "Training loop completed in {}s.".format(round(time.time() - start_all, 3)), opts)
 
     # only instance 0 loads checkpoints from disk during weight averaging
     if (opts['weight_avg_N'] or opts['weight_avg_exp']) and opts['distributed_worker_index'] == 0:
@@ -894,6 +903,7 @@ def train_process(model, LR_Class, opts):
     # ------------ VALIDATION ------------
     if len(validation_points) > 0 and opts['validation']:
         # Validation block
+        MLPerfInitializerWrapper.validation_phase = True  # To avoid validation graph init logging
         logging.mlperf_logging(key="BLOCK_START", log_type="start",
                                metadata={"first_epoch_num": 1,
                                          "epoch_count": opts['epochs']}
@@ -922,6 +932,8 @@ def train_process(model, LR_Class, opts):
                                value={"success": success},
                                metadata={"epoch_num": round(epoch),
                                          "status": "success" if success else "aborted"})
+        logging.print_to_file_and_screen(
+            "Time to train: {}s.".format(round(time.time() - start_all, 3)), opts)
 
     # --------------- CLEANUP ----------------
     train.session.close()
@@ -1123,7 +1135,7 @@ def add_ipu_arguments(parser):
                        "if enabled and precision is set to 32.32 as half partials are incompatible with float32 training.")
     group.add_argument('--gather-conv-output', action="store_true", default=False,
                        help="Reduce sync cost of small sized all-reduces. Useful when paired with distributed batch norm")
-    group.add_argument('--no-stochastic-rounding', action="store_true",
+    group.add_argument('--stochastic-rounding', default="ON", choices=["ON", "ON_prng_stable", "RI_prng_stable", "OFF"],
                        help="Disable Stochastic Rounding")
     group.add_argument('--batches-per-step', type=int, default=1000,
                        help="Maximum number of batches to perform on the device before returning to the host.")
@@ -1211,7 +1223,7 @@ def set_ipu_defaults(opts):
     opts['summary_str'] += "Using Infeeds\n Max Batches Per Step: {batches_per_step}\n"
     opts['summary_str'] += 'Device\n'
     opts['summary_str'] += ' Precision: {}{}\n'.format(opts['precision'],
-                                                       '_noSR' if opts['no_stochastic_rounding'] else '')
+                                                       '_noSR' if opts['stochastic_rounding'] == 'OFF' else '')
     opts['summary_str'] += ' Half partials: {}\n'.format(False if opts['precision'] == '32.32' else opts['enable_half_partials'])
     opts['summary_str'] += ' IPU\n'
     opts['poplar_version'] = os.popen('popc --version').read()

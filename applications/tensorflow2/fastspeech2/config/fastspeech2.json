@@ -54,7 +54,6 @@
     "available_memory_proportion": 0.4,
     "variable_offloading": false,
     "pipeline_schedule": "Grouped",
-    "xla_recompute": true,
     "fp_exceptions": false,
     "partials_type": "half",
     "reduction_type": "sum",

@@ -53,10 +53,13 @@ config.model.auto_anchors = False
 config.model.anchor_threshold = 4.0
 # Send the data using uint instead of floats to the IPU
 config.model.uint_io = True
+# Pipeline splits
+config.model.pipeline_splits = []
 
 
 config.ipuopts = CN()
 config.ipuopts.batches_per_step = 1
+config.ipuopts.gradient_accumulation = 1
 
 
 config.inference = CN()

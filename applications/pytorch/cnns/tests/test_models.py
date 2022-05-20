@@ -2,24 +2,26 @@
 import pytest
 import torch
 import poptorch
+import torchvision
 import import_helper
 import models
+from models.model_manipulator import ModelManipulator, name_match, type_match
 
 
 class TestCustomEfficientNet:
     def test_expand_ratio(self):
-        model = models.create_efficientnet("efficientnet-b0", expand_ratio=2)
-        for i, block in enumerate(model.blocks):
+        model = models.implementations.efficientnet.create_efficientnet("efficientnet_b0", expand_ratio=2)
+        for i, block in enumerate(model.blocks.children()):
             if i == 0:
                 continue
-            for layer in block:
+            for layer in block.children():
                 conv = layer.conv_pw
                 assert conv.out_channels == conv.in_channels * 2
 
     def test_group_dim(self):
-        model = models.create_efficientnet("efficientnet-b0", group_dim=2)
-        for block in model.blocks:
-            for layer in block:
+        model = models.implementations.efficientnet.create_efficientnet("efficientnet_b0", group_dim=2)
+        for block in model.blocks.children():
+            for layer in block.children():
                 conv = layer.conv_dw
                 assert conv.groups * 2 == conv.in_channels
 
@@ -83,7 +85,7 @@ def test_convpadding_3ch_vs_4ch_forward(precision, bias):
     conv_3ch = torch.nn.Conv2d(3, 32, (3, 3), bias=bias)
     if precision == "half":
         conv_3ch.half()
-    conv_4ch = models.PaddedConv(conv_3ch)
+    conv_4ch = models.implementations.optimisation.PaddedConv(conv_3ch)
     sample_input = torch.rand(4, 3, 32, 32)
     if precision == "half":
         sample_input.half()
@@ -93,3 +95,23 @@ def test_convpadding_3ch_vs_4ch_forward(precision, bias):
     result3 = ipu_conv_3ch(sample_input)
     result4 = ipu_conv_4ch(sample_input)
     assert torch.allclose(result3, result4, rtol=1e-03, atol=1e-04)
+
+
+class TestModelManipulator:
+    def test_match(self):
+        model = torchvision.models.resnet18()
+        manipulated_model = ModelManipulator(model)
+        activation_name_fn = name_match(".*relu.*")
+        activation_type_fn = type_match([torch.nn.ReLU])
+        for node in manipulated_model.traced_model.graph.nodes:
+            assert(activation_name_fn(node) == activation_type_fn(node))
+
+
+    def test_next_node_consistency(self):
+        model = torchvision.models.resnet18()
+        manipulated_model = ModelManipulator(model)
+        # Test if next node activation two different way
+        next_op_activation_name_fn = name_match(".*relu.*")
+        next_op_activation_type_fn = type_match([torch.nn.ReLU])
+        for node in manipulated_model.traced_model.graph.nodes:
+            assert(next_op_activation_name_fn(node) == next_op_activation_type_fn(node))

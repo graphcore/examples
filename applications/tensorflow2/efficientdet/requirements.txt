@@ -1,0 +1,9 @@
+lxml>=4.6.1
+absl-py>=0.10.0
+matplotlib>=3.0.3
+Pillow>=6.0.0
+PyYAML>=5.1
+six>=1.15.0
+tensorflow-model-optimization>=0.5
+pytest==6.2.5
+pytest-pythonpath==0.7.3

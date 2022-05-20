@@ -8,6 +8,8 @@ import os
 import re
 import sys
 import configparser
+from pathlib import Path
+
 
 C_FILE_EXTS = ['c', 'cpp', 'C', 'cxx', 'c++', 'h', 'hpp']
 
@@ -24,11 +26,25 @@ EXCLUDED = ['applications/tensorflow/cnns/training/Datasets/imagenet_preprocessi
             'code_examples/tensorflow/ssd/keras_layers/keras_layer_L2Normalization.py',
             'code_examples/tensorflow/ssd/keras_layers/keras_layer_AnchorBoxes.py',
             'code_examples/tensorflow/cosmoflow/models/resnet.py',
+            'code_examples/tensorflow/cosmoflow/data_gen/__init__.py',
+            'code_examples/tensorflow/cosmoflow/models/__init__.py',
+            'code_examples/tensorflow/cosmoflow/models/cosmoflow.py',
+            'code_examples/tensorflow/cosmoflow/models/cosmoflow_v1.py',
+            'code_examples/tensorflow/cosmoflow/models/layers.py',
+            'code_examples/tensorflow/cosmoflow/utils/argparse.py',
             'applications/tensorflow/detection/yolov3/tests/original_model/backbone.py',
             'applications/tensorflow/detection/yolov3/tests/original_model/__init__.py',
             'applications/tensorflow/detection/yolov3/tests/original_model/common.py',
             'applications/tensorflow/detection/yolov3/tests/original_model/config.py',
-            'applications/tensorflow/detection/yolov3/tests/original_model/yolov3.py'
+            'applications/tensorflow/detection/yolov3/tests/original_model/yolov3.py',
+            "applications/tensorflow2/efficientdet/backbone",
+            "applications/tensorflow2/efficientdet/tf2",
+            "applications/tensorflow2/efficientdet/object_detection",
+            "applications/tensorflow2/efficientdet/visualize",
+            "applications/tensorflow2/efficientdet/dataloader.py",
+            "applications/tensorflow2/efficientdet/nms_np.py",
+            "applications/pytorch/cnns/datasets/libjpeg-turbo",
+            "applications/pytorch/cnns/datasets/turbojpeg"
             ]
 EXCLUDED.extend(['applications/popart/transformer_transducer/training/utils/preprocessing_utils.py',
                  'applications/popart/transformer_transducer/training/utils/download_librispeech.py',
@@ -120,6 +136,11 @@ def read_git_submodule_paths():
         return []
 
 
+def is_child_of_excluded(file_path):
+    excluded = [Path(p).absolute() for p in EXCLUDED]
+    return any(e in Path(file_path).parents for e in excluded if e.is_dir())
+
+
 def test_copyrights(amend=False):
     """A test to ensure that every source file has the correct Copyright"""
     cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
@@ -133,7 +154,7 @@ def test_copyrights(amend=False):
         for file_name in files:
             file_path = os.path.join(path, file_name)
 
-            if file_path in excluded:
+            if file_path in excluded or is_child_of_excluded(file_path):
                 continue
 
             # CMake builds generate .c and .cpp files

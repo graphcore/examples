@@ -34,24 +34,33 @@ To see the list of available models use `--help`
    Getting Started guide for your IPU system. Make sure to source the
    `enable.sh` scripts for Poplar and PopART and activate a Python virtualenv with PopTorch installed.
 
-2. Install the apt dependencies for Ubuntu 18.04 (requires admin privileges):
+2. (Optional: this step only required for installing turbojpeg) Install the apt dependencies for Ubuntu 18.04 (requires admin privileges):
 
 ```console
 sudo apt install $(< required_apt_packages.txt)
 ```
 
-3. Install the pip dependencies and download sample images for inference. These installations are handled by running the provided makefile:
+3. (Optional) Install turbojpeg. This step is required for the optimal performance. TurboJPEG helps to eliminate host side bottlenecks due to improved jpeg decode performance.
+
+```console
+make install-turbojpeg
+```
+
+4. Install the pip dependencies and download sample images for inference. These installations are handled by running the provided makefile:
 
    ```console
-   make
+   make install
    ```
 
-The MakeFile includes four options:
+The MakeFile includes seven options:
 
-1. `make get_data` which downloads a set of sample images for inference (data/get_data.sh)
+1. `make get-data` which downloads a set of sample images for inference (data/get_data.sh)
 2. `make install` which installs dependencies/requirements
 3. `make test` which runs pytest for this example with 10 parallel threads
-4. `make all` calls `install` and `get_data`
+4. `make get-turbojpeg` which downloads the turbojpeg and patch with crop-decode extension
+5. `make build-turbojpeg` which build the turbojpeg dependency
+6. `make all` calls `install` and `get_data`
+7. `make install-turbojpeg` calls `get-turbojpeg` and `build-turbojpeg`
 
 The commands executed by make install are:
 
@@ -93,7 +102,12 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS", AND
 
 ###  Changelog
 
+#### May 2022
+* Removed TFRecord and Webdataset support
+* Use fused crop and decode jpeg
+
 #### September 2021
 * Single IPU ResNet50 with batchnorm. Model is recomputed.
 * Webdataset improvements: Caching the dataset in the memory. Option for determining the image quality.
 * EfficientNet model changed to PyTorch Image Models implementation.
+

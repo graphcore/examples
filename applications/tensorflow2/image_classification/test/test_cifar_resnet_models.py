@@ -17,27 +17,27 @@ class CifarResNetTrainableParameters(unittest.TestCase):
         return np.sum([np.prod(layer.numpy().shape) for layer in model.trainable_weights])
 
     def test_cifar_resnet8_num_learnable_params(self):
-        expected_num_trainable_weights = 75770
+        expected_num_trainable_weights = 75290
         num_trainable_weights = self.get_num_of_trainable_weights(model=CifarResNet8())
         self.assertEqual(num_trainable_weights, expected_num_trainable_weights)
 
     def test_cifar_resnet20_num_learnable_params(self):
-        expected_num_trainable_weights = 271098
+        expected_num_trainable_weights = 269722
         num_trainable_weights = self.get_num_of_trainable_weights(model=CifarResNet20())
         self.assertEqual(num_trainable_weights, expected_num_trainable_weights)
 
     def test_cifar_resnet32_num_learnable_params(self):
-        expected_num_trainable_weights = 466426
+        expected_num_trainable_weights = 464154
         num_trainable_weights = self.get_num_of_trainable_weights(model=CifarResNet32())
         self.assertEqual(num_trainable_weights, expected_num_trainable_weights)
 
     def test_cifar_resnet44_num_learnable_params(self):
-        expected_num_trainable_weights = 661754
+        expected_num_trainable_weights = 658586
         num_trainable_weights = self.get_num_of_trainable_weights(model=CifarResNet44())
         self.assertEqual(num_trainable_weights, expected_num_trainable_weights)
 
     def test_cifar_resnet56_num_learnable_params(self):
-        expected_num_trainable_weights = 857082
+        expected_num_trainable_weights = 853018
         num_trainable_weights = self.get_num_of_trainable_weights(model=CifarResNet56())
         self.assertEqual(num_trainable_weights, expected_num_trainable_weights)
 

@@ -63,9 +63,11 @@ def add_common_arguments(parser, required=True):
                        help="Optimiser epsilon value.")
     group.add_argument('--lr-schedule', default='exponential', choices=["custom", "natural_exponential", "polynomial"],
                        help="Learning rate schedule function.")
+    group.add_argument('--lr-power', default=1.0,
+                       help = "Learning rate schedule function power.")
     group.add_argument('--lr-schedule-by-step', type=str,
                        help="Dictonary of changes in the learning rate at specified steps.")
-    group.add_argument('--warmup', default=0.1,
+    group.add_argument('--warmup', default=0.1, type=float,
                        help="Learning rate schedule warm-up period, in epochs (float) or number of steps (integer).")
     group.add_argument('--seed', default=None,
                        help="Seed for randomizing training")
@@ -83,6 +85,11 @@ def add_common_arguments(parser, required=True):
     group.add_argument('--save-optimiser-to-checkpoint', default=True, action="store_true")
     group.add_argument('--epochs', default=None, type=float,
                        help='Number of epochs we want to let the training last.')
+    group.add_argument('--name', type=str, default=None,
+                       help="Name of the run.")
+    group.add_argument('--max-to-keep', default=5, type=int,
+                       help='The maximun amount of checkpoints to keep during training.')
+
 
     # BERT options
     group.add_argument('--vocab-size', type=int,
@@ -97,9 +104,9 @@ def add_common_arguments(parser, required=True):
                        help="""The size of the "intermediate" (i.e., feed-forward) layer in the Transformer encoder.""")
     group.add_argument('--hidden-act', type=int,
                        help="""The non-linear activation function (function or string) in the encoder and pooler.""")
-    group.add_argument('--hidden-dropout-prob', type=int,
+    group.add_argument('--hidden-dropout-prob', type=float,
                        help="""The dropout probability for all fully connected layers in the embeddings, encoder, and pooler.""")
-    group.add_argument('--attention-probs-dropout-prob', type=int,
+    group.add_argument('--attention-probs-dropout-prob', type=float,
                        help="""The dropout ratio for the attention probabilities.""")
     group.add_argument('--max-position-embeddings', type=int,
                        help= """The maximum sequence length that this model might ever be used with. Typically set this to something large just in case (e.g., 512 or 1024 or 2048).""")
@@ -184,6 +191,10 @@ def add_common_arguments(parser, required=True):
                        help="Flag to use the global normalisation for the gradients.")
     group.add_argument('--use-debiasing', action='store_true', default=False,
                        help="Flag to use the de biasing for the momenta of LAMB")
+    group.add_argument('--use-mpclip', action='store_true', default=False,
+                       help="Flag to use mixed precision gradient clipping in LAMB")
+    group.add_argument('--use-lr-fp32', action='store_true', default=False,
+                       help="Flag to use higher precision for lr in the LAMB optimiser")
     group.add_argument('--reduction-type', type=str, choices=['sum', 'mean'], default='mean',
                        help='The reduction type applied to the pipeline, the choice is between summation and mean.')
     group.add_argument('--weight-norm-clip', type=float, default=0.,

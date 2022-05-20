@@ -105,8 +105,7 @@ if __name__ == '__main__':
     opts.deviceIterations(args.device_iterations)
 
     dataloader = datasets.get_data(args, opts, train=False, async_dataloader=False)
-    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=not args.random_weights)
-    model.eval()
+    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=not args.random_weights, inference_mode=True)
 
     opts = utils.inference_settings(args, copy.deepcopy(opts))
     inference_model = poptorch.inferenceModel(model, opts)

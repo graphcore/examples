@@ -112,7 +112,7 @@ class TestPipelineResNeXt14(SubProcessChecker):
                 '--gradient-accumulation-count': 128,
                 '--micro-batch-size': 1,
                 '--no-validation': '',
-                '--pipeline-splits': 'b2/0/relu',
+                '--pipeline-splits': 'stage2/unit1/relu',
                 '--fused-preprocessing': ''})
         self.out = out
         self.training = get_csv(out, 'training.csv')
@@ -175,7 +175,7 @@ class TestLotsOfOptions(SubProcessChecker):
                 '--precision': '32.32',
                 '--seed': 1234,
                 '--warmup-epochs': 0,
-                '--no-stochastic-rounding': '',
+                '--stochastic-rounding': 'OFF',
                 '--batches-per-step': 100})
         self.validation = get_csv(out, 'validation.csv')
         self.training = get_csv(out, 'training.csv')

@@ -17,7 +17,7 @@ from numpy import random, float32, maximum
 from functools import partial
 
 
-def assign_mixup_coefficients(data_dict, batch_size, alpha, rng_seed_for_testing=None):
+def assign_mixup_coefficients(data_dict, batch_size, alpha, datatype, rng_seed_for_testing=None):
     """
     This function generates mixup coefficients for a given minibatch and stores them in the 'data_dict'
 
@@ -42,7 +42,7 @@ def assign_mixup_coefficients(data_dict, batch_size, alpha, rng_seed_for_testing
 
     assert batch_size > 1, "batch size MUST be > 1 within the mixup function"
     mixup_coefficients = tf.numpy_function(numpy_mix_generator, [], tf.float32)
-    data_dict['mixup_coefficients'] = tf.reshape(tf.cast(mixup_coefficients, data_dict['image'].dtype), [batch_size])
+    data_dict['mixup_coefficients'] = tf.reshape(tf.cast(mixup_coefficients, datatype), [batch_size])
     return data_dict
 
 

@@ -8,3 +8,6 @@ This directory contains several examples showing how to use TensorFlow 2 on the 
 
 - [Graph Neural Network Example](gnn): This example uses the Spektral GNN library to predict the heat capacity of various molecules in the QM9 dataset.
 
+- [Message Passing Neural Network](message_passing_neural_network): This example uses the Graphcore IPU to evaluate a few popular graph neural network architectures including Graph Isomorphism Network (GIN), Graph Network and Interaction Network. These are all used to predict chemical properties of molecules.
+
+- [Neural Image Fields](neural_image_fields): This example is an implementation of Neural image fields which are a simplified version of neural radiance fields: [NERF](https://arxiv.org/abs/2003.08934). 

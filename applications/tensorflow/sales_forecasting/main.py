@@ -15,8 +15,7 @@ from tensorflow.python.ipu import loops
 from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import ipu_compiler
 from tensorflow.python.ipu import utils as ipu_utils
-from tensorflow.python.ipu import summary_ops
-from tensorflow.python.ipu.config import IPUConfig
+from tensorflow.python.ipu.config import IPUConfig, StochasticRoundingBehaviour
 from tensorflow.python.ipu.optimizers import CrossReplicaOptimizer
 from tensorflow.python.ipu.scopes import ipu_scope, ipu_shard
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
@@ -161,8 +160,7 @@ def generic_graph(opts, data, trainFlag):
             ipu_config.auto_select_ipus = [opts.replication_factor]
         else:
             ipu_config.select_ipus = [opts.select_ipus[not training]]
-
-        ipu_config.floating_point_behaviour.esr = opts.prng
+        ipu_config.floating_point_behaviour.esr = StochasticRoundingBehaviour.from_bool(opts.prng)
         ipu_config.configure_ipu_system()
 
     graph_outputs = ([avg_loss] if training else [avg_rmse]) + [summary]
@@ -349,7 +347,7 @@ def preprocess_options(opts):
 
 def get_options():
     parser = argparse.ArgumentParser(
-        description='MLP With Embeddings training in Tensorflow',
+        description='MLP With Embeddings training in TensorFlow',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # ---------------- LR ---------------------

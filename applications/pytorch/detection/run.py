@@ -17,7 +17,8 @@ from models.yolov4_p5 import Yolov4P5
 from utils.config import get_cfg_defaults, override_cfg, save_cfg
 from utils.dataset import Dataset
 from utils.parse_args import parse_args
-from utils.tools import load_and_fuse_pretrained_weights, post_processing, StatRecorder
+from utils.postprocessing import post_processing
+from utils.tools import load_and_fuse_pretrained_weights, StatRecorder
 from utils.visualization import plotting_tool
 
 
@@ -51,6 +52,9 @@ def ipu_options(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode, model: D
         ipu_opts.Precision.setPartialsType(torch.float16)
         model.half()
 
+    if cfg.model.mode == 'train':
+        ipu_opts.enableExecutableCaching('./exec_cache')
+        ipu_opts.Training.gradientAccumulation(cfg.ipuopts.gradient_accumulation)
     return ipu_opts
 
 
@@ -91,17 +95,23 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode)
     # Create model
     model = Yolov4P5(cfg)
 
+    # Insert the pipeline splits if using pipeline
+    if cfg.model.pipeline_splits:
+        named_layers = {name: layer for name, layer in model.named_modules()}
+        for ipu_idx, split in enumerate(cfg.model.pipeline_splits):
+            named_layers[split] = poptorch.BeginBlock(ipu_id=ipu_idx+1, layer_to_call=named_layers[split])
+
+    # Load weights and fuses some batch normalizations with some convolutions
+    if cfg.model.normalization == 'batch':
+        if opt.weights:
+            print("loading pretrained weights")
+            model = load_and_fuse_pretrained_weights(model, opt.weights, cfg.model.mode != "train")
+
     if cfg.model.mode == "train":
         model.train()
     else:
+        model.optimize_for_inference()
         model.eval()
-
-        # Load weights and fuses some batch normalizations with some convolutions
-        if cfg.model.normalization == 'batch':
-            if opt.weights:
-                print("loading pretrained weights")
-                model = load_and_fuse_pretrained_weights(model, opt)
-            model.optimize_for_inference()
 
     # Create the specific ipu options if cfg.model.ipu
     ipu_opts = ipu_options(opt, cfg, model) if cfg.model.ipu else None
@@ -118,12 +128,14 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode)
         try:
             img, _, _, _ = next(iter(loader))
             model.compile(img)
-            warm_up_iterations = 100
-            for _ in range(warm_up_iterations):
-                _ = model(img)
+            if opt.benchmark:
+                warm_up_iterations = 100
+                for _ in range(warm_up_iterations):
+                    _ = model(img)
         except Exception as e:
+            print("EXCEPTION in Compilation!")
             print(e.args)
-            exit(0)
+            exit(1)
 
     return model, loader
 

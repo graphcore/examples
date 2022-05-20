@@ -24,7 +24,7 @@ def conv(input_tensor: tf.Tensor, kernel_size: Union[int, Tuple[int, int]], filt
          padding: Optional[str] = 'SAME', add_bias: Optional[bool] = True, dtype: Optional[Any] = tf.float16,
          name: Optional[str] = None, weight_suffix: Optional[str] = "kernel", bias_suffix: Optional[str] = "conv/bias",
          *_):
-    """Apply conv and optional bias on input tensor with Tensorflow.
+    """Apply conv and optional bias on input tensor with TensorFlow.
 
     Args:
         input_tensor: Input data
@@ -367,7 +367,7 @@ def separable_conv(input_tensor: tf.Tensor, kernel_size: Union[int, Tuple[int, i
                    stride: Optional[int] = 1,
                    padding: Optional[str] = 'SAME', add_bias: Optional[bool] = True, dtype: Optional[Any] = tf.float16,
                    name: Optional[str] = None, *_):
-    """Apply separable conv and optional bias on input tensor with Tensorflow.
+    """Apply separable conv and optional bias on input tensor with TensorFlow.
 
       Performs a depthwise convolution that acts separately on channels followed by
       a pointwise convolution that mixes channels.  Note that this is separability
@@ -425,7 +425,7 @@ def depthwise_conv(input_tensor: tf.Tensor, kernel_size: Union[int, Tuple[int, i
                    filters_out: Optional[int] = None, stride: Optional[int] = 1,
                    padding: Optional[str] = 'SAME', add_bias: Optional[bool] = True, dtype: Optional[Any] = tf.float16,
                    name: Optional[str] = None, *_):
-    """Apply depthwise conv and optional bias on input tensor with Tensorflow.
+    """Apply depthwise conv and optional bias on input tensor with TensorFlow.
 
       Performs a depthwise convolution
 

@@ -56,8 +56,8 @@ def test_attention():
         num_required_ipus=1,
         partials_type=conf2["partials_type"],
         fp_exceptions=conf2["fp_exceptions"],
-        xla_recompute=conf2["xla_recompute"],
-        enable_stochastic_rounding=conf2["stochastic_rounding"])
+        enable_stochastic_rounding=conf2["stochastic_rounding"],
+        num_io_tiles=0)
 
     model_gpu = TFFastSpeechAttention(gconf.encoder_self_attention_params)
     with tf.GradientTape() as tape:

@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+# This file has been modified by Graphcore Ltd.
 """Provides utilities to preprocess images.
 Training images are sampled using the provided bounding boxes, and subsequently
 cropped to the sampled bounding box. Images are additionally flipped randomly,

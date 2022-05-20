@@ -6,7 +6,7 @@ import torch
 import poptorch
 
 from utils.custom_ops import Nms
-from utils.postprocessing import PredictionsPostProcessing
+from utils.postprocessing import IPUPredictionsPostProcessing
 from tests.test_tools import get_image_and_label, prepare_model, get_cfg, post_process_and_eval
 
 
@@ -20,7 +20,7 @@ class TestNms:
         model = prepare_model(cfg)
         y = model(transformed_images)
         predictions = torch.cat(y, axis=1)
-        cpu_preprocessing = PredictionsPostProcessing(cfg.inference, cpu_mode=True).nms_preprocessing(predictions)
+        cpu_preprocessing = IPUPredictionsPostProcessing(cfg.inference, cpu_mode=True).nms_preprocessing(predictions)
         cfg.inference.nms = True
         cfg.model.ipu = True
         return cfg, (predictions, transformed_labels, image_sizes), cpu_preprocessing
@@ -31,8 +31,8 @@ class TestNms:
         cfg_inference = cfg.inference
         predictions = model_input[0]
 
-        ipu_model = PredictionsPostProcessing(cfg_inference, cpu_mode=False, testing_preprocessing=True)
-        cpu_model = PredictionsPostProcessing(cfg_inference, cpu_mode=True, testing_preprocessing=True)
+        ipu_model = IPUPredictionsPostProcessing(cfg_inference, cpu_mode=False, testing_preprocessing=True)
+        cpu_model = IPUPredictionsPostProcessing(cfg_inference, cpu_mode=True, testing_preprocessing=True)
 
         ipu_model = poptorch.inferenceModel(ipu_model)
 
@@ -73,8 +73,8 @@ class TestNms:
         cfg_inference = cfg.inference
         predictions, transformed_labels, image_sizes = model_input
 
-        ipu_model = poptorch.inferenceModel(PredictionsPostProcessing(cfg_inference, cpu_mode=False))
-        cpu_model = PredictionsPostProcessing(cfg_inference, cpu_mode=True)
+        ipu_model = poptorch.inferenceModel(IPUPredictionsPostProcessing(cfg_inference, cpu_mode=False))
+        cpu_model = IPUPredictionsPostProcessing(cfg_inference, cpu_mode=True)
 
         result_nms_ipu = ipu_model(predictions)
         result_nms_cpu = cpu_model(predictions)

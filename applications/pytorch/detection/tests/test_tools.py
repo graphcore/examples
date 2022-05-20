@@ -15,7 +15,8 @@ from models.detector import Detector
 from models.yolov4_p5 import Yolov4P5
 from utils.config import get_cfg_defaults
 from utils.preprocessing import ResizeImage, Pad, ToTensor
-from utils.tools import load_and_fuse_pretrained_weights, post_processing, StatRecorder
+from utils.postprocessing import post_processing
+from utils.tools import load_and_fuse_pretrained_weights, StatRecorder
 
 
 def get_cfg():
@@ -100,7 +101,7 @@ def prepare_model(cfg, debugging_nms=False):
 
     model = Yolov4P5(cfg, debugging_nms=debugging_nms)
     model.eval()
-    model = load_and_fuse_pretrained_weights(model, opt)
+    model = load_and_fuse_pretrained_weights(model, opt.weights)
     model.optimize_for_inference()
 
     if cfg.model.ipu:

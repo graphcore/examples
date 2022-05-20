@@ -16,7 +16,7 @@ from typing import NamedTuple
 
 import numpy as np
 import pytest
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import torch
 from modeling import BertConfig as TFBertConfig
 from modeling import BertModel as TFBertModel

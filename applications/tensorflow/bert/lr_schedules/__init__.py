@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from . import custom, natural_exponential, polynomial_decay
+from . import custom, natural_exponential, polynomial_decay, cosine_decay
 import logging
 
 from log import logger
@@ -61,8 +61,16 @@ def make_lr_schedule(name, opts, total_steps):
         return polynomial_decay.LearningRate(
             opts["base_learning_rate"],
             _warmup_steps(opts['warmup'], total_steps),
-            total_steps
+            total_steps,
+            opts.get("lr_power", 1)
         )
-
+    elif name == "cosine_decay":
+        logger.info(f"Using Cosine Learning Rate decay")
+        return cosine_decay.LearningRate(
+            opts["base_learning_rate"],
+            _warmup_steps(opts['warmup'], total_steps),
+            total_steps,
+            opts.get("lr_power", 1)
+        )
     else:
         raise ValueError("Learning Rate not implemented.")

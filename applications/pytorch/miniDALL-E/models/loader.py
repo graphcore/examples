@@ -9,8 +9,10 @@ from random import randint, choice
 
 import PIL
 import torch
-from torch.utils.data import Dataset
+import poptorch
+from torch.utils.data import Dataset, IterableDataset
 from torchvision import transforms as T
+from models.tokenizer import SimpleTokenizer, YttmTokenizer
 
 
 class TextImageDataset(Dataset):
@@ -20,10 +22,10 @@ class TextImageDataset(Dataset):
                  image_size=128,
                  truncate_captions=False,
                  resize_ratio=0.75,
-                 tokenizer=None,
+                 bpe_path=None,
                  shuffle=False,
-                 synthetic=False,
-                 fp16=False
+                 not_real_data=False,
+                 image_dtype=False
                  ):
         """
         @param folder: Folder containing images and text files matched by their paths' respective "stem"
@@ -31,11 +33,11 @@ class TextImageDataset(Dataset):
         """
         super().__init__()
         self.shuffle = shuffle
-        self.tokenizer = tokenizer
+        self.bpe_path = bpe_path
         self.text_len = text_len
-        self.synthetic = synthetic
-        self.fp16 = fp16
-        if self.synthetic:
+        self.not_real_data = not_real_data
+        self.image_dtype = image_dtype
+        if self.not_real_data:
             return
         path = Path(folder)
 
@@ -56,7 +58,6 @@ class TextImageDataset(Dataset):
         self.truncate_captions = truncate_captions
         self.resize_ratio = resize_ratio
         self.image_transform = T.Compose([
-            T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
             T.RandomResizedCrop(image_size,
                                 scale=(self.resize_ratio, 1.),
                                 ratio=(1., 1.)),
@@ -64,8 +65,8 @@ class TextImageDataset(Dataset):
         ])
 
     def __len__(self):
-        if self.synthetic:
-            return 60000
+        if self.not_real_data:
+            return 120000
         return len(self.keys)
 
     def random_sample(self):
@@ -82,12 +83,16 @@ class TextImageDataset(Dataset):
         return self.sequential_sample(ind=ind)
 
     def __getitem__(self, ind):
-        if self.synthetic:
-            tokenized_text = torch.randint(0, self.tokenizer.vocab_size, [self.text_len], dtype=torch.long)
-            image_tensor = torch.rand([3, 256, 256])
-            if self.fp16:
-                image_tensor = image_tensor.half()
+        if self.not_real_data:
+            tokenized_text = torch.randint(0, 4096, [self.text_len], dtype=torch.long)
+            image_tensor = torch.randint(0, 256, [3, 256, 256], dtype=self.image_dtype)
             return tokenized_text, image_tensor
+
+        if self.bpe_path is not None:
+            klass = YttmTokenizer
+            tokenizer = klass(self.bpe_path)
+        else:
+            tokenizer = SimpleTokenizer()
 
         key = self.keys[ind]
         text_file = self.text_files[key]
@@ -102,19 +107,70 @@ class TextImageDataset(Dataset):
             print(f"Skipping index {ind}")
             return self.skip_sample(ind)
 
-        tokenized_text = self.tokenizer.tokenize(
+        tokenized_text = tokenizer.tokenize(
             description,
             self.text_len,
             truncate_text=self.truncate_captions
         ).squeeze(0)
         try:
-            image_tensor = self.image_transform(PIL.Image.open(image_file))
+            img = PIL.Image.open(image_file)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            image_tensor = self.image_transform(img)
         except (PIL.UnidentifiedImageError, OSError) as corrupt_image_exceptions:
             print(f"An exception occurred trying to load file {image_file}.")
             print(f"Skipping index {ind}")
             return self.skip_sample(ind)
-        if self.fp16:
+        if self.image_dtype == torch.uint8:
+            image_tensor = torch.clip(image_tensor.round_(), 0, 255).byte()
+        elif self.image_dtype == torch.float16:
             image_tensor = image_tensor.half()
 
         # Success
         return tokenized_text, image_tensor
+
+
+def get_data(configs, model_opts, image_size, train=True, async_dataloader=False):
+    """
+    A factory method to create a dataloader responsible for sending data
+    to the IPU device. This build the appropriate dataset and wraps it in a dataloader.
+    """
+    if configs.byteio:
+        image_dtype = torch.uint8
+    elif configs.fp16:
+        image_dtype = torch.float16
+    else:
+        image_dtype = torch.float32
+    dataset = TextImageDataset(
+        configs.input_folder,
+        text_len=configs.text_seq_len,
+        image_size=image_size,
+        resize_ratio=1.0,
+        truncate_captions=configs.truncate_captions,
+        bpe_path=configs.bpe_path,
+        shuffle=True,
+        not_real_data=(configs.generated_data or configs.synthetic_data),
+        image_dtype=image_dtype
+    )
+
+    assert len(dataset) > 0, 'dataset is empty'
+    print(f'{len(dataset)} image-text pairs found for training')
+
+    rebatched_worker_size = max(int(configs.gradient_accumulation/4), configs.batch_size)
+    mode = poptorch.DataLoaderMode.AsyncRebatched if async_dataloader else poptorch.DataLoaderMode.Sync
+    dataloader = poptorch.DataLoader(model_opts,
+                                     dataset,
+                                     batch_size=configs.batch_size if not(isinstance(
+                                         dataset, IterableDataset)) else None,
+                                     num_workers=configs.dataloader_workers,
+                                     shuffle=train and not(isinstance(dataset, IterableDataset)),
+                                     drop_last=not(isinstance(dataset, IterableDataset)),
+                                     persistent_workers=True,
+                                     auto_distributed_partitioning=not isinstance(
+                                         dataset, IterableDataset),
+                                     worker_init_fn=None,
+                                     mode=mode,
+                                     rebatched_worker_size=rebatched_worker_size,
+                                     async_options={"early_preload": True, 'load_indefinitely': True})
+
+    return dataloader

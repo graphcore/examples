@@ -24,7 +24,7 @@ import torch
 import transformers
 from poptorch import trainingModel
 from pretraining_data import get_dataloader, get_generated_datum
-from modeling import PipelinedBertForPretraining
+from modeling import PipelinedBertForPretraining, PipelinedPackedBertForPretraining
 from ipu_options import get_options
 from optimization import get_lr_scheduler, get_optimizer
 from checkpointing import save_checkpoint, checkpoints_exist
@@ -56,6 +56,11 @@ if __name__ == "__main__":
                            "Please specify a different checkpoint-dir to "
                            "save checkpoints from this run.")
 
+    # When using the packed sequence data format, the number of mask_tokens is
+    # increased by the number of sequences per pack - 1.
+    if config.packed_data:
+        config.mask_tokens += config.max_sequences_per_pack - 1
+
     # Execution parameters
     opts = get_options(config)
 
@@ -83,7 +88,10 @@ if __name__ == "__main__":
     steps_finished = 0
     if config.pretrained_checkpoint:
         # Load from checkpoint
-        model = PipelinedBertForPretraining.from_pretrained(config.pretrained_checkpoint, config=config).parallelize().half().train()
+        if config.packed_data:
+            model = PipelinedPackedBertForPretraining.from_pretrained(config.pretrained_checkpoint, config=config).parallelize().half().train()
+        else:
+            model = PipelinedBertForPretraining.from_pretrained(config.pretrained_checkpoint, config=config).parallelize().half().train()
         optimizer = get_optimizer(config, model)
         scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
                                      config.lr_warmup, config.training_steps)
@@ -103,7 +111,10 @@ if __name__ == "__main__":
 
     else:
         # Train model from scratch
-        model = PipelinedBertForPretraining(config).parallelize().half().train()
+        if config.packed_data:
+            model = PipelinedPackedBertForPretraining(config).parallelize().half().train()
+        else:
+            model = PipelinedBertForPretraining(config).parallelize().half().train()
         optimizer = get_optimizer(config, model)
         scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
                                      config.lr_warmup, config.training_steps)
@@ -129,7 +140,7 @@ if __name__ == "__main__":
 
     # Training loop
     logger("--------------------- Training Started --------------------")
-    factor = config.gradient_accumulation * config.batches_per_step
+    factor = config.gradient_accumulation * config.device_iterations
     start_train = time.perf_counter()
     train_iterator = tqdm(range(steps_finished, config.training_steps),
                           desc="Training", disable=config.disable_progress_bar or (config.use_popdist and not(config.popdist_rank == 0)))
@@ -151,21 +162,27 @@ if __name__ == "__main__":
                 f"Acc/MLM: {outputs_sync[3]:3.3f} - "
                 f"Acc/NSP: {outputs_sync[4]:3.3f}")
             num_instances = config.popdist_size if config.use_popdist else 1
-            step_throughput = config.samples_per_step * num_instances / step_length
+            if config.packed_data:
+                step_throughput = config.samples_per_step * num_instances / step_length * outputs_sync[5]
+            else:
+                step_throughput = config.samples_per_step * num_instances / step_length
             train_iterator.set_postfix_str(f"{step_throughput:.1f} sequences/s")
 
             if config.disable_progress_bar:
                 logger(f"{train_iterator.desc} {train_iterator.postfix}")
 
             if config.wandb:
-                wandb.log({"Loss": outputs_sync[0],
-                           "Loss/MLM": outputs_sync[1],
-                           "Loss/NSP": outputs_sync[2],
-                           "Acc/MLM": outputs_sync[3],
-                           "Acc/NSP": outputs_sync[4],
-                           "LR": scheduler.get_last_lr()[0],
-                           "Step": step,
-                           "Throughput": step_throughput})
+                wandb_log = {"Loss": outputs_sync[0],
+                             "Loss/MLM": outputs_sync[1],
+                             "Loss/NSP": outputs_sync[2],
+                             "Acc/MLM": outputs_sync[3],
+                             "Acc/NSP": outputs_sync[4],
+                             "LR": scheduler.get_last_lr()[0],
+                             "Step": step,
+                             "Throughput": step_throughput}
+                if config.packed_data:
+                    wandb_log.update({"Packing ratio": outputs_sync[5]})
+                wandb.log(wandb_log)
 
                 if config.wandb_param_steps and (step % config.wandb_param_steps) == 0:
                     for name, parameter in poptorch_model.named_parameters():
@@ -190,7 +207,7 @@ if __name__ == "__main__":
 
     logger("-------------------- Training Metrics ---------------------")
     logger(f"global_batch_size: {config.global_batch_size}")
-    logger(f"batches_per_step: {config.batches_per_step}")
+    logger(f"device_iterations: {config.device_iterations}")
     logger(f"training_steps: {config.training_steps}")
     duration_run = stop_train - start_train
     num_samples = config.samples_per_step * config.training_steps

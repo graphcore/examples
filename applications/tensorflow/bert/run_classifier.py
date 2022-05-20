@@ -25,13 +25,11 @@ from lr_schedules import make_lr_schedule
 from log import logger
 from ipu_utils import get_config, stages_constructor
 from ipu_optimizer import get_optimizer
-from bert_data import squad_results, tokenization
 from bert_data import glue as glue_data
-from bert_data import squad as squad_data
 from bert_data import data_loader
 import modeling as bert_ipu
 import log
-from tensorflow.contrib.data import map_and_batch
+from tensorflow.data.experimental import map_and_batch
 from tensorflow.python.ipu.utils import reset_ipu_seed
 from tensorflow.python.ipu.scopes import ipu_scope
 from tensorflow.python.ipu.ops import pipelining_ops
@@ -58,7 +56,6 @@ import os
 import modeling
 # import optimization
 import bert_data.tokenization as tokenization
-import tensorflow as tf
 import scipy.stats as sci
 
 # Graph data structure
@@ -75,7 +72,7 @@ GraphOps = namedtuple(
                  'tvars'])
 
 
-def build_squad_pipeline_stages(model, bert_config, opts, is_training):
+def build_glue_pipeline_stages(model, bert_config, opts, is_training):
     """
     build pipeline stages according to "pipeline_stages" in config file
     """
@@ -139,7 +136,7 @@ def build_network(infeed,
         pipeline_model = bert_ipu.BertModel(bert_config, is_training=is_training)
 
     # build stages & device mapping
-    computational_stages = build_squad_pipeline_stages(
+    computational_stages = build_glue_pipeline_stages(
         pipeline_model, bert_config, opts, is_training)
     device_mapping = opts['device_mapping']
     logger.info(
@@ -229,11 +226,11 @@ def build_graph(opts, iterations_per_step=1, is_training=True):
         label_list = opts["pass_in"][1]
         bert_config.num_lables = len(label_list)
         if opts['do_training'] and opts['current_mode'] == 'train':
-            input_file = os.path.join(opts["output_dir"], f"train_{opts['task_type']}.tf_record")
-        elif opts['do_eval'] and opts['current_mode'] == 'eval':
-            input_file = os.path.join(opts["output_dir"], f"eval_{opts['task_type']}.tf_record")
+            input_file = os.path.join(opts["output_dir"], f"train_{opts['task_name']}_{opts['task_type']}.tf_record")
+        elif opts['do_evaluation'] and opts['current_mode'] == 'eval':
+            input_file = os.path.join(opts["output_dir"], f"eval_{opts['task_name']}_{opts['task_type']}.tf_record")
         elif opts['do_predict'] and opts['current_mode'] == 'predict':
-            input_file = os.path.join(opts["output_dir"], f"predict_{opts['task_type']}.tf_record")
+            input_file = os.path.join(opts["output_dir"], f"predict_{opts['task_name']}_{opts['task_type']}.tf_record")
         else:
             raise NotImplementedError()
 
@@ -280,7 +277,7 @@ def build_graph(opts, iterations_per_step=1, is_training=True):
                             max_cross_replica_sum_buffer_size=opts['max_cross_replica_sum_buffer_size'],
                             max_reduce_scatter_buffer_size=opts['max_reduce_scatter_buffer_size'],
                             scheduler_selection='CLUSTERING',
-                            compile_only=False,
+                            compile_only=opts['compile_only'],
                             ipu_id=None,
                             available_memory_proportion=opts["available_memory_proportion"])
 
@@ -361,8 +358,7 @@ def main(opts):
         opts['task_name'] = 'synthetic'
         if opts['task_type'] == 'regression':
             opts['task_name'] = 'synthetic_regression'
-    print(opts['task_name'])
-    print(opts['task_type'])
+
     processors = {
         "cola": glue_data.ColaProcessor,
         "mnli": glue_data.MnliProcessor,
@@ -378,6 +374,7 @@ def main(opts):
         "synthetic": glue_data.SyntheticProcessor,
         "synthetic_regression": glue_data.SyntheticProcessorRegression
     }
+    classification_task = ['rte', 'mnli', 'mnli-mm', 'wnli', 'qqp', 'mrpc', 'sst2', 'qnli', 'cola']
 
     tokenization.validate_case_matches_checkpoint(
         do_lower_case=opts["do_lower_case"], init_checkpoint=opts["init_checkpoint"])
@@ -586,7 +583,7 @@ def main(opts):
         consume_time = (end_time - start_time).seconds
         logger.info(f"training times: {consume_time} s")
 
-    if opts["do_eval"]:
+    if opts["do_evaluation"]:
         eval_examples = processor.get_dev_examples(opts["data_dir"])
         num_actual_eval_examples = len(eval_examples)
         opts["eval_batch_size"] = opts['micro_batch_size'] * \
@@ -607,7 +604,7 @@ def main(opts):
         predict.session.run(predict.init)
         predict.session.run(predict.iterator.initializer)
 
-        if opts["init_checkpoint"] and not opts['do_training'] and opts['do_eval']:
+        if opts["init_checkpoint"] and not opts['do_training'] and opts['do_evaluation']:
             finetuned_checkpoint_path = opts['init_checkpoint']
 
         if finetuned_checkpoint_path:
@@ -654,8 +651,13 @@ def main(opts):
         if opts['task_type'] == 'regression':
             tmp_output['average_pearson'] = np.mean(all_pearson)
             tmp_output['average_spearman'] = np.mean(all_spearman)
+            if opts['wandb']:
+                wandb.log({'average_pearson': tmp_output['average_pearson'],
+                           'average_spearman': tmp_output['average_spearman']})
         else:
             tmp_output['average_acc'] = np.mean(all_accs)
+            if opts['wandb']:
+                wandb.log({'average_acc': np.mean(all_accs)})
         tmp_output['average_loss'] = np.mean(all_loss)
 
         with tf.gfile.GFile(output_eval_file, "w") as writer:
@@ -748,7 +750,6 @@ def main(opts):
                     writer.write("%s\t%s\n" % (str(headers[0]), str(headers[1])))
                 output_line = "%s\t%s\n" % (i, all_preds[i])
                 writer.write(output_line)
-        # Done predictions
 
 
 def set_training_defaults(opts):
@@ -766,15 +767,14 @@ def set_ipu_defaults(opts):
     opts['hostname'] = gethostname()
     opts['datetime'] = str(datetime.datetime.now())
 
-    if opts['seed']:
-        seed = int(opts['seed'])
-        random.seed(seed)
-        # tensorflow seed
-        tf.set_random_seed(random.randint(0, 2 ** 32 - 1))
-        # numpy seed
-        np.random.seed(random.randint(0, 2 ** 32 - 1))
-        # ipu seed
-        reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
+    seed = int(opts['seed'])
+    random.seed(seed)
+    # tensorflow seed
+    tf.set_random_seed(random.randint(0, 2 ** 32 - 1))
+    # numpy seed
+    np.random.seed(random.randint(0, 2 ** 32 - 1))
+    # ipu seed
+    reset_ipu_seed(random.randint(-2**16, 2**16 - 1))
 
 
 def set_defaults(opts):
@@ -785,22 +785,20 @@ def set_defaults(opts):
     log.set_defaults(opts)
 
 
-def add_squad_options(parser: argparse.ArgumentParser):
-    group = parser.add_argument_group("SQuAD fine-tuning options")
+def add_glue_options(parser: argparse.ArgumentParser):
+    group = parser.add_argument_group("GLUE fine-tuning options")
     group.add_argument('--predict-file', type=str,
-                       help="""SQuAD json for predictions. E.g., dev-v1.1.json or test-v1.1.json""")
+                       help="""GLUE files for predictions. E.g., dev.tsv or test.tsv""")
     group.add_argument('--output-dir', type=str,
                        help="""The output directory where the model checkpoints will be written.""")
-    group.add_argument('--buffer-size', type=int,
+    group.add_argument('--buffer-size', type=int, default=10000,
                        help="""Buffer size for training data shuffling.""")
     group.add_argument("--doc-stride", type=int, default=128,
                        help="""When splitting up a long document into chunks, how much stride to take between chunks.""")
     group.add_argument("--do-lower-case", action="store_true",
                        help="""Case sensitive or not""")
     group.add_argument("--verbose-logging", action="store_true",
-                       help="""If true, all of the warnings related to data processing will be printed. A number of warnings are expected for a normal SQuAD evaluation.""")
-    group.add_argument("--version-2-with-negative", action="store_true",
-                       help="""If true, the SQuAD examples contain some that do not have an answer.""")
+                       help="""If true, all of the warnings related to data processing will be printed. A number of warnings are expected for a normal GLUE evaluation.""")
     group.add_argument("--null-score-diff-threshold", type=float, default=0.0,
                        help="""If null_score - best_non_null is greater than the threshold predict null.""")
     group.add_argument("--max-query-length", type=int, default=64,
@@ -813,7 +811,7 @@ def add_squad_options(parser: argparse.ArgumentParser):
                        help="Run inference.")
     group.add_argument("--do-training", action="store_true",
                        help="Run fine-tuning training.")
-    group.add_argument("--do-eval", action="store_true",
+    group.add_argument("--do-evaluation", action="store_true",
                        help="Run GLUE evaluation script with results predicted by the inference run.")
     group.add_argument('--vocab-file', type=str,
                        help="The vocabulary file that the BERT model was trained on.")
@@ -829,7 +827,12 @@ def add_squad_options(parser: argparse.ArgumentParser):
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.ERROR)
 
-    opts = make_global_options([add_squad_options])
+    opts = make_global_options([add_glue_options])
+
+    if opts['seed'] is None:
+        # Seed the various random sources
+        opts['seed'] = random.randint(0, 2 ** 32 - 1)
+        logger.info(f"Using random number generated seed: f{opts['seed']}")
 
     set_defaults(opts)
     opts['distributed_worker_count'] = 1

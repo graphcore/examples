@@ -4,6 +4,10 @@ import os
 import sys
 import yaml
 import argparse
+import torch
+import popdist
+import popdist.poptorch
+import horovod.torch as hvd
 
 config_file = os.path.join(os.path.dirname(__file__), "configs.yml")
 
@@ -16,6 +20,17 @@ def str_to_bool(value):
     elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
         return True
     raise argparse.ArgumentTypeError(f'{value} is not a valid boolean value')
+
+
+def init_popdist(args):
+    hvd.init()
+    args.use_popdist = True
+    if popdist.getNumTotalReplicas() != args.replication_factor:
+        print(f"The number of replicas is overridden by PopRun. "
+              f"The new value is {popdist.getNumTotalReplicas()}.")
+    args.replication_factor = int(popdist.getNumLocalReplicas())
+    args.popdist_rank = popdist.getInstanceIndex()
+    args.popdist_size = popdist.getNumInstances()
 
 
 def parse_args(args=None):
@@ -42,6 +57,8 @@ def parse_args(args=None):
     parser.add_argument("--enable-half-partials", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Enable half partials for matmuls and convolutions globally")
     parser.add_argument("--enable-rts", type=str_to_bool, nargs="?", const=True, default=False, help="Enabling RTS")
+    parser.add_argument("--optimizer-state-offchip", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Set the tensor storage location for optimizer state to be offchip.")
     parser.add_argument("--ipus-per-replica", type=int, default=1, help="Number of IPUs required by each replica")
     parser.add_argument("--layers-per-ipu", type=int, nargs="+", default=[0, 0, 8, 8], help="number of layers placed on each IPU")
     parser.add_argument("--cls-ipu-id", type=int, default=None, help="IPU id of classification layer")
@@ -55,7 +72,7 @@ def parse_args(args=None):
     # Optimizer
     parser.add_argument("--optimizer", type=str, choices=["Adam", "AdamW"], default="Adam", help="optimizer to use for the training")
     parser.add_argument("--learning-rate", type=float, help="Learning rate value for constant schedule, maximum for linear schedule.")
-    parser.add_argument("--lr-decay", action="store_true", help="Use ReduceLROnPlateau lr scheduler")
+    parser.add_argument("--lr-scheduler", type=str, choices=["ReduceLROnPlateau", "multi_step", "constant"], help="Learning rate scheduler")
     parser.add_argument("--loss-scaling", type=float, help="Loss scaling factor (recommend using powers of 2)")
     parser.add_argument("--weight-decay", type=float, default=0, help="Set the weight decay")
     parser.add_argument("--enable-half-first-order-momentum", type=str_to_bool, nargs="?", const=True, default=False,
@@ -76,10 +93,15 @@ def parse_args(args=None):
     parser.add_argument("--truncate-captions", action="store_true", help="Captions passed in which exceed the max token length will be truncated.")
 
     # Dataset
-    parser.add_argument("--synthetic-data", type=str_to_bool, nargs="?", const=True, default=False,
-                        help="Use synthetic data")
+    parser.add_argument("--byteio", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Use byte data format to transfer image data from host to IPU")
     parser.add_argument("--input-folder", type=str, default=None,
                         help="Path to folder of images and text for training")
+    parser.add_argument("--generated-data", action="store_true",
+                        help="Random data created on CPU ram, dataloader feeds the same data to IPU every step")
+    parser.add_argument("--synthetic-data", action="store_true",
+                        help="Random data created on the IPU, no host to IPU IO")
+
 
     # Checkpointing
     parser.add_argument("--checkpoint-output-dir", type=str, default="", help="Directory where checkpoints will be saved to.\
@@ -95,6 +117,12 @@ def parse_args(args=None):
     parser.add_argument("--dataloader-workers", type=int, help="The number of dataloader workers")
     parser.add_argument("--wandb", type=str_to_bool, nargs="?", const=True, default=False, help="Enabling logging to Weights and Biases")
     parser.add_argument("--wandb-project-name", default="miniDALL-E", help="Wandb project name")
+    parser.add_argument("--compile-only", type=str_to_bool, nargs="?", const=True, default=False,
+                        help="Create an offline IPU target that can only be used for offline compilation.")
+    parser.add_argument("--executable-cache-dir", type=str, default="",
+                        help="Directory where Poplar executables are cached. If set, recompilation of identical graphs can be avoided. "
+                        "Required for both saving and loading executables.")
+    parser.add_argument("--profile-dir", type=str, help="Directory for profiling results")
 
     # Load the yaml
     yaml_args = dict()
@@ -116,6 +144,13 @@ def parse_args(args=None):
     parser.set_defaults(**yaml_args)
     args = parser.parse_args(remaining_args)
 
+    # Initialise PopDist
+    if popdist.isPopdistEnvSet():
+        init_popdist(args)
+        hvd.broadcast(torch.Tensor([args.random_seed]), root_rank=0)
+    else:
+        args.use_popdist = False
+
     # Expand matmul_proportion input into list representation
     if isinstance(args.matmul_proportion, float):
         args.matmul_proportion = [args.matmul_proportion] * args.ipus_per_replica
@@ -127,4 +162,31 @@ def parse_args(args=None):
             raise ValueError(f"Length of matmul_proportion doesn't match ipus_per_replica: "
                              f"{args.matmul_proportion} vs {args.ipus_per_replica}")
 
+    if args.synthetic_data or args.generated_data:
+        print(
+            "Warning: One of --synthetic-data or --generated-data have been "
+            "provided. This will override the value passed to --input-folder, "
+            "and real data will not be used."
+        )
+        args.input_folder = None
+    if args.synthetic_data and args.generated_data:
+        print(
+            "Warning: Both of --synthetic-data and --generated-data have been "
+            "provided. Only one can be provided. Exiting."
+        )
+        sys.exit(1)
+
     return args
+
+
+def sync_metrics(outputs, factor=1, average=True):
+    if popdist.isPopdistEnvSet():
+        if isinstance(outputs, float):
+            return float(hvd.allreduce(torch.Tensor([outputs]), average=average).item())
+        else:
+            return [hvd.allreduce(output.div(factor), average=average).mean().item() for output in outputs]
+    else:
+        if isinstance(outputs, float):
+            return outputs
+        else:
+            return [output.div(factor).mean().item() for output in outputs]

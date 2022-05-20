@@ -64,8 +64,6 @@ python3 run_pretraining.py \
 
 #### 1 x IPU-POD128
 
-#### 1 x IPU-POD128
-
 export POPLAR_ENGINE_OPTIONS='{"target.hostSyncTimeout": "600", "target.syncReplicasIndependently": "true"}'
 export HOROVOD_STALL_CHECK_TIME_SECONDS=120
 export HOROVOD_POPART_BROADCAST_TIMEOUT=120
@@ -104,7 +102,7 @@ python run_pretraining.py --config pretrain_large_128_POD64 --replication-factor
                           --checkpoint-output-dir large-128-POD128-poprun-rep32 \
                           --checkpoint-steps 1000 \
                           --replicated-tensor-sharding True \
-                          --random-seed 1984 \
+                          --random-seed 5 \
                           --input-files  $DATASETS_DIR/wikipedia/torch_bert/128/*.tfrecord 
 
 ```
@@ -177,6 +175,79 @@ python run_pretraining.py --config pretrain_large_384_POD64 --replication-factor
                           --input-files $DATASETS_DIR/torch_bert/384/*.tfrecord 
 ```
 
+### Pretrain BERT-Packed-Base Sequence Length 128
+
+#### 1 x IPU-POD16
+
+Command:
+```console
+python3 run_pretraining.py \
+   --config pretrain_base_128_packed \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/psc_128/wiki_000.tfrecord \
+   --disable-progress-bar
+```
+
+### Pretrain BERT-Packed-Base Sequence Length 384
+
+#### 1 x IPU-POD16
+
+Command:
+```console
+python3 run_pretraining.py \
+   --config pretrain_base_384_packed \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/psc_384/wiki_000.tfrecord \
+   --disable-progress-bar
+```
+
+### Pretrain BERT-Packed-Large Sequence Length 128
+
+#### 1 x IPU-POD16
+
+Command:
+```console
+python3 run_pretraining.py \
+   --config pretrain_large_128_packed \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/psc_128/wiki_000.tfrecord \
+   --disable-progress-bar
+```
+
+#### 1 x IPU-POD64
+
+Command:
+```console
+python3 run_pretraining.py \
+   --config pretrain_large_128_packed_POD64 \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/psc_128/wiki_*.tfrecord \
+   --disable-progress-bar
+```
+
+### Pretrain BERT-Packed-Large Sequence Length 384
+
+#### 1 x IPU-POD16
+
+Command:
+```console
+python3 run_pretraining.py \
+   --config pretrain_large_384_packed \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/psc_384/wiki_000.tfrecord \
+   --disable-progress-bar
+```
+
+#### 1 x IPU-POD64
+
+Command:
+```console
+python3 run_pretraining.py \
+   --config pretrain_large_384_packed_POD64 \
+   --training-steps 10 \
+   --input-file $DATASETS_DIR/wikipedia/psc_384/wiki_*.tfrecord \
+   --disable-progress-bar
+```
 
 ### SQuAD BERT-Large Sequence Length 384
 

@@ -81,7 +81,6 @@ class CreateSyntheticDataset(unittest.TestCase):
     def test_synthetic_random_data(self):
         ds = DataGenerator.get_random_dataset(
             height=32, width=32, num_classes=5, data_type=tf.float32)
-        assert(DataGenerator.evaluate_size_dataset(ds) == 1)
         assert (isinstance(ds, tf.data.Dataset))
 
     def test_fetch_from_directory(self):
@@ -126,7 +125,7 @@ class LoadGCImagenetTest(unittest.TestCase):
         imagenet_tf_record_data_path = '/localdata/datasets/imagenet-data'
         # if the path doesn't exist the function will throw an error
         ds, img_shape, num_examples, num_classes = DataGenerator.get_imagenet(
-            imagenet_tf_record_data_path, 'train')
+            imagenet_tf_record_data_path, 'train', seed=None)
 
         self.assertTrue(isinstance(ds, tf.data.Dataset))
         self.assertEqual(img_shape, (224, 224, 3))
@@ -139,7 +138,7 @@ class LoadGCImagenetTest(unittest.TestCase):
 
         # if the path doesn't exist the function will throw an error
         ds, img_shape, num_examples, num_classes = DataGenerator.get_imagenet(
-            imagenet_tf_record_data_path, 'validation')
+            imagenet_tf_record_data_path, 'validation', seed=None)
 
         self.assertTrue(isinstance(ds, tf.data.Dataset))
         self.assertEqual(img_shape, (224, 224, 3))
@@ -168,7 +167,7 @@ class BuildImagenetTest(unittest.TestCase):
                                                'validation', output_directory=output_directory)
 
         ds, img_shape, num_examples, num_classes = DataGenerator.get_imagenet(
-            output_directory, 'validation')
+            output_directory, 'validation', seed=None)
 
         self.assertTrue(isinstance(ds, tf.data.Dataset))
         self.assertEqual(img_shape, (224, 224, 3))

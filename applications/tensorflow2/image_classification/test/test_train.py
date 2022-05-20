@@ -1,32 +1,29 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
-import unittest
-import subprocess
 import os
 import sys
 from pathlib import Path
+from examples_tests.test_util import SubProcessChecker
 
 sys.path.append(str(Path(__file__).absolute().parent.parent))
 from test_common import run_train
 
 
-class WrongArguments(unittest.TestCase):
+class WrongArguments(SubProcessChecker):
     def test_unsupported_argument(self):
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            run_train('--wrong-arg', '0')
-        self.assertEqual(e.exception.returncode, 2)
+        with self.assertRaises(AssertionError):
+            run_train(self, '--wrong-arg', '0')
 
     def test_wrong_device_assignment(self):
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            run_train('--model-name', 'cifar_resnet8',
+        with self.assertRaises(AssertionError):
+            run_train(self, '--model-name', 'cifar_resnet8',
                       '--pipeline-splits', 'conv2_block1_post_addition_relu', 'conv3_block1_post_addition_relu', 'conv4_block1_post_addition_relu',
                       '--device-mapping', '0', '1', '2', '4',
                       '--gradient-accumulation-count', '8',
                       '--recomputation', 'True')
-        self.assertEqual(e.exception.returncode, 1)
 
     def test_recomputation_no_pipeline(self):
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            run_train('--weight-updates-per-epoch', '1',
+        with self.assertRaises(AssertionError):
+            run_train(self, '--weight-updates-per-epoch', '1',
                       '--dataset', 'imagenet',
                       '--dataset-path', '/localdata/datasets/imagenet-data',
                       '--accelerator-side-preprocess', 'True',
@@ -34,49 +31,34 @@ class WrongArguments(unittest.TestCase):
                       '--recomputation', 'True')
 
     def test_recompute_with_no_split(self):
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            run_train('--recomputation', 'True')
-        self.assertEqual(e.exception.returncode, 1)
+        with self.assertRaises(AssertionError):
+            run_train(self, '--recomputation', 'True')
 
     def test_logs_per_epoch_neg(self):
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            run_train('--logs-per-epoch', '-1')
-        self.assertEqual(e.exception.returncode, 1)
+        with self.assertRaises(AssertionError):
+            run_train(self, '--logs-per-epoch', '-1')
 
     def test_logs_per_epoch_not_multiple_of_epoch(self):
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            run_train('--logs-per-epoch', '0.25', '--num-epochs', '6')
-        self.assertEqual(e.exception.returncode, 1)
-
-    # Must be updated when supported
-    def test_cifar_resnet_device_not_supported(self):
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            run_train('--model', 'cifar_resnet8',
-                      '--weight-updates-per-epoch', '1',
-                      '--accelerator-side-preprocess', 'True',
-                      '--eight-bit-transfer', 'True')
-        self.assertEqual(e.exception.returncode, 1)
+        with self.assertRaises(AssertionError):
+            run_train(self, '--logs-per-epoch', '0.25', '--num-epochs', '6')
 
     def test_non_accelerated_8_bit_io(self):
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            run_train('--accelerator-side-preprocess', 'False',
+        with self.assertRaises(AssertionError) as e:
+            run_train(self, '--accelerator-side-preprocess', 'False',
                       '--micro-batch-size', '8', '--validation',
                       '--eight-bit-transfer', 'True')
-        self.assertEqual(e.exception.returncode, 1)
-
-# These tests are likely
 
 
-class SimplePass(unittest.TestCase):
+class SimplePass(SubProcessChecker):
     def test_help(self):
-        output = run_train('--help')
+        output = run_train(self, '--help')
         self.assertIn('usage', output)
 
     def test_one_update_mnist(self):
         path_to_mnist = '/localdata/datasets/mnist'
         if not os.path.exists(path_to_mnist):
             raise NameError(f'Directory {path_to_mnist} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset', 'mnist',
                            '--label-smoothing', '0.1',
                            '--dataset-path', '/localdata/datasets/')
@@ -87,21 +69,22 @@ class SimplePass(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--accelerator-side-preprocess', 'True',
                            '--eight-bit-transfer', 'True',
                            '--label-smoothing', '0.1',
+                           '--synthetic-data', 'ipu',
                            '--dataset-path', '/localdata/datasets/')
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
 
 
-class Resnet8(unittest.TestCase):
+class Resnet8(SubProcessChecker):
     def test_config(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1', '--config', 'resnet8_test')
+        output = run_train(self, '--weight-updates-per-epoch', '1', '--config', 'resnet8_test')
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
 
@@ -109,15 +92,15 @@ class Resnet8(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--model', 'cifar_resnet8',
+        output = run_train(self, '--model', 'cifar_resnet8',
                            '--dataset-path', '/localdata/datasets/',
-                           '--num-epochs', '2',
+                           '--num-epochs', '3',
                            '--precision', '16.16',
                            '--micro-batch-size', '8',
                            '--validation', 'False',
                            '--half-partials', 'True',
                            '--gradient-accumulation', '8',
-                           '--logs-per-epoch', '0.5')
+                           '--logs-per-epoch', '1/3')
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
 
@@ -125,7 +108,7 @@ class Resnet8(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--model-name', 'cifar_resnet8',
+        output = run_train(self, '--model-name', 'cifar_resnet8',
                            '--dataset-path', '/localdata/datasets/',
                            '--pipeline-splits', 'conv2_block1_post_addition_relu', 'conv3_block1_post_addition_relu', 'conv4_block1_post_addition_relu',
                            '--device-mapping', '0', '1', '2', '3',
@@ -135,12 +118,12 @@ class Resnet8(unittest.TestCase):
         self.assertIn('training_accuracy:', output)
 
 
-class ImageNet(unittest.TestCase):
+class ImageNet(SubProcessChecker):
     def test_accelerated(self):
         path_to_imagenet = '/localdata/datasets/imagenet-data'
         if not os.path.exists(path_to_imagenet):
             raise NameError(f'Directory {path_to_imagenet} should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset', 'imagenet',
                            '--dataset-path', '/localdata/datasets/imagenet-data',
                            '--accelerator-side-preprocess', 'True',
@@ -156,7 +139,7 @@ class ImageNet(unittest.TestCase):
         path_to_imagenet = '/localdata/datasets/imagenet-data'
         if not os.path.exists(path_to_imagenet):
             raise NameError(f'Directory {path_to_imagenet} should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset', 'imagenet',
                            '--dataset-path', '/localdata/datasets/imagenet-data',
                            '--accelerator-side-preprocess', 'False',
@@ -168,14 +151,41 @@ class ImageNet(unittest.TestCase):
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
 
+    def test_fused_preprocessing(self):
+        path_to_imagenet = '/localdata/datasets/imagenet-data'
+        if not os.path.exists(path_to_imagenet):
+            raise NameError(f'Directory {path_to_imagenet} should have been copied to CI for this test')
+        output = run_train(self, '--weight-updates-per-epoch', '1',
+                           '--dataset', 'imagenet',
+                           '--dataset-path', '/localdata/datasets/imagenet-data',
+                           '--accelerator-side-preprocess', 'True',
+                           '--fused-preprocessing', 'True',
+                           '--eight-bit-transfer', 'True',
+                           '--micro-batch-size', '8',
+                           '--validation', 'False',
+                           '--half-partials', 'True',
+                           '--precision', '16.16')
+        self.assertIn('loss:', output)
+        self.assertIn('training_accuracy:', output)
 
-class DisableVariableOffloading(unittest.TestCase):
+    def test_fused_preprocessing_on_host(self):
+        path_to_imagenet = '/localdata/datasets/imagenet-data'
+        if not os.path.exists(path_to_imagenet):
+            raise NameError(f'Directory {path_to_imagenet} should have been copied to CI for this test')
+        with self.assertRaises(AssertionError):
+            output = run_train(self, '--dataset', 'imagenet',
+                               '--dataset-path', '/localdata/datasets/imagenet-data',
+                               '--accelerator-side-preprocess', 'False',
+                               '--fused-preprocessing', 'True')
+
+
+class DisableVariableOffloading(SubProcessChecker):
 
     def test_disable_variable_offloading_global_batch_size(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--global-batch-size', '10')
         self.assertIn('loss:', output)
@@ -185,21 +195,20 @@ class DisableVariableOffloading(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            output = run_train('--weight-updates-per-epoch', '1',
+        with self.assertRaises(AssertionError):
+            output = run_train(self, '--weight-updates-per-epoch', '1',
                                '--dataset-path', '/localdata/datasets/',
                                '--gradient-accumulation-count', '10',
                                '--global-batch-size', '10')
-        self.assertEqual(e.exception.returncode, 1)
 
 
-class AvailableMemoryProportion(unittest.TestCase):
+class AvailableMemoryProportion(SubProcessChecker):
 
     def test_single_value_pipeline(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--validation', 'False',
                            '--dataset-path', '/localdata/datasets/',
                            '--available-memory-proportion', '50',
@@ -213,20 +222,18 @@ class AvailableMemoryProportion(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            output = run_train('--weight-updates-per-epoch', '1',
+        with self.assertRaises(AssertionError):
+            output = run_train(self, '--weight-updates-per-epoch', '1',
                                '--validation', 'False',
                                '--dataset-path', '/localdata/datasets/',
                                '--available-memory-proportion', '50', '50')
-
-        self.assertEqual(e.exception.returncode, 1)
 
     def test_multiple_values_pipeline(self):
 
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--validation', 'False',
                            '--dataset-path', '/localdata/datasets/',
                            '--available-memory-proportion', '50', '50', '60', '60',
@@ -241,11 +248,12 @@ class AvailableMemoryProportion(unittest.TestCase):
         path_to_imagenet = '/localdata/datasets/imagenet-data'
         if not os.path.exists(path_to_imagenet):
             raise NameError(f'Directory {path_to_imagenet} should have been copied to CI for this test')
-        output = run_train('--config', 'mk2_resnet50_16k_bn_pipeline',
+        output = run_train(self, '--config', 'resnet50_16ipus_16k_bn_pipeline',
                            '--weight-updates-per-epoch', '1',
                            '--num-epochs', '1',
                            '--micro-batch-size', '1',
                            '--label-smoothing', '0.1',
+                           '--synthetic-data', 'host',
                            '--validation', 'False', '--num-replicas', '1')
 
         self.assertIn('loss:', output)
@@ -255,29 +263,27 @@ class AvailableMemoryProportion(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        with self.assertRaises(subprocess.CalledProcessError) as e:
-            output = run_train('--weight-updates-per-epoch', '1',
+        with self.assertRaises(AssertionError):
+            output = run_train(self, '--weight-updates-per-epoch', '1',
                                '--validation', 'False',
                                '--dataset-path', '/localdata/datasets/',
                                '--available-memory-proportion', '50', '50', '60',
                                '--pipeline-splits', 'conv2d_1',
                                '--gradient-accumulation-count', '4')
 
-        self.assertEqual(e.exception.returncode, 1)
 
-
-class StableNormStochasticRoundingFloatingPointExceptions(unittest.TestCase):
+class StableNormStochasticRoundingFloatingPointExceptions(SubProcessChecker):
 
     def test_stable_norm_stochastic_rounding_fp_exceptions_enabled(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--stable-norm', 'True',
-                           '--stochastic-rounding', 'True',
+                           '--stochastic-rounding', 'ON',
                            '--fp-exceptions', 'True',
-                           '--bn-momentum', '0.0',
+                           '--norm-layer', '{"name": "batch_norm", "momentum": 0.0}',
                            '--model', 'cifar_resnet8')
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
@@ -286,24 +292,24 @@ class StableNormStochasticRoundingFloatingPointExceptions(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--stable-norm', 'False',
-                           '--stochastic-rounding', 'False',
+                           '--stochastic-rounding', 'OFF',
                            '--fp-exceptions', 'False',
-                           '--bn-momentum', '0.0',
+                           '--norm-layer', '{"name": "batch_norm", "momentum": 0.0}',
                            '--model', 'cifar_resnet8')
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
 
 
-class LRSchedules(unittest.TestCase):
+class LRSchedules(SubProcessChecker):
 
     def test_cosine_lr_schedule(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--lr-schedule', 'cosine',
                            '--lr-schedule-params', '{"initial_learning_rate": 0.0001, "epochs_to_total_decay": 1.1}')
@@ -314,7 +320,7 @@ class LRSchedules(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--lr-schedule', 'stepped',
                            '--lr-schedule-params', '{"boundaries": [0.1, 0.5, 0.8], "values": [0.00001, 0.0001, 0.0005, 0.00001]}')
@@ -325,7 +331,7 @@ class LRSchedules(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--lr-warmup-params', '{"warmup_mode": "shift", "warmup_epochs": 1.1}')
         self.assertIn('loss:', output)
@@ -335,7 +341,7 @@ class LRSchedules(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--lr-warmup-params', '{"warmup_mode": "mask", "warmup_epochs": 1.1}')
         self.assertIn('loss:', output)
@@ -345,7 +351,7 @@ class LRSchedules(unittest.TestCase):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train('--weight-updates-per-epoch', '1',
+        output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--lr-staircase', 'True')
         self.assertIn('loss:', output)

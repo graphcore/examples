@@ -31,7 +31,7 @@ pip3 install <path to the tensorflow-2 wheel from the Poplar SDK>
 ```
 
 ### 3. Get the training data
-We are using the training data from [ISBI Challenge 2012](http://brainiac2.mit.edu/isbi_challenge/home). The training data is a set of 30 sections from a serial section Transmission Electron Microscopy (ssTEM) data set of the Drosophila first instar larva ventral nerve cord (VNC).
+We are using the training data from [ISBI Challenge 2012](https://github.com/hoangp/isbi-datasets). The training data is a set of 30 sections from a serial section Transmission Electron Microscopy (ssTEM) data set of the Drosophila first instar larva ventral nerve cord (VNC).
 
 The data preprocessing includes normalization and data augmentation similar to [this one](https://github.com/NVIDIA/DeepLearningExamples/blob/master/TensorFlow2/Segmentation/UNet_Medical/data_loading/data_loader.py).
 
@@ -85,7 +85,7 @@ python main.py --nb-ipus-per-replica 1 --micro-batch-size 2 --steps-per-executio
 We take advantage of a number of memory optimisation techniques in order to train on 512x512 sized images. These are reviewed below.
 
 ### 1. Pipelining
-Model pipelining is a technique for splitting a model across multiple devices (known as model parallelism). For a simple example of how to pipeline models in Keras, take a look at the [IPU-specific Keras pipelined Model example](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/examples_tf2.html?highlight=pipeline#pipelined-model).
+Model pipelining is a technique for splitting a model across multiple devices (known as model parallelism). For simple examples of how to pipeline models in Keras, take a look at the [Code examples](https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html#code-examples).
 
 You should consider using model parallel execution if your model goes out of memory (OOM) on a single IPU, assuming that you cannot reduce your micro batch size. Some of the techniques to optimise the pipeline can be found in [Optimising the pipeline](https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html#optimising-the-pipeline).
 
@@ -111,12 +111,12 @@ Tensors are stored in memory (referred to as "live") as long as they are require
 
 Rather than storing all the activations within a pipeline stage, we retain only the activations that feed the input of the stage (called a "stash"). The other internal activations within the stage are calculated from the stashes just before they are needed in the backward pass for a given micro batch. The stash size is equivalent to the number of pipeline stages, as that reflects the number of micro batches being processed in parallel. Hence as you increase the number of stages in a pipeline, the stash overhead also increases accordingly.
 
-Recomputation can be enabled by setting the [`allow_recompute`](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/api.html?highlight=allow_recompute#tensorflow.python.ipu.config.IPUConfig.allow_recompute) in `IPUConfig`. Enabling this option can reduce memory usage at the expense of extra computation. For smaller models, it can allow us to increase micro batch size and therefore efficiency. 
+Recomputation can be enabled by setting the [`allow_recompute`](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html?highlight=allow_recompute#tensorflow.python.ipu.config.IPUConfig.allow_recompute) in `IPUConfig`. Enabling this option can reduce memory usage at the expense of extra computation. For smaller models, it can allow us to increase micro batch size and therefore efficiency.
 
 A demonstration of the pipeline recomputation can be found in [Recomputation](https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html#recomputation).
 
 ### 5. Convolution options
-To modify the execution behaviour of convolutions, options can be found in the [IPU "Convolution options"](https://docs.graphcore.ai/projects/poplar-api/en/latest/poplibs_api.html#_CPPv4N6poplin13createWeightsERN6poplar5GraphERK10ConvParamsRKN6poplar12DebugContextERKN6poplar11OptionFlagsEP13PlanningCache). We adjust some of these to reduce memory usage in [`set_convolution_options`](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/api.html#tensorflow.python.ipu.utils.set_convolution_options):
+To modify the execution behaviour of convolutions, options can be found in the ["Convolution options"](https://docs.graphcore.ai/projects/poplar-api/en/latest/poplibs/poplin/Convolution.html#_CPPv4N6poplin13createWeightsERN6poplar5GraphERK10ConvParamsRKN6poplar12DebugContextERKN6poplar11OptionFlagsEP13PlanningCache). We adjust some of these to reduce memory usage in [`set_convolution_options`](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html?highlight=set_convolution_options#tensorflow.python.ipu.config.IPUConfig.convolutions.poplar_options):
 
 - Change the [`availableMemoryProportion`](https://docs.graphcore.ai/projects/available-memory/en/latest/available-memory.html?). This is the proportion of IPU memory that can be used as temporary memory by a convolution or matrix multiplication. The default proportion is set to 0.6, which aims to balance execution speed against memory. To fit larger models on the IPU, a good first step is to lower the available memory proportion to force the compiler to optimise for memory use over execution speed. Less temporary memory means longer cycles to execute. It also increases always-live memory as more control code is needed to deal with the planning of the split calculations. Reducing this value too far can result in OOM. We recommend to set this value greater than 0.05.
 
@@ -128,10 +128,10 @@ For U-Net, we use the Interleaved schedule when the model does not fit in memory
 When the model fits, the Grouped schedule gives much better throughput than the Interleaved schedule.
 
 ### 7. Internal exchange optimisation target
-To further reduce the memory usage, we can also change the `internalExchangeOptimisationTarget` from default `cycles` to `memory`. "Exchange" refers to the communication phase between IPUs, which is pre-planned by the compiler during graph compilation. We can influence the planning of exchanges to optimise for memory and/or throughput. More details can be found in the list of [Engine creation options](https://docs.graphcore.ai/projects/poplar-api/en/latest/poplar_api.html?highlight=internalExchangeOptimisationTarget#_CPPv4N6poplar6EngineE). When a model can fit on IPUs, the `cycles` can achieve better speed than the `memory` and `balanced` options.
+To further reduce the memory usage, we can also change the `internalExchangeOptimisationTarget` from default `cycles` to `memory`. "Exchange" refers to the communication phase between IPUs, which is pre-planned by the compiler during graph compilation. We can influence the planning of exchanges to optimise for memory and/or throughput. More details can be found in the list of [Engine creation options: Optimisations](https://docs.graphcore.ai/projects/poplar-api/en/latest/poplar/execution/Engine.html#_CPPv4N6poplar6EngineE). When a model can fit on IPUs, the `cycles` can achieve better speed than the `memory` and `balanced` options.
 
 ### 8. Use the `ipu.keras` Dropout instead of the `tf.keras` Dropout
-We use [the `ipu.keras.layers.Dropout` layer](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/api.html#tensorflow.python.ipu.keras.layers.Dropout), rather than the one native to `tf.keras`. Our custom dropout is designed to use less memory by not storing the dropout mask between forward and backward passes.
+We use [the `ipu.keras.layers.Dropout` layer](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html#tensorflow.python.ipu.keras.layers.Dropout), rather than the one native to `tf.keras`. Our custom dropout is designed to use less memory by not storing the dropout mask between forward and backward passes.
 
 ### 9. Fine grained control of the Poplar options for each pipeline stage
 We can control each pipeline stage using `forward_propagation_stages_poplar_options` and `backward_propagation_stages_poplar_options`. Looking at the memory report from profiling, for the stages that do not fit on the IPU, we can try to change the available memory proportion on that stage like in the `get_pipeline_stage_options` in `utils.py`. More details about this option can be found in [Profiling](https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html?highlight=forward_propagation_stages_poplar_options#profiling).

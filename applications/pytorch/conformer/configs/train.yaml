@@ -63,6 +63,7 @@ train_dataset:
 train_iterator:
   batch_size: 6
   num_workers: 8
+  async_mode: false
 
 val_dataset:
   data_root: 'espnet/egs2/aishell/asr1/'
@@ -80,11 +81,14 @@ val_dataset:
 val_iterator:
   batch_size: 1
   num_workers: 4
+  async_mode: false
 
 ipu_options:
   num_replicas: 1
   gradient_accumulation: 8
   batches_per_step: 10
+  compile_only: false
+  num_io_tiles: 0
   auto_loss_scaling: true
   available_memory_proportion: 0.15
   optimizer_state_offchip: false

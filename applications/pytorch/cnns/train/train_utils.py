@@ -45,7 +45,8 @@ def parse_arguments():
     parser.add_argument('--recompute-checkpoints', type=str, nargs='+', default=[], help='List of recomputation checkpoints. List of regex rules for the layer names must be provided. (Example: Select convolutional layers: .*conv.*)')
     parser.add_argument('--disable-stable-batchnorm', action='store_true', help="There are two implementations of the batch norm layer. "
                         "The default version is numerically more stable. The less stable is faster.")
-    parser.add_argument('--offload-optimizer', action='store_true', help='Offload the optimizer from the IPU memory')
+    parser.add_argument('--offload-optimizer', action='store_true', help='Store the optimizer state off-chip.')
+    parser.add_argument('--enable-optimizer-rts', action='store_true', help='Use replicated tensor sharding for optimizer state.')
     parser.add_argument('--available-memory-proportion', type=float, default=[], nargs='+',
                         help='Proportion of memory which is available for convolutions. Use a value of less than 0.6')
     parser.add_argument('--logs-per-epoch', type=int, default=1, help="The number of times the resuls are logged per epoch")
@@ -63,7 +64,6 @@ def parse_arguments():
                         "Example: 100 epoch, initial loss scaling 16, loss scaling 128: Epoch 1-25 ls=16;Epoch 26-50 ls=32;Epoch 51-75 ls=64;Epoch 76-100 ls=128")
     parser.add_argument('--enable-stochastic-rounding', action="store_true", help="Enable Stochastic Rounding")
     parser.add_argument('--enable-fp-exceptions', action="store_true", help="Enable Floating Point Exceptions")
-    parser.add_argument('--webdataset-percentage-to-use', type=int, default=100, choices=range(1, 101), help="Percentage of dataset to be used for training")
     parser.add_argument('--use-bbox-info', action='store_true', help='Use bbox information for training: reject the augmenetation, which does not overlap with the object.')
     parser.add_argument('--mixup-alpha', type=float, default=0.0, help="The first shape parameter of the beta distribution used to sample mixup coefficients. The second shape parameter is the same as the first one. Value of 0.0 means mixup is disabled.")
     parser.add_argument('--cutmix-lambda-low', type=float, default=0.0, help="Lower bound for the cutmix lambda coefficient (lambda is sampled uniformly from [low, high)). If both bounds are set to 0.0 or 1.0, cutmix is disabled. If both bounds are equal, lambda always equals that value.")

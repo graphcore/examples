@@ -23,6 +23,7 @@ import json
 import logging
 import numpy as np
 import tensorflow as tf
+from multiprocessing import Pool, cpu_count
 
 
 logging.basicConfig(
@@ -45,138 +46,22 @@ def average_by_duration(x, durs):
     return x_char.astype(np.float32)
 
 
-class LJSpeechDataset(object):
-    """Dataloader for phoneme-level datasets."""
-
-    def __init__(self, opts, is_train=True):
-        self.opts = opts
-        self.is_train = is_train
-        self.dtype = tf.float16 if opts["precision"] == "16" else tf.float32
-        self.np_dtype = np.float16 if opts["precision"] == "16" else np.float32
-        self.max_seq_len = opts["max_seq_length"]
-        self.max_mel_length = opts["max_wave_length"]
-        self.filenames = []
-        if not self.opts["generated_data"] and self.opts["data_path"]:
-            files_path = os.path.join(self.opts["data_path"], "train.txt") if self.is_train else os.path.join(
-                self.opts["data_path"], "val.txt")
-            with open(os.path.abspath(files_path)) as fp:
-                for line in fp.readlines():
-                    self.filenames.append(line.strip())
-            if is_train:
-                np.random.shuffle(self.filenames)
-
-    def __len__(self):
-        if self.opts["generated_data"]:
-            return 10000
-        return len(self.filenames)
-
-    def _load_data(self, filename):
-        phoneme = np.load(os.path.join(
-            self.opts["data_path"], "phone", f"phn-{filename}.npy")).astype(np.int32)
-        duration = np.load(os.path.join(
-            self.opts["data_path"], "duration", f"duration-{filename}.npy")).astype(self.np_dtype)
-        pitch = np.load(os.path.join(
-            self.opts["data_path"], "pitch", f"pitch-{filename}.npy")).astype(self.np_dtype)
-        energy = np.load(os.path.join(
-            self.opts["data_path"], "energy", f"energy-{filename}.npy")).astype(self.np_dtype)
-        mel = np.load(os.path.join(
-            self.opts["data_path"], "mel", f"mel-{filename}.npy")).astype(self.np_dtype)
-        return phoneme, duration, pitch, energy, mel
-
-    def _fake_duration(self, phn_len, mel_len):
-        dur = [mel_len//phn_len]*phn_len
-        balance = sum(dur) - mel_len
-        dur[-1] += balance
-        return np.array(dur).astype(np.int32)
-
-    def _generated_generator(self):
-        while True:
-            phoneme = np.random.randint(0, self.max_seq_len,
-                                        size=(self.max_seq_len,)).astype(np.int32)
-            duration = self._fake_duration(
-                self.max_seq_len, self.max_mel_length)
-            mel = np.random.rand(self.max_mel_length, self.opts["num_mels"]).astype(
-                self.np_dtype)
-            pitch = np.random.rand(self.max_seq_len,).astype(self.np_dtype)
-            energy = np.random.rand(self.max_seq_len,).astype(self.np_dtype)
-
-            yield phoneme, duration, pitch, energy, mel
-
-    def _inference_generator(self):
-        while True:
-            for fn in self.filenames:
-                phoneme = np.load(os.path.join(
-                    self.opts["data_path"], "phone", f"phn-{fn}.npy")).astype(np.int32)
-                yield phoneme
-
-    def generator(self):
-        while True:
-            for fn in self.filenames:
-                phoneme, duration, pitch, energy, mel = self._load_data(fn)
-                yield phoneme, duration, pitch, energy, mel
-
-    def __call__(self):
-        """Create tf.dataset function."""
-        tf.random.set_seed(int(self.opts['seed']))
-        np.random.seed(int(self.opts['seed']))
-
-        output_types = (tf.int32, self.dtype, self.dtype,
-                        self.dtype, self.dtype)
-        padded_shapes = ([self.max_seq_len], [self.max_seq_len], [self.max_seq_len], [
-                         self.max_seq_len], [self.max_mel_length, self.opts["num_mels"]])
-
-        if self.opts["generated_data"]:
-            data_gen = self._generated_generator
-        else:
-            if not self.filenames:
-                self._shuffle_files()
-            data_gen = self.generator
-
-        datasets = tf.data.Dataset.from_generator(
-            data_gen, output_types=output_types)
-        if self.is_train:
-            datasets = datasets.shuffle(
-                buffer_size=1000, seed=int(self.opts["seed"]))
-        datasets = datasets.padded_batch(
-            self.opts["batch_size"], padded_shapes=padded_shapes, drop_remainder=True)
-        datasets = datasets.map(lambda phoneme, duration, pitch, energy, melspectrum: (
-            (phoneme, duration, pitch, energy), (melspectrum, melspectrum, duration, pitch, energy)))
-        datasets = datasets.repeat().prefetch(tf.data.experimental.AUTOTUNE)
-        return datasets
-
-    def get_inference_data(self):
-        """Create tf.dataset function."""
-        tf.random.set_seed(int(self.opts['seed']))
-        np.random.seed(int(self.opts['seed']))
-
-        output_types = (tf.int32)
-        padded_shapes = ([self.max_seq_len])
-
-        datasets = tf.data.Dataset.from_generator(
-            self._inference_generator, output_types=output_types)
-        datasets = datasets.padded_batch(
-            self.opts["batch_size"], padded_shapes=padded_shapes, drop_remainder=True)
-        datasets = datasets.repeat(1).prefetch(tf.data.experimental.AUTOTUNE)
-        return datasets
-
-
 class LJSpeechCharLevelDataset(object):
     """Dataloader for character-level datasets."""
 
     def __init__(self, opts, is_train=True):
         self.opts = opts
         self.is_train = is_train
-        self.np_dtype = np.float16 if opts["precision"] == "16" else np.float32
         self.max_seq_length = opts["max_seq_length"]
         self.max_mel_length = opts["max_wave_length"]
         self.dtype = tf.float16 if opts["precision"] == "16" else tf.float32
         self.np_dtype = np.float16 if opts["precision"] == "16" else np.float32
         if not self.opts["generated_data"] and self.opts["data_path"]:
-            self.utts_path = os.path.join(opts["data_path"], "train_utt_ids.npy") if is_train else os.path.join(
+            utts_path = os.path.join(opts["data_path"], "train_utt_ids.npy") if is_train else os.path.join(
                 opts["data_path"], "valid_utt_ids.npy")
             self.base_path = os.path.join(
                 opts["data_path"], "train") if is_train else os.path.join(opts["data_path"], "valid")
-            self.utts_ids = np.load(self.utts_path)
+            self.utts_ids = np.load(utts_path)
             # stats
             self.f0_stat = np.load(os.path.join(
                 opts["data_path"], "stats_f0.npy"))
@@ -186,7 +71,9 @@ class LJSpeechCharLevelDataset(object):
                 opts["data_path"], "stats.npy"))
             self._set_path()
             self._get_length()
-        self.same_sample = False
+            # load data to memory initially to speed up throughput
+            with Pool(cpu_count()) as p:
+                self.train_data = p.map(self._load_data, self.utts_ids)
 
     def _set_path(self):
         self.duration_path = os.path.join(self.base_path, "duration")
@@ -202,6 +89,8 @@ class LJSpeechCharLevelDataset(object):
         self.max_mel_length = length["max_mel_length"]
 
     def __len__(self):
+        if self.opts["generated_data"]:
+            return 1000
         return len(self.utts_ids)
 
     def _load_data(self, utt_id):
@@ -215,12 +104,14 @@ class LJSpeechCharLevelDataset(object):
                            f"{utt_id}-durations.npy")).astype(self.np_dtype)
         mel = np.load(os.path.join(
             self.mel_path, f"{utt_id}-norm-feats.npy")).astype(self.np_dtype)
-
-        assert len(f0) == len(energy) == mel.shape[0], \
-            f"[{utt_id}]Shape mismatch!(f0({f0.shape}), energy({energy.shape}) and mel({mel.shape[0]})"
-        assert sum(duration) == mel.shape[0], \
-            f"[{utt_id}]Sum of duration({sum(duration)}) is not equal to mel.shape[0]({mel.shape[0]})."
-
+        try:
+            # drop the shape mismatched data
+            assert len(f0) == len(energy) == mel.shape[0], \
+                f"[{utt_id}]Shape mismatch!(f0({f0.shape}), energy({energy.shape}) and mel({mel.shape[0]})"
+            assert sum(duration) == mel.shape[0], \
+                f"[{utt_id}]Sum of duration({sum(duration)}) is not equal to mel.shape[0]({mel.shape[0]})."
+        except AssertionError as e:
+            pass
         f0 = self._norm_mean_std(f0, self.f0_stat[0], self.f0_stat[1])
         energy = self._norm_mean_std(
             energy, self.energy_stat[0], self.energy_stat[1]
@@ -245,59 +136,45 @@ class LJSpeechCharLevelDataset(object):
         return np.array(dur).astype(np.int32)
 
     def _generated_generator(self):
+        # generated random data once and feed to model repeatedly.
+        input_id = np.random.randint(0, self.max_seq_length,
+                                     size=(self.max_seq_length,)).astype(np.int32)
+        duration = self._fake_duration(
+            self.max_seq_length, self.max_mel_length)
+        mel = np.random.rand(self.max_mel_length,
+                             self.opts["num_mels"]).astype(self.np_dtype)
+        f0 = np.random.rand(self.max_seq_length,).astype(self.np_dtype)
+        energy = np.random.rand(self.max_seq_length,).astype(self.np_dtype)
         while True:
-            input_id = np.random.randint(0, self.max_seq_length,
-                                         size=(self.max_seq_length,)).astype(np.int32)
-            duration = self._fake_duration(
-                self.max_seq_length, self.max_mel_length)
-            mel = np.random.rand(self.max_mel_length,
-                                 self.opts["num_mels"]).astype(self.np_dtype)
-            f0 = np.random.rand(self.max_seq_length,).astype(self.np_dtype)
-            energy = np.random.rand(self.max_seq_length,).astype(self.np_dtype)
             yield input_id, duration, f0, energy, mel
 
-    def _inference_generator(self):
-        for utt_id in self.utts_ids:
-            input_id = np.load(os.path.join(
-                self.id_path, f"{utt_id}-ids.npy")).astype(np.int32)
-            yield input_id
-
     def generator(self):
-        if self.same_sample:
-            uid = self.utts_ids[0]
-            input_id, duration, f0, energy, mel = self._load_data(uid)
-            while True:
-                logger.info(
-                    f"[Same samples({uid})]uid={uid}, id_gt.shape={input_id.shape}, duration_gt.shape={duration.shape}, f0_gt.shape={f0.shape}, mel_gt.shape={mel.shape}, sum_duration={np.sum(duration)}")
+        while True:
+            for input_id, duration, f0, energy, mel in self.train_data:
                 yield input_id, duration, f0, energy, mel
-        else:
-            while True:
+
+    def inference_generator(self):
+        while True:
+            if self.opts["generated_data"]:
+                input_id = np.random.randint(0, self.max_seq_length,
+                                             size=(self.max_seq_length,)).astype(np.int32)
+                yield input_id
+            else:
                 for uid in self.utts_ids:
                     try:
-                        input_id, duration, f0, energy, mel = self._load_data(
-                            uid)
-                        yield input_id, duration, f0, energy, mel
+                        input_id_file = os.path.join(
+                            self.id_path, f"{uid}-ids.npy")
+                        input_id = np.load(input_id_file).astype(np.int32)
+                        yield input_id
                     except AssertionError:
                         pass
 
-    def get_one_samples(self):
-        uid = np.random.choice(self.utts_ids)
-        input_id, duration, f0, energy, mel = self._load_data(uid)
-        return uid, input_id, duration, f0, energy, mel
-
     def get_inference_data(self):
-        """Create tf.dataset function."""
-        tf.random.set_seed(int(self.opts['seed']))
-        np.random.seed(int(self.opts['seed']))
-
-        output_types = (tf.int32)
-        padded_shapes = ([self.max_seq_length])
-
         datasets = tf.data.Dataset.from_generator(
-            self._inference_generator, output_types=output_types)
-        datasets = datasets.padded_batch(
-            self.opts["batch_size"], padded_shapes=padded_shapes, drop_remainder=True)
-        datasets = datasets.repeat(1).prefetch(tf.data.experimental.AUTOTUNE)
+            self.inference_generator, output_types=(tf.int32))
+        datasets = datasets.padded_batch(self.opts["batch_size"], padded_shapes=([
+                                         self.max_seq_length]), drop_remainder=True)
+        datasets = datasets.repeat().prefetch(tf.data.experimental.AUTOTUNE)
         return datasets
 
     def __call__(self):
@@ -314,7 +191,6 @@ class LJSpeechCharLevelDataset(object):
             data_gen = self._generated_generator
         else:
             data_gen = self.generator
-
         datasets = tf.data.Dataset.from_generator(
             data_gen, output_types=output_types)
         if self.is_train:
@@ -323,26 +199,24 @@ class LJSpeechCharLevelDataset(object):
         datasets = datasets.padded_batch(
             self.opts["batch_size"], padded_shapes=padded_shapes, drop_remainder=True)
 
-        datasets = datasets.map(lambda input_id, duration, pitch, energy, melspectrum: (
-            (input_id, duration, pitch, energy), (melspectrum, melspectrum, duration, pitch, energy)))
+        datasets = datasets.map(
+            lambda input_id, duration, pitch, energy, melspectrum: (
+                (input_id, duration, pitch, energy), (melspectrum, melspectrum, duration, pitch, energy)),
+            num_parallel_calls=64)
 
         datasets = datasets.repeat().prefetch(tf.data.experimental.AUTOTUNE)
         return datasets
 
 
 if __name__ == "__main__":
+    import json
+    from tensorflow.python.ipu.dataset_benchmark import dataset_benchmark
     from options import make_global_options
     opts = make_global_options([])
     train_datasets = LJSpeechCharLevelDataset(opts, is_train=True)
-    val_datasets = LJSpeechCharLevelDataset(opts, is_train=False)
-    print(
-        f"Train datasets: {len(train_datasets)}, Valid datasets: {len(val_datasets)}")
-    traindata = train_datasets()
-    valdata = val_datasets()
-    (input_id, duration, f0, energy, mel), y = next(iter(traindata))
-    print("******* Train datasets:")
-    print(f"input_id: shape={input_id.shape}, dtype={input_id.dtype}")
-    print(f"duration: shape={duration.shape}, dtype={duration.dtype}")
-    print(f"f0: shape={f0.shape}, dtype={f0.dtype}")
-    print(f"energy: shape={energy.shape}, dtype={energy.dtype}")
-    print(f"mel: shape={mel.shape}, dtype={mel.dtype}")
+    json_string = dataset_benchmark(train_datasets(), number_of_epochs=opts["epochs"], elements_per_epochs=int(
+        len(train_datasets)/opts["batch_size"])).numpy()
+    json_object = json.loads(json_string[0].decode('utf-8'))
+    mean_throughput = np.mean([epoch['elements_per_second']
+                              for epoch in json_object["epochs"]]) * opts["batch_size"]
+    print(f"Mean throughput: {mean_throughput:.2f} samples/s")

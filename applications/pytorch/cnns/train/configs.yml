@@ -7,23 +7,13 @@ resnet50: &resnet50
   label_smoothing: 0.1
   weight_decay: 0.0001
   optimizer: sgd_combined
-  lr: 0.5
   lr_schedule: cosine
-  momentum: 0.85
   warmup_epoch: 5
   epoch: 100
-  norm_type: group
-  norm_num_groups: 32
   loss_scaling: 128
   lr_scheduler_freq: 16
   half_partial: true
-  device_iterations: 1
   seed: 42
-
-
-resnet50_mk2: &resnet50_mk2
-  <<: *resnet50
-  precision: "16.16"
   momentum: 0.9
   lr: 2.0
   batch_size: 18
@@ -32,26 +22,26 @@ resnet50_mk2: &resnet50_mk2
   gradient_accumulation: 57
   device_iterations: 1
   norm_type: batch
+  disable_stable_batchnorm: true
   offload_optimizer: false
-  half_partial: true
+  enable_optimizer_rts: false
   eight_bit_io: true
   normalization_location: ipu
   use_bbox_info: true
   exchange_memory_target: memory
   recompute_mode: manual
-  recompute_checkpoints: [add, add/1, add/2, add/3, add/5, add/6, add/7, add/9, add/11, add/12]
-  disable_stable_batchnorm: true
+  recompute_checkpoints: [add, add_1, add_2, add_3, add_5, add_6, add_7, add_9, add_11, add_12]
   available_memory_proportion: [0.12]
 
 
-resnet50_mk2_pod64:
-  <<: *resnet50_mk2
+resnet50-pod64:
+  <<: *resnet50
   replicas: 64
   gradient_accumulation: 14
 
 
 # --- EfficientNet --- #
-efficientnet-g16-gn-16ipu-mk2-base: &efficientnet-g16-gn-16ipu-mk2-base
+efficientnet-g16-gn-pod16-base: &efficientnet-g16-gn-16ipu-base
   data: imagenet
   seed: 0
   precision: "16.32"
@@ -67,10 +57,11 @@ efficientnet-g16-gn-16ipu-mk2-base: &efficientnet-g16-gn-16ipu-mk2-base
   epoch: 350
   warmup_epoch: 5
   optimizer: rmsprop_tf
+  offload_optimizer: false
+  enable_optimizer_rts: false
   optimizer_eps: 0.001
   momentum: 0.9
   rmsprop_decay: 0.953125
-  offload_optimizer: false
   lr_schedule: exponential
   lr_scheduler_freq: 0.424
   lr_decay: 0.97
@@ -85,10 +76,10 @@ efficientnet-g16-gn-16ipu-mk2-base: &efficientnet-g16-gn-16ipu-mk2-base
   enable_fast_groupnorm: true
 
 
-efficientnet-b0-g16-gn-16ipu-mk2:
-  <<: *efficientnet-g16-gn-16ipu-mk2-base
+efficientnet-b0-g16-gn-pod16:
+  <<: *efficientnet-g16-gn-16ipu-base
   model: efficientnet-b0
-  pipeline_splits: [blocks/3/0]
+  pipeline_splits: [blocks/3/0/conv_pw]
   lr: 0.05
   batch_size: 20
   replicas: 8
@@ -96,10 +87,10 @@ efficientnet-b0-g16-gn-16ipu-mk2:
   mixup_alpha: 0.1
 
 
-efficientnet-b4-g16-gn-16ipu-mk2:
-  <<: *efficientnet-g16-gn-16ipu-mk2-base
+efficientnet-b4-g16-gn-pod16:
+  <<: *efficientnet-g16-gn-16ipu-base
   model: efficientnet-b4
-  pipeline_splits: [blocks/1/1, blocks/3/0, blocks/4/5]
+  pipeline_splits: [blocks/1/1/conv_pw, blocks/3/0/conv_pw, blocks/4/5/conv_pw]
   lr: 0.0483
   batch_size: 6
   replicas: 4
@@ -124,6 +115,7 @@ mobilenet-v3-base: &mobilenet-v3-base
   seed: 42
   norm_type: batch
   offload_optimizer: false
+  enable_optimizer_rts: false
   half_partial: true
   eight_bit_io: true
   normalization_location: ipu
@@ -156,7 +148,7 @@ mobilenet-v3-large: &mobilenet-v3-large
   <<: *mobilenet-v3-base
   model: mobilenet-v3-large
   precision: "16.32"
-  pipeline_splits: [mb_block/2, mb_block/7, mb_block/11] #16.32
+  pipeline_splits: [mb_block/2/seq/0, mb_block/7/seq/0, mb_block/11/seq/0]
   gradient_accumulation: 32
   replicas: 1
   enable_stochastic_rounding: true

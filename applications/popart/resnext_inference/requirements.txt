@@ -1,5 +1,5 @@
 absl-py==0.11.0
-onnx==1.7.0
+onnx==1.11.0
 Pillow==8.3.2
 torch==1.7.0
 torchvision==0.8.1

@@ -470,7 +470,7 @@ class YoloTrain(object):
 
 def create_popdist_strategy():
     """Creates a distribution strategy with popdist.
-    We use the Horovod-based IPUMultiReplicaStrategy. Horovod is used for the initial
+    We use the Horovod-based PopDistStrategy. Horovod is used for the initial
     broadcast of the weights and when reductions are requested on the host.
     Imports are placed here so they are only done when required, as Horovod
     might not always be available.
@@ -482,8 +482,8 @@ def create_popdist_strategy():
     hvd.init()
 
     # We add the IPU cross replica reductions explicitly in the IPUOptimizer,
-    # so disable them in the IPUMultiReplicaStrategy.
-    return popdist_strategy.IPUMultiReplicaStrategy(
+    # so disable them in the PopDistStrategy.
+    return popdist_strategy.PopDistStrategy(
         add_ipu_cross_replica_reductions=False)
 
 
@@ -578,19 +578,16 @@ if __name__ == "__main__":
         description="yolov3 training in TensorFlow", add_help=False)
     parser.add_argument("--config", type=str, default="config/config.json",
                         help="json config file for yolov3.")
-    parser.add_argument("--train_path", type=str, default="./data/dataset/voc_train.txt",
-                        help="data path for train")
-    parser.add_argument("--test_path", type=str, default="./data/dataset/voc_test.txt",
-                        help="data path for test")
-    parser.add_argument("--init_weight", type=str, default="./ckpt_init/yolov3_coco_converted.fp16.ckpt", help="ckpt init weight")
+    parser.add_argument("--train-annot-path", type=str,
+                        help="annotation data path for train")
+    parser.add_argument("--initial-weight", type=str, help="ckpt init weight")
 
     arguments = parser.parse_args()
     with open(arguments.config) as f:
         opts = json.load(f)
 
-    opts['train']['annot_path'] = arguments.train_path
-    opts['train']['initial_weight'] = arguments.init_weight
-    opts['test']['annot_path'] = arguments.test_path
+    opts['train']['annot_path'] = arguments.train_annot_path or opts['train']['annot_path']
+    opts['train']['initial_weight'] = arguments.initial_weight or opts['train']['initial_weight']
     if popdist.isPopdistEnvSet():
         opts["use_popdist"] = True
         opts["train"]["replicas"] = popdist.getNumLocalReplicas()

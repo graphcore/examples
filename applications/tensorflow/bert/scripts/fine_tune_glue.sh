@@ -70,4 +70,4 @@ PHASE2_CKPT_FILE="${PHASE2_CKPT_DIR}/ckpt-2098"
 WANDB_NAME="GLUE $1 fine tuning ${DATA_NAME} ${CUSTOM_NAME}"
 echo "Using pretrained checkpoint: ${PHASE2_CKPT_FILE}"
 
-./run_classifier.py --config "${CONFIG_PATH}" --do-training --do-eval --do-predict --data-dir glue_data/"${DATA_NAME}"/ --task-name $2 --output-dir tmp/$2/  --wandb --wandb-name "${WANDB_NAME}" --init-checkpoint "${PHASE2_CKPT_FILE}" 
+./run_classifier.py --config "${CONFIG_PATH}" --do-training --do-evaluation --do-predict --data-dir glue_data/"${DATA_NAME}"/ --task-name $2 --output-dir tmp/$2/  --wandb --wandb-name "${WANDB_NAME}" --init-checkpoint "${PHASE2_CKPT_FILE}"

@@ -14,7 +14,7 @@
 
 #----------------------------------------------------------------------------------
 defaults: &defaults
-  random_seed: 1984
+  random_seed: 5
   vocab_size: 30522
   dataloader_workers: 64
   async_dataloader: True
@@ -22,6 +22,7 @@ defaults: &defaults
   custom_ops: True
   synthetic_data: False
   optimizer: AdamW
+  auto_loss_scaling: False
   weight_decay: 0.0
   embedding_serialization_factor: 1
   recompute_checkpoint_every_layer: True
@@ -34,16 +35,17 @@ defaults: &defaults
   mask_tokens: 20
   dataset: pretraining
   sequence_length: 128
+  packed_data: False
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-demo_tiny_128:
+demo_tiny_128: &demo_tiny_128
   <<: *defaults
 
   # Execution
   micro_batch_size: 1
   training_steps: 150
-  batches_per_step: 1
+  device_iterations: 1
   replication_factor: 1
   gradient_accumulation: 16
   dataloader_workers: 1
@@ -69,13 +71,23 @@ demo_tiny_128:
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
+demo_tiny_128_packed:
+  <<: *demo_tiny_128
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/packed/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
 pretrain_base_128: &pretrain_base_128
   <<: *defaults
 
   # Execution
   micro_batch_size: 32
   training_steps: 7038
-  batches_per_step: 1
+  device_iterations: 1
   replication_factor: 4
   gradient_accumulation: 512
   replicated_tensor_sharding: True
@@ -102,7 +114,20 @@ pretrain_base_128: &pretrain_base_128
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-pretrain_base_384:
+pretrain_base_128_packed:
+  <<: *pretrain_base_128
+
+  # Execution
+  gradient_accumulation: 438
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_128/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_base_384: &pretrain_base_384
   <<: *pretrain_base_128
 
   # Execution
@@ -124,7 +149,20 @@ pretrain_base_384:
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-pretrain_base_512:
+pretrain_base_384_packed:
+  <<: *pretrain_base_384
+
+  # Execution
+  gradient_accumulation: 301
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_384/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_base_512: &pretrain_base_512
   <<: *pretrain_base_128
 
   # Execution
@@ -147,13 +185,26 @@ pretrain_base_512:
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
+pretrain_base_512_packed:
+  <<: *pretrain_base_512
+
+  # Execution
+  gradient_accumulation: 256
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_512/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
 pretrain_large_128: &pretrain_large_128
   <<: *defaults
 
   # Execution
   micro_batch_size: 8
   training_steps: 7038
-  batches_per_step: 1
+  device_iterations: 1
   replication_factor: 4
   gradient_accumulation: 2048
   replicated_tensor_sharding: True
@@ -181,7 +232,32 @@ pretrain_large_128: &pretrain_large_128
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-pretrain_large_128_POD64:
+pretrain_large_128_ALS:
+  <<: *pretrain_large_128
+
+  # Execution
+  matmul_proportion: [0.13, 0.20, 0.20, 0.20]
+
+  # Optimizer
+  loss_scaling: 1.0
+  auto_loss_scaling: True
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_128_packed:
+  <<: *pretrain_large_128
+
+  # Execution
+  gradient_accumulation: 1750
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_128/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_128_POD64: &pretrain_large_128_POD64
   <<: *pretrain_large_128
 
   # Execution
@@ -191,7 +267,32 @@ pretrain_large_128_POD64:
 
   # Optimizer
   loss_scaling: 32768.0
+#----------------------------------------------------------------------------------
 
+#----------------------------------------------------------------------------------
+pretrain_large_128_POD64_ALS:
+  <<: *pretrain_large_128_POD64
+
+  # Execution
+  matmul_proportion: [0.05, 0.13, 0.13, 0.13]
+  embedding_serialization_factor: 6
+
+  # Optimizer
+  loss_scaling: 1.0
+  auto_loss_scaling: True
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_128_packed_POD64:
+  <<: *pretrain_large_128_POD64
+
+  # Execution
+  gradient_accumulation: 438
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_128/*.tfrecord"]
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
@@ -205,7 +306,6 @@ pretrain_large_128_POD128:
 
   # Optimizer
   loss_scaling: 32768.0
-
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
@@ -231,12 +331,50 @@ pretrain_large_384: &pretrain_large_384
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-pretrain_large_384_POD64:
+pretrain_large_384_packed:
+  <<: *pretrain_large_384
+
+  # Execution
+  gradient_accumulation: 1205
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_384/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_384_POD64: &pretrain_large_384_POD64
   <<: *pretrain_large_384
 
   # Execution
   replication_factor: 16
   gradient_accumulation: 512
+
+  # Optimizer
+  loss_scaling: 16384.0
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_384_packed_POD64:
+  <<: *pretrain_large_384_POD64
+
+  # Execution
+  gradient_accumulation: 301
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_384/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_384_POD128:
+  <<: *pretrain_large_384
+
+  # Execution
+  replication_factor: 32
+  gradient_accumulation: 256
 
   # Optimizer
   loss_scaling: 16384.0
@@ -259,46 +397,67 @@ pretrain_large_512: &pretrain_large_512
   lr_warmup: 0.128
   learning_rate: 0.002828
   loss_scaling: 8192.0
+  matmul_proportion: [0.15, 0.24, 0.25, 0.25]
 
   # Dataset
   input_files: ["data/wikipedia/512/*.tfrecord"]
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-pretrain_large_512_POD64:
+pretrain_large_512_packed:
+  <<: *pretrain_large_512
+
+  # Execution
+  gradient_accumulation: 1024
+
+  # Optimizer
+  matmul_proportion: [0.1, 0.15, 0.15, 0.15]
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_512/*.tfrecord"]
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+pretrain_large_512_POD64: &pretrain_large_512_POD64
   <<: *pretrain_large_512
 
   # Execution
   replication_factor: 16
   gradient_accumulation: 512
-  matmul_proportion: [0.15, 0.2, 0.2, 0.2]
+  matmul_proportion: [0.14, 0.19, 0.19, 0.19]
 
   # Optimizer
   loss_scaling: 16384.0
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-pretrain_large_384_POD128:
-  <<: *pretrain_large_384
+pretrain_large_512_packed_POD64:
+  <<: *pretrain_large_512_POD64
 
   # Execution
-  replication_factor: 32
   gradient_accumulation: 256
 
   # Optimizer
-  loss_scaling: 16384.0
+  matmul_proportion: [0.1, 0.15, 0.15, 0.15]
+
+  # Dataset
+  packed_data: True
+  max_sequences_per_pack: 3
+  input_files: ["data/wikipedia/packed_512/*.tfrecord"]
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
 squad_base_384: &squad_base_384
   <<: *defaults
-
+  
   # Execution
-  micro_batch_size: 2
+  micro_batch_size: 1
   num_epochs: 3
-  batches_per_step: 2
+  device_iterations: 2
   replication_factor: 4
-  gradient_accumulation: 16
+  gradient_accumulation: 8
   executable_cache_dir: "./exe_cache"
   replicated_tensor_sharding: True
   optimizer_state_offchip: False
@@ -320,7 +479,7 @@ squad_base_384: &squad_base_384
   lr_schedule: linear
   loss_scaling: 64.0
   weight_decay: 0.01
-  lr_warmup: 0.1
+  lr_warmup: 0.25
   optimizer: "AdamW"
 #----------------------------------------------------------------------------------
 
@@ -333,7 +492,7 @@ squad_large_384: &squad_large_384
 
   # Execution
   micro_batch_size: 4
-  batches_per_step: 2
+  device_iterations: 2
   gradient_accumulation: 32
   replication_factor: 2
   num_epochs: 3
@@ -353,6 +512,7 @@ squad_large_384: &squad_large_384
   loss_scaling: 64.0
   learning_rate: 5e-5
   lr_warmup: 0.10
+#----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
 unit_test:
@@ -366,7 +526,7 @@ unit_test:
   gradient_accumulation: 16
   replication_factor: 1
   micro_batch_size: 1
-  batches_per_step: 10
+  device_iterations: 10
   training_steps: 10
   learning_rate: 0.01
   matmul_proportion: 0.6
@@ -379,7 +539,7 @@ pretrain_base_3L_128_single:
   # Execution
   micro_batch_size: 8
   training_steps: 150
-  batches_per_step: 64
+  device_iterations: 64
   replication_factor: 1
   gradient_accumulation: 128
   dataloader_workers: 1

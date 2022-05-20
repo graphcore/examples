@@ -144,4 +144,53 @@ Command:
          --save-path "checkpoint/phase1/"
 ```
 
+### Pretrain Group BERT-Base throughput test
 
+Set DATASETS_DIR to the location of the training data
+
+Env:
+```console
+export DATASETS_DIR=path/to/data
+```
+
+#### 1 x IPU-POD16
+
+set `seq_len` to 128 and 384 for phase 1 and phase 2 respectively
+
+```console
+      python3 run_pretraining.py \
+         --config "configs/groupbert/pretrain_base_groupbert_{seq_len}.json" \
+         --train-file $DATASETS_DIR/wikipedia/{seq_len}/wiki_1[0-1]*.tfrecord \
+         --num-train-steps 10 \
+         --steps-per-logs 1 
+```
+
+#### 1 x IPU-POD64
+
+Phase 1, sequence length 128
+
+```console
+	      python3 run_pretraining.py
+         --config configs/groupbert/pretrain_base_groupbert_128.json
+         --train-file $DATASETS_DIR/wikipedia/128/*.tfrecord
+         --replicas 16
+         --gradient-accumulation-count 270
+         --num-train-step 10
+         --warmup 1012
+         --micro-batch-size 15
+         --steps-per-logs 1
+```
+
+Phase 2, sequence length 384
+
+```console
+	      python3 run_pretraining.py
+         --config configs/groupbert/pretrain_base_384_groupbert.json
+         --train-file $DATASETS_DIR/wikipedia/384/wiki_1[0-1]*.tfrecord
+         --num-train-steps 10
+         --warmup 178
+         --gradient-accumulation-count 510
+         --micro-batch-size 4
+         --steps-per-logs 1
+         --replicas 16
+```

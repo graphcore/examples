@@ -56,7 +56,6 @@ Go into `preprocessor` folder and run
 python3 audio.py \
 --config ljspeech_preprocess.yaml \
 --rootdir /path/to/unzipped_dataset \
---outdir /path/to/preprocessed_dataset \
 --n_cpus 4 \
 --test_size 0.05 \
 --seed 1234
@@ -89,7 +88,7 @@ python3 train.py --config config/fastspeech2.json \
 --data-path /path/to/preprocessed_dataset \
 --train
 ```
-All command line options can find in `options.py`. For example, you can specify `--wandb true` and `--wandb-name project_name` to use [**Weights&Biases**](https://github.com/wandb/client) to monitor training process. Using `--generated-data` to feed fake dataset if you don't have preprocessed dataset. 
+All command line options can find in `options.py`. For example, you can specify `--wandb true` and `--wandb-name project_name` to use [**Weights&Biases**](https://github.com/wandb/client) to monitor training process. Using `--generated-data` to feed fake dataset if you don't have preprocessed dataset. Setting `--precision` to either `16` or `32` to train model with FP16 or FP32.
 **[NOTE]**The option in configuration json file will be overided by command line options.
 
 If you want to generate profiles, you can try:
@@ -103,7 +102,17 @@ python3 train.py --config config/fastspeech2.json \
 --epochs 1
 ```
 Then all profiles stay in `./profiles` folder and you can use our PopVision tool for deeper analysis.
-
+### 4. Inference FastSpeech2 on IPU
+Once you have finished training and got the checkpoint, you can do inference by:
+```
+python3 infer.py --config config/fastspeech2.json \
+--data-path /path/to/preprocessed_dataset \
+--init-checkpoint /path/to/pretrained_checkpoint \
+--epochs 100 \
+--batch-size 1 \
+--steps-per-epoch 10
+```
+If you don't have `init-checkpoint`, then the inference step will use random weights instead. Increasing the `steps-per-epoch` will give you better performance.
 ## Licensing
 The code presented here is licensed under the Apache License Version 2.0, see the LICENSE file in this directory.
 

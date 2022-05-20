@@ -78,7 +78,7 @@ The preset configs included in `configs/` are:
 
 - `default_config.json`  which is the experimental set up used in the original paper
 - `global_cv_config.json` which is the same as `default_config.json` but with a scalar (global) control variate in place of a vector of local control variates
-- `bs_experiment_config.json` is for the experiments testing the effect of batch size. These run for 8,200 epochs rather than 800 (as in the two configs above). You'll need to pass the `--batch_size` argument via the command line, and specificy a learning rate using `--learning_rate` if the batch size is not one we tested (16, 128, 512, 1024). If the learning rate is not given and the batch size is one we tested, the learning rate we found to be best during validation will be used (see the `TUNED_LEARNING_RATE` dict in `main.py`)
+- `bs_experiment_config.json` is for the experiments testing the effect of batch size. These run for 8,200 epochs rather than 800 (as in the two configs above). You'll need to pass the `--micro_batch_size` argument via the command line, and specificy a learning rate using `--learning_rate` if the batch size is not one we tested (16, 128, 512, 1024). If the learning rate is not given and the batch size is one we tested, the learning rate we found to be best during validation will be used (see the `TUNED_LEARNING_RATE` dict in `main.py`)
 - `test_config.json`  which is similar to default config but only run for one epoch
 
 You can also copy and extend your own config — just specify the path to your custom config via the command line.

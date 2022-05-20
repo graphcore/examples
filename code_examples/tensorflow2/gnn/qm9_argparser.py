@@ -20,11 +20,12 @@ def get_argparser():
                         type=int,
                         help='Number of IPUs for data parallelism.')
     parser.add_argument('-b',
-                        '--batch-size',
+                        '--micro-batch-size',
                         default=2,
                         required=False,
                         type=int,
-                        help='Batch size.')
+                        help='Number of samples used in one full forward/backward pass '
+                             'per IPU device.')
     parser.add_argument('-e',
                         '--epochs',
                         default=100,

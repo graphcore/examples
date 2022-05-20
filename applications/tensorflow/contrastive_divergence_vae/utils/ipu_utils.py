@@ -2,7 +2,7 @@
 
 # coding=utf-8
 import os
-from tensorflow.python.ipu.config import IPUConfig
+from tensorflow.python.ipu.config import IPUConfig, StochasticRoundingBehaviour
 import tensorflow.compat.v1 as tf
 from tensorflow.contrib.compiler import xla
 
@@ -40,7 +40,8 @@ def get_ipu_option_dict(ipu_id=None, prng=False, n_ipus=1):
         options.auto_select_ipus = [n_ipus]
     else:
         options.select_ipus = [ipu_id]
-    options.floating_point_behaviour.esr = prng
+
+    options.floating_point_behaviour.esr = StochasticRoundingBehaviour.from_bool(prng)
 
     return {'ipu_options': options}
 
@@ -161,7 +162,7 @@ def loops_repeat(device, n, body, inputs, infeed_queue, backprop=True, maybe_xla
     :param infeed_queue: either 1. tf.contrib.ipu.infeed_queue object, if running on ipu
                                 2. tf.data.Iterator, if on CPU/GPU and not compiling
                                 3. tuple(tf.Tensor), if on CPU/GPU and compiling.
-                                    Dimensions of the Tensors should be `batch_size` X `n`
+                                    Dimensions of the Tensors should be `micro_batch_size` X `n`
     :param backprop: bool, whether backprop should be enabled through the loop
     :param maybe_xla: a function, takes a 2-tuple, (function, arguments)
     """
@@ -169,7 +170,7 @@ def loops_repeat(device, n, body, inputs, infeed_queue, backprop=True, maybe_xla
         return ipu.loops.repeat(n, body, inputs, infeed_queue)
     else:
         if maybe_xla is xla.compile:
-            # Assumes infeed_queue is iterable of tensors with batch_size scaled by n
+            # Assumes infeed_queue is iterable of tensors with micro_batch_size scaled by n
             def for_compile_fn(*infeed_args):
 
                 def _iterate_compile(i, sample, *args):
@@ -183,8 +184,8 @@ def loops_repeat(device, n, body, inputs, infeed_queue, backprop=True, maybe_xla
                     else:
                         return tf.add(i, 1), out
 
-                batch_size = infeed_args[0].get_shape()[0] // n
-                superargs_rs = [tf.reshape(t, [n, batch_size] + t.get_shape().as_list()[1:]) for t in infeed_args]
+                micro_batch_size = infeed_args[0].get_shape()[0] // n
+                superargs_rs = [tf.reshape(t, [n, micro_batch_size] + t.get_shape().as_list()[1:]) for t in infeed_args]
                 superargs_arr = [tf.TensorArray(t.dtype, n).unstack(t) for t in superargs_rs]
 
                 def iterate_compile(i, *subargs):

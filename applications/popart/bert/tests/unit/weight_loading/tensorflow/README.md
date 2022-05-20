@@ -1,6 +1,6 @@
 # Graphcore
 
-## Tensorflow Checkpoint/Frozen Graph loader unit test
+## TensorFlow Checkpoint/Frozen Graph loader unit test
 
 To run this test, you need to provide a checkpoint and a BERT config file.
 You can also optionally provide a frozen graph to test the frozen-graph loading
@@ -52,7 +52,7 @@ information to produce the frozen graph.
 2. Run your training/fine-tuning to generate a complete checkpoint (see the
    README in the Google Research BERT repo).
 
-3. Take the saved checkpoint and run it through Tensorflow's Freeze Graph
+3. Take the saved checkpoint and run it through TensorFlow's Freeze Graph
    utility:
 
 	$ freeze_graph --input_meta_graph=<PATH_TO_CHECKPOINT>/model.ckpt-0.meta \ 

@@ -173,7 +173,7 @@ class TestResNet50Pipelining2IPUs(SubProcessChecker):
                 '--no-validation': '',
                 '--enable-recomputation': '',
                 '--available-memory-proportion': 0.1,
-                '--pipeline-splits': 'b3/1/relu'})
+                '--pipeline-splits': 'stage3/unit2/relu'})
         self.training = get_csv(out, 'training.csv')
 
     def test_iterations_completed(self):
@@ -205,7 +205,7 @@ class TestResNet50Pipelining2IPUs2Replicas(SubProcessChecker):
                 '--no-validation': '',
                 '--enable-recomputation': '',
                 '--available-memory-proportion': 0.1,
-                '--pipeline-splits': 'b3/0/relu'})
+                '--pipeline-splits': 'stage3/unit1/relu'})
         self.training = get_csv(out, 'training.csv')
 
     def test_iterations_completed(self):
@@ -259,7 +259,7 @@ class TestLotsOfOptions(SubProcessChecker):
                 '--precision': '32.32',
                 '--seed': 1234,
                 '--warmup-epochs': 0,
-                '--no-stochastic-rounding': '',
+                '--stochastic-rounding': 'OFF',
                 '--batches-per-step': 100})
         self.validation = get_csv(out, 'validation.csv')
         self.training = get_csv(out, 'training.csv')
@@ -312,7 +312,7 @@ class TestResNet50RecomputeDbnTraining(SubProcessChecker):
                 '--gradient-accumulation-count': 2,
                 '--pipeline-schedule': 'Sequential',
                 '--enable-recomputation': '',
-                '--pipeline-splits': 'b1/0/relu',
+                '--pipeline-splits': 'stage1/unit1/relu',
                 '--eight-bit': '',
                 '--replicas': 2,
                 '--enable-half-partials': '',

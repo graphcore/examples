@@ -14,6 +14,7 @@
     "seq_length": 384,
     "max_predictions_per_seq": 58,
     "use_attention_projection_bias": false,
+    "use_qkv_split": true,
     "use_cls_layer": false,
     "pipeline_stages": [
      ["emb", "pos"],

@@ -1,16 +1,20 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 
+import logging
+import random
 from copy import deepcopy
 
+import tensorflow as tf
 from tensorflow.keras.layers import Dense, Dropout, LayerNormalization
-from tensorflow.python.ipu.keras.layers import Dropout as IpuDropout
-from tensorflow.python.ipu.keras.layers import LayerNormalization as IpuLayerNormalization
 from transformers.models.bert.modeling_tf_bert import (
     TFBertEmbeddings,
     TFBertEncoder,
     TFBertLayer,
     TFBertLMPredictionHead,
-    TFBertMainLayer
+    TFBertMainLayer,
+    TFBertOutput,
+    TFBertSelfAttention,
+    TFBertSelfOutput
 )
 
 from keras_extensions.model_transformations import (
@@ -21,8 +25,11 @@ from keras_extensions.model_transformations import (
     ModelOutlining,
     ModelReplacing
 )
+from model.ipu_self_output import IpuTFBertSelfOutput
+from model.ipu_custom_keras_layers import IpuDropoutCustom, IpuLayerNormCustom
 from model.ipu_embeddings_layer import IpuTFBertEmbeddings
 from model.ipu_lm_prediction_head import IpuTFBertLMPredictionHead
+from model.ipu_self_attention import IpuTFBertSelfAttention
 
 
 def is_any_of_input_layers_of_class(input_layers, layer_class):
@@ -64,14 +71,94 @@ def post_process_bert_input_layer(input_layer, layer_name, input_layers_of, inpu
     return input_layer
 
 
+def copy_weights_layer_with_input_shape_hidden_states_func(layer, new_layer, batch_size, seq_length):
+    # Copy weights if the input_shape of the layer is hidden_states:
+    # [batch_size, sequence_length, hidden_size]
+    new_layer.build((batch_size, seq_length, new_layer.hidden_size))
+    new_layer.set_weights(layer.get_weights())
+
+
+def copy_lm_prediction_head_weights_func(
+        layer,
+        new_layer,
+        batch_size,
+        seq_length,
+        use_cls_layer,
+        use_prediction_bias
+):
+    # Copy weights if the input_shape of the layer is hidden_states:
+    # [batch_size, sequence_length, hidden_size]
+    # Note the order of the weights in TFBertLMPredictionHead is as follows,
+    # where H denotes the hidden size:
+    # 0 prediction bias (vocab_size,), 1 prediction transform kernel (H, H), 2 prediction transform bias (H,)
+    # 3 and 4 transform layer norm gamma or beta (H,), 5 word_embedding (H, H), 6 token type embedding (2, H)
+    # 7 position embedding (max_position_embeddings, H), 8 and 9 layer norm gamma or beta (H,)
+    new_layer.build((batch_size, seq_length, new_layer.hidden_size))
+    layer_weights = layer.get_weights()
+    if not use_cls_layer:
+        del layer_weights[1:5]
+    if not use_prediction_bias:
+        del layer_weights[0]
+    new_layer.set_weights(layer_weights)
+
+
+def copy_self_output_weights_func(layer, new_layer, batch_size, seq_length, use_projection_bias):
+    # Note the order of the weights in TFBertSelfOutput is as follows,
+    # where H denotes the hidden size:
+    # 0 dense layer kernel (H, H), 1 dense layer bias (H,),
+    # 2 layer norm gamma (H,), 3 layer norm beta (H,)
+    # Note the order of the weights in IpuTFBertSelfOutput is as follows:
+    # 0 layer norm gamma (H,), 1 layer norm beta (H,)
+    # 2 dense layer kernel (H, H)
+    new_layer.build((batch_size, seq_length, new_layer.config.hidden_size))
+    if use_projection_bias:
+        new_layer.set_weights(layer.get_weights())
+    else:
+        layer_weights = layer.get_weights()
+        new_weights = list()
+        # Skip the bias when copying the weights.
+        new_weights.extend(layer_weights[2:])
+        new_weights.append(layer_weights[0])
+        new_layer.set_weights(new_weights)
+
+
+def copy_self_attention_weights_func(layer, new_layer, use_qkv_bias, use_qkv_split):
+    # concatenate q k v weights [all_head_size, all_head_size]*3 from layer
+    # and set the qkv weight [all_head_size, all_head_size*3] to new layer
+    # there are 6 tensors in the old layer: q_weight index 0, q_bias index 1,
+    # k_weight index 2, k_bias index 3, v_weight index 4, v_bias index 5.
+    layer_weights = layer.get_weights()
+    if not use_qkv_bias:
+        if not use_qkv_split:
+            new_layer.build((new_layer.all_head_size, new_layer.all_head_size * 3))
+            new_weights = list()
+            new_weights.append(tf.concat([layer_weights[0], layer_weights[2], layer_weights[4]], axis=-1))
+        else:
+            new_layer.build((new_layer.all_head_size, new_layer.all_head_size))
+            new_weights = list()
+            new_weights.append(layer_weights[0])
+            new_weights.append(layer_weights[2])
+            new_weights.append(layer_weights[4])
+    else:
+        new_layer.build((new_layer.all_head_size, new_layer.all_head_size))
+        new_weights = layer_weights
+    new_layer.set_weights(new_weights)
+
+
 def convert_tf_bert_model(
         hf_model,
         dataset,
         post_process_input_fn,
         replace_layers=True,
         use_outlining=True,
+        enable_recomputation=True,
         embedding_serialization_factor=1,
-        rename_outputs=None
+        rename_outputs=None,
+        use_prediction_bias=False,
+        use_cls_layer=False,
+        use_qkv_bias=False,
+        use_qkv_split=False,
+        use_projection_bias=False
 ):
     """
     Convert original subclass model to a functional one and transform it to optimise performance.
@@ -85,17 +172,35 @@ def convert_tf_bert_model(
         serialization_factor smaller lookups, serialized along the 0th dimension, reducing the maximum memory at the
         cost of extra computation.
     :param rename_outputs: Dictionary with names of the outputs that have to be renamed.
+    :param use_prediction_bias: Flag indicating if bias units should be included in the prediction head.
+    :param use_cls_layer: Flag indicating if CLS layer is included in the MLM Prediction head.
+    :param use_qkv_bias: Flag indicating if bias units should be included in the self-attention QKV blocks.
+    :param use_qkv_split: Flag indicating if self-attention QKV blocks should be split or merged.
+    :param use_projection_bias: Flag indicating if attention projection bias is used.
     :return: IPU optimised functional model with pipeline stages and IPU optimised layers.
     """
     model = convert_to_functional(hf_model, dataset)
-    model.summary()
+    model.summary(print_fn=logging.info)
+    batch_size, seq_length = model.get_layer('bert').input_shape
 
     def copy_weights_layer_with_input_shape_hidden_states(layer, new_layer):
-        # Copies weights if the input_shape of the layer is hidden_states:
-        # [batch_size, sequence_length, hidden_size]
-        batch_size, seq_length = model.get_layer('bert').input_shape
-        new_layer.build((batch_size, seq_length, new_layer.hidden_size))
-        new_layer.set_weights(layer.get_weights())
+        copy_weights_layer_with_input_shape_hidden_states_func(layer, new_layer, batch_size, seq_length)
+
+    def copy_lm_prediction_head_weights(layer, new_layer):
+        copy_lm_prediction_head_weights_func(
+            layer,
+            new_layer,
+            batch_size,
+            seq_length,
+            use_cls_layer,
+            use_prediction_bias
+        )
+
+    def copy_self_attention_weights(layer, new_layer):
+        copy_self_attention_weights_func(layer, new_layer, use_qkv_bias, use_qkv_split)
+
+    def copy_self_output_weights(layer, new_layer):
+        copy_self_output_weights_func(layer, new_layer, batch_size, seq_length, use_projection_bias)
 
     to_replace = [
         {TFBertEmbeddings: {
@@ -103,10 +208,6 @@ def convert_tf_bert_model(
             "new_params": {
                 "config": deepcopy(hf_model.config),
                 "serialization_factor": embedding_serialization_factor,
-                # Ensure name of embeddings layer is the same as original
-                # name of layer to ensure this layer is checkpointed
-                # correctly.
-                "name": "embeddings",
             },
             "copy_weights": True,
             "copy_weights_func": copy_weights_layer_with_input_shape_hidden_states
@@ -116,24 +217,54 @@ def convert_tf_bert_model(
             "new_params": {
                 "config": deepcopy(hf_model.config),
                 "input_embeddings": lambda: model.get_layer("bert").embeddings,
+                "use_cls_layer": use_cls_layer,
+                "use_prediction_bias": use_prediction_bias,
                 "serialization_factor": embedding_serialization_factor,
-                # Ensure name of lm prediction head layer is the same as
-                # original name of layer to ensure this layer is
-                # checkpointed correctly.
-                "name": "predictions",
             },
             "copy_weights": True,
-            "copy_weights_func": copy_weights_layer_with_input_shape_hidden_states
+            "copy_weights_func": copy_lm_prediction_head_weights
         }},
-        {Dropout: {'new_class': IpuDropout}},
+        {TFBertSelfAttention: {
+            "new_class": IpuTFBertSelfAttention,
+            "new_params": {
+                "config": deepcopy(hf_model.config),
+                "use_qkv_bias": use_qkv_bias,
+                "use_qkv_split": use_qkv_split
+            },
+            "copy_weights": True,
+            "copy_weights_func": copy_self_attention_weights
+        }},
+        {TFBertSelfOutput: {
+            "new_class": IpuTFBertSelfOutput,
+            "new_params": {
+                "config": deepcopy(hf_model.config),
+                "use_projection_bias": use_projection_bias
+            },
+            "copy_weights": True,
+            "copy_weights_func": copy_self_output_weights
+        }},
+        {Dropout: {
+            "new_class": IpuDropoutCustom,
+            # We include a seed to allow this layer to be outlined.
+            "new_params": {
+                "seed": lambda: (random.randint(0, 1000), random.randint(0, 1000))
+            },
+        }},
         {LayerNormalization: {
-            "new_class": IpuLayerNormalization,
+            "new_class": IpuLayerNormCustom,
             "copy_weights": True
-        }},
+        }}
     ]
+
     to_outline = {
         Dense: {"outline_kwargs": {}},
+        TFBertOutput: {"outline_kwargs": {}},
+        IpuTFBertSelfAttention: {"outline_kwargs": {}},
+        TFBertSelfOutput: {"outline_kwargs": {}},
+        IpuTFBertSelfAttention: {"outline_kwargs": {}},
+        IpuTFBertSelfOutput: {"outline_kwargs": {}},
     }
+
     to_expand = [
         TFBertMainLayer,
         TFBertEncoder,
@@ -141,22 +272,23 @@ def convert_tf_bert_model(
     add_recomputation_checkpoints_after = [TFBertLayer]
 
     if rename_outputs is not None:
-        print(f"Attempting to rename outputs: {rename_outputs}")
+        logging.info(f"Attempting to rename outputs: {rename_outputs}")
         model = ModelOptimization().rename_outputs(rename_outputs, model)
     if replace_layers:
         # We pass the layers in order to ensure the layer replacement happens
         # within the layers that have been replaced.
         for to_replace_dict in to_replace:
-            print(f"Attempting to replace layer: {to_replace_dict.keys()}")
+            logging.info(f"Attempting to replace layer: {to_replace_dict.keys()}")
             model = ModelReplacing(to_replace_dict).process_model('all', model, post_process_input_fn)
     if use_outlining:
-        print(f"Attempting to outline layers: {to_outline}")
+        logging.info(f"Attempting to outline layers: {to_outline}")
         model = ModelOutlining(to_outline).process_model('all', model, post_process_input_fn)
-    print(f"Attempting to add recomputation checkpoints after layers: {add_recomputation_checkpoints_after}")
-    model = ModelAddRecomputationCheckpoints(add_recomputation_checkpoints_after).process_model(
-        'all', model, post_process_input_fn)
+    if enable_recomputation:
+        logging.info(f"Attempting to add recomputation checkpoints after layers: {add_recomputation_checkpoints_after}")
+        model = ModelAddRecomputationCheckpoints(add_recomputation_checkpoints_after).process_model(
+            'all', model, post_process_input_fn)
     for layer_id in to_expand:
-        print(f"Attempting to expand layers: {to_expand}")
+        logging.info(f"Attempting to expand layers: {to_expand}")
         model = ModelExpansion().process_model(layer_id, model, post_process_input_fn)
-        model.summary()
+        model.summary(print_fn=logging.info)
     return model

@@ -61,7 +61,7 @@
     "glue_dropout_prob": 0.15,
     "do_training": false,
     "do_predict": false,
-    "do_eval": false,
+    "do_evaluation": false,
     "do_lower_case": true,
     "verbose_logging": false,
     "variable_offloading": true,

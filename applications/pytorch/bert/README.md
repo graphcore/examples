@@ -96,7 +96,7 @@ python3 run_pretraining.py --config pretrain_large_384 --checkpoint-output-dir c
 python3 run_squad.py --config squad_large_384 --pretrained-checkpoint checkpoints/pretrain_large_384/step_N/
 ```
 
-To do the same on POD64, simply append `_POD64` to the pretraining config names.
+To do the same on POD64, simply append `_POD64` to the pretraining config names. There are also configurations available appending `_packed` for packed datasets — see `configs.yml` for details.
 
 ## POD128 configurations
 
@@ -113,6 +113,24 @@ bash training_scripts/pretrain_large_384_POD128.sh
 ```
 
 The resulting pretraining checkpoint can be fine-tuned for SQuAD in a POD16 as described before.
+
+## Employing automatic loss scaling (ALS) for half precision training
+
+ALS is an experimental feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision. 
+
+NB. This feature expects the `poptorch` training option `accumulationAndReplicationReductionType` to be set to `poptorch.ReductionType.Mean`, and for accumulation by the optimizer to be done in half precision (using `accum_type=torch.float16` when instantiating the optimizer), or else it may lead to unexpected behaviour.
+
+To employ ALS for BERT Large pre-training on a POD16, the following command can be used:
+
+```console
+python3 run_pretraining.py --config pretrain_large_128_ALS --checkpoint-output-dir checkpoints/pretrain_large_128
+```
+
+To pre-train with ALS on a POD64:
+
+```console
+python3 run_pretraining.py --config pretrain_large_128_POD64_ALS --checkpoint-output-dir checkpoints/pretrain_large_128
+```
 
 ## Run the tests (optional)
 
@@ -232,6 +250,54 @@ Then go to the directory containing the pre-processed Wikipedia files and run:
 
 ```console
 for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .tfrecord`.index; done
+```
+
+### 6. Packing (optional)
+
+Packing can lead to significant speed-ups during pretraining (details in https://arxiv.org/pdf/2107.02027.pdf). The packing scripts depend on `tensorflow` and `numpy` which can be installed by `pip3 install tensorflow numpy`. The following commands pack the 128, 384 and 512 sequence-length datasets with a maximum of 3 sequences per pack:
+
+sequence length 128
+
+```console
+python3 -m data.packing.pack_pretraining_data --input-files=<path-of-unpacked-input-data-files> --output-dir=<path-of-output-packed-data-folder> --sequence-length 128 --mask-tokens 20
+```
+
+sequence length 384
+
+```console
+python3 -m data.packing.pack_pretraining_data --input-files=<path-of-unpacked-input-data-files> --output-dir=<path-of-output-packed-data-folder> --sequence-length 384 --mask-tokens 56
+```
+
+sequence length 512
+
+```console
+python3 -m data.packing.pack_pretraining_data --input-files=<path-of-unpacked-input-data-files> --output-dir=<path-of-output-packed-data-folder> --sequence-length 512 --mask-tokens 76
+```
+
+After packing it is recommended to shuffle again the dataset.
+
+```console
+python3 -m data.packing.shuffle_packed_data --input-files=<path-of-unshuffled-packed-data-files> --output-dir=<path-of-output-shuffled-packed-data-folder>
+```
+
+Remember to index the tfrecord files as in 5) after packing and shuffling. The following bash scripts run the full packing preprocess (packing plus shuffling) — the whole process for each sequence length takes approximately 6 hours:
+
+sequence length 128
+
+```console
+./data/packing/pack_128.sh <path-of-input-unpacked-data-folder> <path-of-output-packed-data-folder>
+```
+
+sequence length 384
+
+```console
+./data/packing/pack_384.sh <path-of-input-unpacked-data-folder> <path-of-output-packed-data-folder>
+```
+
+sequence length 512
+
+```console
+./data/packing/pack_512.sh <path-of-input-unpacked-data-folder> <path-of-output-packed-data-folder>
 ```
 
 ## Licensing

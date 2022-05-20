@@ -146,7 +146,7 @@ def train_process(opts, restore=False):
         tf_log.info(f"model {path} restored")
 
     epochs = opts['epochs']
-    iterations_per_epoch = TRAIN_DATA_SIZE / (opts['batch_size'] * opts['replicas'])
+    iterations_per_epoch = TRAIN_DATA_SIZE / (opts['micro_batch_size'] * opts['replicas'])
     iterations = epochs * iterations_per_epoch
     steps = iterations // opts["batches_per_step"]
 
@@ -164,11 +164,11 @@ def train_process(opts, restore=False):
             loss, _, accuracy = train_graph.session.run(train_graph.ops_train, feed_dict = {train_graph.placeholders["learning_rate"]: lr_value})
             avg_time = time.time() - start
             total_time += avg_time
-            batch_throughput = opts["batch_size"] * opts["batches_per_step"] / avg_time
+            batch_throughput = opts["micro_batch_size"] * opts["batches_per_step"] / avg_time
             logger.print_to_file_and_screen("epochs:{}, index:{}, loss: {:.4f}, accuracy: {:.4f}, time over batch: {:.4f}, sample/sec: {:.1f}, learning rate: {}".format(epoch, i, loss, accuracy, avg_time, batch_throughput, lr_value), opts)
             i += 1
     train_graph.saver.save(train_graph.session, save_path=path)
-    throughput = opts["batch_size"] * iterations / total_time
+    throughput = opts["micro_batch_size"] * iterations / total_time
     tf_log.info(f"Total time:{total_time},sample/sec (averaged over steps):{throughput}")
     train_graph.session.close()
 
@@ -191,8 +191,8 @@ def add_dataset_arguments(parser):
 def add_training_arguments(parser):
     group = parser.add_argument_group('Training')
     group.add_argument('--seed', type=int, help="set random seed")
-    group.add_argument('--batch-size', type=int, default=32, help="set batch-size for training graph")
-    group.add_argument('--replicas', type=int, default=1, help="Replicate graph over N workers to increase batch to batch-size*N")
+    group.add_argument('--micro-batch-size', type=int, default=32, help="set micro-batch-size for training graph")
+    group.add_argument('--replicas', type=int, default=1, help="Replicate graph over N workers to increase batch to micro-batch-size*N")
     group.add_argument('--learning-rate', type=float, default=0.1, help="learning rate")
     group.add_argument('--lr-file', type=str, default='./learning_rate_schedule_file.txt', help='The learning rate file.')
     group.add_argument('--lr-type', type=str, default='fixed', choices=['fixed', 'file'], help="Choose the type of learning rate")
@@ -204,7 +204,7 @@ def add_training_arguments(parser):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description = "CTR Model Training in Tensorflow")
+    parser = argparse.ArgumentParser(description = "CTR Model Training in TensorFlow")
     parser = add_model_arguments(parser)
     parser = add_dataset_arguments(parser)
     parser = add_training_arguments(parser)

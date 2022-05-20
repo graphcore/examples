@@ -31,7 +31,7 @@ class TestDIENTraining(unittest.TestCase):
         out = run_train(**{'--use-synthetic-data': True,
                            '--epochs': 0.01,
                            '--seed': 3,
-                           '--batch-size': 4,
+                           '--micro-batch-size': 4,
                            '--learning-rate': 0.1,
                            '--batches-per-step': 1600})
         cls.out = out

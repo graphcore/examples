@@ -3,7 +3,7 @@
 import unittest
 import tensorflow as tf
 
-from data.dataset_benchmark import estimate_ds_throughput
+from scripts.dataset_benchmark import estimate_ds_throughput
 
 
 class FunctionalCheckOfDatasetBenchmarking(unittest.TestCase):
@@ -19,6 +19,6 @@ class FunctionalCheckOfDatasetBenchmarking(unittest.TestCase):
         labels = tf.ones([])
         ds = tf.data.Dataset.from_tensors((images, labels)).repeat(ds_size)
 
-        throughput = estimate_ds_throughput(ds, ds_size, epochs=2, micro_batch_size=batch_size)
+        throughput = estimate_ds_throughput(ds, ds_size, epochs=2, micro_batch_size=batch_size, num_instances=1)
         assert isinstance(throughput, float)
         assert throughput > 0

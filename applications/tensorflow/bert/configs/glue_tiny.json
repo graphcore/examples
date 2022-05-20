@@ -61,7 +61,6 @@
     "do_predict": false,
     "do_lower_case": true,
     "verbose_logging": false,
-    "version_2_with_negative": false,
     "variable_offloading": true,
 
     "output_dir": "tmp/squad/",

@@ -13,8 +13,6 @@ import random
 from pathlib import Path
 import import_helper
 import models
-from datasets.webdataset_format import get_webdataset, DatasetRebatch
-from datasets.tfrecord_format import get_tfrecord
 from datasets.preprocess import get_preprocessing_pipeline
 from datasets.raw_imagenet import ImageNetDataset
 
@@ -38,11 +36,6 @@ class GeneratedDataset(Dataset):
         self.half_precision = half_precision
         self.eightbit = eightbit
         self.data_shape = shape
-
-    def __len__(self):
-        return self.size
-
-    def __getitem__(self, index):
         torch.manual_seed(0)
         synthetic_data = torch.randint(0, 255, self.data_shape)
         if self.eightbit:
@@ -52,7 +45,13 @@ class GeneratedDataset(Dataset):
                 synthetic_data = synthetic_data.half()
             else:
                 synthetic_data = synthetic_data.float()
-        return synthetic_data, index % datasets_info["synthetic"]["out"]
+        self.data = synthetic_data
+
+    def __len__(self):
+        return self.size
+
+    def __getitem__(self, index):
+        return self.data, index % datasets_info["synthetic"]["out"]
 
 
 class SampleDataset(Dataset):
@@ -119,19 +118,11 @@ def get_data(args, opts, train=True, async_dataloader=False, return_remaining=Fa
             dataset = SampleDataset(img_dir=data_path, transform=transform)
     elif args.data == "imagenet":
         assert os.path.exists(args.imagenet_data_path), f"{args.imagenet_data_path} does not exist!"
-        if os.path.exists(os.path.join(args.imagenet_data_path, 'metadata.json')):
-            # WebDataset format
-            dataset = get_webdataset(args, opts, train, transform=transform, use_bbox_info=use_bbox_info)
-        else:
-            data_folder = 'train' if train else 'validation'
-            data_folder = os.path.join(args.imagenet_data_path, data_folder)
-            if os.path.exists(data_folder):
-                # Original ImageNet format
-                bboxes = os.path.join(args.imagenet_data_path, 'imagenet_2012_bounding_boxes.csv') if use_bbox_info and train else None   # use bboxes only for training
-                dataset = ImageNetDataset(data_folder, transform=transform, bbox_file=bboxes)
-            else:
-                # TFRecord format
-                dataset = get_tfrecord(args, opts, train, transform=transform, use_bbox_info=use_bbox_info)
+        # Original ImageNet format
+        data_folder = 'train' if train else 'validation'
+        data_folder = os.path.join(args.imagenet_data_path, data_folder)
+        bboxes = os.path.join(args.imagenet_data_path, 'imagenet_2012_bounding_boxes.csv') if use_bbox_info and train else None   # use bboxes only for training
+        dataset = ImageNetDataset(data_folder, transform=transform, bbox_file=bboxes)
     elif args.data == "cifar10":
         data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10")
         dataset = torchvision.datasets.CIFAR10(root=data_path, train=train, download=True, transform=transform)
@@ -153,16 +144,14 @@ def get_data(args, opts, train=True, async_dataloader=False, return_remaining=Fa
                                      dataset,
                                      batch_size=args.batch_size,
                                      num_workers=args.dataloader_worker,
-                                     shuffle=train and not(isinstance(dataset, torch.utils.data.IterableDataset)),
-                                     drop_last= not(return_remaining) and not isinstance(dataset, torch.utils.data.IterableDataset),
+                                     shuffle=train,
+                                     drop_last= not(return_remaining),
                                      persistent_workers = True,
-                                     auto_distributed_partitioning = not isinstance(dataset, torch.utils.data.IterableDataset),
+                                     auto_distributed_partitioning = True,
                                      worker_init_fn=worker_initialization,
                                      mode=mode,
                                      rebatched_worker_size=rebatch_size,
                                      async_options={'load_indefinitely': True})
-    if isinstance(dataset, torch.utils.data.IterableDataset):
-        dataloader = DatasetRebatch(dataloader, global_batch_size, len(dataset), not(return_remaining))
     return dataloader
 
 

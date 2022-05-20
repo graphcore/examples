@@ -1,0 +1,38 @@
+{
+    "bert_model_name": "bert-base-uncased",
+    "global_batch": {
+        "replicas": 1,
+        "micro_batch_size": 1,
+        "grad_acc_steps_per_replica": 30
+    },
+    "num_epochs": 3,
+    "ipu_config": {
+        "pipeline_stages": [
+            ["emb"],
+            ["hid", "hid", "hid", "hid"],
+            ["hid", "hid", "hid", "hid"],
+            ["hid", "hid", "hid", "hid"],
+            ["pool", "glue_head"]
+        ],
+        "pipeline_device_mapping": [0, 1, 2, 3, 0],
+        "matmul_available_memory_proportion_per_pipeline_stage": [0.25, 0.23, 0.28, 0.25],
+        "replicated_tensor_sharding": false
+    },
+    "optimizer_opts": {
+        "name": "AdamW",
+        "weight_decay_rate": 0.01,
+        "learning_rate": {
+            "schedule_name": "up_down",
+            "max_learning_rate": 2e-5,
+            "warmup_frac": 0.1
+        }
+    },
+    "seed": 1984,
+    "global_batches_per_log": 1,
+    "enable_wandb": true,
+    "wandb_tags": ["glue_fine_tuning"],
+    "dataset_dir": "./cache/",
+    "output_dir": "./output_dir_hf/",
+    "do_training": true,
+    "do_validation": true
+}

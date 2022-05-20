@@ -21,8 +21,6 @@ class BatchStatisticsCallback(tf.keras.callbacks.Callback):
     def on_batch_end(self, batch, logs=None):
         if logs is not None:
             batch_duration = time.time() - self.batch_start_time
-            num_samples_processed = self.batch_config.steps_per_execution * self.batch_config.micro_batch_size
-            self.total_num_samples_processed += num_samples_processed
-            logs["throughput"] = num_samples_processed / batch_duration
+            self.total_num_samples_processed += self.batch_config.num_samples_processed_per_execution
+            logs["throughput"] = self.batch_config.num_samples_processed_per_execution / batch_duration
             logs["num_samples"] = self.total_num_samples_processed
-            print(f"\tSamples/sec: {logs['throughput']}")

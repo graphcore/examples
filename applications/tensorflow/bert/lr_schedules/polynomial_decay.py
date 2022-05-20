@@ -14,7 +14,7 @@
 
 
 class LearningRate:
-    def __init__(self, base_learning_rate, warmup_steps, total_steps):
+    def __init__(self, base_learning_rate, warmup_steps, total_steps, power):
         """Polynomial decay learning rate.
         Args:
             base_learning_rate: base learning rate value, this is the value reached at the peak of the learning rate schedule.
@@ -24,14 +24,22 @@ class LearningRate:
         self.max_learning_rate = base_learning_rate
         self.total_steps = total_steps
         self.warmup_steps = warmup_steps
+        if isinstance(power, int) or isinstance(power, float):
+            self.power = [power]
+        else:
+            self.power = power
 
     def get_at_step(self, step):
         if step <= self.warmup_steps:
-            lr = (step / self.warmup_steps) * self.max_learning_rate
+            lr = (step ** self.power[0]) * self.max_learning_rate / (self.warmup_steps ** self.power[0])
         else:
-            lr = self.max_learning_rate * (
-                (self.total_steps - step - 1) / (self.total_steps - self.warmup_steps)
-            )
+            if self.power[0] == 1 and len(self.power) == 1:
+                lr = self.max_learning_rate * ((self.total_steps - step - 1) / (self.total_steps - self.warmup_steps))
+            else:
+                end_learning_rate = 1e-7
+                decay_steps = self.total_steps - self.warmup_steps
+                lr = ((self.max_learning_rate - end_learning_rate) * (
+                    (1 - (step - self.warmup_steps) / decay_steps) ** (self.power[-1]))) + end_learning_rate
         # In order to avoid the learning rate to be exactly 0 we put a minimal learning rate of 1e-7
         lr = max(1e-7, lr)
         return lr

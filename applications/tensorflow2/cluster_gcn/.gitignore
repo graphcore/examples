@@ -1,0 +1,9 @@
+/data
+/local
+/out
+wandb
+profile
+
+__pycache__/
+.vscode/
+.ipynb_checkpoints/

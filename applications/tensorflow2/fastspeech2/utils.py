@@ -18,8 +18,7 @@ import time
 import tensorflow as tf
 import numpy as np
 from tensorflow import keras
-from tensorflow.python import ipu
-from tensorflow.python.ipu import utils
+from tensorflow.python.ipu import config as ipu_config
 
 
 def create_ipu_config(
@@ -27,12 +26,15 @@ def create_ipu_config(
         num_required_ipus,
         partials_type="half",
         fp_exceptions=False,
-        xla_recompute=False,
-        enable_stochastic_rounding=True):
-    cfg = ipu.config.IPUConfig()
-    cfg.allow_recompute = xla_recompute
+        enable_stochastic_rounding=True,
+        num_io_tiles=0):
+    cfg = ipu_config.IPUConfig()
+    if num_io_tiles > 0:
+        cfg.io_tiles.num_io_tiles = num_io_tiles
+        cfg.io_tiles.place_ops_on_io_tiles = True
+    cfg.allow_recompute = True
     cfg.auto_select_ipus = num_required_ipus
-    cfg.selection_order = utils.SelectionOrder.AUTO
+    cfg.selection_order = ipu_config.SelectionOrder.AUTO
 
     cfg.convolutions.poplar_options = {
         "availableMemoryProportion": str(available_memory_proportion),
@@ -49,7 +51,7 @@ def create_ipu_config(
     cfg.floating_point_behaviour.div0 = fp_exceptions
     cfg.floating_point_behaviour.oflo = fp_exceptions
     cfg.floating_point_behaviour.nanoo = fp_exceptions
-    cfg.floating_point_behaviour.esr = enable_stochastic_rounding
+    cfg.floating_point_behaviour.esr = ipu_config.StochasticRoundingBehaviour.from_bool(enable_stochastic_rounding)
     cfg.norms.use_stable_statistics = True
 
     # optimizations
@@ -100,13 +102,22 @@ class ModelCheckpoint(keras.callbacks.ModelCheckpoint):
 
 
 class LearningRateLogger(keras.callbacks.Callback):
-    def __init_(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, steps_per_epoch=1):
+        super().__init__()
+        self.steps_per_epoch = steps_per_epoch
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
-        logs.update(
-            {'learning_rate': self.model.optimizer._decayed_lr(tf.float32).numpy()})
+        try:
+            logs.update(
+                {'learning_rate': self.model.optimizer._decayed_lr(tf.float32).numpy()})
+        except:
+            cur_steps = int(epoch * self.steps_per_epoch)
+            logs.update(
+                {
+                    'Steps': cur_steps,
+                    'Epoch': epoch,
+                    'learning_rate': self.model.optimizer.learning_rate(cur_steps).numpy()})
         super().on_epoch_end(epoch, logs)
 
 
@@ -117,10 +128,10 @@ class CompilationTimeCallback(keras.callbacks.Callback):
     def on_train_begin(self, logs=None):
         self.compilation_start_time = time.time()
 
-    def on_train_batch_begin(self, batch, logs=None):
+    def on_batch_begin(self, batch, logs=None):
         pass
 
-    def on_train_batch_end(self, batch, logs=None):
+    def on_batch_end(self, batch, logs=None):
         self.__current_batch_operations(logs)
 
     def __do_nothing(self, logs):

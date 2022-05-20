@@ -41,7 +41,7 @@ def print_setting(opts, is_dien=True, is_training=False):
                    " Epochs: {epochs}\n"
                    " Batches Per Step {batches_per_step}\n"
                    "CTR Training: \n"
-                   " Batch Size {batch_size}\n"
+                   " Micro Batch Size {micro_batch_size}\n"
                    " Learning Rate {learning_rate}\n"
                    " Replicas {replicas}\n")
     else:
@@ -54,7 +54,7 @@ def print_setting(opts, is_dien=True, is_training=False):
                        " AUGRU Type {augru_type}\n"
                        " Epochs: {epochs}\n"
                        " Batches Per Step {batches_per_step}\n"
-                       " Batch Size {batch_size}\n"
+                       " Micro Batch Size {micro_batch_size}\n"
                        " Replicas {replicas}\n"
                        " Optimizer {optimizer}\n"
                        " LearningRate {learning_rate}\n"
@@ -69,7 +69,7 @@ def print_setting(opts, is_dien=True, is_training=False):
                        " Use Synthetic Data {use_synthetic_data}\n"
                        " Epochs: {epochs}\n"
                        " Batches Per Step {batches_per_step}\n"
-                       " Batch Size {batch_size}\n"
+                       " Micro Batch Size {micro_batch_size}\n"
                        " Replicas {replicas}\n")
 
     print(log_str.format(**opts))

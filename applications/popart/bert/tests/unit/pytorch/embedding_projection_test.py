@@ -46,14 +46,13 @@ class BertEmbeddingsNoPosition(nn.Module):
     def __init__(self, config):
         super(BertEmbeddingsNoPosition, self).__init__()
         self.word_embeddings = nn.Embedding(
-            config.vocab_size, config.hidden_size, padding_idx=0)
+            config.vocab_size, config.hidden_size)
         self.LayerNorm = BertLayerNorm(
             config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(self, input_ids):
         seq_length = input_ids.size(1)
         words_embeddings = self.word_embeddings(input_ids)
-        words_embeddings = words_embeddings.detach()
         embeddings = self.LayerNorm(words_embeddings)
         return embeddings
 
@@ -150,11 +149,7 @@ def test_embedding_projection_bwd(custom_ops):
                         activation_type='relu',
                         popart_dtype="FLOAT",
                         no_dropout=True,
-                        no_cls_layer=False,
-                        # Currently updating embedding dict with projection is only
-                        # available with momentum. And PopART != Pytorch momentum
-                        # due to a bootstrapping step on iter 0.
-                        update_embedding_dict=False)
+                        no_cls_layer=False)
     popart_model = Bert(config)
     builder = popart_model.builder
 
@@ -180,7 +175,7 @@ def test_embedding_projection_bwd(custom_ops):
 
     proto = builder.getModelProto()
 
-    optimizer = popart.ConstSGD(0.01)
+    optimizer = popart.ConstSGD(1)
 
     outputs, post_proto = run_py(proto,
                                  data, output,
@@ -211,7 +206,7 @@ def test_embedding_projection_bwd(custom_ops):
                           transform=TRANSPOSE_WEIGHTS)
 
     optim = torch.optim.SGD(torch_model.parameters(),
-                            0.01,
+                            1,
                             weight_decay=0.0,
                             momentum=0.0)
 
@@ -225,4 +220,5 @@ def test_embedding_projection_bwd(custom_ops):
     check_model(torch_model,
                 post_proto,
                 TORCH_TO_ONNX,
-                transform=TRANSPOSE_WEIGHTS)
+                transform=TRANSPOSE_WEIGHTS,
+                margin=1e-4)

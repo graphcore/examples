@@ -329,7 +329,7 @@ class SparseFcLayer:
     def record_slot_var(self, slot_name: str, optimizer: tf.train.Optimizer):
         """
         Used by the optimiser to record a slot with this layer.
-        Returns the Tensorflow slot_variable that was recorded.
+        Returns the TensorFlow slot_variable that was recorded.
         """
         if self.values_var is None:
             raise AttributeError(

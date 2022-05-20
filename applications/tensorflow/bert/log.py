@@ -24,7 +24,7 @@ import random
 import subprocess
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow import pywrap_tensorflow
 
 # Set Python logger
@@ -180,4 +180,8 @@ def load_initializers_from_checkpoint(checkpoint_path):
 
 
 def get_git_revision():
-    return subprocess.check_output(["git", "describe", "--always", "--dirty"]).strip().decode()
+    try:
+        hash = subprocess.check_output(["git", "describe", "--always", "--dirty"]).strip().decode()
+    except subprocess.CalledProcessError:
+        hash = None
+    return hash

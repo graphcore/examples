@@ -12,31 +12,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import ctypes
 import numpy as np
 import poptorch
 import popart
 import torch
 
+import popdist.poptorch
+
+
+def create_options(opts):
+    if opts.use_popdist:
+        model_opts = popdist.poptorch.Options()
+    else:
+        model_opts = poptorch.Options()
+
+    return model_opts
+
 
 def get_options(config):
-    '''
+    """
     Set ipu specific options for the model, see documentation:
     https://docs.graphcore.ai/en/latest/
-    '''
-
-    # Numpy options
-    np.random.seed(config.random_seed)
+    """
 
     # Poptorch options
-    opts = poptorch.Options()
-
+    opts = create_options(config)
     opts.autoRoundNumIPUs(True)
     opts.deviceIterations(config.batches_per_step)
 
     # Set replication and gradient accumulation factors
-    opts.replicationFactor(config.replication_factor)
+    if not config.use_popdist:
+        opts.replicationFactor(config.replication_factor)
     opts.Training.gradientAccumulation(config.gradient_accumulation)
-    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
+
+    if config.reduction_type == "sum":
+        opts.Training.accumulationAndReplicationReductionType(
+            poptorch.ReductionType.Sum)
+    elif config.reduction_type == "mean":
+        opts.Training.accumulationAndReplicationReductionType(
+            poptorch.ReductionType.Mean)
+    else:
+        raise ValueError(
+            "Expected reduction type to be 'sum' or 'mean', but got %s" % config.reduction_type)
+
+    # Enable automatic loss scaling
+    # Note that this is an experimental feature. Note also that it expects
+    # accumulationAndReplicationReductionType to be set to Mean as above,
+    # and for accumulation by the optimizer to be done in half precision
+    # using accum_type=torch.float16 during optimizer instatiation.
+    if config.auto_loss_scaling is True:
+        opts.Training.setAutomaticLossScaling(True)
 
     # Return all results from IPU to host
     opts.outputMode(poptorch.OutputMode.All)
@@ -65,7 +92,7 @@ def get_options(config):
     }
     opts.setAvailableMemoryProportion(mem_prop)
 
-    if config.synthetic_data == 'synthetic':
+    if config.synthetic_data:
         opts.enableSyntheticData(int(popart.SyntheticDataMode.RandomNormal))
 
     # Enable stochastic rounding (recommended for training with FP16)
@@ -76,10 +103,10 @@ def get_options(config):
         opts.enableExecutableCaching(config.executable_cache_dir)
 
     # Half precision partials for matmuls and convolutions
-    if config.precision[3:] == "16":
+    if config.half_partials:
         opts.Precision.setPartialsType(torch.half)
 
-    # PopART performance options #
+    # PopART performance options
     # Only stream needed tensors back to host
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
     opts._Popart.set("accumulateOuterFragmentSettings.schedule",
@@ -87,7 +114,8 @@ def get_options(config):
 
     if config.prefetch_depth > 1:
         # How many batches to prefetch onto the IPU
-        opts._Popart.set("defaultPrefetchBufferingDepth", config.prefetch_depth)
+        opts._Popart.set("defaultPrefetchBufferingDepth",
+                         config.prefetch_depth)
 
     # Options for profiling with Popvision
     engine_options = {
@@ -105,5 +133,16 @@ def get_options(config):
             }
         }
     opts._Popart.set("engineOptions", engine_options)
+
+    # Parallelize optimizer step update across IPUs
+    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
+                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
+    opts._Popart.set(
+        "accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
+
+    # Enable patterns for better throughput and memory reduction
+    opts._Popart.set("subgraphCopyingStrategy", int(
+        popart.SubgraphCopyingStrategy.JustInTime))
+    opts._Popart.set("scheduleNonWeightUpdateGradientConsumersEarly", True)
 
     return opts
