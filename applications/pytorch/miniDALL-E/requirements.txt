@@ -7,6 +7,7 @@ ftfy
 regex
 omegaconf>=2.0.0
 taming-transformers-rom1504
+protobuf==3.19.4
 wandb==0.12.1
 pytest==6.2.5
 pytest-pythonpath>=0.7.3

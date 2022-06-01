@@ -4,6 +4,7 @@ easydict
 tensorboardX
 wandb
 pycocotools
+protobuf==3.19.4
 onnx==1.11.0
 tqdm
 scipy==1.5.4
