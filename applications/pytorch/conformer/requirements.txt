@@ -2,6 +2,7 @@ numpy==1.19.5
 fire==0.4.0
 pyyaml==6.0
 pandas==1.1.5
+protobuf==3.19.4
 wandb==0.12.7
 pillow==8.4.0
 espnet==0.10.1

@@ -3,6 +3,7 @@ datasets>=1.17.0
 tokenizers>=0.10.3
 scipy>=1.5.4
 pyyaml>=5.4.1
+protobuf==3.19.4
 wandb==0.12.1
 pytest==6.2.5
 pytest-pythonpath>=0.7.3
