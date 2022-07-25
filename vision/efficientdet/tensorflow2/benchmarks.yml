@@ -1,0 +1,58 @@
+---
+common_options: &common_options
+  location: public_examples/vision/efficientdet/tensorflow2
+  data:
+    throughput:
+      regexp: 'Throughput:\s+mean = (.*?),'
+    latency:
+      regexp: 'Per-batch Latency:\s+mean = (.*?)ms,'
+  output:
+    - [Images/sec, "{throughput}"]
+    - [Secs/Imag, "{latency}"]
+
+tf2_efficientdet_d0_infer_gen_pod4:
+  <<: *common_options
+  description: EfficientDet-D0 batch-sizes 1 to 3 inference on 4 IPUs.
+  parameters:
+    batchsize: 1,2,3
+  cmd: >-
+    mpirun
+      --tag-output
+      --allow-run-as-root
+      --np 4
+      --bind-to socket
+    python ipu_inference.py
+      --model-name efficientdet-d0
+      --micro-batch-size {batchsize}
+      --dataset-type generated
+      --random-weights
+
+tf2_efficientdet_d0_max_batch_size_infer_gen_pod4:
+  <<: *common_options
+  description: EfficientDet-D0-D4 max batch size for 4 IPUs.
+  parameters:
+    modelname: d0,d1,d2,d3,d4
+  cmd: >-
+    mpirun
+      --tag-output
+      --allow-run-as-root
+      --np 4
+      --bind-to socket
+    python ipu_inference.py
+      --model-name efficientdet-{modelname}
+      --dataset-type generated
+      --random-weights
+
+tf2_efficientdet_d0_low_latency_infer_gen_pod4:
+  <<: *common_options
+  description: |
+    EfficientDet-D0 batch-sizes 1 low latency using the TF embedded
+    application runtime.
+  parameters:
+    modelname: d0,d1,d2,d3,d4
+  cmd: >-
+    python ipu_embedded_inference.py
+      --config efficientdet-low-latency
+      --model-name efficientdet-{modelname}
+      --dataset-type generated
+      --random-weights

@@ -1,0 +1,152 @@
+---
+common_options: &common_options
+  location: public_examples/vision/vit/pytorch/
+  data:
+    throughput:
+      regexp: 'Throughput: *(.*?) samples/sec'
+      skip: 1
+    accuracy:
+      reduction_type: "final"
+      regexp: 'Acc: *(.*?) '
+    loss:
+      reduction_type: "final"
+      regexp: 'Loss: *(.*?) '
+  output:
+    - [Images/sec, "throughput"]
+    - [accuracy, "accuracy"]
+    - [loss, "loss"]
+  env:
+    PYTORCH_EXE_DIR: "./pt_cache/"
+
+finetune_options: &finetune_options
+  description: |
+    VIT finetune training for 16 IPUs.
+
+pretrain_options: &pretrain_options
+  description: |
+    VIT pretrain training for 16 IPUs.
+
+multihost_options: &multihost_options
+  description: |
+    ViT pretrain training for 64 IPUs.
+    The env variables needed are:
+      HOSTS - Comma separated list of hosts, usually something like:
+        `10.1.3.101,10.1.3.10x...`
+      VIPU_CLI_API_HOST - IP of host where VIPU server is running. Usually
+        `10.1.3.101`.
+      PARTITION - Name of partition to use, can be found via
+        `vipu list partitions`. Note that the `--update-partitions` poprun
+        flag is disabled here, so ensure the partition is reconfigurable
+        or it has been setup properly for this benchmark
+      TCP_IF_INCLUDE - Name of subnet, or range of IPs for network interface
+        on which all hosts are. Usually `enp65s0f0np0` or `10.1.3.0/24`.
+
+pytorch_vit_finetune_gen_pod16:
+  <<: [*common_options, *finetune_options]
+  description: |
+    ViT training for 16 IPUs using generated data
+  cmd: >-
+    python3 finetune.py
+      --config b16_imagenet1k
+      --training-steps 6
+      --dataset generated
+      --checkpoint-output-dir ""
+      --executable-cache-dir PYTORCH_EXE_DIR
+
+pytorch_vit_pretrain_gen_pod16:
+  <<: [*common_options, *pretrain_options]
+  cmd: >-
+    python3 pretrain.py
+      --config b16_in1k_pretrain
+      --iterations 10
+      --optimizer-state-offchip false
+      --byteio true
+      --dataset generated
+      --epochs 1
+
+pytorch_vit_lamb_pretrain_gen_pod16:
+  <<: [*common_options, *pretrain_options]
+  cmd: >-
+    python3 pretrain.py
+      --config b16_in1k_pretrain_lamb
+      --iterations 10
+      --optimizer-state-offchip false
+      --byteio true
+      --dataset generated
+      --epochs 1
+
+pytorch_vit_lamb_pretrain_gen_pod64:
+  <<: [*common_options, *multihost_options]
+  cmd: >-
+    poprun
+      --vv
+      --host $HOSTS
+      --ipus-per-replica=4
+      --num-ilds=8
+      --num-replicas=16
+      --num-instances=8
+      --reset-partition=no
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-server-timeout=3600
+      --vipu-partition=$PARTITION
+      --executable-cache-path PYTORCH_EXE_DIR
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x CPATH
+        -x IPUOF_VIPU_API_TIMEOUT
+        -x POPLAR_LOG_LEVEL
+        -x POPLAR_SDK_ENABLED
+        -x POPLAR_ENGINE_OPTIONS"
+    python3 pretrain.py
+      --config b16_in1k_pretrain_lamb
+      --dataset generated
+      --byteio true
+      --iterations 10
+      --gradient-accumulation 512
+      --epochs 1
+      --dataloader-workers 32
+
+pytorch_vit_lamb_pretrain_real_pod64_conv:
+  <<: [*common_options, *multihost_options]
+  cmd: >-
+    poprun
+      --vv
+      --host $HOSTS
+      --ipus-per-replica=4
+      --num-ilds=8
+      --num-replicas=16
+      --num-instances=8
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-server-timeout=3600
+      --vipu-partition=$PARTITION
+      --vipu-cluster=$CLUSTER
+      --executable-cache-path PYTORCH_EXE_DIR
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x CPATH
+        -x IPUOF_VIPU_API_TIMEOUT
+        -x POPLAR_LOG_LEVEL
+        -x POPLAR_SDK_ENABLED
+        -x POPLAR_ENGINE_OPTIONS"
+    python3 pretrain.py
+      --config b16_in1k_pretrain_lamb
+      --dataset-path $DATASETS_DIR/imagenet1k
+      --byteio true
+      --gradient-accumulation 512
+      --dataloader-workers 32
+      --mixup false

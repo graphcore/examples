@@ -1,0 +1,14 @@
+dataclasses==0.8; python_version < '3.7'
+datasets==1.16.1
+pydantic==1.9.0
+pytest==6.2.5
+pytest-cov==3.0.0
+pytest-forked==1.4.0
+pytest-pythonpath==0.7.4
+pytest-xdist==2.5.0
+tensorflow-addons==0.14.0
+tensorflow-datasets==4.4.0
+torch==1.9.0
+git+https://github.com/graphcore/transformers-fork@v4.18-gc#egg=transformers # Fork of transformers to support KerasTensor from the Keras package with Python 3.6.
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+wandb==0.12.8

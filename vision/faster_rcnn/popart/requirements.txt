@@ -1,0 +1,15 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+opencv-python==4.5.5.64
+easydict==1.9
+tensorboardX==2.5
+wandb==0.12.8
+pycocotools==2.0.4
+protobuf==3.19.4
+onnx==1.11.0
+tqdm==4.64.0
+scipy==1.5.4
+PyYAML==5.4.1
+torch==1.10.0+cpu
+torchvision==0.11.1+cpu
+fire==0.4.0
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils

@@ -1,6 +1,0 @@
-numpy==1.18.5
-pybind11
-pytest==6.2.5
-jax
-jaxlib
-dm-haiku

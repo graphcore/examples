@@ -1,0 +1,48 @@
+---
+common_options: &common_options
+  location:
+      public_examples/multimodal/mini_dalle/pytorch/
+  data:
+    throughput:
+      reduction_type: "final"
+      regexp: "Throughput: *(.*?) samples/sec"
+    loss:
+      reduction_type: "final"
+      regexp: "Loss: *(.*?) "
+    compile_time:
+      regexp: "Compiled model in *(.*?) secs"
+  output:
+    - [samples/sec, 'throughput']
+    - [loss, 'loss']
+    - [sec, 'compile_time']
+
+
+pytorch_minidalle_train_real_pod4:
+  <<: *common_options
+  cmd: >-
+    python3 train.py
+      --config L16
+      --checkpoint-output-dir ""
+      --byteio True
+      --input-folder $DATASETS_DIR/coco
+      --epochs 2
+
+pytorch_minidalle_train_real_pod16:
+  <<: *common_options
+  cmd: >-
+    python3 train.py
+      --config L16_POD16
+      --checkpoint-output-dir ""
+      --byteio True
+      --input-folder $DATASETS_DIR/coco
+      --epochs 2
+
+pytorch_minidalle_train_real_pod64:
+  <<: *common_options
+  cmd: >-
+    python3 train.py
+      --config L16_POD64
+      --checkpoint-output-dir ""
+      --byteio True
+      --input-folder $DATASETS_DIR/coco
+      --epochs 2

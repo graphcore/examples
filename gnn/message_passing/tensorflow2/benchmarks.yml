@@ -1,0 +1,84 @@
+# Copyright (c) 2022 Graphcore Ltd. All rights reserved.
+
+# --- Benchmark Message Passing Neural Network model ---
+train_options: &train_options
+  location: public_examples/gnn/message_passing/tensorflow2/
+  env:
+    TF_POPLAR_FLAGS: '--executable_cache_path=./tf_cache/'
+  data:
+    throughput:
+      regexp: 'Throughput:\s*([\d*.]+)'
+      skip: 1
+  output:
+    - [graphs/sec, 'Throughput']
+
+tf2_message_passing_graph_isomorphism_train_gen_4ipu:
+  <<: *train_options
+  description: |
+    This benchmark measures the throughput of 
+    Graph Isomorphism MPNN training
+    on a generated dataset.
+  cmd: >-
+    python3 run_training.py
+        --model=graph_isomorphism
+        --epochs=5
+        --replicas=4
+        --micro_batch_size=256
+        --use_edges=True
+        --lr=1e-5
+        --loss_scaling=1.0
+        --generated_data=True
+        --generated_batches_per_epoch=16384
+        --n_nodes_per_pack=24
+        --n_edges_per_pack=50
+        --n_graphs_per_pack=1
+        --do_validation=False
+        --do_test=False
+        --checkpoint_every_n_epochs=10
+        --wandb=False
+
+tf2_message_passing_interaction_network_train_gen_1ipu:
+  <<: *train_options
+  description: |
+    This benchmark measures the throughput of 
+    Interaction Network MPNN training
+    on a generated dataset.
+  cmd: >-
+    python3 run_training.py
+        --model=interaction_network
+        --epochs=5
+        --replicas=1
+        --micro_batch_size=128
+        --lr=1e-5
+        --loss_scaling=1.0
+        --generated_data=True
+        --n_nodes_per_pack=24
+        --n_edges_per_pack=50
+        --n_graphs_per_pack=1
+        --do_validation=False
+        --do_test=False
+        --checkpoint_every_n_epochs=10
+        --wandb=False
+
+tf2_message_passing_graph_network_train_gen_1ipu:
+  <<: *train_options
+  description: |
+    This benchmark measures the throughput of 
+    Graph Network MPNN training
+    on a generated dataset.
+  cmd: >-
+    python3 run_training.py
+        --model=graph_network
+        --epochs=5
+        --replicas=1
+        --micro_batch_size=128
+        --lr=1e-5
+        --loss_scaling=1.0
+        --generated_data=True
+        --n_nodes_per_pack=24
+        --n_edges_per_pack=50
+        --n_graphs_per_pack=1
+        --do_validation=False
+        --do_test=False
+        --checkpoint_every_n_epochs=10
+        --wandb=False

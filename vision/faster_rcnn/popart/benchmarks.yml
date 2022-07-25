@@ -1,0 +1,38 @@
+---
+common_options: &common_options
+  location: public_examples/vision/faster_rcnn/popart/
+  data:
+    throughput:
+      regexp: 'throughput:\s*([\d\.]+)'
+      skip: 3
+    total_loss:
+      reduction_type: "final"
+      regexp: 'total loss:\s*([\d\.]+|nan)\('
+    rpn_loss_cls:
+      reduction_type: "final"
+      regexp: 'rpn_loss_cls:\s*([\d\.]+|nan)\('
+    loss_cls:
+      reduction_type: "final"
+      regexp: 'loss_cls:\s*([\d\.]+|nan)\('
+    loss_box:
+      reduction_type: "final"
+      regexp: 'loss_box:\s*([\d\.]+|nan)\('
+  output:
+    - [imgs/s, "throughput"]
+    - [total_loss, "total_loss"]
+    - [rpn_loss_cls, "rpn_loss_cls"]
+    - [loss_cls, "loss_cls"]
+    - [loss_box, "loss_box"]
+
+popart_faster_rcnn_train_real_pod16:
+  <<: *common_options
+  description:
+      Training throughput performance test on 16 IPUs using real data
+  cmd:
+    python3 train.py
+      --YAML yamls/example_mixed_precision_VOC0712_64batch_4replicas.yaml
+      --DATA-DIR $DATASETS_DIR
+      --INIT-WEIGHTS-PATH ""
+      --TRAIN.PRETRAINED-WEIGHTS ""
+      --TRAIN.MAX-ITERS 20
+      --TRAIN.LOG-INTERVAL 1

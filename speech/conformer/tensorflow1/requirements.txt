@@ -1,0 +1,7 @@
+PyYAML==5.4.1
+kaldiio==2.17.2
+editdistance==0.5.3
+tensorboardX==2.5
+pytest==6.2.5
+tqdm==4.64.0
+wandb==0.12.8

@@ -1,0 +1,53 @@
+---
+common_options: &common_options
+  location: public_examples/vision/swin/pytorch/
+  data:
+    throughput:
+      skip: 1
+      regexp: 'throughput: *(.*)'
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss: *(.*)'
+  output:
+    - [throughput, 'throughput']
+    - [loss, 'loss']
+
+pytorch_swin_tiny_train_real_pod16:
+  <<: *common_options
+  description: Pytorch Sliding window transformer throughput benchmark using real data.
+  cmd: >-
+    python train_swin.py
+      --cfg ./configs/swin_tiny.yaml
+      --data-path $DATASETS_DIR/imagenet-raw-dataset/
+      --output ./output/swin_tiny_224/
+      --training-steps 100
+
+pytorch_swin_base_384_train_real_pod16:
+  <<: *common_options
+  description: Pytorch Sliding window transformer throughput benchmark using real data.
+  cmd: >-
+    python train_swin.py
+      --cfg ./configs/swin_base_384.yaml
+      --data-path $DATASETS_DIR/imagenet-raw-dataset/
+      --output ./output/swin_base_384/
+      --training-steps 100
+
+pytorch_swin_base_linear_train_real_pod16:
+  <<: *common_options
+  description: Pytorch Sliding window transformer throughput benchmark using real data.
+  cmd: >-
+    python train_swin.py
+      --cfg ./configs/swin_base_linear.yaml
+      --data-path $DATASETS_DIR/imagenet-raw-dataset/
+      --output ./output/swin_base_linear/
+      --training-steps 100
+
+pytorch_swin_large_train_real_pod16:
+  <<: *common_options
+  description: Pytorch Sliding window transformer throughput benchmark using real data.
+  cmd: >-
+    python train_swin.py
+      --cfg ./configs/swin_large_224_22k_finetune_1k.yaml
+      --data-path $DATASETS_DIR/imagenet-raw-dataset/
+      --output ./output/swin_large/
+      --training-steps 100

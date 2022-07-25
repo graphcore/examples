@@ -1,0 +1,46 @@
+---
+tf1_sales_forecasting_train_real_2ipu:
+  description: |
+    Test sales forecasting model with validation session in parallel
+  cmd:
+    python3 main.py -d $DATASETS_DIR/rossmann-data
+      --epochs=30
+      --device-iterations=788
+      --micro-batch-size=1024
+      --precision=16.16
+      --multiprocessing
+      --replication-factor=2
+      --base-learning-rate=-16
+      --weight-decay=0.0001
+      --no-lr-warmup
+  location:
+    public_examples/miscellaneous/sales_forecasting/tensorflow1
+  data:
+    throughput:
+      regexp: "Training:.*, *samples/sec: (.*), *time"
+      skip: 10
+  output:
+    - [Samples/sec, 'throughput']
+
+tf1_sales_forecasting_no_validation_train_real_2ipu:
+  description: |
+    Test sales forecasting model with no validation
+  cmd:
+    python3 main.py -d $DATASETS_DIR/rossmann-data
+      --epochs=30
+      --device-iterations=788
+      --micro-batch-size=1024
+      --precision=16.16
+      --no-validation
+      --replication-factor=2
+      --base-learning-rate=-16
+      --weight-decay=0.0001
+      --no-lr-warmup
+  location:
+    public_examples/miscellaneous/sales_forecasting/tensorflow1
+  data:
+    throughput:
+      regexp: "Training:.*, *samples/sec: (.*), *time"
+      skip: 10
+  output:
+    - [Samples/sec, 'throughput']

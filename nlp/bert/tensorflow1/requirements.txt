@@ -1,0 +1,11 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+nltk==3.6.5
+tqdm==4.53.0
+wandb==0.12.8
+torch==1.10.0+cpu
+onnx==1.8.1
+pytest==6.2.5
+pytest-pythonpath==0.7.4
+scipy==1.5.4
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+

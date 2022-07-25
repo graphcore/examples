@@ -1,0 +1,133 @@
+---
+# --- Pretraining ---
+pretrain_options: &pretrain_options
+  location: public_examples/nlp/bert/tensorflow2/
+  env:
+    TF_POPLAR_FLAGS: '--executable_cache_path=./tf_cache/'
+  data:
+    throughput:
+      regexp: 'throughput:\s*([\d\.]+),'
+      skip: 1
+  output:
+    - [Samples/s, 'throughput']
+
+tf2_bert_large_pretrain_real_pod16:
+  <<: *pretrain_options
+  description: |
+    This benchmark measures the throughput of Bert Large phase 1
+    and phase 2 pretraining.
+  parameters:
+    - [seqlen, phase]
+    - ['128', '1']
+    - ['384', '2']
+  cmd: >-
+    python3 run_pretraining.py
+      --config configs/pretrain_large_{seqlen}_phase{phase}.json
+      --dataset-dir $DATASETS_DIR/wikipedia/{seqlen}/
+      --total-num-train-samples 300000
+      --enable-wandb false
+
+tf2_bert_base_pretrain_real_pod16:
+  <<: *pretrain_options
+  description: |
+    This benchmark measures the throughput of Bert Base phase 1
+    and phase 2 pretraining.
+  parameters:
+    - [seqlen, phase]
+    - ['128', '1']
+    - ['384', '2']
+  cmd: >-
+    python3 run_pretraining.py
+      --config configs/pretrain_base_{seqlen}_phase{phase}.json
+      --dataset-dir $DATASETS_DIR/wikipedia/{seqlen}/
+      --total-num-train-samples 300000
+      --enable-wandb false
+
+tf2_bert_large_sl128_pretrain_real_pod64_conv:
+  <<: *pretrain_options
+  description: |
+    Tests convergence of Bert Large reference config for
+    phase 1 pretraining on 64 IPUs.
+  cmd: >-
+    python3 run_pretraining.py
+      --config configs/pretrain_large_128_phase1_POD64.json
+      --dataset-dir $DATASETS_DIR/wikipedia/128/
+      --save-ckpt-path checkpoint/phase1/
+      --enable-wandb true
+
+tf2_bert_large_sl384_pretrain_real_pod64_conv:
+  <<: *pretrain_options
+  description: |
+    Tests convergence of Bert Large reference config for
+    phase 2 pretraining on 64 IPUs.
+  cmd: >-
+    python3 run_pretraining.py
+      --config configs/pretrain_large_384_phase2_POD64.json
+      --dataset-dir $DATASETS_DIR/wikipedia/384/
+      --save-ckpt-path checkpoint/phase2/
+      --pretrained-ckpt-path checkpoint/phase1/
+      --enable-wandb true
+
+# --- SQuAD training ---
+squad_options: &squad_options
+  location: public_examples/nlp/bert/tensorflow2/
+  data:
+    throughput:
+      regexp: 'throughput:\s*([\d\.]+)'
+      skip: 2
+  output:
+    - [Samples/s, '{throughput}']
+
+tf2_bert_squad_base_train_real_pod16:
+  <<: *squad_options
+  description:
+    This benchmark measures the throughput of Bert Base SQuAD fine tuning.
+  cmd: >-
+    python3 run_squad.py
+      --config configs/squad_base_checkpoint_path.json
+      --do-validation false
+      --total-num-train-samples 4000
+
+tf2_bert_squad_large_train_real_pod16:
+  <<: *squad_options
+  description:
+    This benchmark measures the throughput of Bert Large SQuAD fine tuning.
+  cmd: >-
+    python3 run_squad.py
+      --config configs/squad_large_checkpoint_path.json
+      --do-validation false
+      --total-num-train-samples 2000
+
+tf2_bert_squad_large_train_real_pod16_conv:
+  <<: *squad_options
+  description:
+    This benchmark trains Bert Large SQuAD fine tuning to convergence.
+  cmd: >-
+    python3 run_squad.py
+      --config configs/squad_large_checkpoint_path.json
+      --do-validation true
+      --pretrained-ckpt-path ./checkpoint/phase2/
+      --enable-wandb true
+
+# --- GLUE training ---
+glue_options: &glue_options
+  location: public_examples/nlp/bert/tensorflow2/
+  data:
+    throughput:
+      regexp: 'throughput:\s*([\d\.]+)'
+      skip: 2
+  output:
+    - [Samples/s, '{throughput}']
+
+tf2_glue_base_train_real_pod16:
+  <<: *glue_options
+  description:
+    This benchmark measures the throughput of Bert Base GLUE fine tuning.
+  cmd: >-
+    python3 run_seq_classification.py
+      --config configs/glue_base_checkpoint_path.json
+      --glue-task mrpc
+      --do-validation false
+      --do-test false
+      --total-num-train-samples 300
+      --enable-wandb true

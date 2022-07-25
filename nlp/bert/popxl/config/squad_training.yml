@@ -1,0 +1,89 @@
+# -------- Models --------
+large: &large
+  model:
+    layers: 24
+    hidden_size: 1024
+    sequence_length: 384
+    attention:
+      heads: 16
+  training:
+    global_batch_size: 128
+    epochs: 2
+    optimizer:
+      name: adamw
+      learning_rate:
+        function: linear
+        maximum: 6e-5
+        warmup_proportion: 0.1
+      beta1: 0.9
+      beta2: 0.999
+      weight_decay: 0.01
+  checkpoint:
+    save: "popxl_squad_large.npz"
+
+base: &base
+  model:
+    layers: 12
+    hidden_size: 768
+    sequence_length: 384
+    attention:
+      heads: 12
+  training:
+    global_batch_size: 128
+    epochs: 3
+    optimizer:
+      name: adamw
+      learning_rate:
+        function: linear
+        maximum: 6e-5
+        warmup_proportion: 0.1
+      beta1: 0.9
+      beta2: 0.999
+      weight_decay: 0.01
+  checkpoint:
+    save: "popxl_squad_base.npz"
+
+tiny: &tiny
+  model:
+    layers: 2
+    hidden_size: 128
+    sequence_length: 384
+    attention:
+      heads: 4
+  training:
+    global_batch_size: 16
+    epochs: 3
+    optimizer:
+      name: adamw
+      learning_rate:
+        maximum: 0.00006
+        warmup_proportion: 0.1
+      weight_decay: 0.01
+# -------------------------
+
+# ------- Execution -------
+phased:
+  large:
+    <<: *large
+    execution:
+      io_tiles: 64
+      micro_batch_size: 4
+      data_parallel: 16
+      available_memory_proportion: [0.4]
+  
+  base:
+    <<: *base
+    execution:
+      io_tiles: 64
+      micro_batch_size: 4
+      data_parallel: 16
+      available_memory_proportion: [0.4]
+
+  tiny:
+    <<: *tiny
+    execution:
+      io_tiles: 64
+      micro_batch_size: 2
+      data_parallel: 4
+      available_memory_proportion: [0.2]
+# -------------------------

@@ -1,0 +1,58 @@
+system:
+  num_ipus: 16
+  num_workers: 20
+model:
+  input_channels: 3
+  activation: mish
+  normalization: group
+  pipeline_splits: [backbone.cspdark2.csp.res_modules.1, backbone.cspdark4.csp.bottleneck_conv1, neck.cspUp2.bneck_csp.res_modules.0.conv1]
+  anchors:
+    p3width: [6, 13, 11, 27]
+    p3height: [8, 12, 26, 19]
+    p4width: [24, 54, 39, 88]
+    p4height: [40, 38, 74, 73]
+    p5width: [66, 123, 226, 293]
+    p5height: [135, 195, 119, 258]
+  n_classes: 80
+  class_name_path: ./configs/class_name.yaml
+  strides: [8, 16, 32]
+  precision: mixed
+  image_size: 416
+  micro_batch_size: 1
+  mode: train
+  ipu: true
+  uint_io: true
+  max_nlabels_p3: 1000
+  max_nlabels_p4: 500
+  max_nlabels_p5: 200
+ipuopts:
+  device_iterations: 4
+  gradient_accumulation: 16
+training:
+  initial_lr: 0.01
+  stochastic_rounding: True
+inference:
+  class_conf_threshold: 0.001
+  obj_threshold: 0.001
+  iou_threshold: 0.6
+  plot_output: false
+  plot_step: 250
+  plot_dir: plots
+dataset:
+  name: coco
+  max_bbox_per_scale: 150
+  train:
+    cache_data: false
+    file: train2017.txt
+    cache_path: ./utils/data/train
+    data_aug: true
+  test:
+    cache_data: false
+    file: val2017.txt
+    cache_path: ./utils/data/test
+    data_aug: false
+  mosaic: true
+  color: true
+eval:
+  metrics: false
+  verbose: false

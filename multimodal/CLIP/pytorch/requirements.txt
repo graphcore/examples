@@ -1,0 +1,8 @@
+numpy==1.19.5
+pandas==1.1.5
+wandb==0.12.8
+transformers==4.10.0
+ftfy==6.0.3
+torchvision==0.11.1
+pytest==6.2.5
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils

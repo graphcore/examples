@@ -1,0 +1,16 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+numpy==1.19.5
+axial_positional_embedding==0.2.1
+einops==0.4.1
+youtokentome==1.0.6
+ftfy==6.0.3
+regex==2022.4.24
+omegaconf==2.1.2
+taming-transformers-rom1504==0.0.6
+protobuf==3.19.4
+wandb==0.12.8
+pytest==6.2.5
+pytest-pythonpath==0.7.4
+torchvision==0.11.1+cpu
+horovod==0.24.3
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils

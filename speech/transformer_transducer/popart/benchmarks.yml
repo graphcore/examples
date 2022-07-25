@@ -1,0 +1,68 @@
+---
+common_options: &common_options
+  location: public_examples/speech/transformer_transducer/popart/training
+  data:
+    throughput:
+      regexp: 'Throughput:\s*(.*?),'
+      skip: 3
+    current_rnnt_loss:
+      reduction_type: "final"
+      regexp: 'Current RNNT loss:\s*([\d\.]+|nan),'
+    average_rnnt_loss:
+      reduction_type: "final"
+      regexp: 'Average RNNT loss:\s*([\d\.]+|nan),'
+  output:
+    - [speech_queries/s, "throughput"]
+    - [rnnt_loss, "current_rnnt_loss"]
+    - [average_rnnt_loss, "average_rnnt_loss"]
+
+popart_transformer_transducer_train_gen_pod16:
+  <<: *common_options
+  description:
+    Train Transformer Transducer on 16IPUs using host generated
+    data for a performance test
+  cmd: poprun
+    --vv
+    --numa-aware=yes
+    --vipu-server-timeout 600
+    --num-instances=4
+    --num-replicas=16
+    --ipus-per-replica=1
+    --mpi-global-args="
+    --tag-output --allow-run-as-root
+    --output-filename poprun_output"
+    python3 transducer_train.py
+    --model-conf-file configs/transducer-1023sp.yaml
+    --model-dir checkpoint
+    --data-dir $DATASETS_DIR/LibriSpeech/
+    --generated-data
+    --enable-half-partials
+    --enable-lstm-half-partials
+    --enable-stochastic-rounding
+    --num-steps 10
+
+popart_transformer_transducer_train_real_pod16_conv:
+  <<: *common_options
+  description:
+    Train Transformer Transducer on 16IPUs using real data
+    to convergence
+  cmd: poprun
+    --vv
+    --numa-aware=yes
+    --vipu-server-timeout 600
+    --num-instances=4
+    --num-replicas=16
+    --ipus-per-replica=1
+    --mpi-global-args="
+    --tag-output --allow-run-as-root
+    --output-filename poprun_output"
+    python3 transducer_train.py
+    --model-conf-file configs/transducer-1023sp.yaml
+    --model-dir checkpoint
+    --data-dir $DATASETS_DIR/LibriSpeech/
+    --enable-half-partials
+    --enable-lstm-half-partials
+    --enable-stochastic-rounding
+    --wandb
+    --wandb_entity apps-benchmarking
+    --wandb_run_name convergence_test

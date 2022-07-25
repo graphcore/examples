@@ -1,0 +1,91 @@
+# Copyright (c) 2022 Graphcore Ltd. All rights reserved.
+
+#----------------------------------------------------------------------------------
+CLIP_ViT-B-32_cc3m: &CLIP_ViT-B-32_cc3m
+  # Execution
+  random_seed: 42
+  dataloader_workers: 32
+  async_dataloader: True
+  ipus_per_replica: 8
+  executable_cache_dir: "./exe_cache"
+  enable_half_partials: True
+  matmul_proportion: [0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+  enable_rts: False
+  wandb: False
+  checkpoint_save_steps: 500
+  epochs: 32
+  device_iterations: 1
+  replication_factor: 1
+  gradient_accumulation: 15
+
+  # Dataset
+  host_generate_data: False
+  ipu_generate_data: False
+  image_path: "./data/cc3m/images"
+  captions_path: "./data/cc3m/img_cap.csv"
+  batch_size: 74
+  checkpoint_file: ""
+  checkpoint_dir: "output/ckpt"
+
+  # Optimizer
+  optimizer: AdamW
+  beta1: 0.9
+  beta2: 0.98
+  eps: 1e-6
+  weight_decay: 0.2
+  warmup_epochs: 5
+  lr_schedule: cosine
+  learning_rate: 5e-4
+  loss_scaling: 1024.0
+  restore: False
+  state_onchip: False
+
+  # CLIP
+  embed_dim: 512
+  transformer_width: 512
+  transformer_heads: 8
+  transformer_layers: 12
+  context_length: 77
+  vocab_size: 49408
+  truncate: True
+
+  vision_width: 768
+  vision_layers: 12
+  vision_heads: 12
+  vision_patch_size: 32
+  grid_size: 7
+  image_resolution: 224
+
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+unit_test: &unit_test
+  # Execution
+  random_seed: 42
+  device_iterations: 1
+  replication_factor: 1
+  gradient_accumulation: 10
+  ipus_per_replica: 1
+  matmul_proportion: [0.6]
+
+  learning_rate: 1e-4
+  batch_size: 10
+
+  # CLIP
+  embed_dim: 256
+  transformer_width: 256
+  transformer_heads: 4
+  transformer_layers: 3
+  context_length: 77
+  vocab_size: 49408
+  truncate: True
+
+  vision_width: 384
+  vision_layers: 3
+  vision_heads: 6
+  vision_patch_size: 32
+  grid_size: 7
+  image_resolution: 224
+
+#----------------------------------------------------------------------------------
+

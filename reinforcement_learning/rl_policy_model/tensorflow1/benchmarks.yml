@@ -1,0 +1,18 @@
+---
+tf1_reinforcement_learning_infer_synth_1ipu:
+  description: >-
+    Deep reinforcement learning model on multiple IPUs with synchronous data
+    parallel training using synthetic data
+  cmd: >-
+    python3 rl_benchmark.py --num_iter 20 --micro_batch_size=16 --time_steps=16
+      --num_ipus=1
+  location: public_examples/reinforcement_learning/rl_policy_model/tensorflow1
+  data:
+    throughput:
+      regexp: 'Average *(.*) items/sec'
+  derived:
+    latency:
+      expr: '16000 / {throughput}'
+  output:
+    - [Items/sec, 'throughput']
+    - [Latency (ms), 'latency']

@@ -1,0 +1,115 @@
+---
+train_options: &train_options
+  location: public_examples/speech/fastspeech2/tensorflow2/
+  data:
+    throughput:
+      reduction_type: 'final'
+      regexp: 'Throughput: *(.*?) samples/s'
+  output:
+    - [samples/sec, 'throughput']
+
+inference_options: &inference_options
+  location: public_examples/speech/fastspeech2/tensorflow2/
+  data:
+    throughput:
+      regexp: 'Averaged Metrics.*\n.*Throughput:\s*([\d\.]+)'
+    latency:
+      regexp: 'Averaged Metrics.*\n.*Latency:\s*([\d\.]+)'
+  output:
+    - [samples/s, "throughput"]
+    - [latency ms, "latency"]
+
+tf2_fastspeech2_train_gen_pod4:
+  <<: *train_options
+  description: Fastspeech2, 4 ipus, minimal test for throughput
+  cmd: >-
+    python3 train.py
+        --config config/fastspeech2.json
+        --train
+        --generated-data
+        --batch-size 2
+        --replicas 2
+        --gradient-accumulation-count 8
+        --epochs 2
+        --available-memory-proportion 0.1
+
+tf2_fastspeech2_train_gen_pod16:
+  <<: *train_options
+  description: Fastspeech2, 16 ipus, minimal test for throughput
+  cmd: >-
+    python3 train.py
+        --config config/fastspeech2.json
+        --train
+        --generated-data
+        --batch-size 2
+        --replicas 8
+        --gradient-accumulation-count 4
+        --epochs 2
+        --available-memory-proportion 0.1
+
+tf2_fastspeech2_fp16_infer_gen_pod4:
+  <<: *inference_options
+  description: |
+    Fastspeech2 half precision inference batch sizes
+    1-15 (max batch size) on 4 IPUs with host generated data
+  parameters:
+    batch_size: 1,4,8,12,15
+  cmd: >-
+    mpirun
+      --tag-output
+      --allow-run-as-root
+      --np 4
+      --bind-to socket
+    python3 infer.py
+      --config config/fastspeech2.json
+      --generated-data
+      --batch-size {batch_size}
+      --replicas 1
+      --epochs 10
+      --steps-per-epoch 100
+      --precision 16
+
+tf2_fastspeech2_fp32_infer_gen_pod4:
+  <<: *inference_options
+  description: |
+    Fastspeech2 single precision inference batch sizes
+    1-15 (max batch size) on 4 IPUs with host generated data
+  parameters:
+    batch_size: 1,2,4,6,7
+  cmd: >-
+    mpirun
+      --tag-output
+      --allow-run-as-root
+      --np 4
+      --bind-to socket
+    python3 infer.py
+      --config config/fastspeech2.json
+      --generated-data
+      --batch-size {batch_size}
+      --replicas 1
+      --epochs 10
+      --steps-per-epoch 100
+      --precision 32
+
+tf2_fastspeech2_max_batch_size_infer_gen_pod4:
+  <<: *inference_options
+  description: Fastspeech2 max batch size inference on 4 IPUs using
+    half/ single precision with host generated data
+  parameters:
+    - ["batch_size", "precision"]
+    - [15, 16]
+    - [7, 32]
+  cmd: >-
+    mpirun
+      --tag-output
+      --allow-run-as-root
+      --np 4
+      --bind-to socket
+    python3 infer.py
+      --config config/fastspeech2.json
+      --generated-data
+      --batch-size {batch_size}
+      --replicas 1
+      --epochs 10
+      --steps-per-epoch 100
+      --precision {precision}

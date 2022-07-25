@@ -1,0 +1,7 @@
+- Step by Step:
+    - step 1: synthetic test data
+        - `python roi_align.py --synthetic`
+    - step 2: test
+        - FLOAT32 : `python roi_align.py`
+        - FLOAT16 : `python roi_align.py --data-type FLOAT16`
+            - `nan` or `inf` need further debuging

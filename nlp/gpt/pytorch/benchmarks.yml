@@ -1,0 +1,321 @@
+---
+train_options: &train_options
+  location: public_examples/nlp/gpt/pytorch/
+  data:
+    throughput:
+      reduction_type: "final"
+      regexp: 'Throughput: ([0-9, .]*)'
+    loss:
+      reduction_type: "final"
+      regexp: "loss: *(.*?),"
+    accuracy:
+      reduction_type: "final"
+      regexp: "acc: *(.*?),"
+  output:
+    - [samples/sec, "throughput"]
+    - [Loss, "loss"]
+    - [Accuracy, "accuracy"]
+
+pytorch_gpt2_small_train_gen_pod16:
+  <<: *train_options
+  description: |
+    GPT2 Small training for 16 IPUs with generated data.
+  cmd: >-
+    python train_gpt2.py
+      --model gpt2
+      --ipus-per-replica 4
+      --replication-factor 4
+      --gradient-accumulation 2048
+      --device-iterations 8
+      --batch-size 1
+      --layers-per-ipu 0 4 4 4
+      --matmul-proportion 0.15 0.15 0.15 0.15
+      --max-len 1024
+      --optimizer AdamW
+      --learning-rate 0.00015
+      --lr-schedule cosine
+      --lr-warmup 0.01
+      --remap-logit True
+      --enable-sequence-serialized True
+      --embedding-serialization-factor 4
+      --recompute-checkpoint-every-layer True
+      --enable-half-partials True
+      --replicated-tensor-sharding True
+      --compile-only False
+      --train-path 'generated'
+      --epochs 1
+
+pytorch_gpt2_small_train_gen_pod64:
+  <<: *train_options
+  description: |
+    GPT2 Small training for 64 IPUs with generated data.
+  cmd: >-
+    python train_gpt2.py
+      --model gpt2
+      --ipus-per-replica 4
+      --replication-factor 16
+      --gradient-accumulation 512
+      --device-iterations 8
+      --batch-size 1
+      --layers-per-ipu 0 4 4 4
+      --matmul-proportion 0.15 0.15 0.15 0.15
+      --max-len 1024
+      --optimizer AdamW
+      --learning-rate 0.00015
+      --lr-schedule cosine
+      --lr-warmup 0.01
+      --remap-logit True
+      --enable-sequence-serialized True
+      --embedding-serialization-factor 4
+      --recompute-checkpoint-every-layer True
+      --enable-half-partials True
+      --replicated-tensor-sharding True
+      --compile-only False
+      --train-path 'generated'
+      --epochs 1
+
+pytorch_gpt2_medium_train_gen_pod16:
+  <<: *train_options
+  description: |
+    GPT2 Medium training for 16 IPUs with generated data.
+  cmd: >-
+    python train_gpt2.py
+      --model gpt2-medium
+      --ipus-per-replica 8
+      --replication-factor 2
+      --gradient-accumulation 4096
+      --device-iterations 8
+      --batch-size 1
+      --layers-per-ipu 0 3 3 3 3 4 4 4
+      --matmul-proportion 0.30 0.15 0.15 0.15 0.15 0.15 0.15 0.15
+      --max-len 1024
+      --optimizer AdamW
+      --learning-rate 0.00015
+      --lr-schedule cosine
+      --lr-warmup 0.01
+      --remap-logit True
+      --enable-sequence-serialized True
+      --embedding-serialization-factor 4
+      --recompute-checkpoint-every-layer True
+      --enable-half-partials True
+      --replicated-tensor-sharding True
+      --compile-only False
+      --train-path 'generated'
+      --epochs 1
+
+pytorch_gpt2_medium_train_gen_pod64:
+  <<: *train_options
+  description: |
+    GPT2 Medium training for 64 IPUs with generated data.
+  cmd: >-
+    python train_gpt2.py
+      --model gpt2-medium
+      --ipus-per-replica 8
+      --replication-factor 8
+      --gradient-accumulation 1024
+      --device-iterations 8
+      --batch-size 1
+      --layers-per-ipu 0 3 3 3 3 4 4 4
+      --matmul-proportion 0.30 0.15 0.15 0.15 0.15 0.15 0.15 0.15
+      --max-len 1024
+      --optimizer AdamW
+      --learning-rate 0.00015
+      --lr-schedule cosine
+      --lr-warmup 0.01
+      --remap-logit True
+      --enable-sequence-serialized True
+      --embedding-serialization-factor 4
+      --recompute-checkpoint-every-layer True
+      --enable-half-partials True
+      --replicated-tensor-sharding True
+      --compile-only False
+      --train-path 'generated'
+      --epochs 1
+
+pytorch_gpt2_large_sl512_train_gen_pod16:
+  <<: *train_options
+  description: |
+    GPT2 Large(length=512) training for 16 IPUs with generated data.
+  cmd: >-
+    python train_gpt2.py
+      --model gpt2-large
+      --ipus-per-replica 8
+      --replication-factor 2
+      --gradient-accumulation 4096
+      --device-iterations 8
+      --batch-size 1
+      --layers-per-ipu 1 5 5 5 5 5 5 5
+      --matmul-proportion 0.15 0.12 0.15 0.15 0.15 0.15 0.15 0.15
+      --max-len 512
+      --optimizer AdamW
+      --learning-rate 0.00015
+      --lr-schedule cosine
+      --lr-warmup 0.01
+      --remap-logit True
+      --enable-sequence-serialized True
+      --embedding-serialization-factor 8
+      --recompute-checkpoint-every-layer True
+      --enable-half-partials True
+      --compile-only False
+      --replicated-tensor-sharding True
+      --train-path 'generated'
+      --epochs 1
+
+pytorch_gpt2_large_sl512_train_gen_pod64:
+  <<: *train_options
+  description: |
+    GPT2 Large(length=512) training for 64 IPUs with generated data.
+  cmd: >-
+    python train_gpt2.py
+      --model gpt2-large
+      --ipus-per-replica 8
+      --replication-factor 8
+      --gradient-accumulation 1024
+      --device-iterations 8
+      --batch-size 1
+      --layers-per-ipu 1 5 5 5 5 5 5 5
+      --matmul-proportion 0.15 0.12 0.15 0.15 0.15 0.15 0.15 0.15
+      --max-len 512
+      --optimizer AdamW
+      --learning-rate 0.00015
+      --lr-schedule cosine
+      --lr-warmup 0.01
+      --remap-logit True
+      --enable-sequence-serialized True
+      --embedding-serialization-factor 8
+      --recompute-checkpoint-every-layer True
+      --enable-half-partials True
+      --compile-only False
+      --replicated-tensor-sharding True
+      --train-path 'generated'
+      --epochs 1
+
+pytorch_gpt2_large_train_gen_pod16:
+  <<: *train_options
+  description: |
+    GPT2 Large(length=1024) training for 16 IPUs with generated data.
+  cmd: >-
+    python train_gpt2.py
+      --model gpt2-large
+      --ipus-per-replica 16
+      --replication-factor 1
+      --gradient-accumulation 8192
+      --device-iterations 8
+      --batch-size 1
+      --layers-per-ipu 0 2 2 2 2 2 2 2 2 3 3 3 3 3 3 2
+      --matmul-proportion 0.2 0.15 0.2 0.2 0.2 0.15 0.15 0.2 0.2 0.15 0.2 0.2 0.2 0.15 0.15 0.2
+      --max-len 1024
+      --optimizer AdamW
+      --learning-rate 0.00015
+      --lr-schedule cosine
+      --lr-warmup 0.01
+      --remap-logit True
+      --enable-sequence-serialized True
+      --embedding-serialization-factor 4
+      --recompute-checkpoint-every-layer True
+      --enable-half-partials True
+      --compile-only False
+      --replicated-tensor-sharding False
+      --train-path 'generated'
+      --epochs 1
+
+inference_options: &inference_options
+  location: public_examples/nlp/gpt/pytorch/
+  data:
+    throughput:
+      reduction_type: "final"
+      regexp: 'Throughput: ([0-9, .]*)'
+    latency:
+      reduction_type: "final"
+      regexp: 'Latency: ([0-9, .]*)'
+  output:
+    - [samples/sec, "throughput"]
+    - [sec, "latency"]
+
+pytorch_gpt2_small_infer_gen_pod16:
+  <<: *inference_options
+  description: |
+    GPT2 small inference for 16 IPUs with generated data.
+  cmd: >-
+    python inference_gpt2.py
+      --model gpt2
+      --max-len 1024
+      --layers-per-ipu 2 10
+      --matmul-proportion 0.2 0.2
+      --ipus-per-replica 2
+      --replication-factor 8
+      --epochs 5
+      --device-iterations 1
+      --batch-size 1
+      --gradient-accumulation 1
+      --embedding-serialization-factor 4
+      --enable-half-partials True
+      --train-path 'generated'
+      --replicated-tensor-sharding False
+      --compile-only False
+
+pytorch_gpt2_medium_infer_gen_pod16:
+  <<: *inference_options
+  description: |
+    GPT2 medium inference for 16 IPUs with generated data.
+  cmd: >-
+    python inference_gpt2.py
+      --model gpt2-medium
+      --max-len 1024
+      --layers-per-ipu 1 7 8 8
+      --matmul-proportion 0.2 0.2 0.2 0.2
+      --ipus-per-replica 4
+      --replication-factor 4
+      --epochs 5
+      --device-iterations 1
+      --batch-size 1
+      --gradient-accumulation 1
+      --embedding-serialization-factor 4
+      --enable-half-partials True
+      --train-path 'generated'
+      --replicated-tensor-sharding False
+      --compile-only False
+
+pytorch_gpt2_large_infer_gen_pod16:
+  <<: *inference_options
+  description: |
+    GPT2 large inference for 16 IPUs with generated data.
+  cmd: >-
+    python inference_gpt2.py
+      --model gpt2-large
+      --max-len 1024
+      --layers-per-ipu 1 5 5 5 5 5 5 5
+      --matmul-proportion 0.2 0.2 0.2 0.2 0.2 0.2 0.2 0.2
+      --ipus-per-replica 8
+      --replication-factor 2
+      --epochs 5
+      --device-iterations 1
+      --batch-size 1
+      --gradient-accumulation 1
+      --embedding-serialization-factor 4
+      --enable-half-partials True
+      --train-path 'generated'
+      --replicated-tensor-sharding False
+      --compile-only False
+
+pytorch_gpt2_xlarge_infer_gen_pod16:
+  <<: *inference_options
+  description: |
+    GPT2 XLarge inference for 16 IPUs with generated data.
+  cmd: >-
+    python inference_gpt2.py
+      --model gpt2-xl
+      --max-len 1024
+      --layers-per-ipu 1 6 6 7 7 7 7 7
+      --matmul-proportion 0.2 0.2 0.2 0.2 0.2 0.2 0.2 0.2
+      --ipus-per-replica 8
+      --replication-factor 2
+      --epochs 2
+      --device-iterations 1
+      --batch-size 1
+      --gradient-accumulation 1
+      --embedding-serialization-factor 4
+      --enable-half-partials True
+      --train-path 'generated'
+      --replicated-tensor-sharding False
+      --compile-only False

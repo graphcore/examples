@@ -43,7 +43,7 @@ pod-xx:~/public_examples/utils/distributed_training$ . setup_poprun.sh <cluster_
 ```
 Run your command using poprun_prefix :  
 ```
-pod-xx:~/public_examples/applications/tensorflow2/image_classification$ poprun_prefix python3 train.py --config mk2_resnet50_8k_bn_pipeline --loss-scaling 0 --num-epochs 5 --clean-dir False --validation False 
+pod-xx:~/public_examples/vision/cnns/tensorflow2$ poprun_prefix python3 train.py --config resnet50_16ipus_8k_bn_pipeline --loss-scaling 0 --num-epochs 5 --clean-dir False --validation False 
 ```   
 
 

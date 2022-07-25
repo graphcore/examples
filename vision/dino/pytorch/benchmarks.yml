@@ -1,0 +1,79 @@
+---
+common_options: &common_options
+  location:
+    public_examples/vision/dino/pytorch/
+  output:
+    - [Images/sec, 'throughput']
+    - [accuracy, 'accuracy']
+    - [loss, 'loss']
+  data:
+    throughput:
+      regexp: 'throughput:(.*?)\s+'
+      skip: 1
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss:(.*?)\s+'
+      skip: 1
+  env:
+    POPLAR_ENGINE_OPTIONS: '{
+      "opt.enableMultiAccessCopies":"false",
+      "target.hostSyncTimeout":"3000"
+    }'
+    PYTORCH_EXE_DIR: "/tmp/pt_cache/"
+  description: |
+    Dino training with real data. For runs bigger than the 16 IPU benchmark,
+    The env variables needed are:
+      HOSTS - Comma separated list of hosts, usually something like:
+        `10.1.3.101,10.1.3.10x....`
+      VIPU_CLI_API_HOST - IP of host where VIPU server is running. Usually
+        `10.1.3.101`.
+      PARTITION - Name of partition to use, can be found via
+        `vipu list partitions`. Note that the `--update-partitions`
+        poprun flag is disabled here, so ensure the partition is
+        reconfigurable or it has been setup properly for this benchmark
+      TCP_IF_INCLUDE - Name of subnet, or range of IPs for network
+        interface on which all hosts are. Usually `enp65s0f0np0` or
+        `10.1.3.0/24`.
+
+pytorch_dino_train_real_pod16:
+  <<: *common_options
+  cmd: >-
+    python train_ipu.py
+      --config vit_base_pod16
+      --data_path $DATASETS_DIR/imagenet-raw-dataset/train
+      --epochs 1
+      --warmup_epochs 0
+
+pytorch_dino_train_real_pod64_conv:
+  <<: *common_options
+  cmd: >-
+    poprun
+      -vv
+      --host $HOSTS
+      --num-instances=8
+      --num-replicas=8
+      --ipus-per-replica=8
+      --remove-partition=no
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-partition=$PARTITION
+      --vipu-server-timeout=3600
+      --executable-cache-path=$PYTORCH_EXE_DIR
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x CPATH
+        -x IPUOF_VIPU_API_TIMEOUT=3600
+        -x POPLAR_LOG_LEVEL=WARN
+        -x POPLAR_SDK_ENABLED
+        -x POPLAR_ENGINE_OPTIONS"
+    python train_ipu.py
+      --config vit_base_pod64
+      --data_path $DATASETS_DIR/imagenet-raw-dataset/train
+      --ga 200
+      --batch_size 2
+      --rebatched_worker_size 400

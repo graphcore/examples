@@ -1,0 +1,12 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+numpy==1.19.5
+fire==0.4.0
+pyyaml==5.4.1
+pandas==1.1.5
+wandb==0.12.1
+pillow==8.4.0
+pytest==6.2.5
+editdistance==0.5.2
+horovod==0.24.0
+torchaudio==0.10.0+cpu
+git+https://github.com/graphcore/examples-utils@292047e7d29e25954cdfcf821320544dc11bfc04#egg=examples-utils

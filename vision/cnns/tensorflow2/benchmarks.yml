@@ -1,0 +1,39 @@
+---
+common_options: &common_options
+  location: public_examples/vision/cnns/tensorflow2
+  data:
+    throughput:
+      reduction_type: 'mean'
+      regexp: 'Average images\/s.:\s*([\d\.]+)'
+      skip: 2
+    accuracy:
+      reduction_type: 'final'
+      regexp: 'accuracy.:\s*([\d\.]+|nan)'
+      skip: 1
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss.:\s*([\d\.]+|nan)'
+      skip: 1
+  output:
+    - [Images/sec, 'throughput']
+    - [accuracy, 'accuracy']
+    - [loss, 'loss']
+
+tf2_resnet50_train_real_pod16:
+  <<: *common_options
+  description:
+    Resnet50 8k batch size, 16.16 precision, 4 replicas, 4 pipeline stages
+  cmd: >-
+    python3 train.py
+        --config resnet50_16ipus_8k_bn_pipeline
+        --num-epochs 5
+        --dataset-path $DATASETS_DIR/imagenet-data
+
+tf2_resnet50_train_real_pod16_conv:
+  <<: *common_options
+  description:
+    Resnet50 8k batch size, 16.16 precision, 4 replicas, 4 pipeline stages
+  cmd: >-
+    python3 train.py
+        --config resnet50_16ipus_8k_bn_pipeline
+        --dataset-path $DATASETS_DIR/imagenet-data

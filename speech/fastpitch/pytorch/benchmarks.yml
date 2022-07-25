@@ -1,0 +1,29 @@
+---
+common_options: &common_options
+  location: public_examples/speech/fastpitch/pytorch/
+  data:
+    throughput:
+      skip: 1
+      regexp: 'throughput: *(.*?),'
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss: *(.*?),'
+  output:
+    - [throughput, 'throughput']
+    - [loss, 'loss']
+
+pytorch_fastpitch_train_gen_pod16:
+  <<: *common_options
+  description: Pytorch FastPitch throughput benchmark using generated data.
+  cmd: >-
+    python train.py
+      --checkpoint-dir ./
+      --epochs 1
+      --learning-rate 0.1
+      --batch-size 1
+      --dur-predictor-loss-scale 0.1
+      --pitch-predictor-loss-scale 0.1
+      --gradient-accumulation 16
+      --replication-factor 8
+      --num-dataloader-workers 64
+      --generated-data

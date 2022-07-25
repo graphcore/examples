@@ -1,0 +1,12 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+--find-links https://pytorch-geometric.com/whl/torch-1.7.0+cpu.html
+mypy==0.910
+pytest==6.2.5
+scikit-learn==0.24.2
+torch==1.7.1
+torch-geometric==1.7.0
+torch-scatter==2.0.6
+torch-sparse==0.6.9
+tqdm==4.60.0
+types-dataclasses==0.6.1
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils

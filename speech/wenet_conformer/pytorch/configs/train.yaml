@@ -1,0 +1,177 @@
+encoder:
+  input_size: 80
+  output_size: &encoder_output_size 256
+  attention_heads: 4
+  linear_units: 2048
+  num_blocks: 12
+  dropout_rate: 0.1
+  positional_dropout_rate:  0.1
+  attention_dropout_rate: 0.0
+  normalize_before: true
+  concat_after: false
+  zero_triu: false
+  cnn_module_kernel: 15
+  max_len: &feature_max_length 1220
+
+decoder:
+  vocab_size: &vocab_size 4233
+  encoder_output_size: *encoder_output_size
+  dropout_rate: 0.1
+  positional_dropout_rate: 0.1
+  use_output_layer: true
+  normalize_before: true
+  attention_heads: 4
+  linear_units: 2048
+  num_blocks: 6
+  self_attention_dropout_rate: 0.0
+  src_attention_dropout_rate: 0.0
+  concat_after: false
+  max_len: &target_max_length 48
+
+normalizer:
+  norm_means: true
+  norm_vars: true
+  eps: 1.0e-4
+  cmvn: './data/train/global_cmvn'
+
+
+loss_fn:
+  vocab_size: *vocab_size
+  smoothing: 0.1
+  normalize_length: false
+
+loss_weight:  
+  ctc_weight: 0.3
+
+vocab:
+  blank: <blank>
+  pad: <blank>
+  unk: <unk>
+  sos: <sos/eos>
+  eos: <sos/eos>
+  vocab_path: './data/dict/lang_char.txt'  
+
+
+train_dataset:
+  data_mode : 'raw'
+  data_list: './data/train/data.list'
+  feature_max_length: *feature_max_length
+  target_max_length: *target_max_length
+  dtype: &type_data 'FLOAT16' 
+  use_generated_data: false
+  random_seed: &random_seed 1234
+  is_spec_aug: false
+  
+train_conf:
+  filter_conf: 
+      max_length: *feature_max_length
+      min_length: 0
+      token_max_length: *target_max_length
+      token_min_length: 1
+  resample_conf: 
+      resample_rate: 16000
+  speed_perturb: True
+  fbank_conf: 
+      num_mel_bins: 80
+      frame_shift: 10
+      frame_length: 25
+      dither: 0.1
+  spec_aug: True
+  spec_aug_conf: 
+      num_t_mask: 2
+      num_f_mask: 2
+      max_t: 50
+      max_f: 10
+  shuffle: True
+  shuffle_conf: 
+      shuffle_size: 1500
+  sort: True
+  sort_conf: 
+      sort_size: 500
+  batch_conf:
+    batch_type: 'static'
+    batch_size: 1
+
+train_iterator:
+  batch_size: 4
+  num_workers: 16
+  async_mode: true
+  persistent_workers: true
+  async_options:
+    early_preload: true
+    load_indefinitely: true
+    buffer_size: 3
+    miss_sleep_time_in_ms: 0
+    sharing_strategy:  "SharedMemory"
+
+val_dataset:
+  data_mode : 'raw'
+  data_list: './data/test/data.list'
+  feature_max_length: *feature_max_length
+  target_max_length: *target_max_length
+  dtype: *type_data
+  random_seed: *random_seed
+
+
+val_iterator:
+  batch_size: 1
+  num_workers: 4
+  async_mode: true
+  persistent_workers: true
+  async_options:
+    early_preload: true
+    load_indefinitely: true
+    buffer_size: 3
+    miss_sleep_time_in_ms: 0
+    sharing_strategy:  "SharedMemory"
+
+ipu_options:
+  num_replicas: 1
+  gradient_accumulation: 72
+  device_iterations: 1
+  compile_only: false
+  num_io_tiles: 0
+  available_memory_proportion: [0.3, 0.3, 0.3, 0.3]
+  optimizer_state_offchip: false
+  replicated_tensor_sharding: false
+  executable_cache_dir: null
+  enable_half_partials: true
+  enable_stochastic_rounding: true
+  enable_synthetic_data: false
+  enable_profiling: false
+  profile_path: "./profiles"
+  pipeline:
+    - ['encoder.encoders__2.', 1]
+    - ['encoder.encoders__6.', 2]
+    - ['encoder.encoders__10.', 3]
+
+checkpoints:
+  pretrained_checkpoint: null
+  save_checkpoint_path: "./checkpoint"
+  save_per_epoch: 1
+
+compute_cer:
+  average_num: 30  # null or number, if test the tmp checkpoint, set the 'average_num' to null
+  decode_mode: 'attention_rescoring' #['ctc_greedy_search', 'attention_decode', 'attention_rescoring']
+  beam_size: 10
+  label_text: "./data/test/text"
+
+trainer:
+  dtype: *type_data
+  num_epochs: 240
+  log_every_n_step: 1
+  random_seed: *random_seed
+  init_type: "pytorch"
+  wandb_name: null
+  logger:
+    name: 'conformer_logger'
+    log_file: 'log.txt'
+    level: 'info'
+
+optimizer:
+  lr: 0.002
+  loss_scaling: 1024
+  max_grad_norm: 5
+
+scheduler:
+  warmup_steps: 25000

@@ -1,0 +1,1 @@
+python main.py train --trainer.log_every_n_step 10 --scheduler.warmup_steps 25000 --train_dataset.dtype 'FLOAT32' --val_dataset.dtype 'FLOAT32' --trainer.dtype 'FLOAT32'  --train_iterator.batch_size 4 --ipu_options.gradient_accumulation 72

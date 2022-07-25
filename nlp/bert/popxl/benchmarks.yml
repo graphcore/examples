@@ -1,0 +1,92 @@
+---
+# --- Pretraining ---
+pretrain_options: &pretrain_options
+  location: public_examples/nlp/bert/popxl/
+  data:
+   throughput:
+    regexp: 'Throughput\:\s*(.*) samples/s'
+  output:
+   - [throughput, 'throughput']
+  env:
+    WANDB_MODE: offline
+
+popxl_bert_pretrain_base_real_pod16:
+  <<: *pretrain_options
+  description: |
+    BERT-Base pretraining benchmark on real data. Phase 1 and phase 2.
+  parameters:
+    phase: 128,512
+  cmd: >-
+    python3 demo/pretraining/phased.py
+      --config base_{phase}
+      --input_files $DATASETS_DIR/wikipedia/{phase}/wiki_1[0-1]*.tfrecord
+      --steps 100
+      --save
+      --load
+  data:
+    throughput:
+      skip: 1
+      regexp: 'Throughput\:\s*(.*) samples/s'
+  env:
+    POPLAR_ENGINE_OPTIONS: '{"target.extendedMemory":"true"}'
+
+
+popxl_bert_pretrain_large_real_pod16:
+  <<: *pretrain_options
+  description: |
+    BERT-Large pretraining benchmark on real data. Phase 1 and phase 2.
+  parameters:
+    phase: 128,512
+  cmd: >-
+    python3 demo/pretraining/phased.py
+      --config large_{phase}
+      --input_files $DATASETS_DIR/wikipedia/{phase}/wiki_1[0-1]*.tfrecord
+      --steps 100
+      --save
+      --load
+  data:
+    throughput:
+      skip: 1
+      regexp: 'Throughput\:\s*(.*) samples/s'
+  env:
+    POPLAR_ENGINE_OPTIONS: '{"target.extendedMemory":"true"}'
+
+popxl_bert_pretrain_base_generated_pod16:
+  <<: *pretrain_options
+  description: |
+    BERT-Base pretraining benchmark on generated data. Phase 1 and phase 2.
+  parameters:
+    phase: 128,512
+  cmd: >-
+    python3 execution/pretraining/phased.py
+      --config base_{phase}
+
+popxl_bert_pretrain_large_generated_pod16:
+  <<: *pretrain_options
+  description: |
+    BERT-Large pretraining benchmark on generated data. Phase 1 and phase 2.
+  parameters:
+    phase: 128,512
+  cmd: >-
+    python3 execution/pretraining/phased.py
+      --config large_{phase}
+
+popxl_squad_training_generated_pod16:
+  <<: *pretrain_options
+  description: |
+    SQuAD-Base and Large training benchmark on generated data
+  parameters:
+    config: base,large
+  cmd: >-
+    python3 execution/squad/training_phased.py
+      --config {config}
+
+popxl_squad_infer_generated_pod4:
+  <<: *pretrain_options
+  description: |
+    SQuAD-Base and Large inference benchmark on generated data with 1 IPU
+  parameters:
+    config: base,large
+  cmd: >-
+    python3 execution/squad/inference_phased.py
+      --config {config}

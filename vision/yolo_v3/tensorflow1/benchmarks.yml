@@ -1,0 +1,18 @@
+---
+tf1_yolov3_train_real_pod4:
+  description: yolo v3 training on 544x544 image.
+  cmd: >-
+    python3 train.py
+       --config ./config/config_544_performance_test.json
+       --train-annot-path ./data/dataset/voc_train.txt
+  location: public_examples/vision/yolo_v3/tensorflow1
+  data:
+    throughput:
+      regexp: 'samples/s:*(.*?),'
+      skip: 1
+    loss:
+      reduction_type: 'final'
+      regexp: 'moving_total_loss:([\d\.]+|nan)\,'
+      skip: 10
+  output:
+    - [Images/sec, 'throughput']

@@ -1,0 +1,17 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+simple-parsing==0.0.19.post1
+pyyaml==5.4.1
+dataclasses==0.8; python_version < '3.7'
+transformers==4.18.0
+datasets==2.1.0
+tfrecord==1.14.1
+torch==1.10.0+cpu
+numpy==1.19.5
+scipy==1.5.4
+more-itertools==8.13.0
+wandb==0.12.8
+
+pytest
+pytest-pythonpath
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+git+ssh://git@phabricator.sourcevertex.net/diffusion/POPXLADDONSINTERNAL/popxladdonsinternal.git@sdk-release-2.6#egg=popxl-addons

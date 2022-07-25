@@ -1,0 +1,13 @@
+numba==0.48.0
+numpy==1.19.5
+scipy==1.5.4
+torchaudio==0.8.0
+librosa==0.7.2
+nltk==3.6.5
+protobuf==3.19.4
+onnx==1.11.0
+tqdm==4.46.1
+six==1.15.0
+pytest==6.2.5
+pytest-pythonpath==0.7.4
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils

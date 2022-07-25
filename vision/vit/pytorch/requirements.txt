@@ -1,0 +1,13 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+transformers==4.18.0
+pyyaml==5.4.1
+protobuf==3.19.4
+wandb==0.12.8
+pytest==6.2.5
+pytest-pythonpath==0.7.4
+torchvision==0.11.1+cpu
+pillow==8.4.0
+attrdict==2.0.1
+horovod==0.24.0
+randaugment==1.0.2
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils

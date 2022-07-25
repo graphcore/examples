@@ -1,3 +1,0 @@
-[submodule "applications/poplar/monte_carlo_ray_tracing/light"]
-	path = applications/poplar/monte_carlo_ray_tracing/light
-	url = https://github.com/mpups/light.git

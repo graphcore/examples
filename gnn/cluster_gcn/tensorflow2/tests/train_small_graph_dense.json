@@ -1,0 +1,68 @@
+{
+    "model":{
+        "hidden_size": 128,
+        "num_layers": 3,
+        "dropout": 0.2,
+        "adjacency": {
+            "transform_mode": "self_connections_scaled_by_degree"
+        }
+    },
+    "training": {
+        "num_clusters": 50,
+        "clusters_per_batch": 2,
+        "lr": 0.01,
+        "epochs": 3,
+        "loss_scaling": 1,
+        "gradient_accumulation_steps_per_replica": 4,
+        "ipu_config": {
+            "pipeline_stages": [
+                ["adj_proc", "hid"],
+                ["hid", "hid"]
+            ],
+            "pipeline_device_mapping": [0, 1],
+            "matmul_available_memory_proportion_per_pipeline_stage": [0.3, 0.3]
+        },
+        "do_live_validation": true,
+        "precision": "fp16",
+        "device": "ipu",
+        "use_sparse_representation": false
+    },
+    "validation": {
+        "num_clusters": 50,
+        "clusters_per_batch": 2,
+        "gradient_accumulation_steps_per_replica": 4,
+        "ipu_config": {
+            "pipeline_stages": [
+                ["adj_proc", "hid"],
+                ["hid", "hid"]
+            ],
+            "pipeline_device_mapping": [0, 1],
+            "matmul_available_memory_proportion_per_pipeline_stage": [0.3, 0.3]
+        },
+        "precision": "fp32",
+        "device": "cpu",
+        "use_sparse_representation": false
+    },
+    "test": {
+        "num_clusters": 50,
+        "clusters_per_batch": 2,
+        "gradient_accumulation_steps_per_replica": 4,
+        "steps_per_execution": 4,
+        "ipu_config": {
+            "pipeline_stages": [
+                ["adj_proc", "hid"],
+                ["hid", "hid"]
+            ],
+            "pipeline_device_mapping": [0, 1],
+            "matmul_available_memory_proportion_per_pipeline_stage": [0.3, 0.3]
+        },
+        "precision": "fp32",
+        "device": "cpu",
+        "use_sparse_representation": false
+    },
+    "dataset_name": "generated",
+    "name": "Cluster-GCN",
+    "wandb": false,
+    "executions_per_log": 1,
+    "seed": 1984
+}

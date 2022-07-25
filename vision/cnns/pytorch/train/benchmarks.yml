@@ -1,0 +1,135 @@
+---
+common_options: &common_options
+  location: public_examples/vision/cnns/pytorch/train
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec'
+      skip: 1
+    accuracy:
+      reduction_type: "final"
+      regexp: 'accuracy: *(.*?)\%'
+    loss:
+      reduction_type: "final"
+      regexp: 'loss: *(.*?),'
+  output:
+    - [throughput, "throughput"]
+    - [accuracy, "accuracy"]
+    - [loss, "loss"]
+  env:
+    POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+    PYTORCH_CACHE_DIR: "./pt_cache/"
+
+multihost_options: &multihost_options
+  description: |
+    Pytorch resnet50 training for > 16 IPUs.
+    The env variables needed are:
+      HOSTS - Comma separated list of hosts, usually something like:
+        `10.1.3.101,10.1.3.10x...`
+      VIPU_CLI_API_HOST - IP of host where VIPU server is running. Usually
+        `10.1.3.101`.
+      PARTITION - Name of partition to use, can be found via
+        `vipu list partitions`. Note that the `--update-partitions` poprun
+        flag is disabled here, so ensure the partition is reconfigurable
+        or it has been setup properly for this benchmark
+      TCP_IF_INCLUDE - Name of subnet, or range of IPs for network interface
+        on which all hosts are. Usually `enp65s0f0np0` or `10.1.3.0/24`.
+    In addition to this, make sure that all 4 hosts are properly set up to run
+    multihost benchmarks. This involves:
+      - Ensuring the state of public examples, sdks and venvs is identical on
+        all hosts
+      - Setting up all hosts to communicate with each other properly
+      - Checking the environment variables and VIPU setup will permit
+        distributed running
+      - Making sure the benchmark command itself and the app are setup properly
+        to run on multiple hosts
+
+pytorch_resnet50_train_real_pod16:
+  <<: *common_options
+  description: ResNet training on 16 Mk2 IPUs, real data.
+  cmd: >-
+    poprun
+      -vv
+      --num-instances=8
+      --num-replicas=16
+      --executable-cache-path=$PYTORCH_CACHE_DIR
+    python3 train.py
+      --config resnet50
+      --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --epoch 2
+      --validation-mode none
+      --dataloader-worker 14
+      --dataloader-rebatch-size 256
+
+pytorch_resnet50_train_real_pod64_conv:
+  <<: [*common_options, *multihost_options]
+  description: |
+    ResNet training on 64 Mk2 IPUs with real data
+    for convergence testing.
+  cmd: >-
+    poprun
+      -vv
+      --num-instances=16
+      --num-replicas=64
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --host=$HOSTS
+      --vipu-server-port 8090
+      --vipu-partition=$PARTITION
+      --vipu-cluster=$CLUSTER
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --sync-type=ST_POD_NATIVE_DEFAULT
+      --executable-cache-path=/localdata/$USER/pt_cache
+      --mpi-global-args="--mca btl_tcp_if_include eno1"
+      --mpi-local-args="
+        -x LD_LIBRARY_PATH
+        -x OPAL_PREFIX
+        -x PATH
+        -x CPATH
+        -x PYTHONPATH
+        -x POPLAR_ENGINE_OPTIONS
+        -x IPUOF_VIPU_API_TIMEOUT=800"
+    python3 train.py
+      --config resnet50-pod64
+      --dataloader-worker 14
+      --dataloader-rebatch-size 256
+      --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --wandb
+
+pytorch_efficientnet_b0_train_real_pod16:
+  <<: *common_options
+  description: |
+    EfficientNet-B0-G16-GN training pipelined on 4 IPU-Ms (16 IPUs)
+    using real data
+  cmd: >-
+    poprun
+      -vv
+      --num-instances=4
+      --num-replicas=8
+      --ipus-per-replica=2
+    python3 train.py
+      --config efficientnet-b0-g16-gn-pod16
+      --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --epoch 2
+      --warmup-epoch 0
+      --validation-mode none
+      --weight-avg-strategy none
+
+pytorch_efficientnet_b4_train_real_pod16:
+  <<: *common_options
+  description: |
+    EfficientNet-B4-G16-GN training pipelined on 4 IPU-Ms (16 IPUs)
+    using real data
+  cmd: >-
+    poprun
+      -vv
+      --num-instances=4
+      --num-replicas=4
+      --ipus-per-replica=4
+    python3 train.py
+      --config efficientnet-b4-g16-gn-pod16
+      --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --epoch 2
+      --warmup-epoch 0
+      --validation-mode none
+      --weight-avg-strategy none

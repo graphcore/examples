@@ -1,0 +1,43 @@
+# -------- Models --------
+large: &large
+  model:
+    layers: 24
+    hidden_size: 1024
+    sequence_length: 384
+    attention:
+      heads: 16
+base: &base
+  model:
+    layers: 12
+    hidden_size: 768
+    sequence_length: 384
+    attention:
+      heads: 12
+tiny: &tiny
+  model:
+    layers: 2
+    hidden_size: 128
+    sequence_length: 384
+    attention:
+      heads: 4
+# -------------------------
+
+# ------- Execution -------
+phased:
+  large:
+    <<: *large
+    execution:
+      micro_batch_size: 16
+      available_memory_proportion: [0.4]
+  base:
+    <<: *base
+    execution:
+      micro_batch_size: 16
+      available_memory_proportion: [0.4]
+  tiny:
+    <<: *tiny
+    execution:
+      micro_batch_size: 16
+      io_tiles: 192
+      available_memory_proportion: [ 0.4 ]
+# -------------------------

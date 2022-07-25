@@ -1,0 +1,395 @@
+---
+# --- Pretraining ---
+pretrain_options: &pretrain_options
+  location: public_examples/nlp/bert/tensorflow1/
+  data:
+    throughput:
+      regexp: 'samples\/sec: *(.*?),'
+      skip: 3
+    mlm_accuracy:
+      reduction_type: "final"
+      regexp: 'mlm_acc:\s*([\d\.]+|nan),'
+    mlm_loss:
+      reduction_type: "final"
+      regexp: 'mlm_loss:\s*([\d\.]+|nan),'
+    nsp_accuracy:
+      reduction_type: "final"
+      regexp: 'nsp_acc:\s*([\d\.]+|nan),'
+    nsp_loss:
+      reduction_type: "final"
+      regexp: 'nsp_loss:\s*([\d\.]+|nan),'
+  output:
+    - [Samples/s, "throughput"]
+    - [mlm_accuracy, "mlm_accuracy"]
+    - [mlm_loss, "mlm_loss"]
+    - [nsp_accuracy, "nsp_accuracy"]
+    - [nsp_loss, "nsp_loss"]
+
+tf1_bert_large_pretrain_real_pod16:
+  <<: *pretrain_options
+  description: |
+    This tests measures the throughput of Bert Large reference
+    config for phase1 pretraining.
+  parameters:
+    - [config, train_file]
+    - ["configs/pretrain_large_128_phase1.json",
+       "$DATASETS_DIR/tf_wikipedia/tokenised_128_dup5_mask20/wiki_00_cleaned.tfrecord"]
+    - ["configs/pretrain_large_384_phase2.json",
+       "$DATASETS_DIR/tf_wikipedia/tokenised_384_dup5_mask58/wiki_00_cleaned.tfrecord"]
+  cmd: >-
+    python3 run_pretraining.py
+        --config {config}
+        --train-file {train_file}
+        --num-train-steps 4
+
+tf1_bert_base_pretrain_real_pod16:
+  <<: *pretrain_options
+  description: |
+    This tests measures the throughput of Bert Base reference
+    config for phase1 pretraining.
+  parameters:
+    - [config, train_file]
+    - ["configs/pretrain_base_128_phase1.json",
+        "$DATASETS_DIR/tf_wikipedia/tokenised_128_dup5_mask20/wiki_00_cleaned.tfrecord"]
+    - ["configs/pretrain_base_384_phase2.json",
+        "$DATASETS_DIR/tf_wikipedia/tokenised_384_dup5_mask58/wiki_00_cleaned.tfrecord"]
+  cmd: >-
+    python3 run_pretraining.py
+      --config {config}
+      --train-file {train_file}
+      --num-train-steps 4
+
+tf1_bert_large_sl128_pretrain_real_pod64_conv:
+  <<: *pretrain_options
+  description: |
+    Tests convergence of Bert Large reference config for
+    phase1 pretraining on 64 IPUs.
+  cmd: >-
+    poprun
+      --vv
+      --num-instances 1
+      --num-replicas 16
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --sync-type=ST_POD_NATIVE_DEFAULT
+      --vipu-server-timeout 300
+      --vipu-server-host $VIPU_CLI_API_HOST
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster=$CLUSTER
+      --ipus-per-replica 4
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x IPUOF_VIPU_API_TIMEOUT=600
+        -x POPLAR_LOG_LEVEL=WARN
+        -x DATASETS_DIR
+        -x POPLAR_ENGINE_OPTIONS
+        -x POPLAR_TARGET_OPTIONS"
+      python3 run_pretraining.py
+        --config configs/pretrain_large_128_phase1_POD64.json
+        --train-file
+        "$DATASETS_DIR/tf_wikipedia/tokenised_128_dup5_mask20/*.tfrecord"
+        --save-path "checkpoint/phase1/"
+        --steps-per-ckpts 8000
+        --steps-per-logs 100
+        --wandb
+
+tf1_bert_large_sl384_pretrain_real_pod64_conv:
+  <<: *pretrain_options
+  description: |
+    Tests performance of Bert Large reference config for
+    phase 2 pretraining on 64 IPUs.
+  cmd: >-
+    poprun
+      --vv
+      --num-instances 1
+      --num-replicas 16
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --sync-type=ST_POD_NATIVE_DEFAULT
+      --vipu-server-timeout 300
+      --vipu-server-host $VIPU_CLI_API_HOST
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster=$CLUSTER
+      --ipus-per-replica 4
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x IPUOF_VIPU_API_TIMEOUT=600
+        -x POPLAR_LOG_LEVEL=WARN
+        -x DATASETS_DIR
+        -x POPLAR_ENGINE_OPTIONS
+        -x POPLAR_TARGET_OPTIONS"
+    python3 run_pretraining.py
+      --config configs/pretrain_large_384_phase2_POD64.json
+      --train-file
+      $DATASETS_DIR/tf_wikipedia/tokenised_384_dup5_mask58/*.tfrecord
+      --init-checkpoint "checkpoint/phase1/ckpt-7031"
+      --save-path "checkpoint/phase2/"
+      --steps-per-ckpts 8000
+      --steps-per-logs 100 
+      --wandb
+
+tf1_groupbert_base_pretrain_real_pod16:
+  <<: *pretrain_options
+  description: |
+    This tests measures the throughput of Group BERT-Base reference
+    config for phase1 and phase2 pretraining on 16 IPUs.
+  parameters:
+    phase: 128,384
+  cmd: >-
+    python3 run_pretraining.py
+      --config "configs/groupbert/pretrain_base_groupbert_{phase}.json"
+      --train-file $DATASETS_DIR/wikipedia/{phase}/wiki_1[0-1]*.tfrecord
+      --num-train-steps 10
+      --steps-per-logs 1
+
+tf1_groupbert_base_sl128_pretrain_real_pod64_conv:
+  <<: *pretrain_options
+  description: |
+    Tests convergence of Group BERT-Base reference config for
+    phase1 pretraining on 64 IPUs.
+  cmd: >-
+    poprun
+      --mpi-global-args="--allow-run-as-root --tag-output"
+      --mpi-local-args="-x TF_POPLAR_FLAGS"
+      --numa-aware 1
+      --ipus-per-replica 4
+      --num-instances 4
+      --num-replicas 16
+    python3 run_pretraining.py
+      --config configs/groupbert/pretrain_base_groupbert_128_POD64.json
+      --train-file
+        $DATASETS_DIR/tf_wikipedia/tokenised_128_dup5_no_remask/*.tfrecord
+      --save-path "checkpoint/phase1/"
+      --steps-per-logs 100
+      --steps-per-ckpts 8000
+      --wandb
+      --seed 123
+
+tf1_groupbert_base_sl384_pretrain_real_pod64_conv:
+  <<: *pretrain_options
+  description: |
+    Tests convergence of Group BERT-Base reference config for
+    phase 2 pretraining on 64 IPUs.
+  cmd: >-
+    poprun
+      --mpi-global-args="--allow-run-as-root --tag-output"
+      --mpi-local-args="-x TF_POPLAR_FLAGS"
+      --numa-aware 1
+      --ipus-per-replica 4
+      --num-instances 4
+      --num-replicas 16
+    python3 run_pretraining.py
+      --config configs/groupbert/pretrain_base_groupbert_384_POD64.json
+      --train-file
+        $DATASETS_DIR/tf_wikipedia/tokenised_384_dup5_no_remask/*.tfrecord
+      --init-checkpoint "checkpoint/phase1/ckpt-7110"
+      --save-path "checkpoint/phase2/"
+      --steps-per-logs 100
+      --steps-per-ckpts 2000
+      --wandb
+      --seed 123
+
+# --- SQuAD training ---
+squad_options: &squad_options
+  location:
+    public_examples/nlp/bert/tensorflow1/
+  data:
+    throughput:
+      regexp: 'throughput\s+(\S+)\s+'
+      skip: 2
+  output:
+    - [Samples/s, 'throughput']
+  env:
+    TF_POPLAR_FLAGS: "--null_data_feed"
+
+tf1_bert_squad_large_train_real_pod16:
+  <<: *squad_options
+  description:
+    Tests BERT SQuAD (fine tuning) training throughput
+  cmd: >-
+    python3 run_squad.py
+      --config configs/squad_large.json
+      --do-training
+      --init-checkpoint ""
+      --num-train-steps 4
+      --train-file $DATASETS_DIR/squad/train-v1.1.json
+      --vocab-file $DATASETS_DIR/ckpts/uncased_L-24_H-1024_A-16/vocab.txt
+
+tf1_bert_squad_large_train_real_pod16_conv:
+  description:
+    Tests BERT SQuAD (fine tuning) training convergence
+  cmd: >-
+    poprun
+      --vv
+      --num-instances 1
+      --num-replicas 4
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --sync-type=ST_POD_NATIVE_DEFAULT
+      --vipu-server-timeout 300
+      --vipu-server-host $VIPU_CLI_API_HOST
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster=$CLUSTER
+      --ipus-per-replica 4
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x IPUOF_VIPU_API_TIMEOUT=600
+        -x POPLAR_LOG_LEVEL=WARN
+        -x DATASETS_DIR
+        -x POPLAR_ENGINE_OPTIONS
+        -x POPLAR_TARGET_OPTIONS"
+    python3 run_squad.py
+      --config configs/squad_large.json
+      --do-training
+      --do-predict
+      --do-evaluation
+      --init-checkpoint "checkpoint/phase2/ckpt-2098"
+      --train-file $DATASETS_DIR/squad/train-v1.1.json
+      --vocab-file $DATASETS_DIR/ckpts/uncased_L-24_H-1024_A-16/vocab.txt
+      --predict-file $DATASETS_DIR/squad/dev-v1.1.json
+      --wandb
+
+  location:
+    public_examples/nlp/bert/tensorflow1/
+  data:
+    throughput:
+      regexp: 'throughput\s+(\S+)\s+'
+      skip: 2
+  output:
+    - [Samples/s, 'throughput']
+
+# --- GLUE training ---
+glue_options: &glue_options
+  location:
+    public_examples/nlp/bert/tensorflow1/
+  data:
+    throughput:
+      regexp: 'throughput\s+(\S+)\s+'
+      skip: 2
+  output:
+    - [Samples/s, 'throughput']
+
+tf1_glue_base_train_real_pod16:
+  <<: *glue_options
+  description:
+    This benchmark measures the throughput of Bert Base GLUE fine tuning.
+  cmd: >-
+    python3 run_classifier.py
+      --config configs/glue_base.json
+      --task-name mrpc
+      --do-training
+      --init-checkpoint ""
+      --num-train-steps 4
+      --data-dir /a/scratch/software-apps-datasets/reference/glue/MRPC
+
+tf1_glue_large_train_real_pod16:
+  <<: *glue_options
+  description:
+    This benchmark measures the throughput of Bert Large GLUE fine tuning.
+  cmd: >-
+    python3 run_classifier.py
+      --config configs/glue_large.json
+      --task-name mrpc
+      --do-training
+      --init-checkpoint ""
+      --num-train-steps 4
+      --data-dir /a/scratch/software-apps-datasets/reference/glue/MRPC
+
+# --- Inference ---
+tf1_bert_squad_large_infer_gen_2ipu:
+  description:
+    Tests BERT SQuAD runtime inference and records the throughput and latency
+    on 2 IPUs (1x 2IPU model)
+  cmd: >-
+    python3 run_squad_runtime.py
+      --config configs/squad_large_inference_2ipu.json
+      --init-checkpoint ""
+      --generated-data
+      --vocab-file
+      $DATASETS_DIR/tf_wikipedia/ckpts/uncased_L-24_H-1024_A-16/vocab.txt
+      --gradient-accumulation-count 80000
+      --device-iterations 1000
+      --embedded-runtime
+      --micro-batch-size 1
+      --num-iter 10000
+  location:
+    public_examples/nlp/bert/tensorflow1/
+  env:
+    TF_POPLAR_FLAGS: ""
+  data:
+    latency:
+      regexp: 'latency\W*(\d\.\d*)'
+    latency_99:
+      regexp: 'latency_99\W*(\d\.\d*)'
+    latency_99_9:
+      regexp: 'latency_99_9\W*(\d\.\d*)'
+    throughput:
+      regexp: 'throughput\W*(\d*\.\d*)'
+  output:
+    - [Batchsize, '1']
+    - [Samples/s, 'throughput']
+    - [Latency, 'latency']
+    - [Latency_99, 'latency_99']
+    - [Latency_99_9, 'latency_99_9']
+
+tf1_bert_squad_large_infer_gen_4ipu:
+  description:
+    Tests BERT SQuAD runtime inference and records the throughput and latency
+    on 4 IPUs (2x 2IPU models)
+  cmd: >-
+    mpirun 
+      --tag-output
+      --np 2
+      --allow-run-as-root
+    python3
+      run_squad_runtime.py
+      --config configs/squad_large_inference_2ipu.json
+      --init-checkpoint ""
+      --generated-data
+      --vocab-file
+      $DATASETS_DIR/tf_wikipedia/ckpts/uncased_L-24_H-1024_A-16/vocab.txt
+      --gradient-accumulation-count 80000
+      --device-iterations 1000
+      --embedded-runtime
+      --micro-batch-size 1
+      --num-iter 10000
+  location:
+    public_examples/nlp/bert/tensorflow1/
+  env:
+    TF_POPLAR_FLAGS: ""
+  data:
+    latency:
+      regexp: 'latency\W*(\d\.\d*)'
+    latency_99:
+      regexp: 'latency_99\W*(\d\.\d*)'
+    latency_99_9:
+      regexp: 'latency_99_9\W*(\d\.\d*)'
+    throughput:
+      regexp: 'throughput\W*(\d*\.\d*)'
+  output:
+    - [Batchsize, '1']
+    - [Samples/s, 'throughput']
+    - [Latency, 'latency']
+    - [Latency_99, 'latency_99']
+    - [Latency_99_9, 'latency_99_9']

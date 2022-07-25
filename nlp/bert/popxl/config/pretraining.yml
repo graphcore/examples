@@ -1,0 +1,153 @@
+# -------- Models --------
+large_128: &large_128
+  model:
+    layers: 24
+    hidden_size: 1024
+    sequence_length: 128
+    mlm:
+      mask_tokens: 20
+    attention:
+      heads: 16
+  training:
+    global_batch_size: 2048
+    steps: 225000
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.00053
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+  checkpoint:
+    save: "wandb://popxl_pretrained_large_128"
+
+large_512: &large_512
+  model:
+    layers: 24
+    hidden_size: 1024
+    sequence_length: 512
+    mlm:
+      mask_tokens: 76
+    attention:
+      heads: 16
+  training:
+    global_batch_size: 2048
+    steps: 6250
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.00053
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+  checkpoint:
+    load: "wandb://popxl_pretrained_large_128:latest"
+    save: "wandb://popxl_pretrained_large_512"
+
+base_128: &base_128
+  model:
+    layers: 12
+    hidden_size: 768
+    sequence_length: 128
+    mlm:
+      mask_tokens: 20
+    attention:
+      heads: 12
+  training:
+    global_batch_size: 2048
+    steps: 225000
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.00053
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+  checkpoint:
+    save: "wandb://popxl_pretrained_base_128"
+
+base_512: &base_512
+  model:
+    layers: 12
+    hidden_size: 768
+    sequence_length: 512
+    mlm:
+      mask_tokens: 76
+    attention:
+      heads: 12
+  training:
+    global_batch_size: 8192
+    steps: 6250
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.00053
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+  checkpoint:
+    load: "wandb://popxl_pretrained_base_128:latest"
+    save: "wandb://popxl_pretrained_base_512"
+
+tiny: &tiny
+  model:
+    layers: 2
+    hidden_size: 128
+    sequence_length: 128
+    mlm:
+      mask_tokens: 20
+    attention:
+      heads: 4
+  training:
+    global_batch_size: 16
+    steps: 4
+    optimizer:
+      name: adamw
+      learning_rate:
+        maximum: 0.00006
+        warmup_proportion: 0.1
+      weight_decay: 0.01
+# -------------------------
+
+# ------- Execution -------
+phased:
+  large_128:
+    <<: *large_128
+    execution:
+      loss_scaling: 4096.0
+      micro_batch_size: 8
+      io_tiles: 64
+      data_parallel: 16
+      available_memory_proportion: [0.4]
+
+  large_512:
+    <<: *large_512
+    execution:
+      loss_scaling: 4096.0
+      micro_batch_size: 2
+      io_tiles: 64
+      data_parallel: 16
+      available_memory_proportion: [0.4]
+
+  base_128:
+    <<: *base_128
+    execution:
+      loss_scaling: 4096.0
+      micro_batch_size: 8
+      io_tiles: 64
+      data_parallel: 16
+      available_memory_proportion: [0.4]
+
+  base_512:
+    <<: *base_512
+    execution:
+      loss_scaling: 4096.0
+      micro_batch_size: 2
+      io_tiles: 64
+      data_parallel: 16
+      available_memory_proportion: [0.4]
+
+  tiny:
+    <<: *tiny
+    execution:
+      micro_batch_size: 2
+      io_tiles: 64
+      data_parallel: 2
+      available_memory_proportion: [0.4]
+# -------------------------

@@ -1,0 +1,134 @@
+---
+# --- Train Cluster-GCN model ---
+train_options: &train_options
+  location: public_examples/gnn/cluster_gcn/tensorflow2/
+  data:
+    throughput:
+      regexp: 'Mean throughput over real nodes \(no padding\) for training:\s*([\d\.]+)'
+  output:
+    - [Nodes/s, 'throughput']
+
+tf2_cluster_gcn_ppi_train_real_pod4:
+  <<: *train_options
+  description: |
+    This benchmark measures the throughput of Cluster-GCN training
+    on the PPI dataset.
+  cmd: >-
+    poprun
+      --mpi-global-args="--tag-output"
+      --num-replicas=4
+      --num-instances=4
+      --executable-cache-path=/tmp/tf_cache/
+    python3 run_cluster_gcn.py
+      configs/train_ppi.json
+      --training.epochs 20
+      --training.replicas 4
+      --training.epochs-per-execution 4
+      --do-validation false
+      --do-test false
+      --wandb false
+      --data-path $DATASETS_DIR/graph_datasets/
+      --regenerate-dataset-cache true
+      --save-dataset-cache false
+      --regenerate-clustering-cache true
+      --save-clustering-cache false
+
+tf2_cluster_gcn_reddit_train_real_pod4:
+  <<: *train_options
+  description: |
+    This benchmark measures the throughput of Cluster-GCN training
+    on the Reddit dataset.
+  cmd: >-
+    poprun
+      --mpi-global-args="--tag-output"
+      --num-replicas=4
+      --num-instances=4
+      --executable-cache-path=/tmp/tf_cache/
+    python3 run_cluster_gcn.py
+      configs/train_reddit.json
+      --training.epochs 20
+      --training.replicas 4
+      --training.epochs-per-execution 4
+      --do-validation false
+      --do-test false
+      --wandb false
+      --data-path $DATASETS_DIR/graph_datasets/
+      --regenerate-dataset-cache true
+      --save-dataset-cache false
+      --regenerate-clustering-cache true
+      --save-clustering-cache false
+
+tf2_cluster_gcn_arxiv_train_real_pod4:
+  <<: *train_options
+  description: |
+    This benchmark measures the throughput of Cluster-GCN training
+    on the arXiv dataset.
+  cmd: >-
+    poprun
+      --mpi-global-args="--tag-output"
+      --num-replicas=4
+      --num-instances=4
+      --executable-cache-path=/tmp/tf_cache/
+    python3 run_cluster_gcn.py
+      configs/train_arxiv.json
+      --training.epochs 20
+      --training.replicas 4
+      --training.epochs-per-execution 4
+      --do-validation false
+      --do-test false
+      --wandb false
+      --data-path $DATASETS_DIR/graph_datasets/arxiv
+      --regenerate-dataset-cache true
+      --save-dataset-cache false
+      --regenerate-clustering-cache true
+      --save-clustering-cache false
+
+tf2_cluster_gcn_products_train_real_pod4:
+  <<: *train_options
+  description: |
+    This benchmark measures the throughput of Cluster-GCN training
+    on the OGBN-Products dataset.
+  cmd: >-
+    poprun
+      --mpi-global-args="--tag-output"
+      --num-replicas=4
+      --num-instances=4
+      --executable-cache-path=/tmp/tf_cache/
+    python3 run_cluster_gcn.py
+      configs/train_products.json
+      --training.epochs 20
+      --training.replicas 4
+      --training.epochs-per-execution 4
+      --do-validation false
+      --do-test false
+      --wandb false
+      --data-path $DATASETS_DIR/graph_datasets/ogbn-products
+      --regenerate-dataset-cache true
+      --save-dataset-cache false
+      --regenerate-clustering-cache true
+      --save-clustering-cache false
+
+tf2_cluster_gcn_mag_train_real_pod4:
+  <<: *train_options
+  description: |
+    This benchmark measures the throughput of Cluster-GCN training
+    on the OGBN-MAG dataset.
+  cmd: >-
+    poprun
+      --mpi-global-args="--tag-output"
+      --num-replicas=4
+      --num-instances=4
+      --executable-cache-path=/tmp/tf_cache/
+    python3 run_cluster_gcn.py
+      configs/train_mag.json
+      --training.epochs 20
+      --training.replicas 4
+      --training.epochs-per-execution 4
+      --do-validation false
+      --do-test false
+      --wandb false
+      --data-path $DATASETS_DIR/graph_datasets/ogbn-mag
+      --regenerate-dataset-cache true
+      --save-dataset-cache false
+      --regenerate-clustering-cache true
+      --save-clustering-cache false

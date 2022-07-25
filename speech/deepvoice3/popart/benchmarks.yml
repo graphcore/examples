@@ -1,0 +1,24 @@
+---
+common_options: &common_options
+  data:
+    throughput:
+      regexp: 'Training\sthroughput:\s+([0-9\.]+)\s+Queries.*'
+      skip: 1
+  output:
+    - [queries/s, 'throughput']
+  location: public_examples/speech/deepvoice3/popart
+
+#takes approximately 45 minutes to compile and run on an M2000
+popart_deepvoice_train_gen_pod4:
+  <<: *common_options
+  description: Train Deep Voice 3 model with effective BS 128 on 4 IPUs.
+  cmd:
+    python3 deep_voice_train.py
+      --data_dir TEST
+      --model_dir TEST
+      --generated_data
+      --num_ipus 4
+      --replication_factor 4
+      --global_batch_size 128
+      --num_epochs 2
+      --no_validation

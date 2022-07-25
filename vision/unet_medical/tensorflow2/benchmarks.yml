@@ -1,0 +1,57 @@
+---
+tf2_unet_train_real_pod4:
+  description: |
+    Training unet 1 replica on 4 IPUs
+  cmd: >-
+    python3 main.py
+      --nb-ipus-per-replica 4
+      --micro-batch-size 1
+      --gradient-accumulation-count 24
+      --train
+      --augment
+      --learning-rate 0.0024
+      --kfold 1
+      --num-epochs 200
+      --data-dir $DATASETS_DIR/tif
+      --benchmark
+  location: public_examples/vision/unet_medical/tensorflow2
+  data:
+    throughput:
+      regexp: 'Throughput *(.*?) images'
+      skip: 1
+    loss:
+      regexp: 'loss\: *(\d*\.\d*) -'
+      skip: 1
+    celoss:
+      regexp: 'ce_loss\: *(\d*\.\d*)'
+      skip: 1
+  output:
+    - [Images/sec, 'throughput']
+    - [Loss, 'loss']
+    - [CE-loss, 'celoss']
+
+tf2_unet_infer_gen_pod4:
+  description: |
+    Inference on unet on IPUM-2000 (4 copies)
+  parameters:
+    batchsize: 1,2
+  cmd: >-
+    mpirun
+      --tag-output
+      --allow-run-as-root
+      --np 4
+      --bind-to socket
+      -x POPLAR_RUNTIME_OPTIONS
+    python3 main.py
+      --nb-ipus-per-replica 1
+      --micro-batch-size {batchsize}
+      --steps-per-execution 400
+      --infer
+      --host-generated-data
+      --benchmark
+  location: public_examples/vision/unet_medical/tensorflow2
+  data:
+    throughput:
+      regexp: 'Throughput *(\d*\.\d*) images'
+  output:
+    - [Images/sec, 'throughput']

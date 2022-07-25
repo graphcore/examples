@@ -14,7 +14,13 @@ EXCLUDED_LINKS = {"https://datashare.is.ed.ac.uk/bitstream/handle/10283/3443/VCT
                   "https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block",
                   "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/lite/efficientnet-litex.tar.gz",
                   "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/ckptsaug/efficientnet-bx.tar.gz",
-                  "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientdet/coco/"}
+                  "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientdet/coco/",
+                  "https://github.com/graphcore/examples/tree/master/nlp/bert/pytorch/",
+                  "http://www.cmake.org"}
+EXCLUDED_PATTERNS = {
+    # popxl-addons is not publically available yet.
+    r"https:\/\/github\.com\/graphcore\/popxl-addons.*"
+}
 
 
 def collect_links():
@@ -53,5 +59,8 @@ def check_links(link_list):
 
 def test_links():
     link_list = collect_links() - EXCLUDED_LINKS
+    for pattern in EXCLUDED_PATTERNS:
+        m = re.compile(pattern)
+        link_list = {link for link in link_list if not m.match(link)}
     wrong_links = check_links(link_list)
     assert len(wrong_links) == 0, f"The following links {wrong_links} are not working."

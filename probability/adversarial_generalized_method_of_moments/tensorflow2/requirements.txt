@@ -1,0 +1,6 @@
+tensorflow-probability==0.12.2
+scikit-learn==0.24.2
+pyyaml==5.4.1
+pytest==6.2.5
+pytest-pythonpath==0.7.3
+pytest-mock==2.0.0

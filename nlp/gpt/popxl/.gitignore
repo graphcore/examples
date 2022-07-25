@@ -1,0 +1,9 @@
+*.cbor
+*.pop
+*.pop_cache
+*.popef
+.pytest_cache
+!data
+*.tfrecord
+*.index
+*.npz

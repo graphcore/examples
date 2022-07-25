@@ -1,0 +1,72 @@
+{
+    "model":{
+        "hidden_size": 1024,
+        "num_layers": 4,
+        "dropout": 0.2,
+        "adjacency": {
+            "transform_mode": "normalised",
+            "diag_lambda": -1
+        },
+        "first_layer_precalculation": false
+    },
+    "training": {
+        "num_clusters": 50,
+        "clusters_per_batch": 1,
+        "lr": 0.0025,
+        "loss_scaling": 64000,
+        "epochs": 400,
+        "gradient_accumulation_steps_per_replica": 1,
+        "ipu_config": {
+            "pipeline_stages": [
+                ["adj_proc", "hid", "hid", "hid", "hid"]
+            ],
+            "pipeline_device_mapping": [0],
+            "matmul_available_memory_proportion_per_pipeline_stage": [0.3],
+	    "num_io_tiles": 64,
+            "enable_recomputation": false
+        },
+        "precision": "fp16",
+        "device": "ipu",
+        "use_sparse_representation": false,
+        "validation_frequency": 10,
+        "replicas": 1
+    },
+    "validation": {
+        "num_clusters": 1,
+        "clusters_per_batch": 1,
+        "gradient_accumulation_steps_per_replica": 1,
+        "steps_per_execution": 1,
+        "ipu_config": {
+            "pipeline_stages": [
+                ["adj_proc", "hid", "hid", "hid", "hid"]
+            ],
+            "pipeline_device_mapping": [0],
+            "matmul_available_memory_proportion_per_pipeline_stage": [0.3]
+        },
+        "precision": "fp32",
+	    "device": "cpu",
+        "use_sparse_representation": true
+    },
+    "test": {
+        "num_clusters": 1,
+        "clusters_per_batch": 1,
+        "gradient_accumulation_steps_per_replica": 1,
+        "steps_per_execution": 1,
+        "ipu_config": {
+            "pipeline_stages": [
+                ["adj_proc", "hid", "hid", "hid", "hid"]
+            ],
+            "pipeline_device_mapping": [0],
+            "matmul_available_memory_proportion_per_pipeline_stage": [0.3]
+        },
+        "precision": "fp32",
+	    "device": "cpu",
+        "use_sparse_representation": true
+    },
+    "dataset_name": "ppi",
+    "name": "Cluster-GCN",
+    "wandb": true,
+    "executions_per_log": 1,
+    "fp_exceptions": false,
+    "seed": 1984
+}

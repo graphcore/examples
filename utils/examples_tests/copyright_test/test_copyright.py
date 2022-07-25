@@ -13,101 +13,134 @@ from pathlib import Path
 
 C_FILE_EXTS = ['c', 'cpp', 'C', 'cxx', 'c++', 'h', 'hpp']
 
-
-EXCLUDED = ['applications/tensorflow/cnns/training/Datasets/imagenet_preprocessing.py',
-            'code_examples/tensorflow/cnns/inference/models/optimize_for_infer.py',
-            'applications/popart/bert/bert_data/tokenization.py',
-            'applications/popart/bert/bert_data/squad_utils.py',
-            'applications/popart/bert/bert_data/create_pretraining_data.py',
-            'applications/popart/bert/tests/torch_bert.py',
-            'applications/tensorflow/click_through_rate/common/Dice.py',
-            'code_examples/tensorflow/ssd/bounding_box_utils/bounding_box_utils.py',
-            'code_examples/tensorflow/ssd/keras_layers/keras_layer_DecodeDetections.py',
-            'code_examples/tensorflow/ssd/keras_layers/keras_layer_L2Normalization.py',
-            'code_examples/tensorflow/ssd/keras_layers/keras_layer_AnchorBoxes.py',
-            'code_examples/tensorflow/cosmoflow/models/resnet.py',
-            'code_examples/tensorflow/cosmoflow/data_gen/__init__.py',
-            'code_examples/tensorflow/cosmoflow/models/__init__.py',
-            'code_examples/tensorflow/cosmoflow/models/cosmoflow.py',
-            'code_examples/tensorflow/cosmoflow/models/cosmoflow_v1.py',
-            'code_examples/tensorflow/cosmoflow/models/layers.py',
-            'code_examples/tensorflow/cosmoflow/utils/argparse.py',
-            'applications/tensorflow/detection/yolov3/tests/original_model/backbone.py',
-            'applications/tensorflow/detection/yolov3/tests/original_model/__init__.py',
-            'applications/tensorflow/detection/yolov3/tests/original_model/common.py',
-            'applications/tensorflow/detection/yolov3/tests/original_model/config.py',
-            'applications/tensorflow/detection/yolov3/tests/original_model/yolov3.py',
-            "applications/tensorflow2/efficientdet/backbone",
-            "applications/tensorflow2/efficientdet/tf2",
-            "applications/tensorflow2/efficientdet/object_detection",
-            "applications/tensorflow2/efficientdet/visualize",
-            "applications/tensorflow2/efficientdet/dataloader.py",
-            "applications/tensorflow2/efficientdet/nms_np.py",
-            "applications/pytorch/cnns/datasets/libjpeg-turbo",
-            "applications/pytorch/cnns/datasets/turbojpeg"
-            ]
-EXCLUDED.extend(['applications/popart/transformer_transducer/training/utils/preprocessing_utils.py',
-                 'applications/popart/transformer_transducer/training/utils/download_librispeech.py',
-                 'applications/popart/transformer_transducer/training/utils/download_utils.py',
-                 'applications/popart/transformer_transducer/training/utils/convert_librispeech.py',
-                 'applications/popart/transformer_transducer/training/common/metrics.py',
-                 'applications/popart/transformer_transducer/training/common/rnn.py',
-                 'applications/popart/transformer_transducer/training/common/helpers.py',
-                 'applications/popart/transformer_transducer/training/common/data/features.py',
-                 'applications/popart/transformer_transducer/training/common/data/helpers.py',
-                 'applications/popart/transformer_transducer/training/common/data/text.py',
-                 'applications/popart/transformer_transducer/training/common/data/__init__.py',
-                 'applications/popart/transformer_transducer/training/common/data/dali/pipeline.py',
-                 'applications/popart/transformer_transducer/training/common/data/dali/iterator.py',
-                 'applications/popart/transformer_transducer/training/common/data/dali/sampler.py',
-                 'applications/popart/transformer_transducer/training/common/data/dali/data_loader.py',
-                 'applications/popart/transformer_transducer/training/common/data/dali/__init__.py',
-                 'applications/popart/transformer_transducer/training/common/text/cleaners.py',
-                 'applications/popart/transformer_transducer/training/common/text/numbers.py',
-                 'applications/popart/transformer_transducer/training/common/text/symbols.py',
-                 'applications/popart/transformer_transducer/training/common/text/__init__.py',
-                 'applications/popart/transformer_transducer/training/rnnt_reference/model.py',
-                 'applications/popart/transformer_transducer/training/rnnt_reference/config.py',
-                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/torch_random.h',
-                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/np_fp16_convert.hpp',
-                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/np_fp16_convert.cpp',
-                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/torch_random.cpp',
-                 'applications/popart/transformer_transducer/custom_ops/feat_augmentation/MT19937RNGEngine.h',
-                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/transducer.py',
-                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/setup.py',
-                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/transducer.cpp',
-                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/ref_transduce.py',
-                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/torch_reference/test.py',
-                 'applications/popart/transformer_transducer/custom_ops/rnnt_loss/test/transducer.py'])
-
+EXCLUDED = [
+    'gnn/cluster_gcn/tensorflow2/run_cluster_gcn_notebook.ipynb',
+    'vision/cnns/tensorflow1/training/Datasets/imagenet_preprocessing.py',
+    'vision/cnns/tensorflow1/inference/models/optimize_for_infer.py',
+    'nlp/bert/popart/bert_data/tokenization.py',
+    'nlp/bert/popart/bert_data/squad_utils.py',
+    'nlp/bert/popart/bert_data/create_pretraining_data.py',
+    'nlp/bert/popart/tests/torch_bert.py',
+    'nlp/gpt/popxl/data/WikicorpusTextFormatting.py',
+    'miscellaneous/monte_carlo_ray_tracing/poplar/light',
+    'recommendation/click_through_rate/tensorflow1/common/Dice.py',
+    'vision/ssd/tensorflow1/bounding_box_utils/bounding_box_utils.py',
+    'vision/ssd/tensorflow1/keras_layers/keras_layer_DecodeDetections.py',
+    'vision/ssd/tensorflow1/keras_layers/keras_layer_L2Normalization.py',
+    'vision/ssd/tensorflow1/keras_layers/keras_layer_AnchorBoxes.py',
+    'ai_for_simulation/cosmoflow/tensorflow1/models/resnet.py',
+    'ai_for_simulation/cosmoflow/tensorflow1/data_gen/__init__.py',
+    'ai_for_simulation/cosmoflow/tensorflow1/models/__init__.py',
+    'ai_for_simulation/cosmoflow/tensorflow1/models/cosmoflow.py',
+    'ai_for_simulation/cosmoflow/tensorflow1/models/cosmoflow_v1.py',
+    'ai_for_simulation/cosmoflow/tensorflow1/models/layers.py',
+    'ai_for_simulation/cosmoflow/tensorflow1/utils/argparse.py',
+    'vision/yolo_v3/tensorflow1/tests/original_model/backbone.py',
+    'vision/yolo_v3/tensorflow1/tests/original_model/__init__.py',
+    'vision/yolo_v3/tensorflow1/tests/original_model/common.py',
+    'vision/yolo_v3/tensorflow1/tests/original_model/config.py',
+    'vision/yolo_v3/tensorflow1/tests/original_model/yolov3.py',
+    "vision/efficientdet/tensorflow2/backbone",
+    "vision/efficientdet/tensorflow2/tf2",
+    "vision/efficientdet/tensorflow2/object_detection",
+    "vision/efficientdet/tensorflow2/visualize",
+    "vision/efficientdet/tensorflow2/dataloader.py",
+    "vision/efficientdet/tensorflow2/nms_np.py",
+    "vision/cnns/pytorch/datasets/libjpeg-turbo",
+    "vision/cnns/pytorch/datasets/turbojpeg",
+    'speech/transformer_transducer/popart/training/utils/preprocessing_utils.py',
+    'speech/transformer_transducer/popart/training/utils/download_librispeech.py',
+    'speech/transformer_transducer/popart/training/utils/download_utils.py',
+    'speech/transformer_transducer/popart/training/utils/convert_librispeech.py',
+    'speech/transformer_transducer/popart/training/common/metrics.py',
+    'speech/transformer_transducer/popart/training/common/rnn.py',
+    'speech/transformer_transducer/popart/training/common/helpers.py',
+    'speech/transformer_transducer/popart/training/common/data/features.py',
+    'speech/transformer_transducer/popart/training/common/data/helpers.py',
+    'speech/transformer_transducer/popart/training/common/data/text.py',
+    'speech/transformer_transducer/popart/training/common/data/__init__.py',
+    'speech/transformer_transducer/popart/training/common/data/dali/pipeline.py',
+    'speech/transformer_transducer/popart/training/common/data/dali/iterator.py',
+    'speech/transformer_transducer/popart/training/common/data/dali/sampler.py',
+    'speech/transformer_transducer/popart/training/common/data/dali/data_loader.py',
+    'speech/transformer_transducer/popart/training/common/data/dali/__init__.py',
+    'speech/transformer_transducer/popart/training/common/text/cleaners.py',
+    'speech/transformer_transducer/popart/training/common/text/numbers.py',
+    'speech/transformer_transducer/popart/training/common/text/symbols.py',
+    'speech/transformer_transducer/popart/training/common/text/__init__.py',
+    'speech/transformer_transducer/popart/training/rnnt_reference/model.py',
+    'speech/transformer_transducer/popart/training/rnnt_reference/config.py',
+    'speech/transformer_transducer/popart/custom_ops/feat_augmentation/torch_random.h',
+    'speech/transformer_transducer/popart/custom_ops/feat_augmentation/np_fp16_convert.hpp',
+    'speech/transformer_transducer/popart/custom_ops/feat_augmentation/np_fp16_convert.cpp',
+    'speech/transformer_transducer/popart/custom_ops/feat_augmentation/torch_random.cpp',
+    'speech/transformer_transducer/popart/custom_ops/feat_augmentation/MT19937RNGEngine.h',
+    'speech/transformer_transducer/popart/custom_ops/rnnt_loss/torch_reference/transducer.py',
+    'speech/transformer_transducer/popart/custom_ops/rnnt_loss/torch_reference/setup.py',
+    'speech/transformer_transducer/popart/custom_ops/rnnt_loss/torch_reference/transducer.cpp',
+    'speech/transformer_transducer/popart/custom_ops/rnnt_loss/torch_reference/ref_transduce.py',
+    'speech/transformer_transducer/popart/custom_ops/rnnt_loss/torch_reference/test.py',
+    'speech/transformer_transducer/popart/custom_ops/rnnt_loss/test/transducer.py',
+    'speech/fastpitch/pytorch/waveglow/loss_function.py',
+    'speech/fastpitch/pytorch/waveglow/model.py',
+    'speech/fastpitch/pytorch/waveglow/denoiser.py',
+    'speech/fastpitch/pytorch/waveglow/data_function.py',
+    'speech/fastpitch/pytorch/waveglow/arg_parser.py',
+    'speech/fastpitch/pytorch/tacotron2/model.py',
+    'speech/fastpitch/pytorch/tacotron2/loss_function.py',
+    'speech/fastpitch/pytorch/tacotron2/data_function.py',
+    'speech/fastpitch/pytorch/tacotron2/arg_parser.py',
+    'speech/fastpitch/pytorch/pitch_transform.py',
+    'speech/fastpitch/pytorch/models.py',
+    'speech/fastpitch/pytorch/loss_functions.py',
+    'speech/fastpitch/pytorch/inference.py',
+    'speech/fastpitch/pytorch/fastpitch/transformer_jit.py',
+    'speech/fastpitch/pytorch/fastpitch/transformer.py',
+    'speech/fastpitch/pytorch/fastpitch/model_jit.py',
+    'speech/fastpitch/pytorch/fastpitch/arg_parser.py',
+    'speech/fastpitch/pytorch/extract_mels.py',
+    'speech/fastpitch/pytorch/data_functions.py',
+    'speech/fastpitch/pytorch/common/text/text_processing.py',
+    'speech/fastpitch/pytorch/common/text/symbols.py',
+    'speech/fastpitch/pytorch/common/text/numerical.py',
+    'speech/fastpitch/pytorch/common/text/letters_and_numbers.py',
+    'speech/fastpitch/pytorch/common/text/datestime.py',
+    'speech/fastpitch/pytorch/common/text/cmudict.py',
+    'speech/fastpitch/pytorch/common/text/cleaners.py',
+    'speech/fastpitch/pytorch/common/text/acronyms.py',
+    'speech/fastpitch/pytorch/common/text/abbreviations.py',
+    'speech/fastpitch/pytorch/common/text/__init__.py',
+    'speech/fastpitch/pytorch/common/tb_dllogger.py',
+    'speech/fastpitch/pytorch/common/stft.py',
+    'speech/fastpitch/pytorch/common/layers.py',
+    'speech/fastpitch/pytorch/common/audio_processing.py'
+]
 
 
 def check_file(path, language, amend):
+    if os.stat(path).st_size == 0:
+        # Empty file
+        return True
+
     comment = "#" if language == "python" else "//"
     found_copyright = False
     first_line_index = 0
-    empty_file = False
     with open(path, "r") as f:
-        first_line = f.readline()
-
-        if first_line == '':
-            empty_file = True
-
-        if language == "python" and first_line.startswith("#!"):
-            first_line_index += 1
-            first_line = f.readline()
-
-        # if the line is encoding, then skip line
-        if first_line.startswith("{} coding=utf-8".format(comment)):
-            first_line_index += 1
-            first_line = f.readline()
-
         regexp = r"{} Copyright \(c\) \d+ Graphcore Ltd. All (r|R)ights (r|R)eserved.".format(comment)
 
-        if re.match(regexp, first_line):
+        # Skip blank, comments and shebang
+        for line in f:
+            can_ignore_line = line == '\n' or line.startswith(comment) or line.startswith("#!")
+            if (not can_ignore_line) or re.match(regexp, line):
+                break
+            if line.startswith("#!"):
+                first_line_index += 1
+
+        # Check first line after skips
+        if re.match(regexp, line):
             found_copyright = True
 
-    if not empty_file and not found_copyright:
+    if not found_copyright:
         if amend:
             now = datetime.datetime.now()
             year = now.year

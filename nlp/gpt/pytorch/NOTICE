@@ -1,0 +1,33 @@
+This application is licensed under Apache License 2.0. Please see the LICENSE file in this directory for full details of the license conditions.
+
+
+This directory contains derived work from:
+
+GPT2, https://github.com/openai/gpt-2 (licensed under the MIT License)
+Hugging Face Transformers, https://github.com/huggingface/transformers (licensed under the Apache License, Version 2.0)
+Megatron-LM, https://github.com/NVIDIA/Megatron-LM (license file see https://github.com/NVIDIA/Megatron-LM/blob/main/LICENSE)
+
+
+The following files include code derived from https://github.com/huggingface/transformers which uses Apache License, Version 2.0:
+
+config/config_large.json
+config/config_medium.json
+config/config_xl.json
+config/config.json
+model/optimized_gpt2_attn.py
+tokenizer/gpt2-merges-50256.txt
+tokenizer/gpt2-vocab-50256.json
+
+
+The following files include code derived from https://github.com/openai/gpt-2 which uses MIT License.
+
+tasks/detokenizer.py
+tokenizer/gpt2_tokenization.py
+
+
+The following files include code derived from https://github.com/NVIDIA/Megatron-LM with license https://github.com/NVIDIA/Megatron-LM/blob/main/LICENSE
+
+data/indexed_dataset.py
+tasks/evaluate_lambada.py
+tasks/evaluate_utils.py
+tasks/evaluate_wiki.py

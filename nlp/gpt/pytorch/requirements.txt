@@ -1,0 +1,11 @@
+transformers>=4.12.5
+datasets>=1.7.0
+tokenizers>=0.10.3
+scipy>=1.5.4
+wandb==0.12.8
+tfrecord>=1.13
+pytest==6.2.5
+pytest-pythonpath>=0.7.3
+horovod>=0.24.0 --no-binary=horovod
+git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+tqdm>=4.63.1

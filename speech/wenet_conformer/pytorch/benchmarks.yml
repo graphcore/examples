@@ -1,0 +1,32 @@
+---
+common_options: &common_options
+  location: public_examples/speech/wenet_conformer/pytorch
+  data:
+    throughput:
+      regexp: '\s+tput:\s*(.*?),'
+      skip: 1
+    pure_throughput:
+      regexp: 'pure_tput:\s*(.*?),'
+      skip: 1
+    epoch_throughput:
+      regexp: 'epoch average tput:\s*(\d*)\s*'
+      skip: 1
+  output:
+    - [Step Images/sec, "throughput"]
+    - [Step pure Images/sec, "pure_throughput"]
+    - [Epoch Images/sec, "epoch_throughput"]
+
+pytorch_wenet_conformer_globalbs_288_train_gen_pod16:
+  <<: *common_options
+  description: Conformer public model fp16 precision, 1 replica runs on 4 IPUs
+    replicate x4
+  cmd: >-
+    python3
+        main.py
+        train
+        --trainer.log_every_n_step 1
+        --train_dataset.use_generated_data true
+        --trainer.num_epochs=2
+        --ipu_options.num_replicas=4
+        --ipu_options.gradient_accumulation=18
+        --train_iterator.batch_size=4
