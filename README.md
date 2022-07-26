@@ -85,7 +85,7 @@ Please contact [our engineering support](https://www.graphcore.ai/support) if yo
 | Fastpitch | TTS (TextToSpeech) | Training | [PyTorch](speech/fastpitch/pytorch) |
 | Conformer | STT(SpeechToText) | Training & Inference | [PopART](speech/conformer/popart), [TensorFlow 1](speech/conformer/tensorflow1) |
 | Transfomer Transducer | STT(SpeechToText) | Training & Inference | [PopART](speech/transformer_transducer/popart) |
-| WeNet-Conformer | STT(SpeechToText) | Training | [PyTorch](speech/wenet-conformer/pytorch) |
+| WeNet-Conformer | STT(SpeechToText) | Training | [PyTorch](speech/wenet_conformer/pytorch) |
 | Wav2Vec2 | STT(SpeechToText) | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/wav2vec2-base-ipu)|
 
 <br>
@@ -95,7 +95,7 @@ Please contact [our engineering support](https://www.graphcore.ai/support) if yo
 | Model | Domain | Type |Links |
 | ------- | ------- |------- | ------- |
 | miniDALL-E | multimodal | Training | [PyTorch](multimodal/mini_dalle/pytorch) |
-| CLIP | multimodal | Training |[PyTorch](multmodal/clip/pytorch)|
+| CLIP | multimodal | Training |[PyTorch](multimodal/CLIP/pytorch)|
 | LXMERT | multimodal | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/lxmert-base-ipu)|
 
 
