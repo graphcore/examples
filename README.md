@@ -14,7 +14,7 @@ For more detailed benchmark information, please visit our [Performance Results p
 
 Please install and enable the Poplar SDK following the instructions in the [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html#pod-system-getting-started-guides) guide for your IPU system.
 
-Please contact [our engineering support](https://www.graphcore.ai/support) if you want to have POD128/256 setup and configuration for our applications
+If you require POD128/256 setup and configuration for our applications, please contact [our engineering support](https://www.graphcore.ai/support).
 <br>
 <br>
 
@@ -255,6 +255,7 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 </details>
 
 <br>
+
 ## Connect with us
 <p align="center">
   <a href="https://twitter.com/graphcoreai"><img src="https://img.shields.io/badge/Twitter-1DA1F2.svg?style=for-the-badge&logo=Twitter&logoColor=white"/></a>
