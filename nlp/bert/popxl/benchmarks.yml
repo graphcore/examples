@@ -1,7 +1,6 @@
 ---
 # --- Pretraining ---
 pretrain_options: &pretrain_options
-  location: public_examples/nlp/bert/popxl/
   data:
    throughput:
     regexp: 'Throughput\:\s*(.*) samples/s'

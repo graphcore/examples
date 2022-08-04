@@ -1,6 +1,5 @@
 ---
 common_options: &common_options
-  location: public_examples/speech/transformer_transducer/popart/training
   data:
     throughput:
       regexp: 'Throughput:\s*(.*?),'

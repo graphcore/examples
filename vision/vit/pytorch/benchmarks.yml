@@ -1,6 +1,5 @@
 ---
 common_options: &common_options
-  location: public_examples/vision/vit/pytorch/
   data:
     throughput:
       regexp: 'Throughput: *(.*?) samples/sec'

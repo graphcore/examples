@@ -1,7 +1,6 @@
 ---
 # --- Pretraining ---
 pretrain_options: &pretrain_options
-  location: public_examples/nlp/bert/tensorflow2/
   env:
     TF_POPLAR_FLAGS: '--executable_cache_path=./tf_cache/'
   data:
@@ -70,7 +69,6 @@ tf2_bert_large_sl384_pretrain_real_pod64_conv:
 
 # --- SQuAD training ---
 squad_options: &squad_options
-  location: public_examples/nlp/bert/tensorflow2/
   data:
     throughput:
       regexp: 'throughput:\s*([\d\.]+)'
@@ -111,7 +109,6 @@ tf2_bert_squad_large_train_real_pod16_conv:
 
 # --- GLUE training ---
 glue_options: &glue_options
-  location: public_examples/nlp/bert/tensorflow2/
   data:
     throughput:
       regexp: 'throughput:\s*([\d\.]+)'

@@ -4,8 +4,6 @@ tf1_din_train_synth_1ipu:
     Training for a DIN model on MK2
   cmd:
     python3 din_train.py --use-synthetic-data True
-  location:
-    public_examples/recommendation/click_through_rate/tensorflow1/din/
   data:
     throughput:
       regexp: 'sample\/sec: *(.*?),'
@@ -18,8 +16,6 @@ tf1_din_infer_synth_1ipu:
     Inference for a DIN model on MK2
   cmd:
     python3 din_infer.py --use-synthetic-data True
-  location:
-    public_examples/recommendation/click_through_rate/tensorflow1/din/
   data:
     throughput:
       regexp: 'throughput: *(.*?),'

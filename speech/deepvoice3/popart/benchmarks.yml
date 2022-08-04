@@ -6,7 +6,6 @@ common_options: &common_options
       skip: 1
   output:
     - [queries/s, 'throughput']
-  location: public_examples/speech/deepvoice3/popart
 
 #takes approximately 45 minutes to compile and run on an M2000
 popart_deepvoice_train_gen_pod4:

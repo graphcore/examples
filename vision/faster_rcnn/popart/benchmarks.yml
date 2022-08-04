@@ -1,6 +1,5 @@
 ---
 common_options: &common_options
-  location: public_examples/vision/faster_rcnn/popart/
   data:
     throughput:
       regexp: 'throughput:\s*([\d\.]+)'

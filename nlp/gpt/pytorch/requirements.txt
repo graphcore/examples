@@ -7,5 +7,5 @@ tfrecord>=1.13
 pytest==6.2.5
 pytest-pythonpath>=0.7.3
 horovod>=0.24.0 --no-binary=horovod
-git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@e60289e0744c061dcfb060131cd3fbd7ad2840e0#egg=examples-utils
 tqdm>=4.63.1

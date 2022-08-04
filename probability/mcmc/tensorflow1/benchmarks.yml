@@ -2,8 +2,6 @@
 tf1_mcmc_train_real_pod4:
    description: 
       Training for a MCMC model with TensorFlow Probability
-   location: 
-       public_examples/probability/mcmc/tensorflow1
    cmd: 
        python3 mcmc_tfp.py --num_ipus=4 --dataset_dir $DATASETS_DIR/mcmc/
    data:

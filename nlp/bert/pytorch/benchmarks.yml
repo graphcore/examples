@@ -1,7 +1,6 @@
 ---
 # --- Pretraining ---
 pretrain_options: &pretrain_options
-   location: public_examples/nlp/bert/pytorch/
    data:
       throughput:
          regexp: \s([\d\.]+|nan)\ssequences
@@ -232,8 +231,7 @@ pytorch_bert_large_packed_sl384_pretrain_real_pod64_conv:
 
 # --- SQuAD ---
 squad_options: &squad_options
-   location: public_examples/nlp/bert/pytorch/
-   data:
+      data:
       throughput:
          regexp: "throughput=(.*) samples/s"
       loss:
@@ -294,8 +292,7 @@ pytorch_bert_squad_large_pretrain_real_pod64_conv:
 pytorch_bert_squad_large_infer_gen_pod16:
   description: |
     BERT Large SQuAD in inference.
-  location: public_examples/nlp/bert/pytorch/
-  data:
+    data:
     throughput:
       regexp: throughput=(.*) samples/s
   output:

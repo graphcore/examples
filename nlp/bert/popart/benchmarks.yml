@@ -1,7 +1,6 @@
 ---
 # --- Pretraining ---
 pretrain_options: &pretrain_options
-   location: public_examples/nlp/bert/popart/
    data:
       throughput:
          regexp: 'Throughput\:\s*(.*) sequences/s'
@@ -229,7 +228,6 @@ popart_bert_large_sl512_pretrain_real_pod64_conv:
 
 # --- SQuAD ---
 squad_options: &squad_options
-   location: public_examples/nlp/bert/popart/
    data:
       throughput:
          regexp: 'Throughput\:\s*(.*) sequences/s'
@@ -336,7 +334,6 @@ popart_bert_squad_large_infer_gen_pod4:
         --input-files=$DATASETS_DIR/squad/dev-v1.1.json
         --minimum-latency-inference
         --buffering-depth 1
-  location: public_examples/nlp/bert/popart/
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch": false}'
   data:
@@ -386,7 +383,6 @@ squad_base_128_4_ipu_inference_opts: &squad_base_128_4_ipu_inference_opts
   description: |
     BERT-B 128 (SQuAD) inference benchmark on 4 IPUs using
     data generated on the host
-  location: public_examples/nlp/bert/popart/
   data:
     throughput:
       regexp: 'Throughput\:\s*(.*) sequences/s'

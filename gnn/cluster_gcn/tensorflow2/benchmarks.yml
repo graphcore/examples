@@ -1,7 +1,6 @@
 ---
 # --- Train Cluster-GCN model ---
 train_options: &train_options
-  location: public_examples/gnn/cluster_gcn/tensorflow2/
   data:
     throughput:
       regexp: 'Mean throughput over real nodes \(no padding\) for training:\s*([\d\.]+)'

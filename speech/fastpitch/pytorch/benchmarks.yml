@@ -1,6 +1,5 @@
 ---
 common_options: &common_options
-  location: public_examples/speech/fastpitch/pytorch/
   data:
     throughput:
       skip: 1

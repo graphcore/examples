@@ -2,7 +2,6 @@
 
 # --- Benchmark Message Passing Neural Network model ---
 train_options: &train_options
-  location: public_examples/gnn/message_passing/tensorflow2/
   env:
     TF_POPLAR_FLAGS: '--executable_cache_path=./tf_cache/'
   data:

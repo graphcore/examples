@@ -1,6 +1,5 @@
 ---
 common_options: &common_options
-  location: public_examples/vision/cnns/tensorflow2
   data:
     throughput:
       reduction_type: 'mean'

@@ -1,7 +1,6 @@
 ---
 # --- Pretraining ---
 pretrain_options: &pretrain_options
-  location: public_examples/nlp/bert/tensorflow1/
   data:
     throughput:
       regexp: 'samples\/sec: *(.*?),'
@@ -205,8 +204,6 @@ tf1_groupbert_base_sl384_pretrain_real_pod64_conv:
 
 # --- SQuAD training ---
 squad_options: &squad_options
-  location:
-    public_examples/nlp/bert/tensorflow1/
   data:
     throughput:
       regexp: 'throughput\s+(\S+)\s+'
@@ -269,9 +266,6 @@ tf1_bert_squad_large_train_real_pod16_conv:
       --vocab-file $DATASETS_DIR/ckpts/uncased_L-24_H-1024_A-16/vocab.txt
       --predict-file $DATASETS_DIR/squad/dev-v1.1.json
       --wandb
-
-  location:
-    public_examples/nlp/bert/tensorflow1/
   data:
     throughput:
       regexp: 'throughput\s+(\S+)\s+'
@@ -281,8 +275,6 @@ tf1_bert_squad_large_train_real_pod16_conv:
 
 # --- GLUE training ---
 glue_options: &glue_options
-  location:
-    public_examples/nlp/bert/tensorflow1/
   data:
     throughput:
       regexp: 'throughput\s+(\S+)\s+'
@@ -333,8 +325,6 @@ tf1_bert_squad_large_infer_gen_2ipu:
       --embedded-runtime
       --micro-batch-size 1
       --num-iter 10000
-  location:
-    public_examples/nlp/bert/tensorflow1/
   env:
     TF_POPLAR_FLAGS: ""
   data:
@@ -374,8 +364,6 @@ tf1_bert_squad_large_infer_gen_4ipu:
       --embedded-runtime
       --micro-batch-size 1
       --num-iter 10000
-  location:
-    public_examples/nlp/bert/tensorflow1/
   env:
     TF_POPLAR_FLAGS: ""
   data:

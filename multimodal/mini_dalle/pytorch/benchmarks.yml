@@ -1,7 +1,5 @@
 ---
 common_options: &common_options
-  location:
-      public_examples/multimodal/mini_dalle/pytorch/
   data:
     throughput:
       reduction_type: "final"

@@ -1,5 +1,4 @@
 common_options: &common_options
-    location: public_examples/multimodal/CLIP/pytorch/
     data:
         throughput:
             reduction_type: "mean"

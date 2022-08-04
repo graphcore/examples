@@ -13,8 +13,6 @@ tf1_sales_forecasting_train_real_2ipu:
       --base-learning-rate=-16
       --weight-decay=0.0001
       --no-lr-warmup
-  location:
-    public_examples/miscellaneous/sales_forecasting/tensorflow1
   data:
     throughput:
       regexp: "Training:.*, *samples/sec: (.*), *time"
@@ -36,8 +34,6 @@ tf1_sales_forecasting_no_validation_train_real_2ipu:
       --base-learning-rate=-16
       --weight-decay=0.0001
       --no-lr-warmup
-  location:
-    public_examples/miscellaneous/sales_forecasting/tensorflow1
   data:
     throughput:
       regexp: "Training:.*, *samples/sec: (.*), *time"
