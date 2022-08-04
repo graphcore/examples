@@ -1,6 +1,5 @@
 ---
 common_options: &common_options
-  location: public_examples/vision/efficientdet/tensorflow2
   data:
     throughput:
       regexp: 'Throughput:\s+mean = (.*?),'

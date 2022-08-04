@@ -10,4 +10,4 @@ pytest-cov==3.0.0
 pytest-forked==1.4.0
 pytest-pythonpath==0.7.4
 pytest-xdist==2.5.0
-git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@e60289e0744c061dcfb060131cd3fbd7ad2840e0#egg=examples-utils

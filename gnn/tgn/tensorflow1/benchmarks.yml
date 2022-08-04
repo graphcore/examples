@@ -1,6 +1,5 @@
 ---
 common_options: &common_options
-  location: public_examples/gnn/tgn/tensorflow1/
   data:
     throughput:
       regexp: 'throughput: *(.*?),'

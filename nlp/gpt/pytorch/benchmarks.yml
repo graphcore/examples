@@ -1,6 +1,5 @@
 ---
 train_options: &train_options
-  location: public_examples/nlp/gpt/pytorch/
   data:
     throughput:
       reduction_type: "final"
@@ -220,7 +219,6 @@ pytorch_gpt2_large_train_gen_pod16:
       --epochs 1
 
 inference_options: &inference_options
-  location: public_examples/nlp/gpt/pytorch/
   data:
     throughput:
       reduction_type: "final"

@@ -22,7 +22,6 @@ pytorch_yolov4_infer_real_pod4:
         --mode test_inference
         --nms-max-detections {max_detections}
         --pre-nms-topk-k {topk_nums}
-  location: public_examples/vision/yolo_v4/pytorch
   data:
     throughput:
       regexp: 'Average Inference Throughput: (\d*.\d*) img\/s'

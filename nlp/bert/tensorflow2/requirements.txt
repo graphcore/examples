@@ -10,5 +10,5 @@ tensorflow-addons==0.14.0
 tensorflow-datasets==4.4.0
 torch==1.9.0
 git+https://github.com/graphcore/transformers-fork@v4.18-gc#egg=transformers # Fork of transformers to support KerasTensor from the Keras package with Python 3.6.
-git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@e60289e0744c061dcfb060131cd3fbd7ad2840e0#egg=examples-utils
 wandb==0.12.8

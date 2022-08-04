@@ -5,7 +5,6 @@ tf1_autoencoder_train_gen_2ipu:
   cmd:
     python3 autoencoder_benchmark.py --size 128 --num-ipus 2
     --base-learning-rates 16..17 --epochs 10
-  location: public_examples/recommendation/autoencoder/tensorflow1
   data:
     throughput:
       regexp:

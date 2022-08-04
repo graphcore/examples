@@ -1,7 +1,5 @@
 ---
 common_options: &common_options
-  location:
-    public_examples/vision/dino/pytorch/
   output:
     - [Images/sec, 'throughput']
     - [accuracy, 'accuracy']

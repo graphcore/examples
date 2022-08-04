@@ -5,7 +5,6 @@ tf1_yolov3_train_real_pod4:
     python3 train.py
        --config ./config/config_544_performance_test.json
        --train-annot-path ./data/dataset/voc_train.txt
-  location: public_examples/vision/yolo_v3/tensorflow1
   data:
     throughput:
       regexp: 'samples/s:*(.*?),'

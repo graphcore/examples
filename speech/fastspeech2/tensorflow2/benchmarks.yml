@@ -1,6 +1,5 @@
 ---
 train_options: &train_options
-  location: public_examples/speech/fastspeech2/tensorflow2/
   data:
     throughput:
       reduction_type: 'final'
@@ -9,7 +8,6 @@ train_options: &train_options
     - [samples/sec, 'throughput']
 
 inference_options: &inference_options
-  location: public_examples/speech/fastspeech2/tensorflow2/
   data:
     throughput:
       regexp: 'Averaged Metrics.*\n.*Throughput:\s*([\d\.]+)'

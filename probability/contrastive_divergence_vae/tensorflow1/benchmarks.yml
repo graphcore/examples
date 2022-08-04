@@ -5,7 +5,6 @@ tf1_mcmc_vae_synth_pod4:
   cmd:
     python3 main.py --config-file=configs/benchmark_config.json --no-testing
     -b 3072
-  location: public_examples/probability/contrastive_divergence_vae/tensorflow1
   data:
     time_per_iters:
       regexp: '\|\sTime\staken:\s*(.*?)(?:\n|$)'

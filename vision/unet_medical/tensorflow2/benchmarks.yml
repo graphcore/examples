@@ -14,7 +14,6 @@ tf2_unet_train_real_pod4:
       --num-epochs 200
       --data-dir $DATASETS_DIR/tif
       --benchmark
-  location: public_examples/vision/unet_medical/tensorflow2
   data:
     throughput:
       regexp: 'Throughput *(.*?) images'
@@ -49,7 +48,6 @@ tf2_unet_infer_gen_pod4:
       --infer
       --host-generated-data
       --benchmark
-  location: public_examples/vision/unet_medical/tensorflow2
   data:
     throughput:
       regexp: 'Throughput *(\d*\.\d*) images'
