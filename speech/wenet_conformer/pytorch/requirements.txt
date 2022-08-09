@@ -9,4 +9,4 @@ pytest==6.2.5
 editdistance==0.5.2
 horovod==0.24.0
 torchaudio==0.10.0+cpu
-git+https://github.com/graphcore/examples-utils@292047e7d29e25954cdfcf821320544dc11bfc04#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@e60289e0744c061dcfb060131cd3fbd7ad2840e0#egg=examples-utils
