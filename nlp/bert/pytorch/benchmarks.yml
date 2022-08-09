@@ -231,7 +231,7 @@ pytorch_bert_large_packed_sl384_pretrain_real_pod64_conv:
 
 # --- SQuAD ---
 squad_options: &squad_options
-      data:
+   data:
       throughput:
          regexp: "throughput=(.*) samples/s"
       loss:
