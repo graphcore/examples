@@ -5,6 +5,10 @@ This directory contains an implementation of BERT models in PyTorch for the IPU,
 1. BERT for pre-training - `run_pretraining.py`
 2. BERT for SQuAD - `run_squad.py`
 
+Run our BERT-L Fine-tuning on SQuAD dataset on Paperspace.
+<br>
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://console.paperspace.com/github/gradient-ai/Graphcore-PyTorch?machine=Free-IPU-POD16&container=graphcore%2Fpytorch-jupyter%3A2.6.0-ubuntu-20.04-20220804&file=%2Fget-started%2FFine-tuning-BERT.ipynb)
+
 ## Environment setup
 
 First, install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` scripts for Poplar and PopART.

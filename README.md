@@ -202,6 +202,7 @@ Please note we are not currently accepting pull requests or issues on this repos
 The [utils/](utils) folder contains utilities libraries and scripts that are used across the other code examples. This includes:
 
 * [utils/examples_tests](utils/examples_tests) - Common Python helper functions for the repository's unit tests
+* [utils/benchmarks](utils/benchmarks) - Common Python helper functions for running benchmarks on the IPU in different frameworks
 
 <br>
 

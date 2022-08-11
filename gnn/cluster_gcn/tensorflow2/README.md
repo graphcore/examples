@@ -1,11 +1,15 @@
 # Cluster GCN model
 
+Run our Cluster GCN training on arXiv dataset on Paperspace.
+<br>
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://console.paperspace.com/github/gradient-ai/Graphcore-Tensorflow2?machine=Free-IPU-POD16&container=graphcore%2Ftensorflow-jupyter%3A2-amd-2.6.0-ubuntu-20.04-20220804&file=%2Fget-started%2Frun_cluster_gcn_notebook.ipynb)
+
 ## Table of contents
 
 1. [Introduction](#intro)
 2. [Prepare environment](#environment)
 3. [Datasets](#datasets)
-    1. [PPI](#ppi)
+    1. [PPI](#ppi) 
     2. [Reddit](#reddit)
     3. [arXiv](#arxiv)
     4. [Products](#products)

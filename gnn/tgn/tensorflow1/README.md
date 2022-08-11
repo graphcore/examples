@@ -1,7 +1,9 @@
 # TGN: Temporal Graph Networks
 
-An implementation of the [TGN](https://arxiv.org/abs/2006.10637) in TensorFlow 1 for IPU.
-
+An implementation of [TGN](https://arxiv.org/abs/2006.10637) in TensorFlow 1 for IPU. <br><br>
+Run our Temporal Graph Networks on JODIE Wikipedia dataset on Paperspace.
+<br>
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://console.paperspace.com/github/gradient-ai/Graphcore-Tensorflow1?machine=Free-IPU-POD16&container=graphcore%2Ftensorflow-jupyter%3A1-amd-2.6.0-ubuntu-18.04-20220804&file=%2Fget-started%2FTrainingTGN.ipynb)
 
 ## About
 
