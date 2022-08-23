@@ -7,4 +7,4 @@ wandb==0.12.8
 transformers==4.18.0
 yacs==0.1.8
 pyyaml==5.4.1
-git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
