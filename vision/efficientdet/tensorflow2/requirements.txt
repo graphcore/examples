@@ -7,4 +7,4 @@ six==1.16.0
 tensorflow-model-optimization==0.7.2
 pytest==6.2.5
 pytest-pythonpath==0.7.4
-git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils

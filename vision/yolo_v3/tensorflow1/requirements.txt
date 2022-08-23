@@ -2,4 +2,4 @@ opencv-python==4.5.2.52
 easydict==1.9
 pytest==6.2.5
 tqdm==4.64.0
-git+https://github.com/graphcore/examples-utils@6d3b8367d5c6d2cda5a0e7849138d0ee8a8c6756#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@1a4ef42bfeb31ad1137db1c3c32fd21a6871bf72#egg=examples-utils
