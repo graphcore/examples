@@ -65,7 +65,7 @@ If you require POD128/256 setup and configuration for our applications, please c
 | BERT | NLP | Training & Inference |[TensorFlow 1](nlp/bert/tensorflow1) , [PyTorch](nlp/bert/pytorch) , [PopART](nlp/bert/popart), [TensorFlow 2](nlp/bert/tensorflow2/), [PopXL](nlp/bert/popxl), [PaddlePaddle](https://github.com/PaddlePaddle/PaddleNLP/tree/develop/model_zoo/bert/static_ipu), [Hugging Face Optimum](https://huggingface.co/Graphcore/bert-large-ipu)|
 | Group BERT | NLP | Training |[TensorFlow 1](nlp/bert/tensorflow1/README.md#GroupBERT_model) |
 | Packed BERT | NLP | Training |[PyTorch](nlp/bert/pytorch), [PopART](nlp/bert/popart) |
-| GPT2 | NLP | Training |[PyTorch](nlp/gpt/pytorch) , [Hugging Face Optimum](https://huggingface.co/Graphcore/gpt2-medium-ipu) |
+| GPT2 | NLP | Training |[PyTorch](nlp/gpt2/pytorch) , [Hugging Face Optimum](https://huggingface.co/Graphcore/gpt2-medium-ipu) |
 | RoBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/roberta-large-ipu)|
 | DeBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/deberta-base-ipu)|
 | HuBERT | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/hubert-base-ipu)|
@@ -83,9 +83,8 @@ If you require POD128/256 setup and configuration for our applications, please c
 | DeepVoice3 | TTS (TextToSpeech) | Training & Inference |[PopART](speech/deepvoice3/popart) |
 | FastSpeech2 | TTS(TextToSpeech) | Training & Inference | [TensorFlow 2](speech/fastspeech2/tensorflow2) |
 | Fastpitch | TTS (TextToSpeech) | Training | [PyTorch](speech/fastpitch/pytorch) |
-| Conformer | STT(SpeechToText) | Training & Inference | [PopART](speech/conformer/popart), [TensorFlow 1](speech/conformer/tensorflow1) |
+| Conformer | STT(SpeechToText) | Training & Inference | [PopART](speech/conformer/popart), [TensorFlow 1](speech/conformer/tensorflow1), [PyTorch](speech/conformer/pytorch)|
 | Transfomer Transducer | STT(SpeechToText) | Training & Inference | [PopART](speech/transformer_transducer/popart) |
-| WeNet-Conformer | STT(SpeechToText) | Training | [PyTorch](speech/wenet_conformer/pytorch) |
 | Wav2Vec2 | STT(SpeechToText) | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/wav2vec2-base-ipu)|
 
 <br>
@@ -212,6 +211,15 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 <br>
 
 ## Changelog
+<details>
+<summary>Aug 2022</summary>
+<br> 
+
+* Change the folder name of models
+    * NLP : from gpt to gpt2
+    * Speech : from wenet-conformer to conformer
+
+</details>
 <details>
 <summary>July 2022</summary>
 <br> 

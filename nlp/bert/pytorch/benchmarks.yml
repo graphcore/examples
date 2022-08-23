@@ -292,7 +292,7 @@ pytorch_bert_squad_large_pretrain_real_pod64_conv:
 pytorch_bert_squad_large_infer_gen_pod16:
   description: |
     BERT Large SQuAD in inference.
-    data:
+  data:
     throughput:
       regexp: throughput=(.*) samples/s
   output:

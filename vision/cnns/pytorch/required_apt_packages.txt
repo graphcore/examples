@@ -2,3 +2,6 @@ cmake
 libjpeg-turbo8-dev
 libffi-dev
 nasm
+libssl-dev
+rapidjson-dev
+libre2-dev

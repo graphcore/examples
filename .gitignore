@@ -27,6 +27,7 @@ archive.a
 vars.capnp
 
 *.onnx
+*.popef
 
 .DS_Store
 
@@ -49,4 +50,7 @@ vars.capnp
 **/.ipynb_checkpoints
 nohup.*
 **/wandb
+
+utils/triton_server/backends
+!vision/cnns/pytorch/tests/tritonserver/models/*/*/*.json
 

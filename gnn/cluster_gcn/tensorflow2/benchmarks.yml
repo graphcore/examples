@@ -1,6 +1,8 @@
 ---
 # --- Train Cluster-GCN model ---
 train_options: &train_options
+  env:
+    TF_POPLAR_FLAGS: '--executable_cache_path=/tmp/tf_cache/'
   data:
     throughput:
       regexp: 'Mean throughput over real nodes \(no padding\) for training:\s*([\d\.]+)'

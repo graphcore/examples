@@ -1,10 +1,26 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import logging
 import os
-import precision
-import seed
+import sys
+
+from tensorflow import keras
+from tensorflow.python import ipu
+from tensorflow.python.ipu import serving
+import tensorflow as tf
 
 from batch_config import BatchConfig
 from configuration import terminal_argparse
@@ -12,8 +28,9 @@ from datasets.dataset_factory import DatasetFactory
 from eight_bit_transfer import EightBitTransfer
 from ipu_config import configure_ipu
 from model.model_factory import ModelFactory
-from tensorflow import keras
-from tensorflow.python import ipu
+import precision
+import seed
+sys.path.append(os.getcwd())
 
 
 def get_parser():
@@ -28,6 +45,8 @@ def get_parser():
     parser.add_argument('--checkpoint-file', type=str, default=None,
                         help='Path to a checkpoint file that will be loaded before exporting model for TensorFlow Serving. '
                              'If not set, the model will use randomly initialized parameters.')
+    parser.add_argument('--use-serving-api', action='store_true',
+                        help='Use TensorFlow serving API for model export')
     return parser
 
 
@@ -36,7 +55,8 @@ def validate_arguments(hparams):
         raise ValueError('Unspecified directory for the exported SavedModel. '
                          'Make sure --export-dir is defined.')
     elif os.path.exists(hparams.export_dir) and not os.path.isdir(hparams.export_dir):
-        raise ValueError(f'--export-dir is set to "{hparams.export_dir}" which already exists and is not a directory.')
+        raise ValueError(
+            f'--export-dir is set to "{hparams.export_dir}" which already exists and is not a directory.')
     elif os.path.isdir(hparams.export_dir) and os.listdir(hparams.export_dir):
         raise ValueError(f'--export-dir is set to "{hparams.export_dir}" which already exists, and is not empty. '
                          'Please choose a different export directory, or delete all the contents of the specified directory.')
@@ -45,10 +65,12 @@ def validate_arguments(hparams):
         logging.warn('No checkpoint file provided, model\'s parameters will be initialized randomly.'
                      'Set --checkpoint-file to load trained parameters.')
     elif not os.path.exists(hparams.checkpoint_file):
-        raise ValueError(f'--checkpoint-file is set to "{hparams.checkpoint_file}" which does not exists.')
+        raise ValueError(
+            f'--checkpoint-file is set to "{hparams.checkpoint_file}" which does not exists.')
 
     if (not len(hparams.pipeline_splits)) and hparams.pipeline_serving_model:
-        logging.warn('Pipeline splits have not been defined, turning off the pipeline-serving-model option.')
+        logging.warn(
+            'Pipeline splits have not been defined, turning off the pipeline-serving-model option.')
         hparams.pipeline_serving_model = False
 
     if hparams.iterations == 1:
@@ -72,7 +94,8 @@ if __name__ == '__main__':
     fp_precision.apply()
 
     # Get eight bit transfer object
-    eight_bit_transfer = EightBitTransfer(fp_precision.compute_precision) if hparams.eight_bit_transfer else None
+    eight_bit_transfer = EightBitTransfer(
+        fp_precision.compute_precision) if hparams.eight_bit_transfer else None
 
     batch_config = BatchConfig(micro_batch_size=hparams.micro_batch_size,
                                num_replicas=1,
@@ -103,8 +126,11 @@ if __name__ == '__main__':
     strategy = ipu.ipu_strategy.IPUStrategy()
 
     with strategy.scope():
-        input_tensor = keras.layers.Input(ds.image_shape,
-                                          batch_size=hparams.micro_batch_size)
+        if hparams.use_serving_api:
+            input_tensor = None
+        else:
+            input_tensor = keras.layers.Input(ds.image_shape,
+                                              batch_size=hparams.micro_batch_size)
         # Create an instance of the model
         model = ModelFactory.create_model(model_name=hparams.model_name,
                                           input_shape=ds.image_shape,
@@ -131,7 +157,8 @@ if __name__ == '__main__':
                                                  available_memory_proportion=hparams.available_memory_proportion,
                                                  optimizer_state_offloading=hparams.optimizer_state_offloading)
 
-        model.compile(steps_per_execution=hparams.iterations)
+        if not hparams.use_serving_api:
+            model.compile(steps_per_execution=hparams.iterations)
         model.build(input_shape=(hparams.micro_batch_size,
                                  ds.image_shape[0],
                                  ds.image_shape[1],
@@ -140,4 +167,20 @@ if __name__ == '__main__':
         if hparams.checkpoint_file:
             logging.info(f'Loading checkpoint file {hparams.checkpoint_file}')
             model.load_weights(hparams.checkpoint_file)
-        model.export_for_ipu_serving(hparams.export_dir)
+        input_dtype = tf.uint8 if hparams.eight_bit_transfer else fp_precision.compute_precision
+
+        if not hparams.use_serving_api:
+            model.export_for_ipu_serving(
+                hparams.export_dir, batch_size=hparams.micro_batch_size)
+        else:
+            input_signature = (tf.TensorSpec(shape=(hparams.micro_batch_size,
+                                                    ds.image_shape[0],
+                                                    ds.image_shape[1],
+                                                    ds.image_shape[2]), dtype=input_dtype),)
+
+            @tf.function(input_signature=input_signature)
+            def predict_step(input):
+                res = model(inputs=input)
+                return res
+            serving.export_single_step(
+                predict_step, hparams.export_dir, hparams.iterations)

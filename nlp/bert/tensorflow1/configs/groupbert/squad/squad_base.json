@@ -15,6 +15,8 @@
     "use_attention_projection_bias": true,
     "use_cls_layer": false,
     "use_qkv_bias": true,
+    "use_qkv_split": true,
+    "use_mpclip": true,
     "pipeline_stages": [
      ["emb", "pos"],
      ["hid","hid", "hid", "hid"],
@@ -31,6 +33,7 @@
     "warmup": 0.1,
     "loss_scaling": 512,
     "optimizer": "lamb",
+    "use_lr_fp32": true,
     "beta1": 0.9,
     "beta2": 0.999,
     "gradient_accumulation_count": 40,
@@ -64,7 +67,7 @@
     "do_lower_case": true,
     "verbose_logging": false,
     "version_2_with_negative": false,
-    "variable_offloading": false,
+    "variable_offloading": true,
 
     "output_dir": null,
     "save_path": "./checkpoint/squad",

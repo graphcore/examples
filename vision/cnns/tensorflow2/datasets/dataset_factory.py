@@ -48,7 +48,7 @@ class DatasetFactory:
                         Usually either 'train', 'test' or 'validation'.
             img_datatype (tf.dtypes.DType):
                         Image format.
-            micro_batch_size (int):
+            batch_config (BatchConfig):
                         Number of samples that the dataset pipeline will output for each call.
             seed (str):
                         Seeding for the prng.
@@ -65,8 +65,6 @@ class DatasetFactory:
                         Allows to disable preprocessing completely.
             pipeline_num_parallel (int):
                         Number of parallel threads to be used for the preprocessing.
-            num_local_instances (int):
-                        Number of instances running on a single host machine.
             fused_preprocessing (bool):
                         An optimisation allowing better memory mapping in some cases.
             synthetic_data (str):

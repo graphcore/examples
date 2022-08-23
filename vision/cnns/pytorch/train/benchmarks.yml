@@ -18,30 +18,6 @@ common_options: &common_options
     POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
     PYTORCH_CACHE_DIR: "./pt_cache/"
 
-multihost_options: &multihost_options
-  description: |
-    Pytorch resnet50 training for > 16 IPUs.
-    The env variables needed are:
-      HOSTS - Comma separated list of hosts, usually something like:
-        `10.1.3.101,10.1.3.10x...`
-      VIPU_CLI_API_HOST - IP of host where VIPU server is running. Usually
-        `10.1.3.101`.
-      PARTITION - Name of partition to use, can be found via
-        `vipu list partitions`. Note that the `--update-partitions` poprun
-        flag is disabled here, so ensure the partition is reconfigurable
-        or it has been setup properly for this benchmark
-      TCP_IF_INCLUDE - Name of subnet, or range of IPs for network interface
-        on which all hosts are. Usually `enp65s0f0np0` or `10.1.3.0/24`.
-    In addition to this, make sure that all 4 hosts are properly set up to run
-    multihost benchmarks. This involves:
-      - Ensuring the state of public examples, sdks and venvs is identical on
-        all hosts
-      - Setting up all hosts to communicate with each other properly
-      - Checking the environment variables and VIPU setup will permit
-        distributed running
-      - Making sure the benchmark command itself and the app are setup properly
-        to run on multiple hosts
-
 pytorch_resnet50_train_real_pod16:
   <<: *common_options
   description: ResNet training on 16 Mk2 IPUs, real data.
@@ -60,7 +36,7 @@ pytorch_resnet50_train_real_pod16:
       --dataloader-rebatch-size 256
 
 pytorch_resnet50_train_real_pod64_conv:
-  <<: [*common_options, *multihost_options]
+  <<: *common_options
   description: |
     ResNet training on 64 Mk2 IPUs with real data
     for convergence testing.

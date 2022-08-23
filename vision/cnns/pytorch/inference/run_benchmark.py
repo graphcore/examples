@@ -4,6 +4,7 @@ import argparse
 import copy
 from pathlib import Path
 import poptorch
+import pytest
 import numpy as np
 import import_helper
 import logging
@@ -106,14 +107,17 @@ if __name__ == '__main__':
     args = parse_arguments()
     utils.Logger.setup_logging_folder(args)
     if args.use_popdist:
-        opts = popdist.poptorch.Options(ipus_per_replica=len(args.pipeline_splits) + 1)
+        opts = popdist.poptorch.Options(
+            ipus_per_replica=len(args.pipeline_splits) + 1)
     else:
         opts = poptorch.Options()
         opts.replicationFactor(args.replicas)
     opts.deviceIterations(args.device_iterations)
 
-    dataloader = datasets.get_data(args, opts, train=False, async_dataloader=False)
-    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=not args.random_weights, inference_mode=True)
+    dataloader = datasets.get_data(
+        args, opts, train=False, async_dataloader=False)
+    model = models.get_model(
+        args, datasets.datasets_info[args.data], pretrained=not args.random_weights, inference_mode=True)
 
     opts = utils.inference_settings(args, copy.deepcopy(opts))
     inference_model = poptorch.inferenceModel(model, opts)

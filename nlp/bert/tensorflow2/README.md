@@ -242,7 +242,7 @@ In order to reach optimized performance for the BERT model, the following optimi
    ```
    Both compute and variable dtypes are set to float16. But note that the optimizer states, optimizer update and the loss functions are still in float32 for convergence purpose.
 * To simulate larger batch sizes we use gradient accumulation, which accumulates gradients across multiple micro-batches together and then performs the weight update with the accumulated gradients. We use the [running mean](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html?highlight=running_mean#tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod) accumulation method which performs a more stable running mean of the gradients.
-* The model was pipelined over 4 IPUs. More information about pipelining can be found [here](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/main.html?highlight=pipeline#pipeline-execution-scheme).
+* The model was pipelined over 4 IPUs. More information about pipelining can be found [here](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/optimising-performance.html#pipeline-execution-scheme).
 * When pipelining, place the heads on the same IPU with the embeddings (typically IPU0) so that the weights for embeddings can be shared.
 For example, for BERT large in the config file:
    ```
@@ -275,8 +275,8 @@ The recompuation checkpoint is added with the class
    ```
    ModelAddRecomputationCheckpoints
    ```
-   in `keras_extentions/model_transformations.py`. More information about [recomputation checkpoint](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/main.html?highlight=recomputation%20checkpoint#recomputation-checkpoints). 
-* Offload the optimiser state. Guide can be found [here](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/main.html?highlight=optimiser%20state#variable-offloading).
+   in `keras_extentions/model_transformations.py`. More information about [recomputation checkpoint](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/common-memory-optimisations.html#recomputation-checkpoints). 
+* Offload the optimiser state. Guide can be found [here](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/common-memory-optimisations.html#variable-offloading).
 * Replace the upstream GeLu activation with the IPU specific GeLu when calling the bert_config in `run_pretraining.py`, `run_squad.py` and `run_seq_classification.py`.
    ```
    bert_config = BertConfig(**config.bert_config.dict(), hidden_act=ipu.nn_ops.gelu)

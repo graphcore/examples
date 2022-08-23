@@ -18,6 +18,15 @@ common_options: &common_options
     - [accuracy, 'accuracy']
     - [loss, 'loss']
 
+common_options_inference: &common_options_inference
+  data:
+    throughput:
+      reduction_type: 'mean'
+      regexp: 'Average images\/s.:\s*([\d\.]+)'
+      skip: 2
+  output:
+    - [Images/sec, 'throughput']
+
 tf2_resnet50_train_real_pod16:
   <<: *common_options
   description:
@@ -36,3 +45,36 @@ tf2_resnet50_train_real_pod16_conv:
     python3 train.py
         --config resnet50_16ipus_8k_bn_pipeline
         --dataset-path $DATASETS_DIR/imagenet-data
+
+tf2_resnet50_serving_throughput:
+  <<: *common_options_inference
+  description:
+    Resnet50 serving throughput, batch size 1, 8, 16
+  parameters:
+    batchsize: 1,8,16
+  cmd: >-
+    python3 send_request.py
+        --config resnet50_infer_bs16
+        --dataset-path $DATASETS_DIR/imagenet-data
+        --batch-size {batchsize}
+        --port 8502
+        --use-async
+        --num-threads 16
+
+tf2_resnet50_serving_latency:
+  data:
+    latency:
+        regexp: 'Latencies - avg: *(.*?),'
+  output:
+    - [Latency avg(ms), 'latency']
+  description:
+    Resnet50 serving latency, batch size 1
+  cmd: >-
+    python3 send_request.py
+        --config resnet50_infer_bs1
+        --dataset-path $DATASETS_DIR/imagenet-data
+        --batch-size 1
+        --port 8502
+        --num-threads 1
+        --verbose
+

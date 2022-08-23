@@ -18,10 +18,16 @@ def get_available_configs(config_file):
     return configs
 
 
-def parse_with_config(parser, config_file):
+def parse_with_config(parser, config_file, custom_args=None):
     configurations = get_available_configs(config_file)
     parser.add_argument('--config', choices=configurations.keys(), help="Select from avalible configurations")
-    args = parser.parse_args()
+
+    def parse_args(arguments):
+        if arguments is None:
+            return parser.parse_args()
+        else:
+            return parser.parse_known_args(args=arguments)[0]
+    args = parse_args(custom_args)
     if args.config is not None:
         # Load the configurations from the YAML file and update command line arguments
         loaded_config = YAMLNamespace(configurations[args.config])
@@ -29,7 +35,7 @@ def parse_with_config(parser, config_file):
         for k in vars(loaded_config).keys():
             assert k in vars(args).keys(), f"Couldn't recognise argument {k}."
 
-        args = parser.parse_args(namespace=loaded_config)
+        args = parser.parse_args(args=custom_args, namespace=loaded_config)
     if args.dataloader_worker is None:
         # determine dataloader-worker
         args.dataloader_worker = min(32, multiprocessing.cpu_count())

@@ -15,7 +15,7 @@
 #include <popart/ir.hpp>
 #include <popart/graph.hpp>
 #include <popart/op.hpp>
-#include <popart/opidentifier.hpp>
+#include <popart/operators.hpp>
 #include <popart/tensornames.hpp>
 #include <popart/op/add.hpp>
 #include <popart/op/dropout.hpp>

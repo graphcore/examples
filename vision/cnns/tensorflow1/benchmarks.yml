@@ -1,5 +1,7 @@
 ---
 common_options: &common_options
+   location:
+      public_examples/vision/cnns/tensorflow1/training
    output:
       - [Images/sec, 'throughput']
       - [accuracy, 'accuracy']
@@ -210,6 +212,8 @@ tf1_resnet50_val_real_pod64_conv:
   env:
     TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
     POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -254,6 +258,28 @@ tf1_resnext101_train_real_pod4:
          reduction_type: 'final'
          regexp: 'loss:\s*([\d\.]+|nan)\,'
          skip: 17
+
+tf1_resnet50_serving_infer_real_1ipu:
+  description: |
+    Resnet50 batch-sizes 1, 8, 16 serving on 1 IPU
+  parameters:
+    batchsize: 1,8,16
+  cmd: >-
+    python3 send_request.py resnet50 images 
+      --port=8504
+      --num-threads 16
+      --num-images 1600
+      --batch-size {batchsize} 
+      --model-batch-size 16
+  location:
+    public_examples/vision/cnns/tensorflow1/inference
+  env:
+    POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
+  data:
+    throughput:
+      regexp: 'img\/sec: *(.*?),'
+  output:
+    - [Images/sec, 'throughput']
 
 tf1_resnext101_train_real_pod16:
    <<: *common_options
@@ -311,6 +337,8 @@ tf1_efficientnet_b4_train_real_pod16:
       --epochs-per-ckpt 1
       --no-validation
       --eight-bit-io
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -348,6 +376,8 @@ tf1_efficientnet_b4_g16_train_real_pod16:
       --eight-bit-io
       --num-io-tiles 32
       --prefetch-depth 3
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -412,6 +442,8 @@ tf1_efficientnet_b4_g16_train_real_pod64_conv:
   env:
     TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
     POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -473,6 +505,8 @@ tf1_efficientnet_b4_g16_validation_real_pod16_conv:
   env:
     TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
     POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -501,6 +535,8 @@ tf1_resnet50_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -537,6 +573,8 @@ tf1_resnet50_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 64
       --prefetch-depth 2
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -574,6 +612,8 @@ tf1_resnet50_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 32
       --prefetch-depth 2
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
@@ -613,6 +653,8 @@ tf1_resnext101_infer_gen_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -638,6 +680,8 @@ tf1_resnext101_long_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -673,6 +717,8 @@ tf1_resnext101_long_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 64
       --prefetch-depth 4
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -709,6 +755,8 @@ tf1_resnext101_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 64
       --prefetch-depth 3
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
@@ -749,6 +797,8 @@ tf1_efficientnet_b0_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -775,6 +825,8 @@ tf1_efficientnet_b0_long_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -804,6 +856,8 @@ tf1_efficientnet_b0_g16_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -840,6 +894,8 @@ tf1_efficientnet_b0_long_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 64
       --prefetch-depth 4
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -879,6 +935,8 @@ tf1_efficientnet_b0_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 64
       --prefetch-depth 3
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -916,6 +974,8 @@ tf1_efficientnet_b0_g16_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 64
       --prefetch-depth 2
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
@@ -968,6 +1028,8 @@ tf1_efficientnet_b0_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 32
       --prefetch-depth 2
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
@@ -1009,6 +1071,8 @@ tf1_efficientnet_b4_infer_synth_1ipu:
       --enable-half-partials
       --eight-bit-io
       --fused-preprocessing
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -1039,6 +1103,8 @@ tf1_efficientnet_b4_g16_infer_synth_1ipu:
       --enable-half-partials
       --eight-bit-io
       --fused-preprocessing
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -1075,6 +1141,8 @@ tf1_efficientnet_b4_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 32
       --prefetch-depth 3
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -1114,6 +1182,8 @@ tf1_efficientnet_b4_g16_infer_synth_1ipu:
       --fused-preprocessing
       --num-io-tiles 32
       --prefetch-depth 3
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'
@@ -1150,6 +1220,8 @@ tf1_efficientnet_b4_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 32
       --prefetch-depth 3
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
@@ -1205,6 +1277,8 @@ tf1_efficientnet_b4_g16_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 64
       --prefetch-depth 2
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
@@ -1255,6 +1329,8 @@ tf1_efficientnet_b7_infer_gen_pod4:
       --no-dataset-cache
       --num-inference-thread 3
       --tmp-execs
+  location:
+    public_examples/vision/cnns/tensorflow1/training
   data:
     throughput:
       regexp: 'img\/sec: *(.*?),'

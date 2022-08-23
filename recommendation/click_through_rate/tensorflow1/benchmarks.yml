@@ -1,9 +1,6 @@
 ---
-tf1_din_train_synth_1ipu:
-  description: |
-    Training for a DIN model on MK2
-  cmd:
-    python3 din_train.py --use-synthetic-data True
+common_options: &common_options
+  location: public_examples/recommendation/click_through_rate/tensorflow1/din/
   data:
     throughput:
       regexp: 'sample\/sec: *(.*?),'
@@ -11,14 +8,19 @@ tf1_din_train_synth_1ipu:
   output:
     - [Sample/sec, 'throughput']
 
+tf1_din_train_synth_1ipu:
+  <<: *common_options
+  description: |
+    Training for a DIN model on MK2
+  cmd:
+    python3 din_train.py
+      --use-synthetic-data True
+  
 tf1_din_infer_synth_1ipu:
+  <<: *common_options
   description: |
     Inference for a DIN model on MK2
   cmd:
-    python3 din_infer.py --use-synthetic-data True
-  data:
-    throughput:
-      regexp: 'throughput: *(.*?),'
-      skip: 1
-  output:
-    - [throughput, 'throughput']
+    python3 din_infer.py
+      --use-synthetic-data True
+>>>>>>> 31159532b... TF1 DIN: Fixing benchmark path in yaml

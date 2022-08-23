@@ -5,9 +5,8 @@ common_options: &common_options
       regexp: 'Training\sthroughput:\s+([0-9\.]+)\s+Queries.*'
       skip: 1
   output:
-    - [queries/s, 'throughput']
+    - [samples/sec, 'throughput']
 
-#takes approximately 45 minutes to compile and run on an M2000
 popart_deepvoice_train_gen_pod4:
   <<: *common_options
   description: Train Deep Voice 3 model with effective BS 128 on 4 IPUs.

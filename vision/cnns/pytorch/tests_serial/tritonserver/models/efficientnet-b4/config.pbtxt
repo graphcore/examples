@@ -1,0 +1,30 @@
+name: "efficientnet-b4"
+backend: "poplar"
+max_batch_size: 1536
+input [
+        {
+                name: "input"
+                data_type: TYPE_UINT8
+                dims: [ 3, 380, 380 ] 
+        }
+]
+output [
+        {
+                name: "output"
+                data_type: TYPE_FP16
+                dims: [ 1000 ] 
+        }
+]
+
+parameters [
+        {
+                key: "synchronous_execution"
+                value:{string_value: "1"}
+        },
+        {
+                key: "timeout_ns"
+                value:{string_value: "500000"}
+        }
+]
+
+instance_group [{ kind: KIND_CPU }]

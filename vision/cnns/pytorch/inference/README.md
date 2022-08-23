@@ -13,6 +13,7 @@ The following models are supported using this inference harness.
 ### File structure
 
 * `run_benchmark.py` Driver script for running inference.
+* `run_benchmark_with_triton_server.py` Driver script for running inference with Triton Server.
 * `README.md` This file.
 * `configs.yml` Contains the common inference configurations.
 
@@ -36,9 +37,15 @@ cd ../inference/
 python3 run_benchmark.py --data real --replicas 1  --batch-size 1 --model resnet18 --device-iteration 1
 ```
 
+  Run benchmarks with Triton Server:
+
+```console
+python3 run_benchmark_with_triton_server.py --benchmark_only=true ../tests_serial/tritonserver/
+```
+
 ### Options
 
-The program has a few command-line options:
+The `run_benchmark.py` program has a few command-line options:
 
 `-h`                            Show usage information.
 
@@ -82,6 +89,12 @@ The program has a few command-line options:
 
 `--random-weights`              When true, weights of the model are initialized randomly.
 
+The `run_benchmark_with_triton_server.py` is accepting all `pytest` options with additional options:
+`--model-repository`            Path to directory which consists model configuration files for Triton Server and model exported to popef file. Default: `../test_serial/tritonserver/models`
+`--backend-directory`           Path to Triton Server backend files. Default: `%Public_Examples_repo_root_dir%/utils/triton_server/backends`
+`--grpc-port`                   Port on which Triton Server will be listening for commands.
+`--benchmark_only`              Run benchmarks sending requests with exactly 1 batch size of selected model.
+
 ### Model configurations
 
 Inference on a single IPU.
@@ -95,6 +108,14 @@ Inference on a single IPU.
 |EfficientNet-B4 (Group Norm, Group Conv)|`python3 run_benchmark.py --config efficientnet-b4-g16-gn`|
 |MobileNet v3 small|`python3 run_benchmark.py --config mobilenet-v3-small`|
 |MobileNet v3 large|`python3 run_benchmark.py --config mobilenet-v3-large`|
+
+Inference with Triton Server, requires at least POD4.
+
+|Model|Command|
+|-----|------|
+|ResNet50|`python3 run_benchmark_with_triton_server.py -s -k test_single_model[resnet50-resnet50 --benchmark_only=true ../tests_serial/tritonserver/`|
+|EfficientNet-B0|`python3 run_benchmark_with_triton_server.py -s -k test_single_model[efficientnet-b0-efficientnet-b0 --benchmark_only=true ../tests_serial/tritonserver/`|
+|EfficientNet-B4|`python3 run_benchmark_with_triton_server.py -s -k test_single_model[efficientnet-b4-efficientnet-b4 --benchmark_only=true ../tests_serial/tritonserver/`|
 
 ## Benchmarking
 

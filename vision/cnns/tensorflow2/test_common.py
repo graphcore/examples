@@ -31,3 +31,11 @@ def run_export(instance, *args, poprun_prefix=[]):
     env = dict(os.environ)
     env['PYTHONPATH'] = python_path
     return run('scripts/export_for_serving.py', instance, args, poprun_prefix, env=env)
+
+
+def run_serving(instance, *args, poprun_prefix=[]):
+    sys.path.append(".")
+    python_path = ":".join(sys.path)
+    env = dict(os.environ)
+    env['PYTHONPATH'] = python_path
+    return run('send_request.py', instance, args, poprun_prefix, env=env)

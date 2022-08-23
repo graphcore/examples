@@ -113,7 +113,9 @@ EXCLUDED = [
     'speech/fastpitch/pytorch/common/tb_dllogger.py',
     'speech/fastpitch/pytorch/common/stft.py',
     'speech/fastpitch/pytorch/common/layers.py',
-    'speech/fastpitch/pytorch/common/audio_processing.py'
+    'speech/fastpitch/pytorch/common/audio_processing.py',
+    'utils/triton_server/backends',
+    'utils/triton_server/server'
 ]
 
 

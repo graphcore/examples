@@ -283,3 +283,48 @@ pytorch_efficientnet_b4_gn_infer_gen_pod4:
       --batch-size {batchsize}
       --iterations 200
       --num-io-tiles 0 
+
+pytorch_resnet50_tritonserver_infer_real_pod4:
+  <<: *common_options
+  description: |
+    Resnet50 in its default configuration (read from configs.yml) 
+    which is hosted by Triton server.
+  parameters:
+    request_type: SYNC,ASYNC
+    parallel_processes: 1,4,8
+  cmd: >-
+    python3 run_benchmark_with_triton_server.py 
+      -s
+      -k test_single_model[resnet50-resnet50-RequestType.{request_type}-{parallel_processes}]
+      --benchmark_only=true
+      ../tests_serial/tritonserver/
+
+pytorch_efficientnet-b0_tritonserver_infer_real_pod4:
+  <<: *common_options
+  description: |
+    EfficientNet-b0 in its default configuration (read from configs.yml) 
+    which is hosted by Triton server.
+  parameters:
+    request_type: SYNC,ASYNC
+    parallel_processes: 1,4,8
+  cmd: >-
+    python3 run_benchmark_with_triton_server.py 
+      -s
+      -k test_single_model[efficientnet-b0-efficientnet-b0-RequestType.{request_type}-{parallel_processes}]
+      --benchmark_only=true
+      ../tests_serial/tritonserver/
+
+pytorch_efficientnet-b4_tritonserver_infer_real_pod4:
+  <<: *common_options
+  description: |
+    EfficientNet-b4 in its default configuration (read from configs.yml) 
+    which is hosted by Triton server.
+  parameters:
+    request_type: SYNC,ASYNC
+    parallel_processes: 1,4,8
+  cmd: >-
+    python3 run_benchmark_with_triton_server.py 
+      -s
+      -k test_single_model[efficientnet-b4-efficientnet-b4-RequestType.{request_type}-{parallel_processes}]
+      --benchmark_only=true
+      ../tests_serial/tritonserver/
