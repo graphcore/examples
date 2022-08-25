@@ -23,4 +23,3 @@ tf1_din_infer_synth_1ipu:
   cmd:
     python3 din_infer.py
       --use-synthetic-data True
->>>>>>> 31159532b... TF1 DIN: Fixing benchmark path in yaml
