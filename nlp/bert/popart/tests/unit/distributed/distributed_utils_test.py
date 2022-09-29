@@ -13,10 +13,8 @@
 # limitations under the License.
 
 import os
-import sys
 import subprocess
 from collections import deque
-import popart
 import numpy as np
 from tests.utils import bert_root_dir
 from utils.distributed import setup_comm, average_distributed_deques  # noqa

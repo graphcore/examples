@@ -1,11 +1,13 @@
 ---
 tf1_mcmc_train_real_pod4:
-   description: 
-      Training for a MCMC model with TensorFlow Probability
-   cmd: 
-       python3 mcmc_tfp.py --num_ipus=4 --dataset_dir $DATASETS_DIR/mcmc/
-   data:
-       time_to_result:
-          regexp: 'Completed in *(.*) seconds'
-   output:
-       - [TimeToResult, 'time_to_result']
+  description: 
+    Training for a MCMC model with TensorFlow Probability
+  cmd: 
+    python3 mcmc_tfp.py
+      --num_ipus=4
+      --dataset_dir $DATASETS_DIR/mcmc/
+  data:
+      time_to_result:
+        regexp: 'Completed in *(.*) seconds'
+  output:
+      - [TimeToResult, 'time_to_result']

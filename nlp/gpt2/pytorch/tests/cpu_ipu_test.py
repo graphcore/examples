@@ -63,13 +63,14 @@ def test_ipu_cpu_match():
     """
 
     # Config
-    args = set_args()
-    args.batch_size = 1
-    args.pretrained_model = None
-    args.embedding_serialization_factor = 2
-    args.layers_per_ipu = [1, 3]
-    args.matmul_proportion = [0.2, 0.2]
-    args.recompute_checkpoint_every_layer = True
+    cmd_line = """
+    --batch-size 1
+    --embedding-serialization-factor 2
+    --layers-per-ipu 1 3
+    --matmul-proportion 0.2 0.2
+    --recompute-checkpoint-every-layer True
+    """.split()
+    args = set_args(cmd_line)
 
     batch_size = args.batch_size
     config = GPT2Config.from_json_file(base_dir + '/../config/config.json')

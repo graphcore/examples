@@ -3,27 +3,21 @@ import numpy as np
 import torch
 
 
-# Mixup coefficients are sampled on the host.
-def sample_mixup_coefficients(alpha, batch_size, np_type, random_generator):
-    coefficients = random_generator.beta(alpha, alpha, size=batch_size)
-    coefficients = coefficients.astype(np.float32, copy=False)
-    # Original image is the foreground image (i.e. coefficient >= 0.5),
-    # each image is once an original image and once a target image
-    # within the batch.
-    coefficients = np.maximum(coefficients, 1.0 - coefficients)
-    return torch.from_numpy(coefficients.astype(np_type, copy=False))
-
-
 class AugmentationModel(torch.nn.Module):
     def __init__(self, model, use_mixup, use_cutmix, args=None):
         super().__init__()
         self.model = model
-
         assert use_mixup or use_cutmix, (
             "AugmentationModel needs to use at least one "
             "augmentation technique.")
         self.use_mixup = use_mixup
         self.use_cutmix = use_cutmix
+        if self.use_mixup:
+            assert args is not None and\
+                hasattr(args, 'mixup_alpha'), (
+                    "If using mixup, mixup_alpha must be defined."
+                )
+            self.mixup_alpha = args.mixup_alpha
 
         if self.use_cutmix:
             assert args is not None and\
@@ -41,17 +35,12 @@ class AugmentationModel(torch.nn.Module):
                     args.cutmix_lambda_high,
                 )
             self._cutmix_disable_prob = args.cutmix_disable_prob
-            self._sampling_in_half = args.precision[:3] == "16."
+        self._sampling_in_half = args.precision[:3] == "16."
 
-    def forward(self, batch_and_coefficients):
-        # The order of inputs is always:
-        #    - batch
-        #    - possibly mixup coefficients (sampled on host)
-        batch = batch_and_coefficients[0]
-
+    def forward(self, batch):
         coeffs = []
         if self.use_mixup:
-            mixup_coeffs = batch_and_coefficients[1]
+            mixup_coeffs = self._sample_mixup_coefficients(batch.size()[0])
             coeffs.append(mixup_coeffs)
             batch = self._mixup(batch, mixup_coeffs)
 
@@ -93,6 +82,38 @@ class AugmentationModel(torch.nn.Module):
         batch_cutmixed = torch.where(mask.to(torch.bool), self._permute(batch, 2), batch)
         return batch_cutmixed, coeff
 
+
+    def _sample_mixup_coefficients(self, batch_size):
+        # This sampling method work well only for alpha <= 1.0
+        dtype = torch.float16 if self._sampling_in_half else torch.float32
+        assert self.mixup_alpha >= 0, "Beta distribution is not implemented for alpha < 0.0"
+        assert self.mixup_alpha <= 1.0, "Beta distribution is not implemented for alpha > 1.0"
+
+        def generate_rand():
+            return torch.rand(batch_size, dtype=dtype)
+
+        # clip between (eps, 1-eps)
+        def clip(tensor):
+            eps = torch.tensor([torch.finfo(dtype).eps]).type(dtype)
+            tensor = torch.max(eps, tensor)
+            tensor = torch.min(1.0 - eps, tensor)
+            return tensor
+
+        U = generate_rand()
+        V = generate_rand()
+        X = clip(torch.pow(U, 1.0 / self.mixup_alpha))
+        Y = clip(torch.pow(V, 1.0 / self.mixup_alpha))
+        X2 = clip(torch.pow((1.0 - U), 1.0 / self.mixup_alpha))
+        Y2 = clip(torch.pow((1.0 - V), 1.0 / self.mixup_alpha))
+        XpY = X + Y
+        XpY2 = X2 + Y2
+        result = torch.where((XpY <= torch.ones(1, dtype=dtype)) & (XpY > torch.zeros(1, dtype=dtype)), X / XpY, X2 / XpY2)
+        # Original image is the foreground image (i.e. coefficient >= 0.5),
+        # each image is once an original image and once a target image
+        # within the batch.
+        return torch.max(result, 1.0 - result)
+
+
     def _sample_cutmix_coeff(self):
         # Cutmix coefficient is the same for all images within a batch and is
         # generated on the device.
@@ -100,12 +121,14 @@ class AugmentationModel(torch.nn.Module):
             coeff = self._sample_cutmix
         else:
             coeff = self._sample_cutmix.sample()
+        disabled_coeff = torch.tensor(1.0)
+        coeff = coeff.to(disabled_coeff.device)
 
         # Maybe disable cutmix.
         coeff = torch.where(
             torch.rand(()) < self._cutmix_disable_prob,
             # Cutmix disabled.
-            torch.tensor(1.0),
+            disabled_coeff,
             # Cutmix enabled.
             coeff,
         )

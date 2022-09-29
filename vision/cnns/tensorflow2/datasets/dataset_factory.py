@@ -3,9 +3,10 @@
 import logging
 import os
 from typing import Callable, Optional, Tuple
+import numpy as np
 
 import popdist
-import psutil
+from tensorflow.python.ipu import horovod as hvd
 import tensorflow as tf
 from eight_bit_transfer import EightBitTransfer
 
@@ -29,12 +30,11 @@ class DatasetFactory:
                     shuffle: bool = False,
                     deterministic: bool = False,
                     accelerator_side_preprocess: bool = True,
-                    apply_preprocessing: bool = True,
                     pipeline_num_parallel: int = 48,
-                    num_local_instances: int = 1,
                     fused_preprocessing: bool = False,
                     synthetic_data: Optional[str] = None,
-                    eight_bit_transfer: Optional[EightBitTransfer] = None
+                    eight_bit_transfer: Optional[EightBitTransfer] = None,
+                    repeat: bool = True,
                     ) -> Tuple[application_dataset.ApplicationDataset, Optional[Callable], int]:
         """Creates a dataset pipeline where preprocessing is divided on the host- and ipu-side.
 
@@ -74,6 +74,8 @@ class DatasetFactory:
             eight_bit_transfer (EightBitTransfer):
                         If enabled, the data streamed from the host to the IPUs
                         is in uint8 rather than the original type.
+            repeat (bool):
+                        when True adds a repeat operation to the dataset pipeline
 
         Returns:
             Tuple[
@@ -84,16 +86,6 @@ class DatasetFactory:
         """
 
         logging.info(f'dataset_name = {dataset_name}')
-
-        max_threads_per_local_instances = os.cpu_count() // num_local_instances
-
-        if pipeline_num_parallel > max_threads_per_local_instances:
-            # Limit the maximal number of threads to the total of
-            # physical threads divided by the number of instances
-            logging.warning(f'The number of chosen threads {pipeline_num_parallel} is bigger than '
-                            'the total number of physical threads divided by the local number of '
-                            'instances. Poprun will override the config. ')
-            pipeline_num_parallel = max_threads_per_local_instances
 
         if popdist.getNumInstances() == 1 and not deterministic:
             logging.info('Since the training is run in a single process, setting dataset pipeline '
@@ -111,7 +103,7 @@ class DatasetFactory:
                 shuffle=shuffle,
                 deterministic=deterministic,
                 seed=seed,
-                img_datatype=img_datatype,
+                img_datatype=tf.uint8 if eight_bit_transfer is not None else img_datatype,
                 accelerator_side_preprocess=accelerator_side_preprocess,
                 fused_preprocessing=fused_preprocessing
             )
@@ -124,7 +116,7 @@ class DatasetFactory:
                 shuffle=shuffle,
                 deterministic=deterministic,
                 seed=seed,
-                img_datatype=img_datatype,
+                img_datatype=tf.uint8 if eight_bit_transfer is not None else img_datatype,
                 accelerator_side_preprocess=accelerator_side_preprocess
             )
 
@@ -136,89 +128,91 @@ class DatasetFactory:
                 shuffle=shuffle,
                 deterministic=deterministic,
                 seed=seed,
-                img_datatype=img_datatype,
+                img_datatype=tf.uint8 if eight_bit_transfer is not None else img_datatype,
                 accelerator_side_preprocess=accelerator_side_preprocess
             )
 
         else:
             raise ValueError(f'Unknown dataset {dataset_name}')
 
-        app_dataset = dataset.read_single_image()
-        ds = app_dataset.pipeline
+        image_shape = dataset.image_shape()
 
-        ipu_preprocess_fn = None
-        if apply_preprocessing:
+        if synthetic_data is not None:
+            logging.info(f'Activating synthetic data on the host.')
+            ds = DatasetFactory.get_synthetic_dataset(
+                image_shape=image_shape,
+                num_classes=dataset.num_classes(),
+                data_type=img_datatype,
+                eight_bit_transfer=(eight_bit_transfer is not None))
+            padded_dataset_size = dataset.size()
+        else:
+            ds = dataset.read_single_image()
+
             cpu_preprocessing_fn = dataset.cpu_preprocessing_fn()
-            ipu_preprocess_fn = (
-                dataset.ipu_preprocessing_fn() if accelerator_side_preprocess else None)
-
             if cpu_preprocessing_fn is not None:
                 ds = ds.map(cpu_preprocessing_fn,
                             num_parallel_calls=pipeline_num_parallel,
                             deterministic=deterministic)
 
-        ds = dataset.post_preprocessing_pipeline(ds)
+            if split != 'train':
 
-        if split != 'train':
-            num_discarded_samples = batch_config.get_num_discarded_samples_per_instance(app_dataset.size,
-                                                                                        popdist.getNumInstances())
-            if num_discarded_samples > 0:
-                num_padding_samples = batch_config.get_num_padding_samples_per_instance(popdist.getNumInstances(),
-                                                                                        num_discarded_samples)
-                padding_dataset = DatasetFactory.get_validation_padding_dataset(app_dataset.image_shape,
-                                                                                img_datatype,
-                                                                                app_dataset.num_classes,
-                                                                                num_padding_samples)
-                ds = ds.concatenate(padding_dataset)
+                # compute per instance dataset size
+                unpadded_dataset_size = ds.reduce(0, lambda x, _: x + 1).numpy()
 
-        if eight_bit_transfer is not None:
-            ds = ds.map(lambda x, y: (eight_bit_transfer.compress(x), y),
-                        num_parallel_calls=pipeline_num_parallel,
-                        deterministic=deterministic)
+                # compute per instance discarded samples
+                num_discarded_samples = batch_config.get_num_discarded_samples(unpadded_dataset_size,
+                                                                               popdist.getNumInstances())
 
-        if synthetic_data is not None:
-            if synthetic_data == "host":
-                logging.info(f'Activating synthetic data on the host.')
-                ds = DatasetFactory.get_synthetic_dataset(
-                    height=app_dataset.image_shape[0],
-                    width=app_dataset.image_shape[1],
-                    num_classes=app_dataset.num_classes,
-                    data_type=img_datatype,
-                    eight_bit_transfer=(eight_bit_transfer is not None))
+                num_padding_samples = batch_config.get_num_padding_samples(num_discarded_samples,
+                                                                           popdist.getNumInstances())
 
-            elif synthetic_data == "ipu":
-                logging.info(f'Activating synthetic data on the ipu.')
-                tf_poplar_flags = ' --use_synthetic_data --synthetic_data_initializer=random'
-                if "TF_POPLAR_FLAGS" in os.environ:
-                    os.environ["TF_POPLAR_FLAGS"] += tf_poplar_flags
-                else:
-                    os.environ["TF_POPLAR_FLAGS"] = tf_poplar_flags
+                # get padding samples from largest padded dataset size across all instances
+                if popdist.getNumInstances() > 1:
+                    padded_dataset_size = unpadded_dataset_size + num_padding_samples
+                    padded_dataset_sizes = hvd.allgather(
+                        tf.convert_to_tensor([padded_dataset_size], dtype=tf.int32)
+                    )
+                    padded_dataset_size = np.max(padded_dataset_sizes.numpy())
+                    num_padding_samples = padded_dataset_size - unpadded_dataset_size
 
+                if num_padding_samples > 0:
+                    padding_dataset = DatasetFactory.get_validation_padding_dataset(
+                        dataset.image_shape(),
+                        tf.uint8 if eight_bit_transfer is not None else img_datatype,
+                        dataset.num_classes(),
+                        num_padding_samples)
+
+                    ds = ds.concatenate(padding_dataset)
+
+                padded_dataset_size = (unpadded_dataset_size + num_padding_samples) * popdist.getNumInstances()
             else:
-                logging.warning(
-                    f'Synthetic data option \'{synthetic_data}\' not recognized, using normal dataset')
+                padded_dataset_size = -1
 
         ds = ds.batch(batch_size=batch_config.micro_batch_size, drop_remainder=True)
-        ds = ds.repeat().prefetch(prefetch_size)
+        if split != 'train':
+            ds = ds.cache()
+        if repeat:
+            ds = ds.repeat()
+        ds.prefetch(prefetch_size)
 
-        app_dataset.pipeline = ds
+        app_dataset = application_dataset.ApplicationDataset(pipeline=ds,
+                                                             image_shape=dataset.image_shape(),
+                                                             size=dataset.size(),
+                                                             num_classes=dataset.num_classes(),
+                                                             padded_size=padded_dataset_size)
 
-        cpu_memory_usage = psutil.virtual_memory().percent
-
-        if cpu_memory_usage > 100:
-            logging.warning(
-                f'cpu_memory_usage is {cpu_memory_usage} > 100% so your program is likely to crash')
+        ipu_preprocess_fn = (
+            dataset.ipu_preprocessing_fn() if accelerator_side_preprocess else None)
 
         return app_dataset, ipu_preprocess_fn, pipeline_num_parallel
 
     @staticmethod
-    def get_synthetic_dataset(height: int,
-                              width: int,
+    def get_synthetic_dataset(image_shape: Tuple,
                               num_classes: int,
                               data_type: tf.dtypes.DType = tf.float32,
                               eight_bit_transfer: bool = False):
 
-        images = tf.random.truncated_normal([height, width, 3],
+        images = tf.random.truncated_normal(image_shape,
                                             dtype=data_type,
                                             mean=127,
                                             stddev=60)
@@ -243,6 +237,6 @@ class DatasetFactory:
                                        num_padding_samples: int) -> tf.data.Dataset:
 
         image = tf.zeros(img_shape, data_type)
-        label = tf.constant((num_classes,), dtype=tf.float32)
+        label = tf.constant((num_classes,), dtype=tf.int32)
 
         return tf.data.Dataset.from_tensors((image, label)).cache().repeat(num_padding_samples).take(num_padding_samples)

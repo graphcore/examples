@@ -12,7 +12,7 @@ import utils
 
 def get_args():
     parser = argparse.ArgumentParser(add_help=True, description='Benchmarking the host side throughput')
-    parser.add_argument('--batch-size', type=int, default=1024, help='Global batch size')
+    parser.add_argument('--micro-batch-size', type=int, default=1024, help='Micro batch size')
     parser.add_argument('--iterations', type=int, default=2, help='Number of iterations.')
     parser.add_argument('--data', choices=datasets_info.keys(), default='imagenet', help='Select dataset')
     parser.add_argument('--imagenet-data-path', type=str, default="/localdata/datasets/imagenet-raw-data", help="Path of the raw imagenet data")
@@ -26,6 +26,7 @@ def get_args():
     args.model = 'resnet50'
     args.seed = 0
     args.use_bbox_info = True
+
     args.device_iterations = 1
     args.replicas = 1
     utils.handle_distributed_settings(args)

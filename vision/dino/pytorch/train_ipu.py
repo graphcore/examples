@@ -21,7 +21,7 @@ import timeit
 import math
 import json
 from pathlib import Path
-
+from functools import partial
 import numpy as np
 import yaml
 import torch
@@ -35,13 +35,12 @@ from core import vision_transformer as vits
 from core.dino import DINOLoss, DINOHead, MultiCropWrapper
 from core.gelu import ERF_GELU
 from core.dataset import DataAugmentationDINO, CustomImageFolder, SynthImageFolder
-from core.utils import AverageMeter, save_checkpoint, load_checkpoint, sync_metrics
+from core.utils import AverageMeter, save_checkpoint, load_checkpoint, sync_metrics, Precision
 
 import ctypes
 import poptorch
 from poptorch.optim import SGD, AdamW
-from options import get_options, train_options
-from functools import partial
+from options import train_options
 import popdist
 
 config_file = os.path.join(os.path.dirname(__file__), "configs.yml")
@@ -68,6 +67,10 @@ def get_args_parser():
             'vit_base'],
         help="""Name of architecture to train. For quick experiments with ViTs,
         we recommend using vit_tiny or vit_small.""")
+    parser.add_argument(
+        '--gelu_type',
+        default='erf',
+        help="gelu type could be erf or tanh")
     parser.add_argument(
         '--patch_size', default=16, type=int, help="""Size in pixels
         of input square patches - default 16 (for 16x16 patches). Using smaller
@@ -124,7 +127,7 @@ def get_args_parser():
         weight decay. We use a cosine schedule for WD and using a larger decay by
         the end of training improves performance for ViTs.""")
     parser.add_argument(
-        '--clip_grad', type=float, default=3.0, help="""Maximal parameter
+        '--clip_grad', type=float, default=0., help="""Maximal parameter
         gradient norm if using gradient clipping. Clipping with norm .3 ~ 1.0 can
         help optimization for larger ViT architectures. 0 for disabling.""")
     parser.add_argument('--batch_size', default=4, type=int,
@@ -153,15 +156,14 @@ def get_args_parser():
         type=str,
         choices=[
             'adamw',
-            'sgd',
-            'lars'],
+            'sgd'],
         help="""Type of optimizer. We recommend using adamw with ViTs.""")
     parser.add_argument(
         '--drop_path_rate',
         type=float,
         default=0.1,
         help="stochastic depth rate")
-    parser.add_argument('--eps', type=float, default=1e-5)
+    parser.add_argument('--eps', type=float, default=1e-8)
 
     # Multi-crop parameters
     parser.add_argument(
@@ -214,11 +216,21 @@ def get_args_parser():
         type=int,
         help='Save checkpoint every x epochs.')
     parser.add_argument(
+        '--set_freq',
+        default=1,
+        type=int,
+        help='Set optimizer frequency.')
+    parser.add_argument(
         '--print_freq',
         default=10,
         type=int,
         help='Save log every x steps.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
+    parser.add_argument(
+        '--threads',
+        default=8,
+        type=int,
+        help='torch number of threads')
     parser.add_argument(
         '--num_workers',
         default=32,
@@ -231,6 +243,11 @@ def get_args_parser():
     parser.add_argument('--pipeline', type=int, nargs='+',
                         help='set modules on multi ipus')
     parser.add_argument('--replica', type=int, default=1, help="replica count")
+    parser.add_argument(
+        '--rts',
+        type=bool,
+        default=True,
+        help="whether use rts")
     parser.add_argument(
         '--ipu_per_replica',
         type=int,
@@ -246,8 +263,15 @@ def get_args_parser():
         type=int,
         default=1,
         help='device iterations number')
-    parser.add_argument('--half', action='store_true', help="use half")
-    parser.add_argument('--use_clip', action='store_true', help="use half")
+    parser.add_argument(
+        '--precision',
+        type=str,
+        default='float32',
+        help="precision type for train")
+    parser.add_argument(
+        '--output_mode',
+        default='all',
+        help='output mode is final or all')
     parser.add_argument(
         '--async_type',
         default='normal',
@@ -301,8 +325,8 @@ def get_args_parser():
 
 def train_dino(args):
     assert os.path.exists(args.ema_so), 'please compile custom op ema'
-    libc = ctypes.cdll.LoadLibrary(args.ema_so)
-
+    ctypes.cdll.LoadLibrary(args.ema_so)
+    assert os.path.exists(args.data_path), f'{args.data_path} not exists.'
     if not args.synthetic_data:
         assert os.path.exists(args.data_path), f'{args.data_path} not exists.'
 
@@ -314,7 +338,9 @@ def train_dino(args):
         args.replica,
         args.di,
         args.synthetic_data,
-        half=args.half)
+        precision=args.precision,
+        output_mode=args.output_mode,
+        use_rts=args.rts)
 
     # ============ preparing data ... ============
     if args.synthetic_data:
@@ -327,7 +353,6 @@ def train_dino(args):
                 args.local_crops_scale,
                 args.local_crops_number)
         )
-
     if args.async_type == 'async':
         mode = poptorch.DataLoaderMode.Async
         data_loader = poptorch.DataLoader(
@@ -370,12 +395,22 @@ def train_dino(args):
 
     print(f"Number of images loaded: {len(dataset)}. Steps in data loader: {len(data_loader)}")
     # ============ building student and teacher networks ... ============
+    if args.gelu_type == 'erf':
+        gelu = partial(ERF_GELU, precision=args.precision)
+    else:
+        gelu = nn.GELU
     if args.arch in vits.__dict__.keys():
         student = vits.__dict__[args.arch](
             patch_size=args.patch_size,
             drop_path_rate=args.drop_path_rate,  # stochastic depth
+            act_layer=gelu,
+            precision=args.precision,
         )
-        teacher = vits.__dict__[args.arch](patch_size=args.patch_size)
+        teacher = vits.__dict__[
+            args.arch](
+            patch_size=args.patch_size,
+            act_layer=gelu,
+            precision=args.precision)
         embed_dim = student.embed_dim
     else:
         print(f"Unknow architecture: {args.arch}")
@@ -416,13 +451,16 @@ def train_dino(args):
             args.out_dim,
             use_bn=args.use_bn_in_head,
             norm_last_layer=args.norm_last_layer,
-            act_layer=ERF_GELU
+            act_layer=gelu,
+            precision=args.precision,
         ),
         DINOHead(
             embed_dim,
             args.out_dim,
             args.use_bn_in_head,
-            act_layer=ERF_GELU),
+            act_layer=gelu,
+            precision=args.precision,
+        ),
         DINOLoss(
             # total number of crops = 2 global crops + local_crops_number
             args.local_crops_number + 2,
@@ -430,28 +468,30 @@ def train_dino(args):
         args.momentum_teacher,
         device=args.device,
         pipeline=args.pipeline,
-        half=args.half)
+        precision=args.precision)
 
-    if args.half:
-        print('train on ipu with half')
-        model.student.half()
-        model.teacher.half()
+    print(f'train on ipu with {args.precision}.')
+    if args.precision is Precision.FP16:
+        model.half()
     model.train()
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
     print(
         f'use optimizer : {args.optimizer}, clip_grad={args.clip_grad}, eps={args.eps}')
+    use_half = False
+    if args.precision is not Precision.FP32:
+        use_half = True
     if args.optimizer == "adamw":
-        print(f'optimizer clip norm is {args.use_clip}, max_grad_norm = {args.clip_grad}')
+        print(f'optimizer max_grad_norm = {args.clip_grad}')
         optimizer = AdamW(params_groups,
                           lr=args.min_lr,
                           betas=(0.9, 0.999),
                           eps=args.eps,
                           weight_decay=args.weight_decay,
                           # nonzero to make wd a variable in the optimizer
-                          loss_scaling=args.loss_scale if args.half else None,
-                          max_grad_norm=args.clip_grad if args.use_clip else None)
+                          loss_scaling=args.loss_scale if use_half else None,
+                          max_grad_norm=args.clip_grad if args.clip_grad > 1e-5 else None)
 
     elif args.optimizer == "sgd":
         optimizer = SGD(params_groups,
@@ -459,7 +499,7 @@ def train_dino(args):
                         momentum=0.9,
                         weight_decay=args.weight_decay,
                         # nonzero to make wd a variable in the optimizer
-                        loss_scaling=args.loss_scale,)
+                        loss_scaling=args.loss_scale if use_half else None)
     start_epoch = 0
     center = torch.zeros(1, args.out_dim)
     if args.resume:
@@ -486,8 +526,14 @@ def train_dino(args):
                                  log_path,
                                  center,
                                  args,)
-        if epoch % args.saveckp_freq == 0 or epoch == (args.epochs - 1):
-            save_checkpoint(epoch, ipu_model, optimizer, center, args.output)
+        save_checkpoint(
+            epoch,
+            ipu_model,
+            optimizer,
+            center,
+            args.output,
+            epoch %
+            args.saveckp_freq == 0)
 
 
 def train_one_epoch(model,
@@ -520,22 +566,23 @@ def train_one_epoch(model,
         data_time.update(time.time() - end)
         current_step = it + epoch * steps_per_epoch
 
-        lr = lr_schedule[current_step]
-        lr = max(lr, args.min_lr)
-        wd = wd_schedule[current_step]
-        mt = mt_schedule[current_step]
-        optimizer.param_groups[0]['lr'] = lr
-        optimizer.param_groups[0]['weight_decay'] = wd
-        optimizer.param_groups[1]['lr'] = lr
-        # set lr_schedule value for last layer separately
-        if epoch >= freeze_last_layer:
-            # update last_layer weight_v, not update weight_g
-            optimizer.param_groups[3]['lr'] = lr
-            optimizer.param_groups[3]['weight_decay'] = wd
-            if not args.norm_last_layer:
-                optimizer.param_groups[2]['lr'] = lr
-                optimizer.param_groups[2]['weight_decay'] = wd
-        model.setOptimizer(optimizer)  # apply changes
+        if it % args.set_freq == 0:
+            lr = lr_schedule[current_step]
+            lr = max(lr, args.min_lr)
+            wd = wd_schedule[current_step]
+            mt = mt_schedule[current_step]
+            optimizer.param_groups[0]['lr'] = lr
+            optimizer.param_groups[0]['weight_decay'] = wd
+            optimizer.param_groups[1]['lr'] = lr
+            # set lr_schedule value for last layer separately
+            if epoch >= freeze_last_layer:
+                # update last_layer weight_v, not update weight_g
+                optimizer.param_groups[3]['lr'] = lr
+                optimizer.param_groups[3]['weight_decay'] = wd
+                if not args.norm_last_layer:
+                    optimizer.param_groups[2]['lr'] = lr
+                    optimizer.param_groups[2]['weight_decay'] = wd
+            model.setOptimizer(optimizer)  # apply changes
 
         ema_factor = ema_factor_base * mt
         global_center = center.repeat(global_count, 1)
@@ -567,7 +614,7 @@ def train_one_epoch(model,
                 f'{losses} - \t'
                 f'{batch_time} - \t'
                 f'{data_time} - \t'
-                f'{throughput}\n')
+                f'{throughput} samples/sec\n')
 
         with open(log_path, 'a') as fw:
             fw.write(info)
@@ -578,10 +625,12 @@ def train_one_epoch(model,
 
 if __name__ == '__main__':
     args = get_args_parser()
+    torch.set_num_threads(args.threads)
     Path(args.output).mkdir(parents=True, exist_ok=True)
     dump_config_name = os.path.join(args.output, f'pretrain_{args.arch}.yaml')
     with open(dump_config_name, 'w') as fw:
         yaml.safe_dump(args.__dict__, fw)
+    args.precision = Precision(args.precision)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     utils.init_popdist(args)

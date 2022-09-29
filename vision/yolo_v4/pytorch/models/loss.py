@@ -63,7 +63,7 @@ class PreprocessTargets(nn.Module):
         # We check the difference between the ratio of all the anchors with all the labels
         # If some are under a threshold we choose them as good enough
         labels_wh = labels[:, :, :, 3:5]
-        ratio_anchors = labels_wh / self.anchors[idx_detection_head].unsqueeze(axis=0)
+        ratio_anchors = labels_wh / self.anchors[idx_detection_head].unsqueeze(axis=0).to(device=labels_wh.device)
         # labels_wh
         # tensor([[[ 2.,  2.],
         #          [ 1.,  3.],

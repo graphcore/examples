@@ -2,6 +2,8 @@
 
 This README describes how to run BERT models for NLP pretraining and fine-tuning tasks (SQuAD) on Graphcore IPUs using the PopXL library.
 
+This application shows how to run larger models on IPU. The techniques to do this mean that performance is lower than for models that fit in IPU memory. Large model training or fine-tuning requires a big Pod installation. The minimum to run fine-tuning with this model is a Pod16. PopXL is an experimental framework and may be subject to change in future releases.
+
 ## Table of contents
 
 1. [File structure](#file_structure)
@@ -24,8 +26,6 @@ This README describes how to run BERT models for NLP pretraining and fine-tuning
 |--------------------|---------------------------------------------------------------------|
 | `config/`          | Contains configuration options for running BERT.<br/> - `config.py`: Definition of configuration options for BERT.<br/> - `pretraining.yml` provides available parameter settings for three different sizes of BERT: large, base and tiny, and how to execute them for pretraining on IPU.<br/> - `squad_inference.yml` provides available parameter settings for the three different BERT sizes and how to execute them for SQuAD inference.<br/> - `squad_training.yml` provides parameter settings for three different BERT sizes and how to execute them for SQuAD fine-tuning.|
 | `data/`            | Scripts for data preprocessing for pretraining and fine-tuning SQuAD, respectively, in `pretraining_data.py` and `squad_data.py`. |
-| `demo/`            | Contains BERT pretraining MLM + NSP tasks on the Wikipedia dataset and fine-tuning on the SQuAD dataset.<br/> - `/pretraining/phased.py` presents how to run the pretraining with phased execution that is the key to scaling up the BERT model size.<br/> - `squad/` includes inference and fine-tuning training on the SQuAD dataset task with phased execution.            |
-| `execution/`       | Contains the execution scheme implementations for phased execution. They are used in the corresponding `/demo`. The dataset used in this folder is synthetic for benchmarking purpose.                  |
 | `modelling/`       | Implements layers in the BERT model and the models for different tasks for inference and training.<br/> - `embedding.py`, `attention.py`, and `feed_forward.py` present the implementations of embedding layers, self-attention, and  feed-forward networks respectively. <br/> - `mlm.py` and `nsp.py` present the implementation of the masked language model (MLM) task layer and the next sentence prediction (NSP) task layer respectively.<br/> - `bert_model.py` presents the implementation of a transformer layer as in `BertLayer` and MLM + NSP task head layer as in `BertPretrainingLossAndGrad`. <br/> - `squad.py` applies the BERT model for SQuAD.                    |
 | `tests/`           | Includes integration tests and unit tests.|
 | `utils/`           | Helper functions to set up BERT configs and parse arguments.  |
@@ -48,25 +48,40 @@ $ virtualenv --python python3.6 .bert_venv
 $ source .bert_venv/bin/activate
 $ pip install -r requirements.txt
 ```
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 ### Pretraining with BERT on IPU <a name="pretrain_IPU"></a>
 
 You can run pretraining for BERT base with the settings defined in `pretraining.yml` by using the script below. You need to provide the data files with `--input_files`.
 
 ```shell
-$ python3 demo/pretraining/phased.py --input_files {path to your wikipedia data}/*.tfrecord
+$ python3 run_pretraining.py --input_files {path to your wikipedia data}/*.tfrecord
 ```
 
 The default model size in demo pretraining is BERT base. You can change it to the BERT large with the command below.
 
 ```shell
-$ python3 demo/pretraining/phased.py --config large --input_files {path to your wikipedia data}/*.tfrecord
+$ python3 run_pretraining.py --config large --input_files {path to your wikipedia data}/*.tfrecord
 ```
 
-You can run the scripts for benchmarking with generated data by replacing the directory name `demo` with `execution`. All the scripts in `execution` are for BERT large by default. For instance, the following command will run benchmark for BERT large pretraining. You can change it by adding `--config`. For instance, the command below runs benchmarking for BERT base pretraining.
+You can run the scripts for benchmarking with generated data by executing the non-run scripts directly. All the scripts benchmark scripts are for BERT large by default. For instance, the following command will run benchmark for BERT large pretraining. You can change it by adding `--config`. For instance, the command below runs benchmarking for BERT base pretraining.
 
 ```shell
-$ python3 execution/pretraining/phased.py --config base
+$ python3 pretraining.py --config base
 ```
 
 ### Fine-tuning and inference with BERT for SQuAD on IPU <a name="squad"></a>
@@ -74,28 +89,28 @@ $ python3 execution/pretraining/phased.py --config base
 You can run fine-tuning on SQuAD for BERT large with the settings defined in `squad_training.yml` by using the command below. It will first load a pretrained checkpoint from Hugging Face.
 
 ```shell
-$ python3 demo/squad/training_phased.py
+$ python3 run_squad_training.py
 ```
 
 You can also run inference on the trained SQuAD model with the settings defined in `squad_inference.yml` by using the command below.
 
 ```shell
-$ python3 demo/squad/inference_phased.py
+$ python3 run_squad_inference.py
 ```
 
 This outputs the context and questions for the BERT question-and-answer model, as well as the comparison of inference results from PopXL and Hugging Face.
 
-You can benchmark the fine-tuning and inference by replacing the directory name `demo` with `execution`. All the scripts in `execution` run BERT large by default. You can change the model size by using `--config`. For instance, the script below will give benchmark results for fine-tuning on SQuAD with BERT base.
+You can benchmark the fine-tuning and inference by executing the non-run scripts directly. All the scripts benchmark scripts are BERT large by default. You can change the model size by using `--config`. For instance, the script below will give benchmark results for fine-tuning on SQuAD with BERT base.
 
 ```shell
-$ python3 execution/squad/training_phased.py --config base
+$ python3 squad_training.py --config base
 ```
 
 ### View the pretraining results in Weights & Biases <a name="wandb"></a>
 
 This project supports Weights & Biases, a platform to keep track of machine learning experiments. A client for Weights & Biases will be installed by default and can be used during training by passing the `--wandb` flag. You will need to manually log in (see the [quickstart guide](https://docs.wandb.ai/quickstart)) and configure the project name with `--wandb-name`.) For more information see https://www.wandb.com/.
 
-The trainings in demo are logged in wandb under project `popxl-bert`. Each run has loss, learning rate and throughput logged. The version for `addons` and PopXL are also logged together with the configuration settings.
+The training runs are logged in wandb under project `popxl-bert`. Each run has loss, learning rate and throughput logged. The version for `addons` and PopXL are also logged together with the configuration settings.
 
 ## Configure your BERT runs <a name="configs"></a>
 
@@ -161,7 +176,7 @@ Here we introduce some techniques we used to scale up the BERT model on IPUs in 
 
 For compute graphs that have memory requirements greater than the available on-chip memory, we can partition them into a series of smaller sub-graphs and execute them in series on the IPU, using remote buffers in Streaming Memory to store input and output tensors between calls. This is called phased execution.
 
-In the BERT application, we demonstrate this concept on a full sized model. Recomputation and replicated tensor sharding ([RTS](https://github.com/graphcore/popxl-addons/tree/master/examples/mnist/4_Remote_Variables#replicated-tensor-sharding)) are also used to improve the performance. Since most parts of the implementation of the phased execution in pretraining and fine-tuning are similar, in this README, we focus on the implementation of phased execution for pretraining in `execution/pretraining/phased.py`, and will show you the difference from SQuAD fine-tuning in `execution/squad/training_phased.py`.
+In the BERT application, we demonstrate this concept on a full sized model. Recomputation and replicated tensor sharding ([RTS](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/5_remote_variables_and_rts)) are also used to improve the performance. Since most parts of the implementation of the phased execution in pretraining and fine-tuning are similar, in this README, we focus on the implementation of phased execution for pretraining in `pretraining.py`, and will show you the difference from SQuAD fine-tuning in `squad_training.py`.
 
 Recall that we need to build an [IR in PopXL](https://docs.pages.gitlab.sourcevertex.net/docs/docs/PopART/popxl-user-guide/2.5.0/concepts.html#irs). In its main graph, we first define the input and output data streams. Then we build the computation graphs. As phased execution involves loading and offloading each partition in sequence, much use is made of remote buffers and RTS in the graph construction.
 
@@ -314,25 +329,27 @@ The main graph is repeated `config.execution.device_iterations` times. A trainin
 
 ### Data Parallel <a name="dp"></a>
 
-Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallelism with PopXL addons in [MNIST example](https://github.com/graphcore/popxl-addons/tree/master/examples/mnist/2_Data_Parallelism).
+Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallelism with PopXL addons in [MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
 
 ## Avoid recompilation: caching executables <a name="cache"></a>
 
 When running the application, it is possible to save and load executables in a cache store. This allows the reuse of a saved executable instead of re-compiling the model when re-running identical model configurations. To enable saving and loading from the cache store, use `POPART_CACHE_DIR <relative/path/to/cache/store>` when running the application.
 
-## Benchmarking
+## Running and benchmarking
 
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
 
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
 ## Profile your applications <a name="profiling"></a>
@@ -340,7 +357,7 @@ For more information on how to use the examples_utils benchmark functionality, p
 You can generate the profiling files and visualize them in [PopVision](https://docs.graphcore.ai/projects/graph-analyser-userguide/). For instance, the profiling files for phased execution in the pretraining benchmark can be generated by using the following command:
 
 ```shell
-$ POPLAR_ENGINE_OPTIONS='{"autoReport.all":"true","autoReport.directory":"pretrain_pe","profiler.replicaToProfile":"0"}' python3 execution/pretraining/phased.py
+$ POPLAR_ENGINE_OPTIONS='{"autoReport.all":"true","autoReport.directory":"pretrain_pe","profiler.replicaToProfile":"0"}' python3 pretraining.py
 ```
 
 In the execution tab, you can find the execution trace of each phase. Below is a screenshot of the execution of one step of training.

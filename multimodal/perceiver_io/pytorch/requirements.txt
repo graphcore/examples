@@ -1,6 +1,0 @@
-sklearn==0.0
-wandb==0.12.8
-protobuf==3.19.4
-torchvision==0.11.1
-transformers==4.18.0
-git+https://github.com/huggingface/optimum-graphcore.git@e861355b1c9040880e62d6c9dd8b0728db8b6102 

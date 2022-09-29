@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from core.utils import trunc_normal_
+from core.utils import trunc_normal_, Precision
 import poptorch
 from core.weight_norm import weight_norm
 
@@ -73,9 +73,11 @@ class DINOHead(nn.Module):
             nlayers=3,
             hidden_dim=2048,
             bottleneck_dim=256,
-            act_layer=nn.GELU):
+            act_layer=nn.GELU,
+            precision=Precision.FP32):
         super().__init__()
         nlayers = max(nlayers, 1)
+        self.precision = precision
         if nlayers == 1:
             self.mlp = nn.Linear(in_dim, bottleneck_dim)
         else:
@@ -112,7 +114,10 @@ class DINOHead(nn.Module):
 
     def forward(self, x):
         x = self.mlp(x)
-        x = nn.functional.normalize(x, dim=-1, p=2)
+        if self.precision is not Precision.FP32:
+            x = nn.functional.normalize(x.float(), dim=-1, p=2).half()
+        else:
+            x = nn.functional.normalize(x, dim=-1, p=2)
         x1 = self.last_layer1(x)
         x2 = self.last_layer2(x)
         x = torch.cat((x1, x2), axis=-1)
@@ -146,7 +151,7 @@ class MultiCropWrapper(nn.Module):
                  momentum,
                  device='ipu',
                  pipeline=None,
-                 half=False,
+                 precision=Precision.FP32,
                  alignment=False):
         super(MultiCropWrapper, self).__init__()
         self.student = student
@@ -162,7 +167,7 @@ class MultiCropWrapper(nn.Module):
         self.alignment = alignment
         if pipeline is not None:
             self.set_pipeline()
-        self.fp16 = half
+        self.precision = precision
 
         teacher.load_state_dict(student.state_dict())
         teacher_head.load_state_dict(student_head.state_dict())
@@ -191,7 +196,7 @@ class MultiCropWrapper(nn.Module):
         var = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
         global_imgs = (global_imgs - mean) / var
         crops = (crops - mean) / var
-        if self.fp16:
+        if self.precision is not Precision.FP32:
             global_imgs = global_imgs.half()
             crops = crops.half()
 
@@ -200,16 +205,16 @@ class MultiCropWrapper(nn.Module):
 
         student_output = torch.cat(
             (student_output_global, student_output_crop))
-        student_output = self.student_head(student_output.float())
+        student_output = self.student_head(student_output)
 
         with torch.no_grad():
             self._momentum_update_teacher(ema_factor)
             teacher_output = self.teacher(global_imgs)
-            teacher_output = self.teacher_head(teacher_output.float())
+            teacher_output = self.teacher_head(teacher_output)
             teacher_output = teacher_output.detach()
 
         batch_center, loss = self.loss(
-            student_output, teacher_output, center, teacher_temp_factor)
+            student_output.float(), teacher_output.float(), center, teacher_temp_factor)
         if self.alignment:
             return torch.cat([student_output, teacher_output],
                              dim=0), poptorch.identity_loss(loss, reduction='mean')

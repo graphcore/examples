@@ -6,10 +6,14 @@ train_options: &train_options
     TF_POPLAR_FLAGS: '--executable_cache_path=./tf_cache/'
   data:
     throughput:
-      regexp: 'Throughput:\s*([\d*.]+)'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 1
+    loss:
+      regexp: 'loss: *(\d*\.\d*)'
+      reduction_type: "final"
   output:
-    - [graphs/sec, 'Throughput']
+    - [samples/sec, 'throughput']
+    - [loss, 'loss']
 
 tf2_message_passing_graph_isomorphism_train_gen_4ipu:
   <<: *train_options
@@ -20,7 +24,7 @@ tf2_message_passing_graph_isomorphism_train_gen_4ipu:
   cmd: >-
     python3 run_training.py
         --model=graph_isomorphism
-        --epochs=5
+        --epochs=20
         --replicas=4
         --micro_batch_size=256
         --use_edges=True
@@ -45,7 +49,7 @@ tf2_message_passing_interaction_network_train_gen_1ipu:
   cmd: >-
     python3 run_training.py
         --model=interaction_network
-        --epochs=5
+        --epochs=20
         --replicas=1
         --micro_batch_size=128
         --lr=1e-5
@@ -68,7 +72,7 @@ tf2_message_passing_graph_network_train_gen_1ipu:
   cmd: >-
     python3 run_training.py
         --model=graph_network
-        --epochs=5
+        --epochs=20
         --replicas=1
         --micro_batch_size=128
         --lr=1e-5

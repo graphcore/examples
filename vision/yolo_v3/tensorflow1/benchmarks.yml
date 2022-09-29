@@ -7,11 +7,11 @@ tf1_yolov3_train_real_pod4:
        --train-annot-path ./data/dataset/voc_train.txt
   data:
     throughput:
-      regexp: 'samples/s:*(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
     loss:
       reduction_type: 'final'
-      regexp: 'moving_total_loss:([\d\.]+|nan)\,'
-      skip: 10
+      regexp: 'moving_total_loss: *(\d*\.\d*)'
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
+    - [loss, 'loss']

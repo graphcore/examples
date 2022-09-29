@@ -41,9 +41,11 @@ if __name__ == "__main__":
 
     # W&B
     if config.wandb:
-        wandb.init(project=config.wandb_project_name,
-                   settings=wandb.Settings(console="wrap"))
-        wandb.config.update(vars(config))
+        if not config.use_popdist or (config.use_popdist and config.popdist_rank == 0):
+            wandb.init(project=config.wandb_project_name,
+                       name=config.wandb_run_name,
+                       settings=wandb.Settings(console="wrap"))
+            wandb.config.update(vars(config))
 
     # Execution parameters
     opts = get_options(config)
@@ -116,7 +118,6 @@ if __name__ == "__main__":
             input_data, labels = next(train_iter)
             current_step = step + epoch * steps_per_epoch
             data_duration = time.perf_counter() - start_step
-
             losses, logits = train_model(input_data, labels)
             scheduler.step()
             train_model.setOptimizer(optimizer)
@@ -128,6 +129,7 @@ if __name__ == "__main__":
             acc = accuracy(preds, labels)
             step_throughput = len(input_data) / step_duration
             data_consumption_ratio = data_duration / step_duration
+
             if config.use_popdist:
                 step_throughput = mpi_utils.mpi_reduce(
                     step_throughput, average=False)
@@ -135,13 +137,14 @@ if __name__ == "__main__":
                     step_duration, average=True)
                 data_consumption_ratio = mpi_utils.mpi_reduce(
                     data_consumption_ratio, average=True)
+
             if not config.use_popdist or (config.use_popdist and config.popdist_rank == 0):
                 msg = ("Epoch: {:.2f}/{} "
                        "Step: {}/{} "
                        "Lr: {:.6f} "
-                       "Loss: {:.3f} "
-                       "Acc: {:.3f} "
-                       "Throughput: {:.2f} samples/sec "
+                       "loss: {:.3f} "
+                       "accuracy: {:.3f} "
+                       "throughput: {:.2f} samples/sec "
                        "Mean step duration: {:.2f} second "
                        "Mean data consumption ratio: {:.2f}"
                        ).format(epoch, epochs,

@@ -135,20 +135,19 @@ if __name__ == "__main__":
         logger, args, model_config.vocab_size)
     loader = DataLoader(opts,
                         train_dataset,
-                        shuffle=True if args.train_path.endswith(
-                            '.pkl') else False,
+                        shuffle=(args.dataset=="pickle"),
                         batch_size=args.batch_size,
                         num_workers=args.num_workers,
                         worker_init_fn=_WorkerInit(args.seed),
-                        collate_fn=collate_fn if 'dynamic' not in args.train_path else None,
+                        collate_fn=collate_fn if not (args.dataset=="mmap") else None,
                         drop_last=True,
                         auto_distributed_partitioning=not isinstance(
                             train_dataset, torch.utils.data.IterableDataset),
                         mode=DataLoaderMode.AsyncRebatched if args.async_dataloader else DataLoaderMode.Sync)
     samples_per_epoch = int(len(
-        train_dataset) / args.epochs) if 'dynamic' in args.train_path else len(train_dataset)
+        train_dataset) / args.epochs) if (args.dataset=="mmap") else len(train_dataset)
     steps_per_epoch = int(
-        len(loader) / args.epochs) if 'dynamic' in args.train_path else len(loader)
+        len(loader) / args.epochs) if (args.dataset=="mmap") else len(loader)
     logger(f"Samples per epoch: {samples_per_epoch}")
     logger(f"Steps per epoch: {steps_per_epoch}")
     if steps_per_epoch < 1:
@@ -171,11 +170,11 @@ if __name__ == "__main__":
     total_step = 0
     while epoch < args.epochs and total_step < steps_per_epoch * args.epochs:
         for batch_idx, batch in enumerate(loader):
-            if 'dynamic' not in args.train_path:
+            if args.dataset=="mmap":
+                input_ids = batch[:, :-1]
+            else:
                 _input_ids, _labels = batch
                 input_ids = _input_ids[:, :-1]
-            else:
-                input_ids = batch[:, :-1]
 
             start_step = time.perf_counter()
             outputs = poptorch_model(input_ids=input_ids)
@@ -184,8 +183,8 @@ if __name__ == "__main__":
             step_throughput = num_instances * args.replication_factor * args.batch_size * \
                 args.gradient_accumulation * args.device_iterations / step_length
             if (batch_idx + 1) % args.log_steps == 0:
-                logger("step {} of epoch {}, Throughput: {} seq/s, Latency: {} s".format(
-                    batch_idx, epoch, step_throughput, step_length))
+                logger("step {} of epoch {}, throughput: {} samples/sec, latency avg: {} ms".format(
+                    batch_idx, epoch, step_throughput, step_length*1000))
             total_step += 1
             if total_step % steps_per_epoch == 0:
                 epoch += 1

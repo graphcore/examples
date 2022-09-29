@@ -25,7 +25,7 @@ import popdist.poptorch
 from src.utils.score import get_recog_predict, get_char_dict
 from src.utils.compute_cer import compute_cer
 from src.utils.average_model import average_epoch
-
+from src.utils.key_utils import AishellKeyMapper
 
 class Trainer:
     def __init__(
@@ -178,6 +178,7 @@ class Trainer:
         for step, batch in enumerate(self.train_iterator):
             start = time.time()
             keys, feature, feature_length, target_in, target_out, target_length = batch
+            keys = [AishellKeyMapper.decode(key.item()) for key in keys]
             target_in = target_in.int()
             target_out = target_out.int()
             data_time = time.time()
@@ -218,7 +219,7 @@ class Trainer:
             data_consumption_ratio = (data_time - start) / (end - start)
             if self.args['popdist_rank'] == 0:
                 if self.scheduler.global_step % self.log_every_n_step == 0:
-                    self.logger.info(f'Epochs: {current_epoch}/{self.num_epochs}, step: {self.scheduler.global_step}/{self.steps_per_epoch*self.num_epochs}, tput: {tput:3.0f}, data consumption ratio: {data_consumption_ratio:0.3f}, pure_tput: {pure_tput:0.3f}, loss: {loss.mean().item():3.3f}, lr: {lr:.2e}')
+                    self.logger.info(f'Epochs: {current_epoch}/{self.num_epochs}, step: {self.scheduler.global_step}/{self.steps_per_epoch*self.num_epochs}, throughput: {tput:3.0f} samples/sec, data consumption ratio: {data_consumption_ratio:0.3f}, pure throughput: {pure_tput:0.3f} samples/sec, loss: {loss.mean().item():3.3f}, lr: {lr:.2e}')
                 if self.wandb:
                     self.wandb.log(
                         {
@@ -256,7 +257,7 @@ class Trainer:
                 epoch_tput = self.steps_per_epoch * self.samples_per_step / (end - start)
             if self.args['popdist_rank'] == 0:
                 self.logger.info(
-                    f'training epoch: {epoch} done, epoch time: {end-start:.3f}, sample num: {self.steps_per_epoch*self.samples_per_step}, epoch average tput: {epoch_tput:3.0f}'
+                    f'training epoch: {epoch} done, epoch time: {end-start:.3f}, sample num: {self.steps_per_epoch*self.samples_per_step}, epoch average throughput: {epoch_tput:3.0f} samples/sec'
                 )
 
             if self.save_per_epoch and (epoch % self.save_per_epoch) == 0:
@@ -273,6 +274,7 @@ class Trainer:
         copyWeightsToDevice_flag = 0
         for step, batch in enumerate(self.val_iterator):
             keys, feature, feature_length, target_in, target_out, target_length = batch
+            keys = [AishellKeyMapper.decode(key.item()) for key in keys]
             loss, loss_att, loss_ctc = self.val_model(
                 feature, feature_length, target_in, target_out, target_length
             )
@@ -317,6 +319,7 @@ class Trainer:
 
     def get_seqence(self, mode, batch_data, char_dict):
         keys, feature, feature_length, target_in, target_out, target_length = batch_data
+        keys = [AishellKeyMapper.decode(key.item()) for key in keys]
         if mode == 'attention_decode':
             hyps, scores = self.torch_model.recognize(feature, feature_length)
             predict_ = get_recog_predict(hyps, char_dict, keys)

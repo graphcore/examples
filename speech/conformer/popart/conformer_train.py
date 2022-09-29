@@ -37,18 +37,18 @@ def create_inputs_for_training(builder, conf):
     inputs = dict()
 
     inputs["text_input"] = builder.addInputTensor(popart.TensorInfo("UINT32",
-                                                                    [conf.samples_per_device,
+                                                                    [conf.replica_batch_size,
                                                                      conf.max_text_sequence_length]),
                                                   "text_input")
     inputs["mel_spec_input"] = builder.addInputTensor(popart.TensorInfo(_get_popart_type(conf.precision),
-                                                                        [conf.samples_per_device,
+                                                                        [conf.replica_batch_size,
                                                                          conf.mel_bands,
                                                                          conf.max_spectrogram_length]),
                                                       "mel_spec_input")
-    inputs["input_length"] = builder.addInputTensor(popart.TensorInfo("UINT32", [conf.samples_per_device]),
+    inputs["input_length"] = builder.addInputTensor(popart.TensorInfo("UINT32", [conf.replica_batch_size]),
                                                     "input_length")
 
-    inputs["target_length"] = builder.addInputTensor(popart.TensorInfo("UINT32", [conf.samples_per_device]),
+    inputs["target_length"] = builder.addInputTensor(popart.TensorInfo("UINT32", [conf.replica_batch_size]),
                                                      "target_length")
 
     return inputs

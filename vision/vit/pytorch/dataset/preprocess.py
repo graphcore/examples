@@ -20,7 +20,7 @@ from dataset.customized_randaugment import ImageNetPolicy
 normalization_parameters = {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}
 
 
-def get_preprocessing_pipeline(train, input_size=224, half_precision=False, normalize=True, extra_aug=None):
+def get_preprocessing_pipeline(train, input_size=224, half_precision=False, normalize=True, extra_aug=None, byteio=False):
     """
     Return optimized pipeline, which contains fused transformations.
     """
@@ -41,18 +41,24 @@ def get_preprocessing_pipeline(train, input_size=224, half_precision=False, norm
 
     pipeline_steps.append(transforms.ToTensor())
     if normalize:
-        pipeline_steps.append(transforms.Normalize(mean=normalization_parameters["mean"],
-                                                   std=normalization_parameters["std"]))
+        pipeline_steps.append(NormalizeToTensor(
+            mean=normalization_parameters["mean"], std=normalization_parameters["std"], max_normalize=False))
     else:
         # Return tensor
         pipeline_steps.append(NormalizeToTensor.pil_to_tensor)
-
-    if half_precision:
+    if byteio:
+        pipeline_steps.append(ToByte())
+    elif half_precision:
         pipeline_steps.append(ToHalf())
     else:
         pipeline_steps.append(ToFloat())
 
     return transforms.Compose(pipeline_steps)
+
+
+class ToByte(torch.nn.Module):
+    def forward(self, tensor):
+        return torch.clip(tensor*255, 0, 255).byte()
 
 
 class ToHalf(torch.nn.Module):
@@ -66,7 +72,7 @@ class ToFloat(torch.nn.Module):
 
 
 class NormalizeToTensor(torch.nn.Module):
-    def __init__(self, mean, std):
+    def __init__(self, mean, std, max_normalize=True):
         """
         Fuse ToTensor and Normalize operation.
         Expected input is a PIL image and the output is the normalized float tensor.
@@ -75,7 +81,10 @@ class NormalizeToTensor(torch.nn.Module):
         # Convert division to multiply
         mean = torch.as_tensor(mean)
         std = torch.as_tensor(std)
-        self.mul = (1.0/(255.0 * std)).view(-1, 1, 1)
+        if max_normalize:
+            self.mul = (1.0/(255.0 * std)).view(-1, 1, 1)
+        else:
+            self.mul = (1.0 / std).view(-1, 1, 1)
         self.sub = (mean / std).view(-1, 1, 1)
         super().__init__()
 
@@ -84,6 +93,10 @@ class NormalizeToTensor(torch.nn.Module):
             img = self.pil_to_tensor(img).float()
         if not img.dtype == torch.float:
             img = img.float()
+
+        # Ensure the constants are on the right device
+        self.mul = self.mul.to(img.device)
+        self.sub = self.sub.to(img.device)
         img.mul_(self.mul)
         img.sub_(self.sub)
         return img

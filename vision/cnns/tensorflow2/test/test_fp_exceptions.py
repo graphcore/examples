@@ -97,4 +97,4 @@ class TestFPExceptions(unittest.TestCase):
         result = self.ipu_prog(x1=[int(2**31-1)], x2=[1],
                                fn=lambda x: tf.cast(x[0]+x[1], tf.int32),
                                cast_to_float16=False, fp_exceptions=False)
-        self.assertEqual(result, 0)
+        self.assertEqual(result, -2147483648)

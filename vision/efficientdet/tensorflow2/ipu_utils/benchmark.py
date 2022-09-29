@@ -18,6 +18,10 @@ from typing import Iterable as T_Iterable
 from typing import List, Optional, Union
 
 from ipu_utils import safe_mean
+import numpy as np
+import tensorflow as tf
+from tensorflow.python.ipu import horovod as hvd
+import popdist
 
 
 class BenchmarkResult:
@@ -52,6 +56,7 @@ class BenchmarkResult:
 
     @classmethod
     def print_report(cls, results: List):
+        hvd.init()
         tput_stats, latency_stats = list(
             zip(*[r.get_stats() for r in results]))
 
@@ -63,17 +68,25 @@ class BenchmarkResult:
         all_batch_time_stats = [f([r.total_time for r in results])
                                 for f in cls.stats_fns]
 
-        print("Benchmark complete.")
-        print("Statistics:")
-        if len(results) > 1:
-            print(f"\tStats captured over {len(results)} runs.")
+        if popdist.isPopdistEnvSet():
+            tput_summaries = hvd.allgather(tf.constant([tput_summary], name='Throughputs',
+                                        dtype = tf.float32)).numpy()
+            latency_summaries = hvd.allgather(tf.constant([latency_summary], name='Latencies',
+                                        dtype = tf.float32)).numpy()
+            tput_summary = np.sum(tput_summaries, axis=0)
+            latency_summary = np.mean(latency_summaries, axis=0)
 
-        print(f"\tThroughput:        mean = {tput_summary[0]:.2f}, "
-              f"min = {tput_summary[1]:.2f}, max = {tput_summary[2]:.2f}")
-        print(f"\tPer-batch Latency: mean = {latency_summary[0]:.2f}ms, "
-              f"min = {latency_summary[1]:.2f}ms, max = {latency_summary[2]:.2f}ms")
-        print(f"\tAll-batch Latency: mean = {all_batch_time_stats[0]:.2f}ms, "
-              f"min = {all_batch_time_stats[1]:.2f}ms, max = {all_batch_time_stats[2]:.2f}ms")
+        if not popdist.isPopdistEnvSet() or popdist.getInstanceIndex() == 0:
+            print("Benchmark complete.")
+            print("Statistics:")
+            if len(results) > 1:
+                print(f"\tStats captured over {len(results)} runs.")
+            print(f"\tthroughput: {tput_summary[0]:.2f} samples/sec, "
+                 f"min = {tput_summary[1]:.2f}, max = {tput_summary[2]:.2f}")
+            print(f"\tPer-batch latency avg: {latency_summary[0]:.2f} ms, "
+                  f"min = {latency_summary[1]:.2f} ms, max = {latency_summary[2]:.2f} ms")
+            print(f"\tAll-batch latency avg: {all_batch_time_stats[0]:.2f} ms, "
+                  f"min = {all_batch_time_stats[1]:.2f}ms, max = {all_batch_time_stats[2]:.2f}ms")
 
     def __repr__(self):
         return f"BenchMarkresult: {self._throughputs}, {self._latencies}"

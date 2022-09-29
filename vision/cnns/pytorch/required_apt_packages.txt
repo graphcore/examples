@@ -5,3 +5,4 @@ nasm
 libssl-dev
 rapidjson-dev
 libre2-dev
+libboost-all-dev

@@ -116,7 +116,7 @@ def parse_csv(filepath):
     return results
 
 
-def get_csv(out, name):
+def get_log_dir(out):
     log_dir = None
     for line in out.split('\n'):
         if line.find('Saving to ') != -1:
@@ -124,5 +124,9 @@ def get_csv(out, name):
             break
     if not log_dir:
         raise ValueError("Couldn't find log directory from output")
+    return log_dir
 
+
+def get_csv(out, name):
+    log_dir = get_log_dir(out)
     return parse_csv(os.path.join(log_dir, name))

@@ -143,8 +143,7 @@ ipu_options:
   pipeline:
     - ['encoder.encoders__2.', 1]
     - ['encoder.encoders__6.', 2]
-    - ['encoder.encoders__10.', 3]
-
+    - ['encoder.encoders__11.', 3]
 checkpoints:
   pretrained_checkpoint: null
   save_checkpoint_path: "./checkpoint"
@@ -162,7 +161,8 @@ trainer:
   log_every_n_step: 1
   random_seed: *random_seed
   init_type: "pytorch"
-  wandb_name: null
+  wandb_project_name: null
+  wandb_run_name: null
   logger:
     name: 'conformer_logger'
     log_file: 'log.txt'

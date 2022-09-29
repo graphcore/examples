@@ -110,7 +110,7 @@ if __name__ == '__main__':
 
     mean_tput, min_tput, max_tput, std_tput = estimate_ds_throughput(config)
 
-    print(f'Mean throughput = {mean_tput:.1f} nodes/sec')
-    print(f'Min throughput = {min_tput:.1f} nodes/sec')
-    print(f'Max throughput = {max_tput:.1f} nodes/sec')
-    print(f'STD throughput = {std_tput:.1f} nodes/sec')
+    print(f'Mean throughput = {mean_tput:.1f} samples/sec')
+    print(f'Min throughput = {min_tput:.1f} samples/sec')
+    print(f'Max throughput = {max_tput:.1f} samples/sec')
+    print(f'STD throughput = {std_tput:.1f} samples/sec')

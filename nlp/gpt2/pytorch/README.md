@@ -16,18 +16,18 @@ Then, create a virtualenv:
 virtualenv venv -p python3.6
 source venv/bin/activate
 ```
-### 2. Compile custom ops
+### 2. Python
+Install the required packages:
+```
+pip install -r requirements.txt
+```
+
+### 3. Compile custom ops
 From inside this directory:
 ```
 make
 ```
 This should create `custom_ops.so`.
-
-### 3. Python
-Install the required packages:
-```
-pip install -r requirements.txt
-```
 
 ## Run the tests (optional)
 Setup your environment as explained above and run `python3 -m pytest` from the root folder.
@@ -54,79 +54,103 @@ python train_gpt2.py \
     --embedding-serialization-factor 4 \
     --recompute-checkpoint-every-layer True \
     --enable-half-partials True \
-    --train-path 'generated' \
-    --compile-only False
+    --dataset 'generated'
 ```
 
-## Generate pretraining data
+## Dataset
 
-The dataset used for pretraining is WIKI-103. It can be generated from a RAW dump of Wikipedia following a five step process.
+Wikipedia dataset and Webtext dataset can be used for GPT2 pretraining.
+To obtain the data used for pretraining follow the below instructions.
 
-### 1. Download
+### 1. Wikipedia Dataset
 
-Use the `wikipedia_download.sh` script to download the latest Wikipedia dump, about 20GB in size.
+**Download**
+
+Download the latest raw wikipedia dump from: <https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2>
+
+**Extract**
+
+Once you have downloaded the raw file, extract it using [WikiExtractor](https://github.com/attardi/wikiextractor).
+```
+pip install wikiextractor
+python -m wikiextractor.WikiExtractor --json --no-templates -o wikipedia_extracted enwiki-latest-pages-articles.xml.bz2
+```
+Then merge all extracted file into a single json file.
+```
+find ./wikipedia_extracted/ -depth -name wiki_* -exec cat {} + > wikipedia_data.json
+```
+**Preprocess**
+
+We recommand to follow Nvidia's Megatron for data preprocessing and generated the training data, see <https://github.com/NVIDIA/Megatron-LM#data-preprocessing>.
 
 ```
-./data/wikipedia_download.sh <chosen-path-for-dump-file>
+git clone https://github.com/NVIDIA/Megatron-LM.git
+python Megatron-LM/preprocess_data.py \
+       --input wikipedia_data.json \
+       --output-prefix wikipedia-gpt2 \
+       --vocab tokenizer/gpt2-vocab-50256.json \
+       --dataset-impl mmap \
+       --tokenizer-type GPT2BPETokenizer \
+       --merge-file tokenizer/gpt2-merges-50256.txt \
+       --append-eod
 ```
+The output files are named `wikipedia-gpt2_text_document.bin` and `wikipedia-gpt2_text_document.idx`, set `--dataset mmap` and `--input-files <path>/wikipedia-gpt2_text_document` in the training scripts to start gpt2 pretraining.
 
-Dumps are available from <https://dumps.wikimedia.org/> (and mirrors) and are licensed under CC BY-SA 3.0 and GNU Free Documentation Licenses.
 
-### 2. Extraction
+### 2. Webtext Dataset
 
-In order to create the pretraining data we need to extract the Wikipedia dump and put it in this form:
+**Download**
 
-```text
-<doc id = article1>
-Title of article 1
+Download the open webtext dataset from: <https://skylion007.github.io/OpenWebTextCorpus/>
 
-Body of article 1
-
-</doc>
-
-<doc id = article2>
-Title of article 2
-
-Body of article 2
-</doc>
-```
-
-and so on.
-
-One of the tools that can be used to do so is WikiExtractor, <https://github.com/attardi/wikiextractor>.
-Install the WikiExtractor package with `pip3 install wikiextractor`.
-
-In order not to encounter a `UnicodeEncodeError` at this step, you may want to run these two commands first:
+**Extract**
 
 ```
-export PYTHONIOENCODING=utf-8
-export LC_ALL=C.UTF-8
+tar -xvf openwebtext.tar.xz
+python data/extract_and_merge.py ./openwebtext ./openwebtext_extracted
 ```
+The output file is `openwebtext_raw.json`
 
-You can then use the the `wikipedia_extract.sh` script to use WikiExtractor to extract the data dump.
+**Preprocess**
 
-```
-./data/wikipedia_extract.sh <chosen-path-for-dump-file>/wikidump.xml <chosen-folder-for-extracted-files>
-```
-
-The result should be a folder containing directories named `AA`, `AB`, ...
-Note that the number of directories depends on the parameters of the `wikipedia_extract.sh` script, and is not to be confused with alphabetical ordering of the wikipedia articles.
-In other words you should probably not expect all of `AC`, `AD`, ... `ZX`, `ZY`, `ZZ` to be created by the script.
-
-### 3. Pre-processing
-
-Use the `wikipedia_preprocess.py` script to preprocess and tokenize the extracted files.
-
-Huggingface's `tokenizer.GPT2Tokenizer` is used in this step as default.
+Before generate the binary file for training, we are going to filter, clean, and deduplicate the raw json file. See <https://github.com/NVIDIA/Megatron-LM/blob/main/tools/openwebtext>
 
 ```
-python3 ./data/wikipedia_preprocess.py --input-file-path <chosen-folder-for-extracted-files> --output-file-path <chosen-folder-for-preprocessed-files>
-```
+git clone https://github.com/NVIDIA/Megatron-LM.git
 
-Now you should get the `.pkl` data, which will be used in the pretraining.
+python Megatron-LM/tools/openwebtext/cleanup_dataset.py openwebtext_raw.json openwebtext_clean.json
+
+python Megatron-LM/tools/openwebtext/find_duplicates.py \
+	   --inputs openwebtext_clean.json url
+	   --output openwebtext_duplicate_url.json
+
+python Megatron-LM/tools/openwebtext/group_duplicate_urls.py openwebtext_duplicate_url.json openwebtext_duplicate.json
+
+python Megatron-LM/tools/openwebtext/remove_group_duplicates.py openwebtext_duplicate.json openwebtext_clean.json openwebtext_deduplicate.json
+
+shuf openwebtext_deduplicate.json -o openwebtext_deduplicate_shuf.json
+
+python Megatron-LM/tools/openwebtext/filter_ngrams.py \
+       --tasks lambada \
+       --dedup-dataset openwebtext_deduplicate_shuf.json text \
+       --output openwebtext.json
+
+python Megatron-LM/tools/preprocess_data.py \
+       --input openwebtext.json \
+       --output-prefix openwebtext-gpt2 \
+       --vocab tokenizer/gpt2-vocab-50256.json \
+       --dataset-impl mmap \
+       --workers 8 \
+       --chunk-size 200000 \
+       --tokenizer-type GPT2BPETokenizer \
+       --merge-file tokenizer/gpt2-merges-50256.txt \
+       --append-eod
+```
+The output files are named `openwebtext-gpt2_text_document.bin` and `openwebtext-gpt2_text_document.idx`, set `--dataset mmap` and `--input-files <path>/openwebtext-gpt2_text_document` in the training scripts to start gpt2 pretraining.
+
 
 ## Run the pretraining application
-**Notice**: The default scripts are used to get benchmarks for throughput only. You must passing path to processed data files to `--train-path` to start the actual pretraining, you may also need to specify the `--save-model-path` to save checkpoints. It is recommended to use `--gradient-accumulation 512` when pretraining on the wikipedia dataset for better convergence. It takes 20 epochs(about 0.15 days per epoch) to reach a relative low LM loss together with the SOTA accuracy on evaluation tasks.
+**Notice**: The default scripts are used to get benchmarks for throughput only. You must passing path to processed data files to `--input-files` to start the actual pretraining, you may also need to specify the `--save-model-path` to save checkpoints. It is recommended to use `--gradient-accumulation 512` when pretraining on the wikipedia dataset for better convergence. It takes 20 epochs(about 0.15 days per epoch) to reach a relative low LM loss together with the SOTA accuracy on evaluation tasks.
 
 Further arguments are described in the source file `arguments.py`.
 
@@ -165,9 +189,8 @@ python train_gpt2.py \
     --embedding-serialization-factor 4 \
     --recompute-checkpoint-every-layer True \
     --enable-half-partials True \
-    --train-path 'generated' \
-    --replicated-tensor-sharding True \
-    --compile-only False
+    --dataset 'generated' \
+    --replicated-tensor-sharding True
 ```
 ### Run GPT2-medium
 This script runs the 345M parameter GPT2 pretraining.
@@ -196,9 +219,8 @@ python train_gpt2.py \
     --embedding-serialization-factor 4 \
     --recompute-checkpoint-every-layer True \
     --enable-half-partials True \
-    --train-path 'generated' \
-    --replicated-tensor-sharding True \
-    --compile-only False
+    --dataset 'generated' \
+    --replicated-tensor-sharding True
 ```
 ### Run GPT2-large(SL=512)
 This script runs the 762M parameter GPT2 pretraining, with sequence length=512.
@@ -227,9 +249,8 @@ python train_gpt2.py \
     --embedding-serialization-factor 8 \
     --recompute-checkpoint-every-layer True \
     --enable-half-partials True \
-    --train-path 'generated' \
-    --replicated-tensor-sharding True \
-    --compile-only False
+    --dataset 'generated' \
+    --replicated-tensor-sharding True
 ```
 ### Run GPT2-large(SL=1024)
 This script runs the 762M parameter GPT2 pretraining, with sequence length=1024.
@@ -258,9 +279,8 @@ python train_gpt2.py \
     --embedding-serialization-factor 4 \
     --recompute-checkpoint-every-layer True \
     --enable-half-partials True \
-    --train-path 'generated' \
-    --replicated-tensor-sharding False \
-    --compile-only False
+    --dataset 'generated' \
+    --replicated-tensor-sharding False
 ```
 
 ### Run GPT2-large by PopRun
@@ -271,24 +291,6 @@ We advise you to first read through the [User Guide](https://docs.graphcore.ai/p
 bash run/pretraining_large_poprun.sh
 ```
 
-## TFRecord dataset (optional)
-In order to use the multi-threaded `dataloader`, `tfrecord` files need to be generated.
-```
-cd <chosen-folder-for-preprocessed-files>
-mkdir tfrecords
-python write_into_tfrecord.py
-
-cd tfrecords
-for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .tfrecord`.index; done
-```
-then add `--train-path 'tfrecord'` and `--tfrecord-path <path>/*.tfrecord` to the command lines.
-
-
-## Megatron dataset (optional)
-We also support mmap dataset which is used by NVIDIA's Megatron, you should first follow the [instruction](https://github.com/ningchaoar/Megatron-LM#data-preprocessing) to get `my-gpt2_text_document.bin` and `my-gpt2_text_document.idx`.
-Then you need to set `--train-path dynamic` and `--data-prefix <path>/my-gpt2_text_document` in the training scripts.
-
-If you have trained model using Megatron's dataset, you will need to set `--tokenizer-type 1` in `tasks/run_evaluate.sh` for evalutaion.
 
 ## Evaluation
 ### WikiText Perplexity Evaluation
@@ -337,34 +339,55 @@ This task is interactive. You can enter one sentence such as "My name is " and i
 
 Further arguments are described in the source file `text_generate_gpt2.py`
 
-## Benchmarking
+## Running and benchmarking
 
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
 
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-## Profiling
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
 
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
+
+
+## Licensing
+
+This application is licensed under Apache License 2.0.
+Please see the LICENSE file in this directory for full details of the license conditions.
+
+This directory contains derived work from:
+
+* GPT2, https://github.com/openai/gpt-2 (licensed under the MIT License)
+* Hugging Face Transformers, https://github.com/huggingface/transformers (licensed under the Apache License, Version 2.0)
+* Megatron-LM, https://github.com/NVIDIA/Megatron-LM (license file see https://github.com/NVIDIA/Megatron-LM/blob/main/LICENSE)
+* DeepLearningExamples, https://github.com/NVIDIA/DeepLearningExamples (licensed under the Apache License, Version 2.0)
+
+The following files include code derived from https://github.com/huggingface/transformers which uses Apache License, Version 2.0:
+* config/config_large.json
+* config/config_medium.json
+* config/config_xl.json
+* config/config.json
+* model/optimized_gpt2_attn.py
+* tokenizer/gpt2-merges-50256.txt
+* tokenizer/gpt2-vocab-50256.json
+
+The following files include code derived from https://github.com/openai/gpt-2 which uses MIT License.
+* tasks/detokenizer.py
+* tokenizer/gpt2_tokenization.py
+
+The following files include code derived from https://github.com/NVIDIA/Megatron-LM with license https://github.com/NVIDIA/Megatron-LM/blob/main/LICENSE
+* data/indexed_dataset.py
+* tasks/evaluate_lambada.py
+* tasks/evaluate_utils.py
+* tasks/evaluate_wiki.py
+
+The following files include code derived from https://github.com/NVIDIA/DeepLearningExamples which uses Apache License, Version 2.0:
+* data/wikipedia_preprocess.py
+* data/write_into_tfrecord.py

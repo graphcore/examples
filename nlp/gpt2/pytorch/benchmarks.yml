@@ -2,18 +2,10 @@
 train_options: &train_options
   data:
     throughput:
-      reduction_type: "final"
-      regexp: 'Throughput: ([0-9, .]*)'
-    loss:
-      reduction_type: "final"
-      regexp: "loss: *(.*?),"
-    accuracy:
-      reduction_type: "final"
-      regexp: "acc: *(.*?),"
+      skip: 1
+      regexp: 'throughput: *(.*?) samples\/sec'
   output:
     - [samples/sec, "throughput"]
-    - [Loss, "loss"]
-    - [Accuracy, "accuracy"]
 
 pytorch_gpt2_small_train_gen_pod16:
   <<: *train_options
@@ -40,8 +32,7 @@ pytorch_gpt2_small_train_gen_pod16:
       --recompute-checkpoint-every-layer True
       --enable-half-partials True
       --replicated-tensor-sharding True
-      --compile-only False
-      --train-path 'generated'
+      --dataset 'generated'
       --epochs 1
 
 pytorch_gpt2_small_train_gen_pod64:
@@ -69,8 +60,7 @@ pytorch_gpt2_small_train_gen_pod64:
       --recompute-checkpoint-every-layer True
       --enable-half-partials True
       --replicated-tensor-sharding True
-      --compile-only False
-      --train-path 'generated'
+      --dataset 'generated'
       --epochs 1
 
 pytorch_gpt2_medium_train_gen_pod16:
@@ -98,8 +88,7 @@ pytorch_gpt2_medium_train_gen_pod16:
       --recompute-checkpoint-every-layer True
       --enable-half-partials True
       --replicated-tensor-sharding True
-      --compile-only False
-      --train-path 'generated'
+      --dataset 'generated'
       --epochs 1
 
 pytorch_gpt2_medium_train_gen_pod64:
@@ -127,8 +116,7 @@ pytorch_gpt2_medium_train_gen_pod64:
       --recompute-checkpoint-every-layer True
       --enable-half-partials True
       --replicated-tensor-sharding True
-      --compile-only False
-      --train-path 'generated'
+      --dataset 'generated'
       --epochs 1
 
 pytorch_gpt2_large_sl512_train_gen_pod16:
@@ -155,9 +143,8 @@ pytorch_gpt2_large_sl512_train_gen_pod16:
       --embedding-serialization-factor 8
       --recompute-checkpoint-every-layer True
       --enable-half-partials True
-      --compile-only False
       --replicated-tensor-sharding True
-      --train-path 'generated'
+      --dataset 'generated'
       --epochs 1
 
 pytorch_gpt2_large_sl512_train_gen_pod64:
@@ -184,9 +171,8 @@ pytorch_gpt2_large_sl512_train_gen_pod64:
       --embedding-serialization-factor 8
       --recompute-checkpoint-every-layer True
       --enable-half-partials True
-      --compile-only False
       --replicated-tensor-sharding True
-      --train-path 'generated'
+      --dataset 'generated'
       --epochs 1
 
 pytorch_gpt2_large_train_gen_pod16:
@@ -202,7 +188,7 @@ pytorch_gpt2_large_train_gen_pod16:
       --device-iterations 8
       --batch-size 1
       --layers-per-ipu 0 2 2 2 2 2 2 2 2 3 3 3 3 3 3 2
-      --matmul-proportion 0.2 0.15 0.2 0.2 0.2 0.15 0.15 0.2 0.2 0.15 0.2 0.2 0.2 0.15 0.15 0.2
+      --matmul-proportion 0.15 0.15 0.2 0.2 0.2 0.15 0.15 0.2 0.2 0.15 0.2 0.2 0.2 0.15 0.15 0.2
       --max-len 1024
       --optimizer AdamW
       --learning-rate 0.00015
@@ -213,22 +199,21 @@ pytorch_gpt2_large_train_gen_pod16:
       --embedding-serialization-factor 4
       --recompute-checkpoint-every-layer True
       --enable-half-partials True
-      --compile-only False
       --replicated-tensor-sharding False
-      --train-path 'generated'
+      --dataset 'generated'
       --epochs 1
 
 inference_options: &inference_options
   data:
     throughput:
-      reduction_type: "final"
-      regexp: 'Throughput: ([0-9, .]*)'
+      skip: 1
+      regexp: 'throughput: *(.*?) samples\/sec'
     latency:
       reduction_type: "final"
-      regexp: 'Latency: ([0-9, .]*)'
+      regexp: 'latency avg: *(.*?) ms'
   output:
     - [samples/sec, "throughput"]
-    - [sec, "latency"]
+    - [latency(ms), "latency"]
 
 pytorch_gpt2_small_infer_gen_pod16:
   <<: *inference_options
@@ -242,15 +227,14 @@ pytorch_gpt2_small_infer_gen_pod16:
       --matmul-proportion 0.2 0.2
       --ipus-per-replica 2
       --replication-factor 8
-      --epochs 5
+      --epochs 20
       --device-iterations 1
       --batch-size 1
       --gradient-accumulation 1
       --embedding-serialization-factor 4
       --enable-half-partials True
-      --train-path 'generated'
+      --dataset 'generated'
       --replicated-tensor-sharding False
-      --compile-only False
 
 pytorch_gpt2_medium_infer_gen_pod16:
   <<: *inference_options
@@ -264,15 +248,14 @@ pytorch_gpt2_medium_infer_gen_pod16:
       --matmul-proportion 0.2 0.2 0.2 0.2
       --ipus-per-replica 4
       --replication-factor 4
-      --epochs 5
+      --epochs 20
       --device-iterations 1
       --batch-size 1
       --gradient-accumulation 1
       --embedding-serialization-factor 4
       --enable-half-partials True
-      --train-path 'generated'
+      --dataset 'generated'
       --replicated-tensor-sharding False
-      --compile-only False
 
 pytorch_gpt2_large_infer_gen_pod16:
   <<: *inference_options
@@ -286,15 +269,14 @@ pytorch_gpt2_large_infer_gen_pod16:
       --matmul-proportion 0.2 0.2 0.2 0.2 0.2 0.2 0.2 0.2
       --ipus-per-replica 8
       --replication-factor 2
-      --epochs 5
+      --epochs 20
       --device-iterations 1
       --batch-size 1
       --gradient-accumulation 1
       --embedding-serialization-factor 4
       --enable-half-partials True
-      --train-path 'generated'
+      --dataset 'generated'
       --replicated-tensor-sharding False
-      --compile-only False
 
 pytorch_gpt2_xlarge_infer_gen_pod16:
   <<: *inference_options
@@ -308,12 +290,11 @@ pytorch_gpt2_xlarge_infer_gen_pod16:
       --matmul-proportion 0.2 0.2 0.2 0.2 0.2 0.2 0.2 0.2
       --ipus-per-replica 8
       --replication-factor 2
-      --epochs 2
+      --epochs 20
       --device-iterations 1
       --batch-size 1
       --gradient-accumulation 1
       --embedding-serialization-factor 4
       --enable-half-partials True
-      --train-path 'generated'
+      --dataset 'generated'
       --replicated-tensor-sharding False
-      --compile-only False

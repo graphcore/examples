@@ -18,7 +18,7 @@ class InferenceEmbeddedTest(SubProcessChecker):
         env = os.environ.copy()
         env["PYTHONPATH"] += ":./"
         env.update(extra_env)
-        self.run_command(cmd_args, script_dir, ["Latencies - avg"], env=env)
+        self.run_command(cmd_args, script_dir, ["latency avg"], env=env)
 
     @pytest.mark.ipus(1)
     def test_embedded_inference_functionality(self):

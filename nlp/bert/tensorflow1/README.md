@@ -39,38 +39,6 @@ This README is structured to show the datasets required to train the model, how 
 - Added inference program using the IPU embedded application runtime.
 - Update LAMB to be disabled on bias parameters.
 
-## Benchmarking <a name="benchmarking"></a>
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
-
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
-
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
-
-## Profiling <a name="profiling"></a>
-
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
-
 ## Datasets <a name="datasets"></a>
 The Wikipedia dataset contains approximately 2.5 billion wordpiece tokens. This is only an approximate size since the Wikipedia dump file is updated all the time.
 
@@ -96,6 +64,22 @@ See the `bert_data/README.md` file for more details on how to generate this data
 | `run_classifier.py` | Main training and inference loop for GLUE fine-tuning. |
 | `loss_scaling_schedule.py`| Sets a loss scaling schedule based on config arguments. |
 | ` scripts/` | Directory containing a number of utility scripts:<br/>-`create_wikipedia_dataset.sh`: Generate the wikipedia tf_record datafiles for pre-training<br/>-`fine_tune_squad.sh`: Fine tune BERT Base or Large from the latest Phase 2 checkpoint on SQuAD 1.1 and 2.0.<br/>-`fine_tune_glue.sh`: Fine tune BERT Base or Large from the latest Phase 2 checkpoint on GLUE tasks.<br/>-`fine_tune_GroupBERT_glue.sh`: Fine tune GroupBERT Base or Large from the latest Phase 2 checkpoint on GLUE tasks.<br/>-`pretrain_distributed.sh`: Run pre-training of BERT Large on the Graphcore IPU-POD64.<br/>-`pretrain.sh`: ***The main pre-training script.*** Pre-train BERT (large or base) on Graphcore IPUs. This script will run Phase 1, and use the results to train Phase 2 on the Wikipedia dataset.<br/>-`pretrain_distributed.sh`: Script to train BERT (base / large) end-to-end.
+
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 ## Quick start guide <a name="quick_start"></a>
 

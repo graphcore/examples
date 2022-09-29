@@ -184,6 +184,7 @@ class DALLE(nn.Module):
 
             # mask logits to make sure text predicts text (except last token), and image predicts image
 
+            self.logits_mask = self.logits_mask.to(device=logits.device)
             logits_mask = self.logits_mask[:, :seq_len]
             max_neg_value = -torch.finfo(logits.dtype).max
             logits.masked_fill_(logits_mask, max_neg_value)
@@ -279,7 +280,7 @@ class DALLE(nn.Module):
 
         # make sure padding in text tokens get unique padding token id
 
-        text_range = torch.arange(self.text_seq_len) + (self.num_text_tokens - self.text_seq_len)
+        text_range = torch.arange(self.text_seq_len, device=image.device) + (self.num_text_tokens - self.text_seq_len)
         text = torch.where(text == 0, text_range, text)
 
         # add <bos>
@@ -287,7 +288,7 @@ class DALLE(nn.Module):
         text = F.pad(text, (1, 0), value = 0)
 
         tokens = self.text_emb(text)
-        tokens += self.text_pos_emb(torch.arange(text.shape[1]))
+        tokens += self.text_pos_emb(torch.arange(text.shape[1], device=image.device))
 
         seq_len = tokens.shape[1]
 
@@ -308,6 +309,7 @@ class DALLE(nn.Module):
 
         # mask logits to make sure text predicts text (except last token), and image predicts image
 
+        self.logits_mask = self.logits_mask.to(device=logits.device)
         logits_mask = self.logits_mask[:, :seq_len]
         if self.fp16:
             max_neg_value = -torch.finfo(torch.float16).max

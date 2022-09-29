@@ -196,7 +196,7 @@ class EnqueuedLossTest(unittest.TestCase):
                           gradient_accumulation=1,
                           steps_per_execution=1)
             print(test_log.output)
-            self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
 
     def test_2micro_batch_size_2replicas_1step_per_execution(self):
 
@@ -206,7 +206,7 @@ class EnqueuedLossTest(unittest.TestCase):
                           num_replicas=2,
                           gradient_accumulation=1,
                           steps_per_execution=1)
-            self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
 
     def test_1micro_batch_size_4replicas_1step_per_execution(self):
 
@@ -216,7 +216,7 @@ class EnqueuedLossTest(unittest.TestCase):
                           num_replicas=4,
                           gradient_accumulation=1,
                           steps_per_execution=1)
-            self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
 
     def test_1micro_batch_size_4gradientacc_4step_per_execution(self):
 
@@ -226,7 +226,7 @@ class EnqueuedLossTest(unittest.TestCase):
                           num_replicas=1,
                           gradient_accumulation=4,
                           steps_per_execution=4)
-            self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
 
     def test_1micro_batch_size_2replicas_2gradientacc_2step_per_execution(self):
 
@@ -236,7 +236,7 @@ class EnqueuedLossTest(unittest.TestCase):
                           num_replicas=2,
                           gradient_accumulation=2,
                           steps_per_execution=2)
-            self.assertIn('\'average loss\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
 
 
 class EnqueuedMetricTest(unittest.TestCase):
@@ -286,7 +286,7 @@ class EnqueuedMetricTest(unittest.TestCase):
                           gradient_accumulation=1,
                           steps_per_execution=1)
             print(test_log.output)
-            self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
 
     def test_2micro_batch_size_2replicas_1step_per_execution(self):
 
@@ -296,7 +296,7 @@ class EnqueuedMetricTest(unittest.TestCase):
                           num_replicas=2,
                           gradient_accumulation=1,
                           steps_per_execution=1)
-            self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
 
     def test_1micro_batch_size_4replicas_1step_per_execution(self):
 
@@ -306,7 +306,7 @@ class EnqueuedMetricTest(unittest.TestCase):
                           num_replicas=4,
                           gradient_accumulation=1,
                           steps_per_execution=1)
-            self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
 
     def test_1micro_batch_size_4gradientacc_4step_per_execution(self):
 
@@ -316,7 +316,7 @@ class EnqueuedMetricTest(unittest.TestCase):
                           num_replicas=1,
                           gradient_accumulation=4,
                           steps_per_execution=4)
-            self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
 
     def test_1micro_batch_size_2replicas_2gradientacc_2step_per_execution(self):
 
@@ -326,4 +326,4 @@ class EnqueuedMetricTest(unittest.TestCase):
                           num_replicas=2,
                           gradient_accumulation=2,
                           steps_per_execution=2)
-            self.assertIn('\'average metric\': 3.5', ' '.join(test_log.output))
+            self.assertIn('average metric: 3.5', ' '.join(test_log.output))

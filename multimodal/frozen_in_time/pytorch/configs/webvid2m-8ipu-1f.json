@@ -1,0 +1,116 @@
+{
+    "name": "WebVid2M-IPU",
+    "arch": {
+        "type": "FrozenInTime",
+        "precision": "16.16",
+        "args": {
+            "video_params": {
+                "model": "SpaceTimeTransformer",
+                "arch_config": "base_patch32_224",
+                "num_frames": 4,
+                "pretrained": true,
+                "time_init": "random"
+            },
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "max_length": 64,
+                "pretrained": true,
+                "input": "text"
+            },
+            "load_checkpoint": ""
+        }
+    },
+    "data_loader": {
+        "type": "TextVideoDataLoader",
+        "training":{
+            "dataset_name": "WebVid",
+            "data_dir": "/<path_to_your_dataset_dir>/WebVid/",
+            "shuffle": true,
+            "num_workers": 32,
+            "batch_size": 32,
+            "cut": "2M",
+            "subsample": 1,
+            "split": "training",
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "input": "text"
+            },
+            "video_params": {
+                "input_res": 224,
+                "num_frames": 1,
+                "loading": "lax"
+            }
+        },
+        "inference":{
+            "dataset_name": "MSRVTT",
+            "data_dir": "/<path_to_your_dataset_dir>/MSRVTT/",
+            "shuffle": true,
+            "num_workers": 4,
+            "batch_size": 8,
+            "cut": "jsfusion",
+            "subsample": 4,
+            "split": "inference",
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "input": "text"
+            },
+            "video_params": {
+                "input_res": 224,
+                "num_frames": 4,
+                "stride": 1
+            }
+        }
+    },
+    "optimizer": {
+        "type": "AdamW",
+        "args":{
+            "lr": 5e-5,
+            "betas": [0.98,0.9],
+            "weight_decay": 0.2,
+            "accum_type": "FP32",
+            "loss_scaling": 1024.0
+        }
+    },
+    "loss": {
+        "type": "CrossEntropy",
+        "args": {
+            "temperature": 0.07
+        }
+    },
+    "metrics": [
+        "t2v_metrics",
+        "v2t_metrics"
+     ],
+    "trainer": {
+        "epochs": 80,
+        "max_samples_per_epoch": 100000,
+        "save_dir": "exps",
+        "save_period": 5,
+        "verbosity": 2,
+        "monitor": "max t2v_metrics@geometric_mean_R1-R5-R10",
+        "early_stop": 10,
+        "init_val": true,
+        "wandb": true
+    },
+    "IPU_options":{
+        "num_IPUs": 8,
+        "available_memory_proportion":{"IPU0": 0.6, "IPU1": 0.3, "IPU2": 0.3, "IPU3": 0.5, "IPU4": 0.1, "IPU5": 0.19, "IPU6": 0.2, "IPU7": 0.18},
+        "enableFloatingPointExceptions": true,
+        "executable_cache_dir": "./exps/exe_cache",
+        "pipelined_layers":{
+            "txt_embeddings": 0,
+            "txt_transformer": [1, 1, 1, 2, 2, 2],
+            "txt_proj":2,
+            "vid_patch_embed":3,
+            "vid_blocks": [4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7],
+            "vid_proj" : 7
+        },
+        "training":{
+            "gradientAccumulation": 15,
+            "batches_per_step": 8
+        },
+        "inference":{
+            "batches_per_step": 8
+        }  
+    }
+}

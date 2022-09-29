@@ -1,0 +1,130 @@
+---
+common_options: &common_options
+  output:
+    - [samples/sec, 'throughput']
+    - [loss, 'loss']
+  data:
+    throughput:
+      regexp: 'throughput\s*(\d*)'
+      skip: 1
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss *(\d*\.\d*)'
+      skip: 1
+  env:
+    POPLAR_ENGINE_OPTIONS: '{
+      "opt.enableMultiAccessCopies":"false",
+      "target.hostSyncTimeout":"3000"
+    }'
+    PYTORCH_EXE_DIR: "/tmp/pt_cache/"
+
+pytorch_mae_train_real_pod16:
+  <<: *common_options
+  description: |
+    Mae training with real data.
+  cmd: >-
+    python main_pretrain.py
+      --config vit_base_pod16
+      --data_path $DATASETS_DIR/imagenet-raw-dataset
+      --epochs 1
+      --warmup_epochs 0
+      --wandb
+      --wandb_run_name pytorch_mae_train_real_pod16
+
+pytorch_mae_train_real_pod64:
+  <<: *common_options
+  description: |
+    Mae training performance test with real data.
+  cmd: >-
+    poprun
+      -vv
+      --host=$HOSTS
+      --num-instances=4
+      --num-replicas=16
+      --ipus-per-replica=4
+      --update-partition=yes
+      --remove-partition=no
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster=$CLUSTER
+      --vipu-server-timeout=3600
+      --executable-cache-path=$PYTORCH_EXE_DIR
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x CPATH
+        -x IPUOF_VIPU_API_TIMEOUT=3600
+        -x POPLAR_LOG_LEVEL=WARN
+        -x POPLAR_SDK_ENABLED
+        -x POPLAR_ENGINE_OPTIONS"
+    python main_pretrain.py
+      --config vit_base_pod64
+      --data_path $DATASETS_DIR/imagenet-raw-dataset
+      --epochs 3
+      --wandb
+      --wandb_run_name pytorch_mae_train_real_pod64
+
+pytorch_mae_train_real_pod64_conv:
+  <<: *common_options
+  description: |
+    Mae training convergence test with real data.
+  cmd: >-
+    poprun
+      -vv
+      --host=$HOSTS
+      --num-instances=4
+      --num-replicas=16
+      --ipus-per-replica=4
+      --update-partition=yes
+      --remove-partition=no
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster=$CLUSTER
+      --vipu-server-timeout=3600
+      --executable-cache-path=$PYTORCH_EXE_DIR
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x CPATH
+        -x IPUOF_VIPU_API_TIMEOUT=3600
+        -x POPLAR_LOG_LEVEL=WARN
+        -x POPLAR_SDK_ENABLED
+        -x POPLAR_ENGINE_OPTIONS"
+    python main_pretrain.py
+      --config vit_base_pod64
+      --data_path $DATASETS_DIR/imagenet-raw-dataset
+      --wandb
+      --wandb_run_name pytorch_mae_train_real_pod64_conv
+
+pytorch_mae_finetune_real_pod16_conv:
+  <<: *common_options
+  description: |
+    Mae finetuning with real data.
+  cmd:
+    python main_finetune.py
+      --finetune checkpoint_mae_vit_base/checkpoint.pth
+      --data_path $DATASETS_DIR/imagenet-raw-dataset
+      --wandb
+      --wandb_run_name pytorch_mae_finetune_real_pod16_conv
+
+pytorch_mae_validation_real_pod16:
+  <<: *common_options
+  description: |
+    Mae validation after pretraining.
+  cmd:
+    python finetune_validate.py
+      --resume checkpoint_mae_vit_base_finetune/checkpoint.pth
+      --batch_size 16
+      --data_path $DATASETS_DIR/imagenet-raw-dataset
+      --wandb
+      --wandb_run_name pytorch_mae_validation_real_pod16

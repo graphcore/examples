@@ -181,7 +181,7 @@ def build_loaders(config, opts, async_dataloader, return_remaining=False):
         transforms = get_transforms(n_px=config.image_resolution)
 
         dataframe = make_train_valid_dfs(config)
-        encoded_captions = tokenize(list(dataframe["caption"].values), context_length=config.context_length, truncate=config.truncate)
+        encoded_captions = tokenize(list(dataframe["caption"].values), config.bpe_vocab_path, context_length=config.context_length, truncate=config.truncate)
         image_values = dataframe["image"].values
 
         train_dataset = CLIPDataset(
@@ -210,7 +210,7 @@ def build_loaders(config, opts, async_dataloader, return_remaining=False):
     return train_dataloader
 
 
-def tokenize(texts: Union[str, List[str]], context_length: int = 77, truncate: bool = False) -> torch.LongTensor:
+def tokenize(texts: Union[str, List[str]], bpe_vocab_path: str, context_length: int = 77, truncate: bool = False) -> torch.LongTensor:
     """
     Returns the tokenized representation of given input string(s)
     Parameters
@@ -225,7 +225,7 @@ def tokenize(texts: Union[str, List[str]], context_length: int = 77, truncate: b
     -------
     A two-dimensional tensor containing the resulting tokens, shape = [number of input strings, context_length]
     """
-    _tokenizer = SimpleTokenizer()
+    _tokenizer = SimpleTokenizer(bpe_path=bpe_vocab_path)
     if isinstance(texts, str):
         texts = [texts]
 

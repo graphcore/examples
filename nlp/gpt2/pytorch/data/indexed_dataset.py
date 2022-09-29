@@ -232,7 +232,7 @@ class GPTDataset(Dataset):
         # Build index mappings.
         self.doc_idx, self.sample_idx, self.shuffle_idx = _build_index_mappings(
             data_prefix, documents, self.indexed_dataset.sizes,
-            self.seq_length, self.see, num_epochs, num_samples)
+            self.seq_length, self.seed, num_epochs, num_samples)
 
     def __len__(self):
         # -1 is due to data structure used to retieve the index:
@@ -334,7 +334,7 @@ def _num_tokens(documents, sizes):
 
 
 def _num_epochs(tokens_per_epoch, seq_length, num_samples):
-    """Based on number of samples and sequence length, calculate how many
+    """Based on number of samples and sequence lenght, calculate how many
     epochs will be needed."""
     num_epochs = 0
     total_tokens = 0

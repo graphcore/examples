@@ -23,4 +23,4 @@ class ThroughputEstimatorCallback(tf.keras.callbacks.Callback):
     def calc_tput(self, logs=None):
         if logs is not None:
             batch_duration = time.time() - self.batch_start_time
-            logs['Average images/s'] = self.images_per_execution / batch_duration
+            logs["throughput"] = self.images_per_execution / batch_duration

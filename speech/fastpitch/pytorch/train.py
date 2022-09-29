@@ -136,6 +136,7 @@ def parse_args(parser):
                              help='Number of replicas to create for training.')
     distributed.add_argument('--num-dataloader-workers', type=int, default=8,
                              help='Number of workers to use for the dataloader.')
+    distributed.add_argument('--optimizer-state-offchip', type=bool, default=False)
     return parser
 
 
@@ -463,7 +464,7 @@ def main():
                     loss = torch.zeros(1)
                 # Standardised metrics outputs
                 print(f"loss: {loss.mean().item()},")
-                print(f"throughput: {num_frames/(end-start)},")
+                print(f"throughput: {samples_per_step/(end-start)} samples/sec,")
             else:
                 print('step: ', i)
 

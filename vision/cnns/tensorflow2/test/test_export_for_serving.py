@@ -2,13 +2,14 @@
 
 import os
 import tempfile
+import pytest
 
 from test_common import run_export
 from examples_tests.test_util import SubProcessChecker
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import signature_constants
 
-
+@pytest.mark.skip(reason='use of external data (T68092)')
 class Simple(SubProcessChecker):
     def test_simple_export_bs_1(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'

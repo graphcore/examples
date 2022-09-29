@@ -9,6 +9,7 @@ import sys
 sys.path.append(str(Path(__file__).absolute().parent.parent))
 from normalization import batch_norm
 from optimizers.loss_scale_optimizer import add_loss_scaling_to_optimizer
+from batch_config import BatchConfig
 
 
 class TestBatchNorm(unittest.TestCase):
@@ -16,7 +17,11 @@ class TestBatchNorm(unittest.TestCase):
     def run_model_on_ipu(self, ipu_batch_norm_layer=True, loss_scaling=None):
 
         input_shape = (3, 3, 1)
-        micro_batch_size = 2
+
+        batch_config = BatchConfig(
+            micro_batch_size=2,
+            gradient_accumulation_count=1,
+            num_replicas=1)
 
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = 1
@@ -27,32 +32,9 @@ class TestBatchNorm(unittest.TestCase):
         ds = tf.data.Dataset.from_tensors(np.ones(input_shape))
         ds = ds.repeat()
         ds = ds.map(lambda x: (tf.cast(x, tf.float32), (1,)))
-        ds = ds.batch(micro_batch_size, drop_remainder=True)
+        ds = ds.batch(batch_config.micro_batch_size, drop_remainder=True)
 
         iterator = iter(ds)
-        loss_fn = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM)
-
-        optimizer_class = tf.keras.optimizers.SGD
-
-        if loss_scaling:
-            optimizer_class = add_loss_scaling_to_optimizer(optimizer_class, loss_scaling)
-
-        if ipu_batch_norm_layer:
-            optimizer_class = batch_norm.add_bn_moving_vars_updates_to_optimizer(
-                optimizer_class, bn_momentum=0.99)
-
-        optimizer = optimizer_class()
-
-        @tf.function
-        def ipu_fn():
-
-            with tf.GradientTape() as tape:
-                image, label = next(iterator)
-                prediction = model(image, training=True)
-                loss = loss_fn(label, prediction)
-
-            optimizer.minimize(loss=loss, var_list=model.trainable_variables, tape=tape)
-            return prediction
 
         strategy = ipu.ipu_strategy.IPUStrategy()
 
@@ -68,7 +50,34 @@ class TestBatchNorm(unittest.TestCase):
             x = tf.keras.layers.Dense(1, kernel_initializer='ones', use_bias=False, trainable=False, name='dense')(x)
             model = tf.keras.Model(input_layer, x)
 
-            model.build(input_shape=(micro_batch_size, *input_shape))
+            model.build(input_shape=(batch_config.micro_batch_size, *input_shape))
+
+            loss_fn = tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.SUM)
+
+            optimizer_class = tf.keras.optimizers.SGD
+
+            if loss_scaling:
+                optimizer_class = add_loss_scaling_to_optimizer(optimizer_class, loss_scaling)
+
+            if ipu_batch_norm_layer:
+                optimizer_class = batch_norm.add_bn_moving_vars_updates_to_optimizer(
+                    optimizer_class,
+                    model=model,
+                    batch_config=batch_config,
+                    bn_momentum=0.99)
+
+        optimizer = optimizer_class()
+
+        @tf.function
+        def ipu_fn():
+
+            with tf.GradientTape() as tape:
+                image, label = next(iterator)
+                prediction = model(image, training=True)
+                loss = loss_fn(label, prediction)
+
+            optimizer.minimize(loss=loss, var_list=model.trainable_variables, tape=tape)
+            return prediction
 
         prediction = strategy.run(ipu_fn)
 

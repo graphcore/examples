@@ -7,12 +7,13 @@ import numpy as np
 
 
 class BatchStatisticsCallback(tf.keras.callbacks.Callback):
-    def __init__(self, num_nodes_processed_per_execution, real_over_padded_ratio, total_num_epochs):
+    def __init__(self, num_nodes_processed_per_execution, real_over_padded_ratio, total_num_epochs, loss):
         self.num_nodes_processed_per_execution = num_nodes_processed_per_execution
         self.real_over_padded_ratio = real_over_padded_ratio
         self.total_num_epochs = total_num_epochs
         self.total_num_nodes_processed = 0
         self.throughput_logs = []
+        self.loss = loss
 
     def on_train_begin(self, logs=None):
         pass
@@ -34,3 +35,4 @@ class BatchStatisticsCallback(tf.keras.callbacks.Callback):
             logs["mean_throughput"] = np.mean(self.throughput_logs[steps_to_skip:])
             logs["std_throughput"] = np.std(self.throughput_logs[steps_to_skip:])
             logs["mean_real_throughput"] = logs["mean_throughput"] * self.real_over_padded_ratio
+            logs["loss"] = self.loss

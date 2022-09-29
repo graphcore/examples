@@ -52,11 +52,13 @@ def CVAE(input_shape, steps_per_exec, latent_dim=3):
     return autoencoder
 
 
-def create_datasets(x_train, y_train, x_val, y_val, batch_size):
-    train_ds = tf.data.Dataset.from_tensor_slices(x_train).batch(
-        batch_size, drop_remainder=True).repeat().prefetch(16)
-    val_ds = tf.data.Dataset.from_tensor_slices((x_val, y_val)).batch(
-        batch_size, drop_remainder=True).repeat().prefetch(16)
+def create_datasets(x_train, x_val, batch_size):
+    train_ds = tf.data.Dataset.from_tensor_slices(x_train)
+    train_ds = train_ds.map(lambda x : (x, 0.)) # 0. is a dummy value that will be ignored
+    train_ds = train_ds.batch(batch_size, drop_remainder=True).repeat().prefetch(16)
+    val_ds = tf.data.Dataset.from_tensor_slices(x_val)
+    val_ds = val_ds.map(lambda x : (x, 0.)) # 0. is a dummy value that will be ignored
+    val_ds = val_ds.batch(batch_size, drop_remainder=True).repeat().prefetch(16)
 
     return train_ds, val_ds
 
@@ -73,7 +75,7 @@ def run_cvae(hyper_dim=3, epochs=10, batch_size=200, cm_data_input=None, validat
     steps_epoch = len(cm_data_train) // batch_size
     steps_val = len(cm_data_val) // batch_size if validation else None
 
-    train_ds, val_ds = create_datasets(cm_data_train, cm_data_train, cm_data_val, cm_data_val, batch_size=batch_size)
+    train_ds, val_ds = create_datasets(cm_data_train, cm_data_val, batch_size=batch_size)
     cm_data_train = train_ds
     cm_data_val = val_ds if validation else None
 

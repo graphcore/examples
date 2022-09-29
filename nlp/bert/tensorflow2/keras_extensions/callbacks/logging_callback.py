@@ -17,6 +17,10 @@ LOGGING_EXCLUDE_METRICS = ["nsp___cls_loss",
                            "learning_rate",
                            "classification_acc",
                            "start_positions_end_positions_sparse_categorical_accuracy"]
+units = {
+    "throughput": "samples/sec",
+    "Compilation Time": "s",
+}
 
 
 class LoggingCallback(tf.keras.callbacks.Callback):
@@ -37,8 +41,14 @@ class LoggingCallback(tf.keras.callbacks.Callback):
 
         if (batch + 1) % self.log_period == 0:
             metrics = self.metrics.get_normalized()
-            logger_metrics_str = ", ".join([f"{k}: {v:.3f}" for k, v in metrics.items() if k not in LOGGING_EXCLUDE_METRICS])
-            self.logger.info(f"Batch {batch+1}: {logger_metrics_str}")
+            metrics_print = []
+            for metric in metrics:
+                if metric in units:
+                    metrics_print.append(f"{metric}: {metrics[metric]} {units[metric]}")
+                else:
+                    metrics_print.append(f"{metric}: {metrics[metric]} ")
+
+            self.logger.info(f"batch {batch+1}: {metrics_print}")
             self.metrics.reset()
 
     def __next_batches_operations(self, logs):
@@ -48,7 +58,10 @@ class LoggingCallback(tf.keras.callbacks.Callback):
 
         for key in logs:
             if key in LOGGING_ONE_OFF_METRICS:
-                self.logger.info(f"{key} {logs[key]}")
+                if key in units:
+                    self.logger.info(f"{key} {logs[key]} {units[key]}")
+                else:
+                    self.logger.info(f"{key} {logs[key]} ")
 
         # filter one off metrics
         logs = {metric: logs[metric] for metric in logs if metric not in LOGGING_ONE_OFF_METRICS}

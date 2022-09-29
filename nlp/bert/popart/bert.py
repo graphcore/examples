@@ -36,20 +36,19 @@ from distutils import version
 LooseVersion = version.LooseVersion
 from torch.utils.tensorboard import SummaryWriter
 
-import utils
-import utils.popvision as popvision
 from bert_data import get_pretraining_dataset, get_squad_dataset
 from bert_model import Bert, BertConfig
 from bert_optimizer import ScheduledOptimizerFactory, LinearOptimizerFactory
 from bert_tf_loader import load_initializers_from_tf
+from utils import popvision, packed_bert_utils, get_validation_args, parse_bert_args
 from utils.device import acquire_device, device_is_replicated
-from utils.distributed import popdist_root, distributed_barrier
+from utils.distributed import broadcast_dict, popdist_root, distributed_barrier
 from utils.iteration import Iteration, PretrainingIteration
 from utils.inference import (create_callback_stepio,
                              realtime_scheduling,
                              compute_latency_from_durations,
                              compute_latency_from_callbacks)
-from utils import packed_bert_utils, load_initializers_from_onnx
+from utils import packed_bert_utils, load_initializers_from_onnx, weight_dict_from_onnx
 from examples_utils import load_lib
 
 logger = logging.getLogger('BERT')
@@ -486,22 +485,13 @@ def compile_graph_checked(args, session):
         sys.exit(0)
 
 
-def bert_distributed_training_session(args, **kwargs):
-    try:
-        import horovod.popart as hvd
-        hvd.init()
-    except ImportError:
-        raise ImportError("Could not find the PopART horovod extension. "
-                          "Please install the horovod .whl provided in the Poplar SDK.")
-
-    session = hvd.DistributedTrainingSession(**kwargs)
-    logger.info("Compiling Training Graph")
-    compile_graph_checked(args, session)
-
-    logger.info("Broadcasting weights to all instances")
-    hvd.broadcast_weights(session)
-
-    return session
+def bert_broadcast_weights(args, session, proto):
+    if popdist_root(args):
+        initialisers = weight_dict_from_onnx(proto)
+    else:
+        initialisers = None
+    initialisers = broadcast_dict(initialisers)
+    session.writeWeights(popart.PyWeightsIO(initialisers))
 
 
 def bert_training_session(model, args, feed, loss, device,
@@ -522,12 +512,14 @@ def bert_training_session(model, args, feed, loss, device,
                           dataFlow=feed,
                           patterns=patterns,
                           userOptions=options)
+
+    session = popart.TrainingSession(**session_kwargs)
+    logger.info("Compiling Training Graph")
+    compile_graph_checked(args, session)
+
     if args.use_popdist:
-        session = bert_distributed_training_session(args, **session_kwargs)
-    else:
-        session = popart.TrainingSession(**session_kwargs)
-        logger.info("Compiling Training Graph")
-        compile_graph_checked(args, session)
+        distributed_barrier()
+        bert_broadcast_weights(args, session, proto)
 
     session.weightsFromHost()
     session.setRandomSeed(args.seed)
@@ -946,7 +938,7 @@ def setup_logger(log_level, handler=None):
 if __name__ == "__main__":
     setup_logger(logging.INFO)
 
-    args = utils.parse_bert_args()
+    args = parse_bert_args()
     if not (args.synthetic_data or args.generated_data):
         for filepath in args.input_files:
             if len(glob.glob(filepath)) == 0:
@@ -996,6 +988,6 @@ if __name__ == "__main__":
     # If this was a training session and validation isn't disabled; validate.
     if not args.inference and not args.no_validation and not args.no_model_save and popdist_root(args):
         logger.info("Doing Validation")
-        main(utils.get_validation_args(args))
+        main(get_validation_args(args))
 
     logger.info("Program Finished")

@@ -3,9 +3,10 @@ from test_common import run_train
 import os
 import glob
 import subprocess
+import pytest
 from examples_tests.test_util import SubProcessChecker
 
-
+@pytest.mark.skip(reason='use of external data (T68092)')
 class Simple(SubProcessChecker):
     def test_simple_validation(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
@@ -26,7 +27,7 @@ class Simple(SubProcessChecker):
 
         output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
-                           '--checkpoints', 'True',
+                           '--ckpts-per-epoch', '1',
                            '--checkpoint-dir', checkpoint_dir,
                            '--training', 'False')
 
@@ -40,12 +41,13 @@ class Simple(SubProcessChecker):
 
         output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
-                           '--checkpoints', 'False')
+                           '--ckpts-per-epoch', '0')
 
         self.assertIn('loss:', output)
         self.assertIn('validation_accuracy:', output)
 
 
+@pytest.mark.skip(reason='use of external data (T68092)')
 class Checkpoint(SubProcessChecker):
     def test_validation_on_ckpt(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
@@ -54,7 +56,7 @@ class Checkpoint(SubProcessChecker):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
         output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
-                           '--checkpoints', 'True',
+                           '--ckpts-per-epoch', '1',
                            '--checkpoint-dir', checkpoint_dir,
                            '--clean-dir', 'False')
         self.assertIn('loss:', output)
@@ -63,13 +65,14 @@ class Checkpoint(SubProcessChecker):
         assert(len(list_ckpt) == 1)
         output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
-                           '--checkpoints', 'True',
+                           '--ckpts-per-epoch', '1',
                            '--checkpoint-dir', checkpoint_dir,
                            '--training', 'False')
         self.assertIn('loss:', output)
         self.assertIn('validation_accuracy:', output)
 
 
+@pytest.mark.skip(reason='use of external data (T68092)')
 class Resnet50(SubProcessChecker):
     def test_mixed_precision_resnet50(self):
         path_to_imagenet = '/localdata/datasets/imagenet-data'

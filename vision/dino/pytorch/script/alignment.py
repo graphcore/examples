@@ -17,6 +17,7 @@ import math
 import json
 import ctypes
 import time
+import copy
 import datetime
 from pathlib import Path
 import numpy as np
@@ -36,7 +37,6 @@ from options import alignment_options, get_options
 
 def get_args_parser():
     parser = argparse.ArgumentParser('DINO', add_help=False)
-
     # Model parameters
     parser.add_argument(
         '--arch',
@@ -50,12 +50,6 @@ def get_args_parser():
         help="""Name of architecture to train. For quick experiments with ViTs,
         we recommend using vit_tiny or vit_small.""")
     parser.add_argument(
-        '--patch_size', default=16, type=int, help="""Size in pixels
-        of input square patches - default 16 (for 16x16 patches). Using smaller
-        values leads to better performance but requires more memory. Applies only
-        for ViTs (vit_tiny, vit_small and vit_base). If <16, we recommend disabling
-        mixed precision training (--use_fp16 false) to avoid unstabilities.""")
-    parser.add_argument(
         '--out_dim', default=1024, type=int, help="""Dimensionality of
         the DINO head output. For complex and large datasets large values (like 65k) work well.""")
     parser.add_argument(
@@ -66,27 +60,6 @@ def get_args_parser():
         Not normalizing leads to better performance but can make the training unstable.
         In our experiments, we typically set this parameter to False with vit_small and True with vit_base.""")
     parser.add_argument(
-        '--momentum_teacher', default=0.6, type=float, help="""Base EMA
-        parameter for teacher update. The value is increased to 1 during training with cosine schedule.
-        We recommend setting a higher value with small batches: for example use 0.9995 with batch size of 256.""")
-    parser.add_argument(
-        '--use_bn_in_head',
-        default=False,
-        type=utils.bool_flag,
-        help="Whether to use batch normalizations in projection head (Default: False)")
-    parser.add_argument('--batch_size', default=1, type=int, help='batch-size')
-    parser.add_argument(
-        '--drop_path_rate',
-        type=float,
-        default=0.,
-        help="stochastic depth rate")
-
-    parser.add_argument(
-        '--local_crops_number', type=int, default=8, help="""Number of small
-        local views to generate. Set this parameter to 0 to disable multi-crop training.
-        When disabling multi-crop we recommend to use "--global_crops_scale 0.14 1." """)
-
-    parser.add_argument(
         '--pipeline',
         default=None,
         type=int,
@@ -95,7 +68,6 @@ def get_args_parser():
     parser.add_argument('--alignment', default=True, type=utils.bool_flag)
     parser.add_argument('--extract_name', action='store_true')
     parser.add_argument('--grad_compare', action='store_true')
-    parser.add_argument('--seed', default=0, type=int, help='Random seed.')
     parser.add_argument(
         '--device',
         type=str,
@@ -113,22 +85,61 @@ def get_args_parser():
     return parser
 
 
-def extract_name(args, model, optimizer, center):
-    path = os.path.join(args.output, args.grad)
+def default_config(args=None):
+    config = {}
+    config['arch'] = 'vit_base'
+    config['out_dim'] = 1024
+    config['norm_last_layer'] = True
+    config['momentum_teacher'] = 0.
+    config['batch_size'] = 1
+    config['drop_path_rate'] = 0.
+    config['local_crops_number'] = 2
+    config['pipeline'] = None
+    config['alignment'] = True
+    config['extract_name'] = False
+    config['grad_compare'] = False
+    config['seed'] = 0
+    config['device'] = 'ipu'
+    config['ema_so'] = '../ema/build/exp_avg_custom_op.so'
+    config['output'] = './alignment'
+    config['grad'] = 'grad_names.pt'
+    config['alignment_pipeline'] = False
+    config['ga'] = 12
+    config['count'] = 1
+    if args is not None:
+        config['arch'] = args.arch
+        config['out_dim'] = args.out_dim
+        config['norm_last_layer'] = args.norm_last_layer
+        config['pipeline'] = args.pipeline
+        config['alignment'] = args.alignment
+        config['extract_name'] = args.extract_name
+        config['grad_compare'] = args.grad_compare
+        config['device'] = args.device
+        config['ema_so'] = args.ema_so
+        config['output'] = args.output
+        config['grad'] = args.grad
+        config['alignment_pipeline'] = args.alignment_pipeline
+        config['ga'] = args.ga
+    return config
+
+
+def extract_name(config, model, optimizer, center):
+    path = os.path.join(config['output'], config['grad'])
     if os.path.exists(path):
         return
-    assert os.path.exists(args.ema_so), 'please compile custom op ema'
-    libc = ctypes.cdll.LoadLibrary(args.ema_so)
+    assert os.path.exists(config['ema_so']), 'please compile custom op ema'
+    libc = ctypes.cdll.LoadLibrary(config['ema_so'])
     opts = alignment_options()
     ipu_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
     img1 = torch.randint(0, 255, (1, 2, 3, 224, 224), dtype=torch.uint8)
-    img2 = torch.randint(0, 255, (1, 8, 3, 96, 96), dtype=torch.uint8)
+    img2 = torch.randint(0, 255, (1, config['local_crops_number'], 3, 96, 96), dtype=torch.uint8)
     ema_factor_base = torch.ones((1))
-    ema_factor = ema_factor_base * args.momentum_teacher
+    ema_factor = ema_factor_base * config['momentum_teacher']
     teacher_temp_factor = 0.04 * torch.ones((1))
     _, loss = ipu_model(img1, img2, ema_factor, center, teacher_temp_factor)
     tensor_names = ipu_model.getTensorNames()
     torch.save(tensor_names, path)
+    return tensor_names
 
 
 def load_weight(model, path):
@@ -143,41 +154,46 @@ def load_weight(model, path):
     model.load_state_dict(new_dict)
 
 
-def shard_alignment(args, model, optimizer, center):
-    img_name = os.path.join(args.output, 'image.pth')
+def shard_alignment(config, model, optimizer, center):
+    img_name = os.path.join(config['output'], 'image.pth')
     if os.path.exists(img_name):
         img1, img2 = torch.load(img_name)
         print('load image')
     else:
-        bs = args.batch_size
+        bs = config['batch_size']
         img1 = torch.randint(0, 255, (bs, 2, 3, 224, 224), dtype=torch.uint8)
-        img2 = torch.randint(0, 255, (bs, 8, 3, 96, 96), dtype=torch.uint8)
+        img2 = torch.randint(0, 255, (bs, config['local_crops_number'], 3, 96, 96), dtype=torch.uint8)
         torch.save([img1, img2], img_name)
 
     compare_weights = False
-    dir_path = os.path.join(args.output, args.device)
+    dir_path = os.path.join(config['output'], config['device'])
     os.makedirs(dir_path, exist_ok=True)
-    count = 10
-    grad_count = 5
+    count = config['count']
+    grad_count = config['count']
     ema_factor_base = torch.ones((1))
-    ema_factor = ema_factor_base * args.momentum_teacher
-    global_center = center.repeat(args.batch_size, 1)
-    teacher_temp_factor = 0.04 * torch.ones((args.batch_size))
-    if args.device == 'ipu':
-        assert os.path.exists(args.ema_so), 'please compile custom op ema'
-        libc = ctypes.cdll.LoadLibrary(args.ema_so)
+    ema_factor = ema_factor_base * config['momentum_teacher']
+    global_center = center.repeat(config['batch_size'], 1)
+    teacher_temp_factor = 0.04 * torch.ones((config['batch_size']))
+    result = None
+    if config['device'] == 'ipu':
+        assert os.path.exists(config['ema_so']), 'please compile custom op ema'
+        libc = ctypes.cdll.LoadLibrary(config['ema_so'])
         opts = alignment_options()
-        if args.grad_compare:
-            grad_compare(model,
-                         opts,
-                         optimizer,
-                         center,
-                         teacher_temp_factor,
-                         img1, img2,
-                         ema_factor,
-                         os.path.join(args.output, args.grad),
-                         dir_path,
-                         grad_count)
+        if config['grad_compare']:
+            result = grad_compare(
+                model,
+                opts,
+                optimizer,
+                center,
+                teacher_temp_factor,
+                img1,
+                img2,
+                ema_factor,
+                os.path.join(
+                    config['output'],
+                    config['grad']),
+                dir_path,
+                grad_count)
         else:
             ipu_model = poptorch.trainingModel(
                 model, opts, optimizer=optimizer)
@@ -187,9 +203,11 @@ def shard_alignment(args, model, optimizer, center):
                 print(loss)
                 torch.save(logits, f'{dir_path}/logits_{i}.pth')
                 torch.save(ipu_model.state_dict(), f'{dir_path}/model{i}.pth')
+                if i == 0:
+                    result = ipu_model.state_dict()
 
     else:
-        if args.grad_compare:
+        if config['grad_compare']:
             for i in range(grad_count):
                 grad_dict = {}
                 optimizer.zero_grad()
@@ -202,6 +220,8 @@ def shard_alignment(args, model, optimizer, center):
                 model.gpu_update_teacher()
                 torch.save(grad_dict, f'{dir_path}/cpu_grad{i}.pt')
                 torch.save(model.state_dict(), f'{dir_path}/cpu{i}.pt')
+                if i == 0:
+                    result = copy.deepcopy(grad_dict)
         else:
             for i in range(count):
                 optimizer.zero_grad()
@@ -213,6 +233,9 @@ def shard_alignment(args, model, optimizer, center):
                 model.gpu_update_teacher()
                 torch.save(logits, f'{dir_path}/logits_{i}.pth')
                 torch.save(model.state_dict(), f'{dir_path}/model{i}.pth')
+                if i == 0:
+                    result = model.state_dict()
+    return result
 
 
 def grad_compare(
@@ -229,6 +252,7 @@ def grad_compare(
         steps):
     name_list = torch.load(path)
     grad_list = []
+    result = None
     for i, name in enumerate(name_list):
         if 'Gradient___model.' in name or 'UpdatedVar___model.' in name:
             print(name)
@@ -244,34 +268,38 @@ def grad_compare(
             grad_dict[name] = grad_ipu
         torch.save(grad_dict, f'{dir_path}/ipu_grad{i}.pt')
         torch.save(ipu_model.state_dict(), f'{dir_path}/ipu{i}.pt')
+        if i == 0:
+            result = copy.deepcopy(grad_dict)
+    return result
 
 
-def pipeline_compare(args, model, optimizer, center):
-    img_name = os.path.join(args.output, 'image_pipeline.pth')
-    ga = args.ga
+def pipeline_compare(config, model, optimizer, center):
+    img_name = os.path.join(config['output'], 'image_pipeline.pth')
+    ga = config['ga']
     if os.path.exists(img_name):
         img1, img2 = torch.load(img_name)
         print('load image')
     else:
-        bs = args.batch_size
+        bs = config['batch_size']
         img1 = torch.randint(0, 255, (bs, 2, 3, 224, 224), dtype=torch.uint8)
-        img2 = torch.randint(0, 255, (bs, 8, 3, 96, 96), dtype=torch.uint8)
+        img2 = torch.randint(0, 255, (bs, config['local_crops_number'], 3, 96, 96), dtype=torch.uint8)
         torch.save([img1, img2], img_name)
 
-    dir_path = os.path.join(args.output, args.device)
+    dir_path = os.path.join(config['output'], config['device'])
     os.makedirs(dir_path, exist_ok=True)
 
-    count = 5
+    count = config['count']
     ema_factor_base = torch.ones((1))
-    ema_factor = ema_factor_base * args.momentum_teacher
-    global_center = center.repeat(args.ga, 1)
-    teacher_temp_factor = 0.04 * torch.ones((args.ga))
-    if args.device == 'ipu':
+    ema_factor = ema_factor_base * config['momentum_teacher']
+    global_center = center.repeat(config['ga'], 1)
+    teacher_temp_factor = 0.04 * torch.ones((config['ga']))
+    result = None
+    if config['device'] == 'ipu':
         img1 = torch.cat([img1 for _ in range(ga)])
         img2 = torch.cat([img2 for _ in range(ga)])
         ema_factor = torch.cat([ema_factor for _ in range(ga)])
-        assert os.path.exists(args.ema_so), 'please compile custom op ema'
-        libc = ctypes.cdll.LoadLibrary(args.ema_so)
+        assert os.path.exists(config['ema_so']), 'please compile custom op ema'
+        libc = ctypes.cdll.LoadLibrary(config['ema_so'])
         opts = get_options(ga)
 
         ipu_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
@@ -282,6 +310,8 @@ def pipeline_compare(args, model, optimizer, center):
             torch.save(
                 ipu_model.state_dict(),
                 f'{dir_path}/pipeline_model{i}.pth')
+            if i == 0:
+                result = ipu_model.state_dict()
 
     else:
         for i in range(count):
@@ -296,18 +326,23 @@ def pipeline_compare(args, model, optimizer, center):
             model.gpu_update_teacher()
             print(losses)
             torch.save(model.state_dict(), f'{dir_path}/pipeline_model{i}.pth')
+            if i == 0:
+                result = model.state_dict()
+    return result
 
 
-def main(args):
-    if args.arch in vits.__dict__.keys():
-        student = vits.__dict__[args.arch](
-            patch_size=args.patch_size,
-            drop_path_rate=args.drop_path_rate,
+def process(config):
+    torch.manual_seed(config['seed'])
+    np.random.seed(config['seed'])
+    if config['arch'] in vits.__dict__.keys():
+        student = vits.__dict__[config['arch']](
+            drop_path_rate=config['drop_path_rate'],
+            act_layer=ERF_GELU
         )
-        teacher = vits.__dict__[args.arch](patch_size=args.patch_size)
+        teacher = vits.__dict__[config['arch']](act_layer=ERF_GELU)
         embed_dim = student.embed_dim
     else:
-        print(f"Unknow architecture: {args.arch}")
+        print(f"Unknow architecture: {config['arch']}")
 
     # multi-crop wrapper handles forward with inputs of different resolutions
     model = MultiCropWrapper(
@@ -315,25 +350,23 @@ def main(args):
         teacher,
         DINOHead(
             embed_dim,
-            args.out_dim,
-            use_bn=args.use_bn_in_head,
-            norm_last_layer=args.norm_last_layer,
+            config['out_dim'],
+            norm_last_layer=config['norm_last_layer'],
             act_layer=ERF_GELU
         ),
         DINOHead(
             embed_dim,
-            args.out_dim,
-            args.use_bn_in_head,
+            config['out_dim'],
             act_layer=ERF_GELU
         ),
         DINOLoss(
             # total number of crops = 2 global crops + local_crops_number
-            args.local_crops_number + 2
+            config['local_crops_number'] + 2
         ),
-        args.momentum_teacher,
-        device=args.device,
-        pipeline=args.pipeline,
-        alignment=args.alignment)
+        config['momentum_teacher'],
+        device=config['device'],
+        pipeline=config['pipeline'],
+        alignment=config['alignment'])
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
@@ -345,7 +378,7 @@ def main(args):
 
     optimizer.param_groups[2]['lr'] = 0.
     optimizer.param_groups[3]['lr'] = 0.
-    state_name = os.path.join(args.output, 'model.pth')
+    state_name = os.path.join(config['output'], 'model.pth')
     if os.path.exists(state_name):
         load_weight(model, state_name)
         print('load_weights')
@@ -353,23 +386,28 @@ def main(args):
         torch.save(model.state_dict(), state_name)
 
     model.train()
-    center = torch.zeros(1, args.out_dim)
-    if args.extract_name:
-        extract_name(args, model, optimizer, center)
-        return
+    source_weights = copy.deepcopy(model.state_dict())
+    center = torch.zeros(1, config['out_dim'])
+    if config['extract_name']:
+        return extract_name(config, model, optimizer, center)
 
-    if args.alignment_pipeline:
+    if config['alignment_pipeline']:
         print('alignment pipeline')
-        pipeline_compare(args, model, optimizer, center)
+        weights = pipeline_compare(config, model, optimizer, center)
+        return source_weights, weights
     else:
         print('alignment shard')
-        shard_alignment(args, model, optimizer, center)
+        weights = shard_alignment(config, model, optimizer, center)
+        return source_weights, weights
+
+
+def main():
+    parser = argparse.ArgumentParser('DINO', parents=[get_args_parser()])
+    args = parser.parse_args()
+    config = default_config(args)
+    Path(config['output']).mkdir(parents=True, exist_ok=True)
+    process(config)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('DINO', parents=[get_args_parser()])
-    args = parser.parse_args()
-    Path(args.output).mkdir(parents=True, exist_ok=True)
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    main(args)
+    main()

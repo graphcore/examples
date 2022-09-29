@@ -47,6 +47,22 @@ python process_captions.py
 
 The captions files are generated in ./data/COCO/train2017\_captions.
 
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
 ## Run the application
 
 Setup your environment as explained above. You can run mini DALL-E training on MS COCO 2017 datasets.
@@ -76,38 +92,6 @@ python generate.py --dalle_path ./output/ckpt/dalle_799.pt --text "A plate of fo
 ```console
 pytest tests/cpu_ipu_test.py
 ```
-
-## Benchmarking
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
-
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
-
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
-
-## Profiling
-
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
 
 ## Licensing
 This application is licensed under MIT license.

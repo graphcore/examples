@@ -28,7 +28,7 @@ def create_inputs_for_inference(builder, conf):
     inputs = dict()
 
     inputs["mel_spec_input"] = builder.addInputTensor(popart.TensorInfo(_get_popart_type(conf.precision),
-                                                                        [conf.samples_per_device,
+                                                                        [conf.replica_batch_size,
                                                                          conf.mel_bands,
                                                                          conf.max_spectrogram_length]),
                                                       "mel_spec_input")
@@ -130,8 +130,8 @@ if __name__ == '__main__':
         probs_output_data = anchors[probs_output]
 
         for step_ind in range(conf.device_iterations):
-            for batch_ind in range(conf.batch_size):
-                sample_id = step_ind * conf.batch_size + batch_ind
+            for batch_ind in range(conf.global_batch_size):
+                sample_id = step_ind * conf.global_batch_size + batch_ind
 
                 seq_length = ctc_input_length_data[step_ind, batch_ind]
                 probs_seq = torch.FloatTensor(probs_output_data[step_ind, batch_ind, 0:seq_length, :])

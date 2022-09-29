@@ -12,8 +12,8 @@
 # limitations under the License.
 from functools import partial
 import torch.nn as nn
-from .swin_transformer import SwinTransformer
 import poptorch
+from .swin_transformer import SwinTransformer
 
 
 def get_layer_ipu(pipeline):
@@ -23,9 +23,10 @@ def get_layer_ipu(pipeline):
     return layer_ipu
 
 
-def set_pipeline(swin, pipeline):
+def set_pipeline(swin, pipeline, mapping_for_21k):
+    # set be True will add recompute in the middle layer's first block's
+    # mlp.drop of every pipeline
     use_recompute = False
-    '''set be True will add recompute in the middle layer's first block's mlp.drop of every pipeline'''
     layer_ipus = get_layer_ipu(pipeline)
     print(f'swin set pipeline : {pipeline}')
     index = 0
@@ -40,13 +41,20 @@ def set_pipeline(swin, pipeline):
 
             ipu_id = layer_ipus[index]
 
-            swin.layers[i].blocks[j] = poptorch.BeginBlock(block, user_id=f'layer_{i}_block{j}', ipu_id=ipu_id)
+            if ipu_id == 6 and layer_ipus[index - 1] == 5 and mapping_for_21k:
+                # to fit imagenet21k head into IPU memory, we need to map layers before norm2 onto IPU5
+                swin.layers[i].blocks[j].norm2 = poptorch.BeginBlock(block.norm2, user_id=f'layer_{i}_block{j}', ipu_id=ipu_id)
+            else:
+                swin.layers[i].blocks[j] = poptorch.BeginBlock(block, user_id=f'layer_{i}_block{j}', ipu_id=ipu_id)
 
             if use_recompute:
                 if index in recompute_layer:
                     recomputation_checkpoint(block.mlp.drop)
 
             index += 1
+    if mapping_for_21k:
+        # special mapping for imagenet 21k
+        swin.head = poptorch.BeginBlock(swin.head, user_id=f'layer_last', ipu_id=7)
 
 
 def recomputation_checkpoint(module: nn.Module):
@@ -58,8 +66,12 @@ def recomputation_checkpoint(module: nn.Module):
 
 
 def build_pipeline(config, train_loss_fn):
+    if config.PRECISION != ['float', 'float'] and config.PRECISION != ['half', 'half']:
+        print("Only support half_half and float_float!")
+        exit()
     model = SwinTransformer(
         img_size=config.DATA.IMG_SIZE,
+        num_classes=config.MODEL.NUM_CLASSES,
         patch_size=config.MODEL.SWIN.PATCH_SIZE,
         in_chans=config.MODEL.SWIN.IN_CHANS,
         embed_dim=config.MODEL.SWIN.EMBED_DIM,
@@ -75,8 +87,9 @@ def build_pipeline(config, train_loss_fn):
         patch_norm=config.MODEL.SWIN.PATCH_NORM,
         use_checkpoint=config.TRAIN.USE_CHECKPOINT,
         device=config.MODEL.DEVICE,
-        train_loss_fn=train_loss_fn
+        train_loss_fn=train_loss_fn,
+        use_half=True if config.PRECISION[1] == 'half' else False
     )
 
-    set_pipeline(model, config.IPU.LAYERS_PER_IPU)
+    set_pipeline(model, config.IPU.LAYERS_PER_IPU, config.IPU.MAPPING_FOR_21K)
     return model

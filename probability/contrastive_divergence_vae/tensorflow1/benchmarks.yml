@@ -7,13 +7,13 @@ tf1_mcmc_vae_synth_pod4:
     -b 3072
   data:
     time_per_iters:
-      regexp: '\|\sTime\staken:\s*(.*?)(?:\n|$)'
+      regexp: 'Time taken: *(.*?),'
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec'
   derived:
     est_time_to_train:
       expr: '{time_per_iters} * 400000. / 10000.'
-    throughput:
-      expr: '100. * 10000. / {time_per_iters}'
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
     - [EstimatedTrainTime, 'est_time_to_train']
 

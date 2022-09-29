@@ -160,9 +160,8 @@ def load_dataset(logger, args, vocab_size):
     load train and valid dataset
     """
     logger("loading training dataset and validating dataset")
-    train_path = args.train_path
 
-    if train_path == 'generated':
+    if args.dataset == 'generated':
         num_instances = args.popdist_size if args.use_popdist else 1
         generated = np.random.randint(low=1, high=vocab_size,
                                       size=(4 * num_instances * args.replication_factor *
@@ -170,12 +169,12 @@ def load_dataset(logger, args, vocab_size):
                                             args.max_len + 1))
         train_dataset = MyDataset(generated, args.max_len + 1)
         val_dataset = MyDataset(generated, args.max_len + 1)
-    elif 'tfrecord' in args.train_path:
-        train_dataset = TFRecordPretrainingDataset(args.tfrecord_path[:])
-        val_dataset = TFRecordPretrainingDataset(args.tfrecord_path[-1:])
-    elif 'dynamic' in args.train_path:
+    elif args.dataset == 'tfrecord':
+        train_dataset = TFRecordPretrainingDataset(args.input_files[:])
+        val_dataset = TFRecordPretrainingDataset(args.input_files[-1:])
+    elif args.dataset == 'mmap':
         from data.indexed_dataset import make_indexed_dataset, GPTDataset
-        data_prefix = args.data_prefix
+        data_prefix = args.input_files
         indexed_dataset = make_indexed_dataset(data_prefix)
         total_num_of_documents = indexed_dataset.sizes.shape[0]
         documents = np.arange(
@@ -188,7 +187,7 @@ def load_dataset(logger, args, vocab_size):
             total_num_of_documents*0.997):], indexed_dataset, num_epochs=1)
     else:
         try:
-            with open(train_path, "rb") as f:
+            with open(args.input_files, "rb") as f:
                 input_list = pickle.load(f)
 
             samples = []
@@ -211,7 +210,7 @@ def load_dataset(logger, args, vocab_size):
             val_dataset = MyDataset(input_list_val, args.max_len)
         except:
             raise RuntimeError(
-                f"Unknown dataset '{train_path}', you can try \'generated\'.")
+                f"Unknown dataset '{args.input_files}'.")
 
     return train_dataset, val_dataset
 
@@ -242,8 +241,8 @@ def get_generated_datum(config, vocab_size):
     samples_per_step = config.replication_factor * \
         config.gradient_accumulation * config.batch_size * config.device_iterations
     result = []
-    dataset = GeneratedPretrainingDataset(vocab_size, config.max_len)
-    data = (dataset[i] for i in range(samples_per_step))
+    generated_dataset = GeneratedPretrainingDataset(vocab_size, config.max_len)
+    data = (generated_dataset[i] for i in range(samples_per_step))
     for batches in zip(*data):
         result.append(torch.stack(batches))
     return result

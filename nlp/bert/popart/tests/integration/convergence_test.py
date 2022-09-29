@@ -98,9 +98,9 @@ def test_pretraining(custom_ops, generated_sample_input_file, config):
             ]
     output_strs = str(check_output(args)).split("\\n")
     output_strs = output_strs[-4:]
-    matches = re.search(r"Accuracy \(MLM NSP\): ([\d\.]+) ([\d\.]+)", output_strs[0])
+    matches = re.search(r"mlm_acc: ([\d\.]+) % nsp_acc: ([\d\.]+) %", output_strs[0])
     if matches is None:
         print(output_strs)
         raise TestFailureError("Unexpected output format")
     elif matches.groups()[0] != '1.000' or matches.groups()[1] != '1.000':
-        raise TestFailureError("Unexpected Accuracy (MLM NSP):"+str(matches.groups()))
+        raise TestFailureError("Unexpected mlm_acc: "+str(matches.groups()[0]) + "nsp_acc: " + str(matches.groups()[1]))

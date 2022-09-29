@@ -21,25 +21,25 @@ class TestInference:
 
     @pytest.mark.ipus(2)
     def test_syntetic_pipeline(self):
-        out = run_script("inference/run_benchmark.py", "--data synthetic --batch-size 2 --model resnet18 --pipeline-splits layer3/0 --device-iterations 4 --precision 16.16 --iterations 10 --dataloader-worker 4")
+        out = run_script("inference/run_benchmark.py", "--data synthetic --micro-batch-size 2 --model resnet18 --pipeline-splits layer3/0 --device-iterations 4 --precision 16.16 --iterations 10 --dataloader-worker 4")
         max_throughput = get_max_thoughput(out)
         assert max_throughput > 0
 
     @pytest.mark.ipus(2)
     def test_realdata_pipeline(self):
-        out = run_script("inference/run_benchmark.py", "--data real --batch-size 2 --model resnet18 --pipeline-splits layer3/0 --device-iterations 4 --precision 16.16 --iterations 10 --dataloader-worker 4")
+        out = run_script("inference/run_benchmark.py", "--data real --micro-batch-size 2 --model resnet18 --pipeline-splits layer3/0 --device-iterations 4 --precision 16.16 --iterations 10 --dataloader-worker 4")
         max_throughput = get_max_thoughput(out)
         assert max_throughput > 0
 
     @pytest.mark.ipus(1)
     def test_full_precision(self):
-        out = run_script("inference/run_benchmark.py", f"--data synthetic --model resnet18 --batch-size 1 --precision 32.32 --iterations 10 --dataloader-worker 4")
+        out = run_script("inference/run_benchmark.py", f"--data synthetic --model resnet18 --micro-batch-size 1 --precision 32.32 --iterations 10 --dataloader-worker 4")
         max_thoughput = get_max_thoughput(out)
         assert max_thoughput > 0
 
     @pytest.mark.ipus(1)
     def test_IO_overlap(self):
-        out = run_script("inference/run_benchmark.py", f"--config resnet50 --data generated --replicas 1 --batch-size 1 --iterations 10 --num-io-tiles 32")
+        out = run_script("inference/run_benchmark.py", f"--config resnet50 --data generated --replicas 1 --micro-batch-size 1 --iterations 10 --num-io-tiles 32")
         max_thoughput = get_max_thoughput(out)
         assert max_thoughput > 0
 
@@ -47,7 +47,7 @@ class TestInference:
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize("model_name", ["resnext50", "mobilenet"])
 def test_single_ipu_models(model_name):
-    out = run_script("inference/run_benchmark.py", f"--data synthetic --batch-size 1 --model {model_name} --iterations 10 --precision 16.16 --dataloader-worker 4")
+    out = run_script("inference/run_benchmark.py", f"--data synthetic --micro-batch-size 1 --model {model_name} --iterations 10 --precision 16.16 --dataloader-worker 4")
     max_throughput = get_max_thoughput(out)
     assert max_throughput > 0
 
@@ -55,7 +55,7 @@ def test_single_ipu_models(model_name):
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize("norm_layer", ["group", "none"])
 def test_normlayer_resnet(norm_layer):
-    out = run_script("inference/run_benchmark.py", f"--data synthetic --batch-size 1 --model resnet18 --norm-type {norm_layer} --iterations 10 --precision 16.16 --dataloader-worker 4")
+    out = run_script("inference/run_benchmark.py", f"--data synthetic --micro-batch-size 1 --model resnet18 --norm-type {norm_layer} --iterations 10 --precision 16.16 --dataloader-worker 4")
     max_thoughput = get_max_thoughput(out)
     assert max_thoughput > 0
 
@@ -63,7 +63,7 @@ def test_normlayer_resnet(norm_layer):
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize("norm_layer", ["group", "none"])
 def test_normlayer_efficientnet(norm_layer):
-    out = run_script("inference/run_benchmark.py", f"--data synthetic --batch-size 1 --model efficientnet-b0 --norm-type {norm_layer} --norm-num-groups 4 --iterations 10 --precision 16.16 --dataloader-worker 4 --random-weights")
+    out = run_script("inference/run_benchmark.py", f"--data synthetic --micro-batch-size 1 --model efficientnet-b0 --norm-type {norm_layer} --norm-num-groups 4 --iterations 10 --precision 16.16 --dataloader-worker 4 --random-weights")
     max_thoughput = get_max_thoughput(out)
     assert max_thoughput > 0
 
@@ -118,12 +118,16 @@ def test_pretrained_batchnorm_fp16():
     opts = poptorch.Options()
     opts.anchorTensor('running_mean', 'running_mean')
     opts.anchorTensor('running_var', 'running_var')
-    opts.Precision.runningStatisticsAlwaysFloat(True)
+    if opts.Jit.trace_model:
+        opts.Precision.runningStatisticsAlwaysFloat(True)
+    else:
+        model.running_mean = model.running_mean.to(torch.float)
+        model.running_var = model.running_var.to(torch.float)
 
     poptorch_model = poptorch.inferenceModel(model, opts)
     output = poptorch_model(fake_data)   # Compile the model.
     ipu_mean = poptorch_model.getAnchoredTensor('running_mean')
     ipu_var = poptorch_model.getAnchoredTensor('running_var')
 
-    assert torch.allclose(ipu_mean, cpu_mean.half())
-    assert torch.allclose(ipu_var, cpu_var.half())
+    assert torch.allclose(ipu_mean.half(), cpu_mean.half())
+    assert torch.allclose(ipu_var.half(), cpu_var.half())

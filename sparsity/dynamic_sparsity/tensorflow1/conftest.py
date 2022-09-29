@@ -12,7 +12,7 @@ import subprocess
 
 import pytest
 
-public_examples_dir = Path(__file__).parent.parent.parent.parent
+examples_dir = Path(__file__).parent.parent.parent.parent
 build_dir = Path(__file__).parent
 
 
@@ -22,7 +22,7 @@ def ipu_sparse_ops(scope="session"):
     library for any tests that rely on it.
     """
     build_path = Path(
-        public_examples_dir,
+        examples_dir,
         "sparsity",
         "dynamic_sparsity",
         "tensorflow1",

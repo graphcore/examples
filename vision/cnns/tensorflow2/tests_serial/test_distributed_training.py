@@ -74,9 +74,16 @@ class PopDistStrategyEquivalenceToIPUStrategy(unittest.TestCase):
         last_logging_callback_line = [
             line for line in output.splitlines() if 'INFO:logging_callback' in line][-1]
         import re
-        matches = re.findall(r'(\{[^{}]+\})', last_logging_callback_line)
+        matches = re.findall(r'(\[[^\[\]]+\])', last_logging_callback_line)
         import json
-        d = json.loads(matches[-1].replace("'", '"'))
+        d = str(json.loads(matches[-1].replace("'", '"')))
+        vals = (re.findall('\d*\.\d*', d))
+        keys = (re.findall('[^\'\"]*:', d))
+        keys = [key[:-1] for key in keys]
+
+        d = dict()
+        for i in range(len(keys)):
+            d[keys[i]] = float(vals[i])
         return d
 
     def test_multireplica_outfeed_reduction(self):
@@ -169,6 +176,7 @@ if __name__ == '__main__':
             cfg = popdist.tensorflow.set_ipu_config(
                 cfg, ipus_per_replica=popdist.getNumIpusPerReplica(), configure_device=True)
             hvd.init()
+            popdist.init()
         else:
             cfg.auto_select_ipus = num_global_replicas
         cfg.configure_ipu_system()

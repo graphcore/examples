@@ -21,7 +21,7 @@ import transformers
 
 from bert_fused_attention import BertFusedSelfAttention
 from utils import logger
-from transformers.models.bert.modeling_bert import BertLMPredictionHead
+from transformers.models.bert.modeling_bert import BertLMPredictionHead, BertSelfAttention
 
 
 class OnehotGather(nn.Module):
@@ -29,29 +29,13 @@ class OnehotGather(nn.Module):
     Gathers selected indices from a tensor by transforming the list of indices
     into a one-hot matrix and then multiplying the tensor by that matrix.
     """
-    def __init__(self):
-        super().__init__()
-        self._is_half = False
-
-    def half(self):
-        super().half()
-        # Tracing is always executed in float as there are missing
-        # implementations of operations in half on the CPU.
-        # So we cannot query the inputs to know if we are running
-        # with a model that has had .half() called on it.
-        # To work around it nn.Module::half is overridden
-        self._is_half = True
-
     def forward(self, sequence, positions):
         """
         Gather the vectors at the specific positions over a batch.
         """
         num_classes = int(sequence.shape[1])
         one_hot_positions = F.one_hot(positions, num_classes)
-        if self._is_half:
-            one_hot_positions = one_hot_positions.half()
-        else:
-            one_hot_positions = one_hot_positions.float()
+        one_hot_positions = F.one_hot(positions, num_classes).to(dtype=sequence.dtype)
         return torch.matmul(one_hot_positions.detach(), sequence)
 
 
@@ -97,28 +81,31 @@ def _get_layer_ipu(layers_per_ipu):
     return layer_ipu
 
 
-def recomputation_checkpoint(module: nn.Module):
+def recomputation_checkpoint(module: nn.Module) -> torch.utils.hooks.RemovableHandle:
     """Annotates the output of a module to be checkpointed instead of
-        recomputed"""
+    recomputed"""
+
     def recompute_outputs(module, inputs, outputs):
-        return tuple(poptorch.recomputationCheckpoint(y) for y in outputs)
-    module.register_forward_hook(recompute_outputs)
+        if isinstance(outputs, torch.Tensor):
+            return poptorch.recomputationCheckpoint(outputs)
+        elif isinstance(outputs, tuple):
+            return tuple(poptorch.recomputationCheckpoint(y) for y in outputs)
+
+    return module.register_forward_hook(recompute_outputs)
 
 
 def outline_attribute(module: nn.Module, value: str):
     """Adds an attribute to a module. This attribute will be used
-        when comparing operation equivalence in outlining. For example:
-
-        layer1 = nn.Linear(...)
-        layer2 = nn.Linear(...)
-        layer3 = nn.Linear(...)
-        layer4 = nn.Linear(...)
-        outline_attribute(layer1, "A")
-        outline_attribute(layer2, "A")
-        outline_attribute(layer3, "B")
-
-        The code for layer1 can be reused for layer2.
-        But it can't be used for layer3 or layer4.
+    when comparing operation equivalence in outlining. For example:
+    layer1 = nn.Linear(...)
+    layer2 = nn.Linear(...)
+    layer3 = nn.Linear(...)
+    layer4 = nn.Linear(...)
+    outline_attribute(layer1, "A")
+    outline_attribute(layer2, "A")
+    outline_attribute(layer3, "B")
+    The code for layer1 can be reused for layer2.
+    But it can't be used for layer3 or layer4.
     """
     context = poptorch.Attribute(__outline={"layer": value})
 
@@ -127,8 +114,11 @@ def outline_attribute(module: nn.Module, value: str):
 
     def disable(*args):
         context.__exit__(None, None, None)
-    module.register_forward_pre_hook(enable)
-    module.register_forward_hook(disable)
+
+    handles = []
+    handles.append(module.register_forward_pre_hook(enable))
+    handles.append(module.register_forward_hook(disable))
+    return handles
 
 
 def accuracy(out, targ):
@@ -413,11 +403,11 @@ class PipelinedBertForQuestionAnswering(transformers.BertForQuestionAnswering):
         model = PipelinedBertForQuestionAnswering(config).parallelize().half()
         ```
         """
+        self._hooks = []
+
         # Use faster fused-qkv self-attention
         for layer in self.bert.encoder.layer:
-            fused = BertFusedSelfAttention(self.config)
-            fused.load_state_dict(layer.attention.self.state_dict())
-            layer.attention.self = fused
+            layer.attention.self.__class__ = BertFusedSelfAttention
 
         layer_ipu = _get_layer_ipu(self.config.layers_per_ipu)
 
@@ -427,12 +417,14 @@ class PipelinedBertForQuestionAnswering(transformers.BertForQuestionAnswering):
             self.bert.embeddings.word_embeddings = SerializedEmbedding(self.bert.embeddings.word_embeddings,
                                                                        self.config.embedding_serialization_factor)
         self.bert.embeddings = poptorch.BeginBlock(self.bert.embeddings, "Embedding", ipu_id=0)
-        outline_attribute(self.bert.embeddings.LayerNorm, "embedding")
+        hs = outline_attribute(self.bert.embeddings.LayerNorm, "embedding")
+        self._hooks.extend(hs)
 
         for index, layer in enumerate(self.bert.encoder.layer):
             ipu = layer_ipu[index]
             if self.config.recompute_checkpoint_every_layer and index != self.config.num_hidden_layers - 1:
-                recomputation_checkpoint(layer)
+                h = recomputation_checkpoint(layer)
+                self._hooks.append(h)
             self.bert.encoder.layer[index] = poptorch.BeginBlock(layer, f"Encoder{index}", ipu_id=ipu)
             logger(f"Encoder {index:<2} --> IPU {ipu}")
 
@@ -447,9 +439,22 @@ class PipelinedBertForQuestionAnswering(transformers.BertForQuestionAnswering):
         You should call this before doing `save_pretrained` so that the `model.state_dict` is
         fully compatible with `transformers.BertForQuestionAnswering`.
         """
+        # Remove hooks
+        if hasattr(self, "_hooks"):
+            for h in self._hooks:
+                h.remove()
+        # Remove poptorch Blocks
+        for m in self.modules():
+            if m is not self:
+                poptorch.removeBlocks(m)
+
+        for layer in self.bert.encoder.layer:
+            layer.attention.self.__class__ = BertSelfAttention
+
         # Deserialize the serialized word embedding
         if self.config.embedding_serialization_factor > 1:
             self.bert.embeddings.word_embeddings = self.bert.embeddings.word_embeddings.deserialize()
+
         return self
 
     def forward(self, input_ids, attention_mask, token_type_ids, start_positions=None, end_positions=None):

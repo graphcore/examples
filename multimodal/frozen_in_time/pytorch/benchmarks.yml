@@ -1,0 +1,99 @@
+---
+common_options: &common_options
+  output:
+    - [throughput, 'throughput']
+    - [loss, 'loss']
+  data:
+    throughput:
+      regexp: 'loss.*tput=([e\d\+\.]+)'
+      skip: 1
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss=([\d\+\.e]+)'
+      skip: 1
+
+pytorch_fit_pretrain_gen_pod16:
+  <<: *common_options
+  description: |
+    Frozen in time n-frame pretraining throughput test
+    using host generated data on 8IPUs.
+  parameters:
+    config: 1f,2f,4f
+  cmd: >-
+    python run.py
+      --config_name configs/webvid2m-8ipu-{config}.json
+      --trainer.epochs 5
+      --timestamp_ckpt False
+      --arch.args.load_checkpoint ""
+      --data_loader.training.dataset_name synthetic
+      --data_loader.training.data_dir ""
+      --data_loader.inference.dataset_name synthetic
+      --data_loader.inference.data_dir ""
+      --trainer.wandb False
+
+pytorch_fit_1f_pretrain_real_pod16_conv:
+  <<: *common_options
+  description: |
+    Frozen in time 1-frame pretraining on 8IPUs.
+  cmd: >-
+    poprun
+      -vv
+      --num-instances 1
+      --num-replicas 1
+      --ipus-per-replica 8
+      --vipu-partition $IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster $CLUSTER
+      --vipu-server-host $VIPU_CLI_API_HOST
+      --executable-cache-path ./exps/exe_cache
+    python run.py
+      --config_name configs/webvid2m-8ipu-1f.json
+      --timestamp_ckpt False
+      --arch.args.load_checkpoint ""
+      --data_loader.training.data_dir $DATASETS_DIR/WebVid
+      --data_loader.inference.data_dir $DATASETS_DIR/MSRVTT
+      --trainer.run_name pytorch_fit_1f_pretrain_real_pod16_conv
+
+pytorch_fit_2f_pretrain_real_pod16_conv:
+  <<: *common_options
+  description: |
+    Frozen in time 2-frame pretraining on 8IPUs.
+  cmd: >-
+    poprun
+      -vv
+      --num-instances 1
+      --num-replicas 1
+      --ipus-per-replica 8
+      --vipu-partition $IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster $CLUSTER
+      --vipu-server-host $VIPU_CLI_API_HOST
+      --executable-cache-path ./exps/exe_cache
+    python run.py
+      --config_name configs/webvid2m-8ipu-2f.json
+      --timestamp_ckpt False
+      --arch.args.load_checkpoint exps/models/WebVid2M-IPU/webvid2m-8ipu-1f_model_best.pth
+      --data_loader.training.data_dir $DATASETS_DIR/WebVid
+      --data_loader.inference.data_dir $DATASETS_DIR/MSRVTT
+      --trainer.run_name pytorch_fit_2f_pretrain_real_pod16_conv
+
+pytorch_fit_4f_pretrain_real_pod16_conv:
+  <<: *common_options
+  description: |
+    Frozen in time 4-frame pretraining on 8IPUs.
+  cmd: >-
+    poprun
+      -vv
+      --num-instances 1
+      --num-replicas 1
+      --ipus-per-replica 8
+      --vipu-partition $IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster $CLUSTER
+      --vipu-server-host $VIPU_CLI_API_HOST
+      --executable-cache-path ./exps/exe_cache
+    python run.py
+      --config_name configs/webvid2m-8ipu-4f.json
+      --timestamp_ckpt False
+      --arch.args.load_checkpoint exps/models/WebVid2M-IPU/webvid2m-8ipu-2f_model_best.pth
+      --data_loader.training.data_dir $DATASETS_DIR/WebVid
+      --data_loader.inference.data_dir $DATASETS_DIR/MSRVTT
+      --trainer.run_name pytorch_fit_4f_pretrain_real_pod16_conv
+

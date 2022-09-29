@@ -1,0 +1,38 @@
+---
+yolov4_4_ipu_inference_throughput_latency:
+  description:
+    PyTorch Yolov4 inference benchmark on 4 IPUs using coco val2017 dataset
+  parameters:
+    - [img_size, batch_size, device_iterations, max_detections, topk_nums]
+    - [896, 1, 5, 200, 1800]
+    - [896, 1, 10, 300, 1468]
+    - [640, 2, 5, 200, 1200]
+    - [640, 2, 10, 300, 1300]
+    - [512, 2, 5, 200, 2600]
+    - [512, 2, 10, 300, 1400]
+    - [416, 2, 5, 200, 3000]
+    - [416, 4, 10, 100, 900]
+  cmd: >-
+    mpirun --tag-output --np 4 --allow-run-as-root
+      python3 run.py
+        --device-iterations {device_iterations}
+        --image-size {img_size}
+        --micro-batch-size {batch_size}
+        --benchmark
+        --mode test_inference
+        --nms-max-detections {max_detections}
+        --pre-nms-topk-k {topk_nums}
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec'
+    latency:
+      regexp: 'latency avg: *(.*?) ms'
+  output:
+    - [Batchsize, "batch_size"]
+    - [Device iterations, "device_iterations"]
+    - [Image size, "img_size"]
+    - [Pre-nms Topk, "topk_nums"]
+    - [NMS max detections, "max_detections"]
+    - [samples/sec, "throughput"]
+    - [latency(ms), "latency"]
+

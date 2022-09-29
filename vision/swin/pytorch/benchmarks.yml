@@ -2,13 +2,13 @@
 common_options: &common_options
   data:
     throughput:
-      skip: 1
-      regexp: 'throughput: *(.*)'
+      skip: 2
+      regexp: 'throughput: *(.*?) samples\/sec'
     loss:
       reduction_type: 'final'
-      regexp: 'loss: *(.*)'
+      regexp: 'loss: *(\d*\.\d*)'
   output:
-    - [throughput, 'throughput']
+    - [samples/sec, 'throughput']
     - [loss, 'loss']
 
 pytorch_swin_tiny_train_real_pod16:
@@ -16,37 +16,37 @@ pytorch_swin_tiny_train_real_pod16:
   description: Pytorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
-      --cfg ./configs/swin_tiny.yaml
+      --cfg SWIN_TINY
       --data-path $DATASETS_DIR/imagenet-raw-dataset/
       --output ./output/swin_tiny_224/
-      --training-steps 100
+      --training-steps 10
 
 pytorch_swin_base_384_train_real_pod16:
   <<: *common_options
   description: Pytorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
-      --cfg ./configs/swin_base_384.yaml
+      --cfg SWIN_BASE_384
       --data-path $DATASETS_DIR/imagenet-raw-dataset/
       --output ./output/swin_base_384/
-      --training-steps 100
+      --training-steps 10
 
 pytorch_swin_base_linear_train_real_pod16:
   <<: *common_options
   description: Pytorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
-      --cfg ./configs/swin_base_linear.yaml
+      --cfg SWIN_BASE_LINEAR
       --data-path $DATASETS_DIR/imagenet-raw-dataset/
       --output ./output/swin_base_linear/
-      --training-steps 100
+      --training-steps 10
 
 pytorch_swin_large_train_real_pod16:
   <<: *common_options
   description: Pytorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
-      --cfg ./configs/swin_large_224_22k_finetune_1k.yaml
+      --cfg SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16
       --data-path $DATASETS_DIR/imagenet-raw-dataset/
       --output ./output/swin_large/
-      --training-steps 100
+      --training-steps 10

@@ -32,7 +32,7 @@ class TestRunPretraining(TestBuildAndRun):
 
     def test_run_pretraining_compile_only(self):
         cmd = self._get_pretraining_command(extra_args=["--dataset-dir", str(self._get_sample_dataset_path()),
-                                                        "--compile-only", "true"])
+                                                        "--compile-only"])
         env = os.environ.copy()
         env["TF_POPLAR_FLAGS"] = "--executable_cache_path=./" + env.get("TF_POPLAR_FLAGS", "")
         self.run_command(cmd,

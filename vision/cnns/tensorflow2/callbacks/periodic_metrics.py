@@ -11,8 +11,12 @@ class PeriodicMetrics:
 
     def update(self, metrics: Dict[str, float]) -> None:
         for metric in metrics:
-            self.accumulators[metric] += metrics[metric]
-            self.counters[metric] += 1
+            if 'epoch' in metric:
+                self.accumulators[metric] = metrics[metric]
+                self.counters[metric] = 1
+            else:
+                self.accumulators[metric] += metrics[metric]
+                self.counters[metric] += 1
 
     def reset(self) -> None:
         for metric in self.accumulators:
@@ -20,5 +24,5 @@ class PeriodicMetrics:
             self.counters[metric] = 0
 
     def get_normalized(self) -> Dict[str, float]:
-        normalized_metrics = {metric: self.accumulators[metric] / self.counters[metric] for metric in self.accumulators}
+        normalized_metrics = {metric: self.accumulators[metric] / self.counters[metric] for metric in self.accumulators if self.counters[metric] > 0}
         return normalized_metrics

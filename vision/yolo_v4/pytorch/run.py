@@ -219,7 +219,6 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode,
         if cfg.model.mode == "train":
             optimizer = get_optimizer(cfg, model)
             model = trainingModel(model, ipu_opts, optimizer=optimizer)
-            model.compile(img, labels)
         else:
             model = inferenceModel(model, ipu_opts)
             model.compile(img)
@@ -279,116 +278,6 @@ def inference(
     stat_recorder.logging(print, run_coco_eval)
 
 
-def training(
-    opt: argparse.ArgumentParser,
-    cfg: yacs.config.CfgNode,
-    model: Union[Detector, poptorch.PoplarExecutor],
-    loader: Union[torchDataLoader, DataLoader],
-    stat_recorder: StatRecorder
-):
-    if not cfg.model.ipu:
-        optimizer = get_optimizer(cfg, model)
-    else:
-        optimizer = model._optimizer
-
-    epochs = cfg.training.epochs
-
-    def lr_lambda(i: int):
-        return (((1 + math.cos(max(0, (i - 1)) * math.pi / max(epochs, 1))) / 2) ** 1.0) * 0.8 + 0.2
-
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
-
-    num_ipus_per_replica = len(cfg.model.pipeline_splits) + 1
-    num_replicas = cfg.system.num_ipus / num_ipus_per_replica
-    global_batch_size = cfg.model.micro_batch_size * cfg.ipuopts.gradient_accumulation * num_replicas
-    num_img_per_step = cfg.training.device_iterations * global_batch_size
-    num_global_batches_per_epoch = len(loader) * cfg.training.device_iterations
-    num_warmup = max(3 * num_global_batches_per_epoch, 1e3)  # number of warmup iterations, max(3 epochs, 1k iterations)
-
-    # create directory for saving weight checkpoints
-    os.makedirs(cfg.training.checkpoint_dir, exist_ok=True)
-
-    for epoch in range(epochs):
-        stat_recorder.reset_train_stats()
-        train_progress = tqdm(loader)
-        train_progress.set_description("Training epoch {}".format(epoch))
-        for i, (transformed_images, transformed_labels, _, _) in enumerate(train_progress):
-            start_time = time.perf_counter()
-            # Warmup
-            num_iterations = (i * cfg.training.device_iterations) + num_global_batches_per_epoch * epoch
-            if num_iterations <= num_warmup:
-                optimizer = set_warmup_lr_and_momentum(optimizer, num_warmup, num_iterations, lr_lambda, epoch, cfg.training.momentum)
-                if cfg.model.ipu:
-                    model.setOptimizer(optimizer)
-            _, (total_loss, box_loss, object_loss, class_loss) = model(transformed_images, transformed_labels)
-
-            if not cfg.model.ipu:
-                total_loss.backward()
-                optimizer.step()
-
-            end_time = time.perf_counter()
-            tput = num_img_per_step / (end_time - start_time)
-            stat_recorder.record_training_stats(box_loss, object_loss, class_loss, total_loss, i, num_img_per_step, throughput=tput)
-
-            if i % cfg.training.logging_interval == 0:
-                stat_recorder.log_train_step(optimizer.state_dict()['param_groups'], i, print)
-
-        scheduler.step()
-        if cfg.model.ipu:
-            model.setOptimizer(optimizer)
-
-        # End of epoch logging and checkpoint
-        is_last_epoch = epoch + 1 == epochs
-        if (cfg.training.checkpoint_interval > 0 and epoch % cfg.training.checkpoint_interval == 0) or is_last_epoch:
-            weight_path = checkpoint_dir + "/weights"
-            if not os.path.isdir(weight_path):
-                os.makedirs(weight_path)
-            checkpoint_filename = checkpoint_dir + "/weights/train_epoch_{}_of_{}.pt".format(epoch, epochs)
-            torch.save(model.model.state_dict(), checkpoint_filename)
-            save_cfg(f"{checkpoint_filename}.conf.yml", cfg)
-
-            # Running validation, calculate P, R and mAP
-            if cfg.eval.metrics:
-                if cfg.model.ipu:
-                    model.detachFromDevice()
-                validate_training(model, is_last_epoch)
-                if not is_last_epoch:
-                    model.train()
-                    model.attachToDevice()
-                else:
-                    if cfg.training.weight_avg_decay > 0 and cfg.training.weight_avg_decay < 1:
-                        averaged_model = average_model_weights(cfg)
-                        averaged_model_filename = f'{cfg.training.checkpoint_dir}/weights/averaged_model.pt'
-                        torch.save(averaged_model.state_dict(), averaged_model_filename)
-                        validate_training(averaged_model, is_last_epoch)
-                    else:
-                        if cfg.training.weight_avg_decay != 0:
-                            raise ValueError(f'Weight averaging decay factor should be larger than 0 and smaller than 1, it is {cfg.training.weight_avg_decay}')
-
-        stat_recorder.log_train_epoch(print)
-
-
-def validate_training(model, is_last_epoch):
-    trained_model = model.model if isinstance(model, poptorch.PoplarExecutor) else model
-    trained_model.nms = cfg.inference.nms
-    trained_model.ipu_post_process = IPUPredictionsPostProcessing(cfg.inference, trained_model.cpu_mode)
-    trained_model.training = False
-    trained_model.eval()
-
-    # call inference
-    eval_opts = ipu_options(opt, cfg, trained_model, 'test')
-    test_loader = get_loader(opt, cfg, eval_opts, 'test')
-    if cfg.model.ipu:
-        if is_last_epoch and isinstance(model, poptorch.PoplarExecutor):
-            model.destroy()
-        trained_model = inferenceModel(trained_model, eval_opts)
-        if trained_model._executable:
-            trained_model.attachToDevice()
-    inference(opt, cfg, trained_model, test_loader, stat_recorder, is_last_epoch)
-    if cfg.model.ipu:
-        trained_model.detachFromDevice()
-
-
 if __name__ == "__main__":
     opt = parse_args()
     if len(opt.data) > 0. and opt.data[-1] != '/':
@@ -396,22 +285,8 @@ if __name__ == "__main__":
 
     cfg = get_cfg_defaults()
 
-    # Create checkpoint folder for saving plots and weights, which will be overrided if user passes something else from command line
-    checkpoint_dir = "checkpoints/exp_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S.%f")[:-4])
-    cfg.training.checkpoint_dir = checkpoint_dir
-    cfg.inference.plot_dir = checkpoint_dir + "/plots"
-    # Config settings priority (highest to lowest)
-    # 1. Set parameter from cmd
-    # 2a. Load the parameter value from the config file (if defined)
-    # 2b. If '--weights' used to load a model and exists '.conf' extension file for the checkpoint: parameters defined by that config
-    # 3. Use default values
-    if opt.weights and os.path.exists(f"{opt.weights}.conf.yml"):
-        print("loading pretrained model's config")
-        if not os.path.exists(f"{opt.weights}"):
-            print("ERROR: Weights could not be found!")
-        cfg.merge_from_file(f"{opt.weights}.conf.yml")
-    else:
-        cfg.merge_from_file(opt.config)
+
+    cfg.merge_from_file(opt.config)
     cfg = override_cfg(opt, cfg)
     cfg.freeze()
     config_filename = Path(opt.config)
@@ -429,7 +304,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if cfg.model.mode == 'train':
-        training(opt, cfg, model, loader, stat_recorder)
+        logger.error("Training to be implemented!")
     else:
         run_coco_eval = cfg.eval.metrics and not opt.benchmark
         inference(opt, cfg, model, loader, stat_recorder, run_coco_eval)

@@ -13,5 +13,8 @@ wandb==0.12.8
 
 pytest
 pytest-pythonpath
-git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
-git+ssh://git@phabricator.sourcevertex.net/diffusion/POPXLADDONSINTERNAL/popxladdonsinternal.git@sdk-release-2.6#egg=popxl-addons
+
+git+https://github.com/graphcore/examples-utils@e60289e0744c061dcfb060131cd3fbd7ad2840e0#egg=examples-utils
+git+ssh://git@github.com/graphcore/popxl-addons-internal.git@6da586a0c27e2f5c2280b481d88f349f8e04b627#egg=popxl-addons
+
+protobuf==3.20.*; python_version > '3.6'

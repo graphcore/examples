@@ -108,7 +108,7 @@ class Logger():
                   (f"lr: {lr:6.2g}, " if lr else ""),
                   (f"loss: {loss:6.6f}, " if loss else ""),
                   (f"RMSPE: {batch_acc:6.6f}, " if batch_acc else ""),
-                  f"samples/sec: {self.samples_per_step / batch_time:6.2f}, ",
+                  f"throughout: {self.samples_per_step / batch_time:6.2f} samples/sec, ",
                   f"time: {batch_time:8.6f}, ",
                   f"Moving mean samples/sec ({len(last_n_batch_times)}): {(self.samples_per_step * len(last_n_batch_times)) / np.sum(last_n_batch_times):6.2f}")
 

@@ -24,22 +24,15 @@ import torchvision
 from poptorch import DataLoader
 from torch.utils.data import Dataset, IterableDataset
 
-from dataset.mixup_utils import mixup_data
 from dataset.preprocess import get_preprocessing_pipeline
-
-
-class CustomizedDataLoader(DataLoader):
-    def __iter__(self):
-        if hasattr(self.dataset, 'shuffle'):
-            self.dataset.shuffle()
-        return super().__iter__()
 
 
 def get_random_datum(config):
     dataset = GeneratedDataset(
         shape=[3, 224, 224],
         size=config.samples_per_step,
-        half_precision=True)
+        half_precision=True,
+        byteio=config.byteio)
     return dataset.stacked_batch()
 
 
@@ -49,10 +42,11 @@ class GeneratedDataset(Dataset):
     The size determines the number of items in the dataset.
     """
 
-    def __init__(self, shape, size=4096, half_precision=False):
+    def __init__(self, shape, size=4096, half_precision=False, byteio=False):
         self.data_shape = shape
         self.default_generate_size = 1024
         self.half_precision = half_precision
+        self.byteio = byteio
         self.size = size
         self.images, self.labels = self.generate()
         self.samples = list(range(size))  # fake list of (path, class).
@@ -61,7 +55,9 @@ class GeneratedDataset(Dataset):
         size_ = min(self.size, self.default_generate_size)
         images_ = torch.rand((size_, *self.data_shape))
         labels_ = torch.randint(0, 2, [size_], dtype=torch.long)
-        if self.half_precision:
+        if self.byteio:
+            images_ = images_.byte()
+        elif self.half_precision:
             images_ = images_.half()
         return images_, labels_
 
@@ -118,26 +114,6 @@ class ImageNetDataset(torchvision.datasets.ImageFolder):
         return dataset
 
 
-class DatasetWithStepLabel(Dataset):
-    def __init__(self, dataset, samples_per_step, seed):
-        self._dataset = dataset
-        self.samples_per_step = samples_per_step
-        self.seed = seed
-
-    def __len__(self):
-        return len(self._dataset)
-
-    def __getitem__(self, idx):
-        sample, target = self._dataset[idx]
-        step_label = idx // self.samples_per_step
-        return sample, target, step_label
-
-    def shuffle(self):
-        random.seed(self.seed)
-        random.shuffle(self._dataset.samples)
-        self.seed += 1
-
-
 def get_data(config, model_opts, train=True, async_dataloader=False):
     dataset = get_dataset(config, model_opts, train=train)
     dataloader = get_dataloader(
@@ -154,8 +130,15 @@ def get_dataset(config, model_opts, train=True):
         half_precision = True
     elif config.precision.startswith("32."):
         half_precision = False
+
+    # is byteio is true, normalization should be performed on the device
+    config.normalize_image_on_device = False
+    if config.byteio:
+        config.normalize_image_on_device = True
+
     transform = get_preprocessing_pipeline(
-        train, 224, half_precision, normalize=True, extra_aug=config.extra_aug)
+        train, 224, half_precision, normalize=not config.normalize_image_on_device, extra_aug=config.extra_aug, byteio=config.byteio)
+
     # Determine the size of the small datasets
     dataset_size = config.micro_batch_size * \
         model_opts.device_iterations * \
@@ -166,7 +149,7 @@ def get_dataset(config, model_opts, train=True):
     # Select the right dataset
     if config.dataset == "generated":
         dataset = GeneratedDataset(
-            (3, 224, 224), size=dataset_size, half_precision=half_precision)
+            (3, 224, 224), size=dataset_size, half_precision=half_precision, byteio=config.byteio)
 
     elif config.dataset in ["imagenet1k", "imagenet21k"]:
         dataset = ImageNetDataset(os.path.join(
@@ -190,10 +173,6 @@ def get_dataloader(config, model_opts, dataset, train=True, async_dataloader=Fal
             if config.rebatched_worker_size is not None:
                 config.rebatched_worker_size = min(
                     config.rebatched_worker_size, config.global_batch_size)
-                if config.mixup:
-                    assert config.global_batch_size % config.rebatched_worker_size == 0, \
-                        "global_batch_size (%s) should be divisible by rebatched_worker_size (%s)" \
-                        % (config.global_batch_size, config.rebatched_worker_size)
     else:
         mode = poptorch.DataLoaderMode.Sync
 
@@ -204,12 +183,7 @@ def get_dataloader(config, model_opts, dataset, train=True, async_dataloader=Fal
         "miss_sleep_time_in_ms": 0,
         "buffer_size": 8}
 
-    customized_shuffle = config.mixup and (
-        mode == poptorch.DataLoaderMode.AsyncRebatched)
-
-    if train \
-            and not(isinstance(dataset, IterableDataset)) \
-            and not(customized_shuffle):
+    if train and not(isinstance(dataset, IterableDataset)):
         shuffle = True
     else:
         shuffle = False
@@ -219,13 +193,7 @@ def get_dataloader(config, model_opts, dataset, train=True, async_dataloader=Fal
     else:
         batch_size = None
 
-    if train and config.mixup:
-        collate = partial(
-            collate_fn, alpha=config.alpha, byteio=config.byteio)
-    else:
-        collate = None
-
-    dataloader = CustomizedDataLoader(
+    dataloader = poptorch.DataLoader(
         model_opts,
         dataset,
         batch_size=batch_size,
@@ -240,25 +208,5 @@ def get_dataloader(config, model_opts, dataset, train=True, async_dataloader=Fal
         mode=mode,
         async_options=async_options,
         rebatched_worker_size=config.rebatched_worker_size,
-        collate_fn=collate)
+        collate_fn=None)
     return dataloader
-
-
-def collate_fn(batch, alpha, byteio):
-    inputs = []
-    targets = []
-    step_label = batch[0][2]
-    for x, y, z in batch:
-        assert step_label == z, \
-            'all the samples should share the same step label within this batch, ' \
-            'but %s != %s' % (step_label, z)
-        inputs += [x]
-        if not isinstance(y, torch.Tensor):
-            y = torch.tensor(y)
-        targets += [y]
-    input_data = torch.stack(inputs)
-    labels = torch.stack(targets)
-    mixed_x, y_a, y_b, lam = mixup_data(input_data, labels, alpha, step_label)
-    if byteio:
-        mixed_x = torch.clip(mixed_x.float()*255, 0, 255).byte()
-    return mixed_x, y_a, y_b, lam

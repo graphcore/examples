@@ -62,6 +62,8 @@ class Conformer(BasePipelineModel):
             target_length: (Batch,)
         '''
         feature, feature_length = self.normalize(feature, feature_length)
+        if self.dtype == torch.float16: 
+            feature = feature.type(torch.float16)
         feature, feature_length, encoder_masks = self.encoder(feature, feature_length)
         feature_encoder = self.out(feature)
         log_probs = torch.nn.functional.log_softmax(feature_encoder, -1)

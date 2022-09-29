@@ -20,7 +20,6 @@
 vit_base_pod16: &vit_base_pod16
 
   # Execution
-  half: True
   batch_size: 2
   ga: 64
   replica: 2
@@ -31,15 +30,16 @@ vit_base_pod16: &vit_base_pod16
   log: loss.log
   local_crops_number: 8
   local_crops_scale: [0.05, 0.4]
-  saveckp_freq: 1
+  saveckp_freq: 2
   print_freq: 10
   async_type: async
-  use_clip: False
   global_crops_scale: [0.4, 1]
   warmup_epochs: 10
 
   # Model
   arch: vit_base
+  # precision float32 float16 or masterweight
+  precision: float16
   pipeline: [1, 2, 2, 2, 2, 2, 1, 0]
   drop_path_rate: 0.1
   momentum_teacher: 0.996
@@ -63,7 +63,6 @@ vit_base_pod16: &vit_base_pod16
 vit_base_pod64: &vit_base_pod64
 
   # Execution
-  half: True
   batch_size: 4
   ga: 400
   epochs: 100
@@ -77,12 +76,13 @@ vit_base_pod64: &vit_base_pod64
   print_freq: 10
   async_type: rebatch
   rebatched_worker_size: 800
-  use_clip: False
   global_crops_scale: [0.4, 1]
   warmup_epochs: 10
 
   # Model
   arch: vit_base
+  # precision float32 float16 or masterweight
+  precision: float16
   pipeline: [1, 2, 2, 2, 2, 2, 1, 0]
   drop_path_rate: 0.1
   momentum_teacher: 0.996
@@ -104,14 +104,62 @@ vit_base_pod64: &vit_base_pod64
 
 # ----------------------------------------------------------------------------------
 
+vit_small_pod16_half: &vit_small_pod16_half
+
+  # Execution
+  batch_size: 4
+  norm_last_layer: False
+  ga: 64
+  replica: 4
+  output_mode: final
+  epochs: 100
+  device: ipu
+  num_workers: 32
+  output: checkpoint_dino_vit_small_half
+  log: loss.log
+  local_crops_number: 10
+  local_crops_scale: [0.05, 0.25]
+  saveckp_freq: 5
+  print_freq: 15
+  async_type: async
+  global_crops_scale: [0.25, 1.0]
+  warmup_epochs: 10
+
+  # Model
+  arch: vit_small
+  # precision float32 float16 or masterweight
+  precision: float16
+  gelu_type: tanh
+  pipeline: [4, 4, 4, 0]
+  drop_path_rate: 0.1
+  momentum_teacher: 0.996
+  warmup_teacher_temp: 0.04
+  teacher_temp: 0.04
+  warmup_teacher_temp_epochs: 0
+
+  # Optimizer
+  optimizer: 'adamw'
+  lr: 0.002
+  min_lr: 1e-05
+  loss_scale: 128.0
+  set_freq: 10
+  eps: 1e-5
+
+  # Dataset
+  data_path: './data/imagenet1k/train'
+# ----------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------
 vit_small_pod16: &vit_small_pod16
 
   # Execution
   batch_size: 2
+  norm_last_layer: False
   ga: 128
   replica: 4
   epochs: 800
   device: ipu
+  ipu_per_replica: 4
   num_workers: 32
   output: checkpoint_dino_vit_small
   log: loss.log
@@ -120,13 +168,57 @@ vit_small_pod16: &vit_small_pod16
   saveckp_freq: 2
   print_freq: 10
   async_type: async
-  use_clip: False
-  norm_last_layer: False
   global_crops_scale: [0.25, 1.0]
   warmup_epochs: 10
 
   # Model
   arch: vit_small
+  # precision float32 float16 or masterweight
+  precision: float32
+  pipeline: [4, 4, 4, 0]
+  drop_path_rate: 0.1
+  momentum_teacher: 0.996
+  warmup_teacher_temp: 0.04
+  teacher_temp: 0.07
+  warmup_teacher_temp_epochs: 30
+
+  # Optimizer
+  optimizer: 'adamw'
+  lr: 0.002
+  min_lr: 1e-05
+  loss_scale: 128.0
+  eps: 1e-5
+
+  # Dataset
+  data_path: './data/imagenet1k/train'
+# ----------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------
+vit_small_pod64: &vit_small_pod64
+
+  # Execution
+  batch_size: 2
+  norm_last_layer: False
+  ga: 128
+  epochs: 800
+  device: ipu
+  ipu_per_replica: 4
+  num_workers: 32
+  output: checkpoint_dino_vit_small
+  log: loss.log
+  local_crops_number: 10
+  local_crops_scale: [0.05, 0.25]
+  saveckp_freq: 2
+  set_freq: 10
+  print_freq: 10
+  async_type: async
+  global_crops_scale: [0.25, 1.0]
+  warmup_epochs: 10
+
+  # Model
+  arch: vit_small
+  # precision float32 float16 or masterweight
+  precision: float32
+  rts: False
   pipeline: [4, 4, 4, 0]
   drop_path_rate: 0.1
   momentum_teacher: 0.996
@@ -146,36 +238,24 @@ vit_small_pod16: &vit_small_pod16
 # ----------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------
-vit_tiny_pod16: &vit_tiny_pod16
+
+vit_base_pytest: &vit_base_pytest
 
   # Execution
-  batch_size: 2
-  ga: 64
-  replica: 4
-  epochs: 100
+  batch_size: 1
+  ga: 12
+  replica: 1
   device: ipu
-  num_workers: 16
-  output: checkpoint_dino_vit_tiny
-  log: loss.log
-  local_crops_number: 6
-  saveckp_freq: 1
-  print_freq: 10
-  async_type: normal
-  use_clip: False
-  warmup_epochs: 10
-
+  local_crops_number: 4
   # Model
-  arch: vit_tiny
-  pipeline: [4, 4, 4, 0]
+  arch: vit_mini
+  # precision float32 float16 or masterweight
+  precision: float16
+  pipeline: [3, 0]
   drop_path_rate: 0.1
   momentum_teacher: 0.996
 
-  # Optimizer
-  optimizer: 'adamw'
-  lr: 0.0005
-  loss_scale: 128.0
-  eps: 1e-5
-
-  # Dataset
-  data_path: './data/imagenet1k/train'
 # ----------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------
+

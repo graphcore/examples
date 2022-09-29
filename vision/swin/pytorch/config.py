@@ -29,8 +29,10 @@
 # Written by Ze Liu
 # --------------------------------------------------------
 import os
+import sys
 import yaml
 from yacs.config import CfgNode as CN
+from pathlib import Path
 
 _C = CN()
 
@@ -48,7 +50,7 @@ _C.DATA.DATA_PATH = ''
 # Dataset name
 _C.DATA.DATASET = 'imagenet'
 # Input image size
-_C.DATA.IMG_SIZE = [384, 384]
+_C.DATA.IMG_SIZE = [224, 224]
 # Interpolation to resize image (random, bilinear, bicubic)
 _C.DATA.INTERPOLATION = 'bicubic'
 # Use zipped dataset instead of folder dataset
@@ -60,7 +62,6 @@ _C.DATA.CACHE_MODE = 'part'
 _C.DATA.PIN_MEMORY = True
 # Number of data loading threads
 _C.DATA.NUM_WORKERS = 8
-
 # -----------------------------------------------------------------------------
 # Model settings
 # -----------------------------------------------------------------------------
@@ -71,8 +72,6 @@ _C.MODEL.TYPE = 'swin'
 _C.MODEL.DEVICE = 'gpu'
 # Model alignment
 _C.MODEL.ALIGNMENT = False
-# Model half
-_C.MODEL.HALF = False
 
 # Model name
 _C.MODEL.NAME = 'swin_tiny_patch4_window7_224'
@@ -157,17 +156,19 @@ _C.TRAIN.OPTIMIZER.EPS = 1e-8
 _C.TRAIN.OPTIMIZER.BETAS = (0.9, 0.999)
 # SGD momentum
 _C.TRAIN.OPTIMIZER.MOMENTUM = 0.9
+_C.TRAIN.OPTIMIZER.RTS = False
 # loss scalling
 _C.TRAIN.LOSS_SCALING = 128
 
 # IPU related settings
 _C.IPU = CN()
-_C.IPU.NUM_REPLICAS = 1
+_C.IPU.NUM_LOCALREPLICA = 1
 _C.IPU.GRADIENT_ACCUMULATION_STEPS = 8
 _C.IPU.DEVICE_ITERATIONS = 1
 _C.IPU.IPUS = 1
 _C.IPU.LAYERS_PER_IPU = [3, 4, 3, 2]
-
+_C.IPU.MAPPING_FOR_21K = False
+_C.IPU.AMP = 0.12
 
 # -----------------------------------------------------------------------------
 # Linear eval settings
@@ -239,79 +240,73 @@ _C.EVAL_MODE = False
 _C.THROUGHPUT_MODE = False
 # local rank for DistributedDataParallel, given by command line argument
 _C.LOCAL_RANK = 0
-_C.PRECISION = ['half', 'float']
+_C.PRECISION = ['half', 'half']
 _C.PRETRAINED = None
 
+swin_root_path = str(Path(__file__).parent)
+sys.path.append(swin_root_path)
 
-def _update_config_from_file(config, cfg_file):
+
+def _update_config_from_file(config, cfg_name):
     config.defrost()
+    cfg_file = os.path.join(swin_root_path, 'configs/configs.yaml')
+
     with open(cfg_file, 'r') as f:
-        yaml_cfg = yaml.load(f, Loader=yaml.FullLoader)
+        yaml_cfg = yaml.load(f, Loader=yaml.FullLoader)[cfg_name]
 
     for cfg in yaml_cfg.setdefault('BASE', ['']):
         if cfg:
             _update_config_from_file(
                 config, os.path.join(os.path.dirname(cfg_file), cfg)
             )
-    print('=> merge config from {}'.format(cfg_file))
-    config.merge_from_file(cfg_file)
+
+    merge_config = CN(yaml_cfg)
+    print('=> merge config from {}'.format(cfg_name))
+
+    config.merge_from_other_cfg(merge_config)
     config.freeze()
 
 
 def update_config(config, args):
+    # Files configs merge second
     _update_config_from_file(config, args.cfg)
 
     config.defrost()
+    # Args configs last
 
-    try:
-        if args.opts:
-            config.merge_from_list(args.opts)
-    except Exception as e:
-        print(e)
+    if args.batch_size:
+        config.DATA.BATCH_SIZE = args.batch_size
 
-    try:
-        # merge from specific arguments
-        if args.batch_size:
-            config.DATA.BATCH_SIZE = args.batch_size
-    except Exception as e:
-        print(e)
-
-    try:
-        if args.resume:
-            config.MODEL.RESUME = args.resume
-    except Exception as e:
-        print(e)
-
-    try:
-        if args.output:
-            config.OUTPUT = args.output
-    except Exception as e:
-        print(e)
+    if args.resume:
+        config.MODEL.RESUME = args.resume
 
     if args.data_path:
         config.DATA.DATA_PATH = args.data_path
+
     if args.output:
         config.OUTPUT = args.output
     if args.pretrained_model:
         config.PRETRAINED = args.pretrained_model
+    if args.ga:
+        config.IPU.GRADIENT_ACCUMULATION_STEPS = args.ga
+    if args.amp:
+        config.IPU.AMP = args.amp
+    if args.rts:
+        config.TRAIN.OPTIMIZER.RTS = True
 
-    try:
-        if args.ema_so:
-            config.MODEL.MOBY.EMA_PATH = args.ema_so
-        if args.alignment:
-            config.MODEL.ALIGNMENT = args.alignment
-        if args.device:
-            config.MODEL.DEVICE = args.device
-        if args.half:
-            config.MODEL.HALF = args.half
-    except Exception as e:
-        print(e)
+    if args.alignment:
+        config.MODEL.ALIGNMENT = args.alignment
+    if args.device:
+        config.MODEL.DEVICE = args.device
+
     config.MODEL.MOBY.CONTRAST_NUM_NEGATIVE = (
         config.MODEL.MOBY.CONTRAST_NUM_NEGATIVE // config.DATA.BATCH_SIZE) * config.DATA.BATCH_SIZE
 
     # output folder
     config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
 
+    if args.compile_only:
+        config.DATA.NUM_WORKERS = 1
     config.freeze()
 
 
@@ -319,8 +314,7 @@ def get_config(args):
     """Get a yacs CfgNode object with default values."""
     # Return a clone so that the defaults will not be altered
     # This is for the "local variable" use pattern
+    # Base configs first
     config = _C.clone()
-
     update_config(config, args)
-
     return config

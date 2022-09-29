@@ -162,7 +162,7 @@ def target_mask(ys_in_pad, ignore_id):
 
 def subsequent_mask(
         size: int,
-        device: torch.device = torch.device("cpu"),
+        device: torch.device = None,
 ) -> torch.Tensor:
     """Create mask for subsequent steps (size, size).
 

@@ -22,7 +22,7 @@ class TestPopDist:
         out = run_script(
             "poprun",
             f"--num-instances=2 --num-replicas=2 {executable} train/train.py --data cifar10 --model resnet18 --epoch 2 "
-            "--precision 16.16 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 16 --enable-stochastic-rounding --validation-mode after --dataloader-worker 4 "
+            "--precision 16.16 --optimizer sgd_combined --lr 0.1 --micro-batch-size 2 --gradient-accumulation 16 --enable-stochastic-rounding --validation-mode after --dataloader-worker 4 "
             "--norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_validation_distributed",
             python=False,
         )
@@ -50,7 +50,7 @@ class TestPopDist:
         executable = get_current_interpreter_executable()
         out = run_script(
             "poprun",
-            f"--num-instances=2 --num-replicas=2 {executable} inference/run_benchmark.py --data generated --model resnet18 --batch-size 4 --precision 16.16 --iterations 10 --dataloader-worker 4",
+            f"--num-instances=2 --num-replicas=2 {executable} inference/run_benchmark.py --data generated --model resnet18 --micro-batch-size 4 --precision 16.16 --iterations 10 --dataloader-worker 4",
             python=False,
         )
         max_thoughput = get_max_thoughput(out)

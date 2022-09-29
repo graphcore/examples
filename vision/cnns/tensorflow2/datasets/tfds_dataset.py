@@ -5,11 +5,10 @@ from typing import Optional
 import popdist
 import tensorflow as tf
 import tensorflow_datasets as tfds
-from custom_exceptions import DimensionError, UnsupportedFormat
 from mpi4py import MPI
 from tensorflow.python.ipu import horovod as hvd
 
-from . import abstract_dataset, application_dataset
+from . import abstract_dataset
 
 
 class TFDSDataset(abstract_dataset.AbstractDataset):
@@ -33,7 +32,7 @@ class TFDSDataset(abstract_dataset.AbstractDataset):
         self.deterministic = deterministic
         self.seed = seed
 
-    def read_single_image(self) -> application_dataset.ApplicationDataset:
+    def read_single_image(self) -> tf.data.Dataset:
         read_config = tfds.ReadConfig(try_autocache=False,
                                       skip_prefetch=True,
                                       shuffle_seed=self.seed)
@@ -76,24 +75,6 @@ class TFDSDataset(abstract_dataset.AbstractDataset):
 
         num_examples = info_ds.splits[self.split].num_examples
 
-        iterator = iter(ds)
-        first_elem = iterator.get_next()
-
-        if len(first_elem[0].shape) != 3:
-            raise DimensionError(
-                f'Dataset input feature should have at least 3 dimensions (h,w,c) but it has {len(first_elem[0].shape)}')
-
-        img_shape = first_elem[0].shape
-
-        num_classes = -1
-
-        if len(info_ds.supervised_keys) == 2:
-            label = info_ds.supervised_keys[1]
-            num_classes = info_ds.features[label].num_classes
-        else:
-            raise UnsupportedFormat(
-                f'This function only handle datasets like (features, labels) not {info_ds.supervised_keys}')
-
         if popdist.getNumInstances() > 1:
             ds = ds.shard(num_shards=popdist.getNumInstances(), index=popdist.getInstanceIndex())
 
@@ -102,7 +83,4 @@ class TFDSDataset(abstract_dataset.AbstractDataset):
         if self.split == 'train' and self.shuffle:
             ds = ds.shuffle(buffer_size=num_examples // popdist.getNumInstances(), seed=self.seed)
 
-        return application_dataset.ApplicationDataset(pipeline=ds,
-                                                      size=num_examples,
-                                                      image_shape=img_shape,
-                                                      num_classes=num_classes)
+        return ds

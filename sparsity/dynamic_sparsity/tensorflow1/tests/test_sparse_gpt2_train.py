@@ -36,18 +36,21 @@ class TestBuildAndRun(SubProcessChecker):
                          build_dir,
                          [r"Throughput (\w+.\w+) token/s", r"Training complete."], env=env)
 
+    @pytest.mark.skip(reason="needs wikitext103 dataset to run")
     @pytest.mark.ipus(4)
     @pytest.mark.ipu_version("ipu2")
     def test_rigl_train_gpt2_xl_4_ipus_3_encoders_wikitext103_wandb(self):
         date_str = datetime.date.today().isoformat()
         self._run_command(f'--use-wandb --wandb-project-name dynsparse-language-model --wandb-tags xl ci-testing --wandb-name gpt2-xl-train-ci-{date_str} --num-shards=4 --encoder-layers=3 --hidden-length=1600 --ff-length=6400 --source-vocab-length=20000 --warmup-steps=1000 --cooldown-steps=10000 --peak-learning-rate=0.01 --min-learning-rate=8e-6 --nepochs=2 --pipeline --repeat-count 100 --source-sequence-length 256 --gradient-accumulation-count 120 --dtype=float16 --block-size=16 --sparse-matmul-options={{"metaInfoBucketOversizeProportion":"0.2","partialsType":"half","availableMemoryProportion":"0.4"}} --encoder-stage-dense-matmul-options={{"availableMemoryProportion":"0.15"}} --dense-grad-matmul-options={{"availableMemoryProportion":"0.1","partialsType":"half"}} --sparsity=0.9 --pooling-type=SUM --prune-ratio 0 --grad-acculation-mode Avg --scale-grad-pre-acc --batch-size 1 --decay-power 0.9')
 
+    @pytest.mark.skip(reason="needs wikitext103 dataset to run")
     @pytest.mark.ipus(2)
     @pytest.mark.ipu_version("ipu2")
     def test_rigl_train_gpt2_s_2_ipus_1_encoders_rigl_wikitext103_wandb(self):
         date_str = datetime.date.today().isoformat()
         self._run_command(f'--use-wandb --wandb-project-name dynsparse-language-model --wandb-tags s ci-testing rigl --wandb-name gpt2-s-rigl-train-ci-{date_str} --num-shards=2 --encoder-layers=1 --hidden-length=768 --ff-length=3072 --source-vocab-length=20000 --warmup-steps=1000 --cooldown-steps=10000 --peak-learning-rate=0.01 --min-learning-rate=8e-6 --nepochs=2 --pipeline --repeat-count 100 --source-sequence-length 256 --gradient-accumulation-count 120 --dtype=float16 --block-size=16 --sparse-matmul-options={{"metaInfoBucketOversizeProportion":"0.2","partialsType":"half","availableMemoryProportion":"0.4"}} --encoder-stage-dense-matmul-options={{"availableMemoryProportion":"0.15"}} --dense-grad-matmul-options={{"availableMemoryProportion":"0.1","partialsType":"half"}} --sparsity=0.9 --pooling-type=SUM --prune-ratio 0.5 --grad-acculation-mode Avg --scale-grad-pre-acc --batch-size 1 --decay-power 0.9')
 
+    @pytest.mark.skip(reason="needs wikitext103 dataset to run")
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_rigl_train_gpt2_s_1_ipu_1_encoders_rigl_wikitext103_wandb(self):

@@ -26,18 +26,18 @@ def changeLengths(lengths):
 def generate_data(opts):
     """ generate random test input data for CTC loss """
     dtype = np.float32 if opts.precision == "FLOAT" else np.float16
-    input_shape = [1, opts.batch_size, opts.input_size, opts.num_classes]
+    input_shape = [1, opts.global_batch_size, opts.input_size, opts.num_classes]
     inputs = np.random.uniform(low=-1 * opts.logits_scale, high=opts.logits_scale,
                                size=input_shape).astype(dtype)
     input_lengths_data = np.array(
-        [opts.input_size] * opts.batch_size).astype(np.uint32).reshape(1, opts.batch_size)
+        [opts.input_size] * opts.global_batch_size).astype(np.uint32).reshape(1, opts.global_batch_size)
 
     if opts.variable_input:
         input_lengths_data = changeLengths(input_lengths_data)
-    target = np.random.choice(np.arange(1, opts.num_classes), opts.batch_size *
-                              opts.target_size).astype(np.uint32).reshape((1, opts.batch_size, opts.target_size))
+    target = np.random.choice(np.arange(1, opts.num_classes), opts.global_batch_size *
+                              opts.target_size).astype(np.uint32).reshape((1, opts.global_batch_size, opts.target_size))
     target_lengths_data = np.array(
-        [opts.target_size] * opts.batch_size).astype(np.uint32).reshape(1, opts.batch_size)
+        [opts.target_size] * opts.global_batch_size).astype(np.uint32).reshape(1, opts.global_batch_size)
 
     if opts.variable_input:
         target_lengths_data = changeLengths(target_lengths_data)
@@ -74,7 +74,7 @@ def parse_args(input_list=None):
     parser.add_argument("--partial32", action="store_true", help="use fp32 partials.")
     parser.add_argument("--num-classes", type=int, default=5, help="Number of classes")
     parser.add_argument(
-        "--batch-size",
+        "--global-batch-size",
         type=int,
         default=24,
         help="number of `chunksize` chunks of data to process per session",
@@ -105,7 +105,7 @@ def args_from_params(
     input_size=None,
     target_size=None,
     num_classes=None,
-    batch_size=None,
+    global_batch_size=None,
     reduction_type=None,
     precision=None,
     variable_input=None,
@@ -121,8 +121,8 @@ def args_from_params(
         params += ["--target-size", target_size]
     if num_classes is not None:
         params += ["--num-classes", num_classes]
-    if batch_size is not None:
-        params += ["--batch-size", batch_size]
+    if global_batch_size is not None:
+        params += ["--global-batch-size", global_batch_size]
     if reduction_type is not None:
         params += ["--reduction-type", reduction_type]
     if precision is not None:

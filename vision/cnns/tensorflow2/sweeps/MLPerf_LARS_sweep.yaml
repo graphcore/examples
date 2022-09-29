@@ -1,0 +1,42 @@
+program: run_mlperf_sweep.py
+name: MLPerf_LARS_sweep
+project: tf2-classification
+method: bayes
+metric:
+  name: optimization_metric
+  goal: maximize
+parameters:
+  init_lr:
+    distribution: uniform
+    min: 1e-4
+    max: 1e-2
+  warmup_epochs:
+    distribution: int_uniform
+    min: 0
+    max: 15
+  label_smoothing:
+    distribution: categorical
+    values: [0, 0.1]
+  weight_decay:
+    distribution: uniform
+    min: 1e-6
+    max: 1e-4
+  num_epochs:
+    distribution: int_uniform
+    min: 20
+    max: 40
+  grad_accum:
+    distribution: int_uniform
+    min: 1
+    max: 5
+  # constants
+  config:
+    value: resnet50_mlperf_pod16_lars
+  micro_batch_size:
+    value: 18
+  num_replicas:
+    value: 64
+  abs_end_lr:
+    value: 0.001
+  optimizer:
+    value: lars

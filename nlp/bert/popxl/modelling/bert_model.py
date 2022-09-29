@@ -39,7 +39,7 @@ class BertPretrainingLossAndGrad(addons.Module):
         self.fwd = addons.Module()
         self.grad = addons.Module()
 
-    def build(self, x: popxl.Tensor, word_embedding_t: popxl.Tensor, word_embedding_accum_t: popxl.Tensor,
+    def build(self, x: popxl.Tensor, word_embedding_t: popxl.Tensor, word_embedding_accum_t: popxl.TensorByRef,
               masked_positions: popxl.Tensor, mlm_labels: popxl.Tensor,
               nsp_labels: popxl.Tensor) -> Tuple[popxl.Tensor, popxl.Tensor]:
 
@@ -51,7 +51,7 @@ class BertPretrainingLossAndGrad(addons.Module):
 
         return loss, dx
 
-    def mlm(self, x: popxl.Tensor, word_embedding_t: popxl.Tensor, word_embedding_accum_t: popxl.Tensor,
+    def mlm(self, x: popxl.Tensor, word_embedding_t: popxl.Tensor, word_embedding_accum_t: popxl.TensorByRef,
             masked_positions: popxl.Tensor, labels: popxl.Tensor):
         args, graph = BertMLM(self.config).create_graph(x,
                                                         word_embedding_t=word_embedding_t,

@@ -156,17 +156,17 @@ if __name__ == "__main__":
             train_iterator.set_description(
                 f"Step: {step} / {config.training_steps-1} - "
                 f"LR: {scheduler.get_last_lr()[0]:.2e} - "
-                f"Loss: {outputs_sync[0]:3.3f} - "
-                f"Loss/MLM: {outputs_sync[1]:3.3f} - "
-                f"Loss/NSP: {outputs_sync[2]:3.3f} - "
-                f"Acc/MLM: {outputs_sync[3]:3.3f} - "
-                f"Acc/NSP: {outputs_sync[4]:3.3f}")
+                f"total loss: {outputs_sync[0]:3.3f} - "
+                f"mlm_loss: {outputs_sync[1]:3.3f} - "
+                f"nsp_loss: {outputs_sync[2]:3.3f} - "
+                f"mlm_acc: {outputs_sync[3]:3.3f} % - "
+                f"nsp_acc: {outputs_sync[4]:3.3f} %")
             num_instances = config.popdist_size if config.use_popdist else 1
             if config.packed_data:
                 step_throughput = config.samples_per_step * num_instances / step_length * outputs_sync[5]
             else:
                 step_throughput = config.samples_per_step * num_instances / step_length
-            train_iterator.set_postfix_str(f"{step_throughput:.1f} sequences/s")
+            train_iterator.set_postfix_str(f"throughput: {step_throughput:.1f} samples/sec")
 
             if config.disable_progress_bar:
                 logger(f"{train_iterator.desc} {train_iterator.postfix}")

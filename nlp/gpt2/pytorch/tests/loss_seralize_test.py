@@ -92,7 +92,7 @@ class Model(nn.Module):
             for i in range(Seralize_block_size, input_len+Seralize_block_size, Seralize_block_size):
                 logit = logits[i-Seralize_block_size:i, :]
                 label = labels[i-Seralize_block_size:i]
-                if not loss:
+                if loss is None:
                     loss = self.loss_fct(logit, label).to(torch.float32)
                     loss = poptorch.recomputationCheckpoint(loss)
                 else:

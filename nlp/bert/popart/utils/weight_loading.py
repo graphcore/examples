@@ -26,6 +26,25 @@ def is_external_weight(weight):
     return weight.HasField("data_location") and weight.data_location == TensorProto.EXTERNAL
 
 
+def weight_ids_from_onnx(proto):
+    model = onnx.load(proto)
+    return [weight.name for weight in model.graph.initializer]
+
+
+def weight_dict_from_onnx(proto):
+    model = onnx.load_model_from_string(proto)
+    weights = {}
+    for weight in model.graph.initializer:
+        if weight.data_type == onnx.TensorProto.FLOAT16:
+            int_data = np.asarray(weight.int32_data, np.int32)
+            np_weight = int_data.view(dtype=np.float16).reshape(weight.dims)
+        else:
+            np_weight = numpy_helper.to_array(weight)
+
+        weights[weight.name] = np_weight
+    return weights
+
+
 def load_initializers_from_onnx(model_path, load_optimizer=False):
     """Load initial weights from an onnx checkpoint.
 

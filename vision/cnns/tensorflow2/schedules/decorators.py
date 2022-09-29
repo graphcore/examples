@@ -4,7 +4,6 @@ from typing import Any, Mapping
 
 import tensorflow as tf
 from tensorflow.keras.optimizers.schedules import LearningRateSchedule
-from tensorflow.keras.mixed_precision import global_policy
 
 
 class ShiftWarmup(LearningRateSchedule):

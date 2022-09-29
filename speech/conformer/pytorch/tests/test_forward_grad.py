@@ -106,8 +106,8 @@ class CompareFwdBwdPass():
         tensor_ = self.tensor_
         tensors = []
         for t in tensor_:
-            self.opts.anchorTensor('model.'+t, 'model.'+t)
-            self.opts.anchorTensor('Gradient___model.'+t, 'Gradient___model.'+t)
+            self.opts.anchorTensor(t, t)
+            self.opts.anchorTensor('Gradient___'+t, 'Gradient___'+t)
         optimizer = poptorch.optim.SGD(model_ipu.parameters(), lr=lr)
         training_model = poptorch.trainingModel(
             model_ipu, options=self.opts, optimizer=optimizer)
@@ -141,8 +141,8 @@ class CompareFwdBwdPass():
         weight_dic = {}
         tensor_names = self.training_model.getTensorNames()
         for t in self.tensor_:
-            grad_name = 'Gradient___model.'+t
-            wname = "model."+t
+            grad_name = 'Gradient___'+t
+            wname = t
             grad_dic[grad_name] = self.training_model.getAnchoredTensor(grad_name)
             weight_dic[wname] = self.training_model.getAnchoredTensor(wname)
         return weight_dic, grad_dic, output
@@ -167,7 +167,7 @@ class CompareFwdBwdPass():
         for i in range(0, name_nums):
             grad_cpu = para_dict[i][-1].grad
             name = para_dict[i][0]
-            grad_dict['Gradient___model.'+name] = grad_cpu
+            grad_dict['Gradient___'+name] = grad_cpu
             weight_dict[name] = model_cpu.state_dict()[name]
         return weight_dict, grad_dict, output
 

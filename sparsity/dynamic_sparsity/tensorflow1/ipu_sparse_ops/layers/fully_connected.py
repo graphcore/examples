@@ -339,8 +339,6 @@ class SparseFcLayer:
                 "remove it from the sparse_layers list.")
 
         slot_var = optimizer.get_slot(self.values_var, slot_name)
-        internal_name = slot_var.name
-        logger.debug(f"Recording slot variable {slot_var.name} as {internal_name}")
 
         if slot_var is None:
             raise ValueError(
@@ -348,6 +346,9 @@ class SparseFcLayer:
                 f"a slot variable for '{self.values_var.name}' but no such "
                 "slot exists! Make sure the loss op is actually dependent "
                 "on this layer or remove it from the sparse_layers list.")
+
+        internal_name = slot_var.name
+        logger.debug(f"Recording slot variable {slot_var.name} as {internal_name}")
 
         if slot_var.shape != self.weights.get_values().shape:
             raise ValueError(

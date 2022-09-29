@@ -272,8 +272,8 @@ class StatRecorder:
         output_function("Inference")
         output_function("Average Min Latency per Batch: {:.3f} ms".format(1000 * sum(avg_min_latency)/len(self.inference_times)))
         output_function("Average Max Latency per Batch: {:.3f} ms".format(1000 * sum(avg_max_latency)/len(self.inference_times)))
-        output_function("Average Latency per Batch: {:.3f} ms".format(1000 * sum(avg_latency)/len(self.inference_times)))
-        output_function("Average Inference Throughput: {:.3f} img/s".format(sum(self.inference_throughputs)/len(self.inference_throughputs)))
+        output_function("Per-batch latency avg: {:.3f} ms".format(1000 * sum(avg_latency)/len(self.inference_times)))
+        output_function("Average Inference throughput: {:.3f} samples/sec".format(sum(self.inference_throughputs)/len(self.inference_throughputs)))
         output_function("--------------------------------------------------")
 
         if self.cfg.eval.metrics:

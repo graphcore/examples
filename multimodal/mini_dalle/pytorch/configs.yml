@@ -127,7 +127,7 @@ L16_POD64:
   # Optimizer
   learning_rate: 5e-3
   lr_scheduler: "multi_step"
-  loss_scaling: 32768
+  loss_scaling: 16384
 
   # Misc
   dataloader_workers: 64

@@ -34,7 +34,7 @@ cd ../inference/
 3) Run the graph.
 
 ```console
-python3 run_benchmark.py --data real --replicas 1  --batch-size 1 --model resnet18 --device-iteration 1
+python3 run_benchmark.py --data real --replicas 1  --micro-batch-size 1 --model resnet18 --device-iteration 1
 ```
 
   Run benchmarks with Triton Server:
@@ -42,6 +42,22 @@ python3 run_benchmark.py --data real --replicas 1  --batch-size 1 --model resnet
 ```console
 python3 run_benchmark_with_triton_server.py --benchmark_only=true ../tests_serial/tritonserver/
 ```
+
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 ### Options
 
@@ -51,7 +67,7 @@ The `run_benchmark.py` program has a few command-line options:
 
 `--config`                      Apply the selected configuration.
 
-`--batch-size`                  Sets the batch size for inference.
+`--micro-batch-size`            Sets the micro batch size for inference.
 
 `--model`                       Select the model (from a list of supported models) for inference.
 
@@ -89,10 +105,12 @@ The `run_benchmark.py` program has a few command-line options:
 
 `--random-weights`              When true, weights of the model are initialized randomly.
 
-The `run_benchmark_with_triton_server.py` is accepting all `pytest` options with additional options:
+The `run_benchmark_with_triton_server.py` is a thin wrapper that allows to run `pytest` tests from python without explicit library request (`python -m pytest ...`). Script is accepting all `pytest` options with additional command-line options:
+
 `--model-repository`            Path to directory which consists model configuration files for Triton Server and model exported to popef file. Default: `../test_serial/tritonserver/models`
-`--backend-directory`           Path to Triton Server backend files. Default: `%Public_Examples_repo_root_dir%/utils/triton_server/backends`
+
 `--grpc-port`                   Port on which Triton Server will be listening for commands.
+
 `--benchmark_only`              Run benchmarks sending requests with exactly 1 batch size of selected model.
 
 ### Model configurations
@@ -116,35 +134,3 @@ Inference with Triton Server, requires at least POD4.
 |ResNet50|`python3 run_benchmark_with_triton_server.py -s -k test_single_model[resnet50-resnet50 --benchmark_only=true ../tests_serial/tritonserver/`|
 |EfficientNet-B0|`python3 run_benchmark_with_triton_server.py -s -k test_single_model[efficientnet-b0-efficientnet-b0 --benchmark_only=true ../tests_serial/tritonserver/`|
 |EfficientNet-B4|`python3 run_benchmark_with_triton_server.py -s -k test_single_model[efficientnet-b4-efficientnet-b4 --benchmark_only=true ../tests_serial/tritonserver/`|
-
-## Benchmarking
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
-
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
-
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
-
-## Profiling
-
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.

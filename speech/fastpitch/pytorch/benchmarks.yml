@@ -3,13 +3,10 @@ common_options: &common_options
   data:
     throughput:
       skip: 1
-      regexp: 'throughput: *(.*?),'
-    loss:
-      reduction_type: 'final'
-      regexp: 'loss: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
   output:
-    - [throughput, 'throughput']
-    - [loss, 'loss']
+    - [samples/sec, 'throughput']
+
 
 pytorch_fastpitch_train_gen_pod16:
   <<: *common_options
@@ -19,7 +16,7 @@ pytorch_fastpitch_train_gen_pod16:
       --checkpoint-dir ./
       --epochs 1
       --learning-rate 0.1
-      --batch-size 1
+      --batch-size 2
       --dur-predictor-loss-scale 0.1
       --pitch-predictor-loss-scale 0.1
       --gradient-accumulation 16

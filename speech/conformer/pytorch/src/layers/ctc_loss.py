@@ -20,7 +20,6 @@ class CtcLoss(torch.nn.Module):
 
 
     def forward(self, log_probs, targets, input_lengths, target_lengths, dtype):
-
         dummy_shape = torch.zeros_like(torch.tensor(58.0, dtype=dtype), dtype=dtype, requires_grad=True)   # the dummy_shape's value is not import, which is used to put the shape and dtype to the custom_op
         loss = poptorch.custom_op(
             [log_probs, targets, input_lengths, target_lengths-1],

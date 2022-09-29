@@ -44,6 +44,9 @@ def get_options(config):
     opts.Training.gradientAccumulation(config.gradient_accumulation)
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
 
+    # Enable automatic loss scaling
+    opts.Training.setAutomaticLossScaling(config.enable_als)
+
     # Return all results from IPU to host
     opts.outputMode(poptorch.OutputMode.Final)
 

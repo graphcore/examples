@@ -1,7 +1,9 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
 
+import datetime
 import warnings
 
+import import_helper
 import numpy as np
 import popart
 import poptorch
@@ -9,6 +11,7 @@ import pytest
 import torch
 from args import parse_args
 from model import CLIP
+from log import Logger
 
 
 def test_ipu_cpu_match():
@@ -22,6 +25,7 @@ def test_ipu_cpu_match():
     --config unit_test
     """.split()
     config = parse_args(config)
+    log = Logger("./"+datetime.datetime.now().strftime('%Y.%m.%d-%H:%M:%S')+'.log', level='info')
 
     # Fix the random seeds
     torch.manual_seed(config.random_seed)
@@ -46,7 +50,7 @@ def test_ipu_cpu_match():
     )
 
     model_cpu = CLIP(config).train()
-    model_ipu = CLIP(config).train()
+    model_ipu = CLIP(config).parallelize(log).train()
 
     model_ipu.load_state_dict(model_cpu.state_dict())
 
@@ -62,7 +66,7 @@ def test_ipu_cpu_match():
     poptorch_model = poptorch.trainingModel(model_ipu, opts, optimizer=optimizer_ipu)
 
     images = torch.randn(10, 3, 224, 224)
-    input_ids = torch.randint(0, 49408, (10, 77))
+    input_ids = torch.randint(0, config.vocab_size, (10, config.context_length))
     images_ipu = images.repeat((config.gradient_accumulation, 1, 1, 1))
     input_ids_ipu = input_ids.repeat((config.gradient_accumulation, 1))
 

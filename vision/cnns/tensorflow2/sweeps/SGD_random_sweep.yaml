@@ -1,0 +1,41 @@
+program: run_sweep.py
+name: SGD_random_sweep
+project: tf2-classification
+method: random
+metric:
+  name: epoch_to_target
+  goal: minimize
+parameters:
+  l2:
+    distribution: log_uniform
+    min: -6
+    max: -3
+  init_lr:
+    distribution: log_uniform
+    min: -12
+    max: -4
+  end_lr_ratio:
+    distribution: log_uniform
+    min: -12
+    max: -2
+  warmup_epochs:
+    distribution: int_uniform
+    min: 0
+    max: 10
+  bn_momentum:
+    distribution: uniform
+    min: 0.7
+    max: 0.99
+  label_smoothing:
+    distribution: uniform
+    min: 0.02
+    max: 0.2
+  opt_momentum:
+    distribution: uniform
+    min: 0.7
+    max: 0.99
+  # constants
+  config:
+    value: 'resnet50_mlperf_pod16_bs20'
+  num_epochs:
+    value: 40

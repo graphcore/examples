@@ -26,8 +26,6 @@ def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use
     """
     logging.info("Creating the model")
     model = create_model(args.model, args, num_classes=data_info["out"], pretrained=pretrained, inference_mode=inference_mode)
-    if args.precision[-3:] == ".16":
-        model.half()
 
     model_manipulator = ModelManipulator(model)
     # Set norm layers
@@ -46,6 +44,11 @@ def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use
     if hasattr(args, "input_image_padding") and args.input_image_padding:
         model = model_manipulator.transform(ModelManipulator.first_match(type_match(torch.nn.Conv2d)),
                                             replace_module(lambda node: PaddedConv(get_module_from_node(node))), "INPUT PADDING")
+
+    # Convert the model to half after all model manipulations have been made
+    if args.precision[-3:] == ".16":
+        model.half()
+
     nested_model = model
     if args.normalization_location == "ipu":
         cast = "half" if args.precision[:3] == "16." else "full"
@@ -55,10 +58,6 @@ def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use
             datasets.normalization_parameters["std"],
             output_cast=cast
         )
-
-    if args.num_io_tiles > 0:
-        model = OverlapModel(model)
-
     if use_mixup or use_cutmix:
         model = augmentations.AugmentationModel(model, use_mixup, use_cutmix, args)
 
@@ -66,17 +65,26 @@ def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use
     if with_loss:
         if use_mixup or use_cutmix:
             def mix_classification_loss(output, labels):
+                inner_model = model
+                # Find AugmentationModel
+                while not isinstance(inner_model, augmentations.AugmentationModel):
+                    inner_model = inner_model.model
                 log_preds, coeffs = output
-                all_labels, weights = model.model.mix_labels(labels, coeffs)
+                all_labels, weights = inner_model.mix_labels(labels, coeffs)
                 return weighted_nll_loss(log_preds, all_labels, weights)
             losses = LabelSmoothing(mix_classification_loss, label_smoothing=args.label_smoothing).get_losses_list()
         else:
             losses = LabelSmoothing(torch.nn.NLLLoss(reduction='mean'), label_smoothing=args.label_smoothing).get_losses_list()
         model = TrainingModelWithLoss(model, losses, [utils.accuracy])
     name_scope_hook(model)  # Use human readable names for each layer
+
+    if args.num_io_tiles > 0:
+        model = OverlapModel(model)
+
     # Put it into tuple to avoid too many recursive call problems: if no wrapper applied, it can be infinite recursion.
     # PyTorch doesn't look into non Parameter / Module type instances.
     model.nested_model = (nested_model,)
+
     return model
 
 

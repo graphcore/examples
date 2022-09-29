@@ -85,7 +85,10 @@ logger.init_log(output_dir,
                 post_fix=log_prefix,
                 resume=False,
                 tb_on=False,
-                wandb_on=False)
+                wandb_on=cfg.TRAIN.WANDB_ON,
+                wandb_project_name=cfg.TRAIN.WANDB_PROJECT_NAME,
+                wandb_run_name=cfg.TRAIN.WANDB_RUN_NAME)
+
 logger.log_str('output dir:', output_dir)
 
 if cfg.TEST.DATASET == 'voc':
@@ -239,7 +242,7 @@ for im_id in tqdm.tqdm(list(range(total_iters))):
 inference_time = time.time() - inference_start_time
 logger.log_str('inference time:', inference_time,
                ' seconds')
-logger.log_str('inference throughput:', val_size / inference_time)
+logger.log_str('inference throughput: ', val_size / inference_time, ' samples/sec')
 
 eval_output_dir = os.path.join(output_dir, 'eval')
 if not os.path.exists(eval_output_dir):

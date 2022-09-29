@@ -8,6 +8,7 @@ class EpochCalculationCallback(tf.keras.callbacks.Callback):
     def __init__(self, micro_batches_per_epoch: int):
         self.epoch = 0
         self.micro_batches_per_epoch = micro_batches_per_epoch
+        self.prev_batch = 0
 
     def on_train_batch_end(self, batch, logs=None):
         if logs is not None:
@@ -17,6 +18,4 @@ class EpochCalculationCallback(tf.keras.callbacks.Callback):
         self.epoch = epoch
 
     def on_test_batch_end(self, batch, logs=None):
-        self.epoch += (batch+1) / self.micro_batches_per_epoch
-        if logs is not None:
-            logs['epoch'] = self.epoch
+        raise ValueError('use an EpochFromCkptNameCallback callback instead')

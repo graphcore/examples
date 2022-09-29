@@ -10,4 +10,4 @@ pillow==8.4.0
 attrdict==2.0.1
 horovod==0.24.0
 randaugment==1.0.2
-git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils

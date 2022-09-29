@@ -26,7 +26,7 @@ import onnx
 import popdist
 
 from bert_model import BertConfig
-from .weight_loading import load_initializers_from_onnx
+from .weight_loading import load_initializers_from_onnx, weight_dict_from_onnx
 from .distributed import setup_comm
 
 logger = logging.getLogger(__name__)
@@ -577,13 +577,6 @@ def set_popdist_args(args):
 
     if args.inference:
         raise RuntimeError("Distributed execution is only supported for training")
-
-    try:
-        import horovod.popart as hvd
-        hvd.init()
-    except ImportError:
-        raise ImportError("Could not find the PopART horovod extension. "
-                          "Please install the horovod .whl provided in the Poplar SDK.")
 
     args.use_popdist = True
     popdist_local_factor = popdist.getNumLocalReplicas()

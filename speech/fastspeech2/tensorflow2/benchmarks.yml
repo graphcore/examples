@@ -2,20 +2,22 @@
 train_options: &train_options
   data:
     throughput:
-      reduction_type: 'final'
-      regexp: 'Throughput: *(.*?) samples/s'
+      skip: 2
+      regexp: 'throughput: *(.*?) samples\/sec'
   output:
     - [samples/sec, 'throughput']
 
 inference_options: &inference_options
   data:
     throughput:
-      regexp: 'Averaged Metrics.*\n.*Throughput:\s*([\d\.]+)'
+      skip: 2
+      regexp: 'throughput: *(.*?) samples\/sec'
     latency:
-      regexp: 'Averaged Metrics.*\n.*Latency:\s*([\d\.]+)'
+      skip: 2
+      regexp: 'latency avg: *(.*?) ms'
   output:
-    - [samples/s, "throughput"]
-    - [latency ms, "latency"]
+    - [samples/sec, "throughput"]
+    - [latency(ms), "latency"]
 
 tf2_fastspeech2_train_gen_pod4:
   <<: *train_options
@@ -28,7 +30,7 @@ tf2_fastspeech2_train_gen_pod4:
         --batch-size 2
         --replicas 2
         --gradient-accumulation-count 8
-        --epochs 2
+        --epochs 10
         --available-memory-proportion 0.1
 
 tf2_fastspeech2_train_gen_pod16:
@@ -42,7 +44,7 @@ tf2_fastspeech2_train_gen_pod16:
         --batch-size 2
         --replicas 8
         --gradient-accumulation-count 4
-        --epochs 2
+        --epochs 10
         --available-memory-proportion 0.1
 
 tf2_fastspeech2_fp16_infer_gen_pod4:

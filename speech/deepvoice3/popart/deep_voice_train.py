@@ -13,14 +13,13 @@ from deep_voice_model import PopartDeepVoice
 import deep_voice_data
 import conf_utils
 import text_utils
-from examples_utils.load_lib_utils.cppimport_safe import cppimport_build_safe
+from examples_utils import load_lib
 
 # set up logging
 logger = logging_util.get_basic_logger('DEEP_VOICE')
 
 logger.info("Building (if necessary) and loading gradient_clipping_pattern.")
-cppimport_build_safe(os.path.dirname(os.path.abspath(__file__)) + '/custom_ops/gradient_clipping_pattern.cpp',
-                     sdk_version_check=True)
+load_lib(os.path.dirname(os.path.abspath(__file__)) + '/custom_ops/gradient_clipping_pattern.cpp')
 
 
 def _get_popart_type(np_type):
@@ -399,7 +398,8 @@ if __name__ == '__main__':
         epoch_duration_secs = time.time() - epoch_start_time
         num_queries_processed = dataset.num_steps_train_set * conf.device_iterations * conf.global_batch_size
         training_throughput = num_queries_processed / epoch_duration_secs
-        print("Training throughput: {:.2f} Queries/Sec".format(training_throughput))
+        print("Training throughput: {:.2f} samples/sec".format(training_throughput))
+        print(f"loss: {str(np.mean(loss_data['train_' + 'total']))}")
 
         if not conf.generated_data:
             if (epoch % conf.checkpoint_interval == 0 or (not conf.no_validation and

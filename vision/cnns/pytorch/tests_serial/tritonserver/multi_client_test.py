@@ -11,7 +11,7 @@ import pytest
 from triton_server.client import RequestType, task_one_client_one_model, task_one_client_one_model_buffered_data
 from triton_server.utilsTriton import PoolLogExceptions
 from tritonserver.conftest import test_configs, benchmark_opt
-from test_utils import get_model_settings, log_performance_results
+from test_utils import get_model_settings, log_performance_results, DataGeneratorWrapper
 
 request_types_params = (RequestType.SYNC, RequestType.ASYNC)
 processes = (1, 4, 8)
@@ -48,15 +48,15 @@ def test_single_model(request, triton_server, request_type, model_name,
 
     dataloader = datasets.get_data(
         args, opts, train=False, async_dataloader=not benchmark_only)
+    data_generator = DataGeneratorWrapper(dataloader)
+
+    number_of_outputs = 1
 
     if benchmark_only:
         input_dataset = []
         result_dataset = []
-        for input_data, _ in dataloader:
-            input_dataset.append(input_data.numpy())
-
-        test_method = PoolLogExceptions(
-            task_one_client_one_model_buffered_data)
+        for input_data, ref_input in data_generator:
+            input_dataset.append(input_data)
 
         pool = Pool(processes=number_of_processes)
         tasks = [
@@ -64,7 +64,7 @@ def test_single_model(request, triton_server, request_type, model_name,
                              args=(client_id, triton_server.url, args, model_name,
                                    request_type, copy.deepcopy(
                                        input_dataset),
-                                   result_dataset, benchmark_only))
+                                   result_dataset, number_of_outputs, benchmark_only))
             for client_id in range(number_of_processes)
         ]
         results = [task.get()[0] for task in tasks]
@@ -76,10 +76,10 @@ def test_single_model(request, triton_server, request_type, model_name,
         result = all(results)
     else:
         test_method = PoolLogExceptions(task_one_client_one_model)
-        result, throughputs, latencies, result_data_type = test_method(triton_server.url,
+        result, throughputs, latencies, result_data_type = test_method(0, triton_server.url,
                                                                        args, model_name,
                                                                        request_type,
-                                                                       dataloader,
+                                                                       data_generator, number_of_outputs,
                                                                        poptorch_ref_model)
     log_performance_results(args, model_name, request_type,
                             result_data_type, number_of_processes, throughputs, latencies)

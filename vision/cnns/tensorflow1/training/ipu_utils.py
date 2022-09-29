@@ -58,7 +58,8 @@ def get_config(stochastic_rounding="ON",
                compile_only=False,
                nanoo=True,
                scheduling_algorithm=SchedulingAlgorithm.CHOOSE_BEST,
-               max_reduce_many_buffer_size=0
+               max_reduce_many_buffer_size=0,
+               only_use_slic_vmac_16=False
                ):
     """Builds ipu_options"""
     config = IPUConfig()
@@ -100,6 +101,9 @@ def get_config(stochastic_rounding="ON",
         config.convolutions.poplar_options['enableConvDithering'] = 'true'
     if conv_output:
         config.convolutions.poplar_options['gatherConvOutput'] = 'true'
+
+    if only_use_slic_vmac_16:
+        config.convolutions.poplar_options['experimental.slicVmac16'] = 'true'
 
     if stable_norm:
         config.norms.use_stable_statistics = True

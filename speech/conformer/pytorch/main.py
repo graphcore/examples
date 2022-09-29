@@ -80,11 +80,14 @@ class Workflow:
         self.scheduler = WarmupLR(self.optimizer, **self.args['scheduler'])
 
     def build_wandb(self):
-        if not self.args['trainer']['wandb_name']:
+        if not self.args['trainer']['wandb_project_name']:
             self.wandb = None
         else:
             if self.args['popdist_rank'] == 0:
-                wandb.init(project=self.args['trainer']['wandb_name'], settings=wandb.Settings(console='off'))
+                wandb.init(
+                    project=self.args['trainer']['wandb_project_name'],
+                    name=self.args['trainer']['wandb_run_name'],
+                    settings=wandb.Settings(console='off'))
                 wandb.config.update(self.args)
                 self.wandb = wandb
 
@@ -297,8 +300,9 @@ class Workflow:
             )
 
     def build_model(self):
-        encoder = ConformerEncoder(**self.args['encoder'])
-        decoder = TransformerDecoder(**self.args['decoder'])
+        self.dtype = torch.float16 if self.args['train_dataset']['dtype'] == "FLOAT16" else torch.float32
+        encoder = ConformerEncoder(dtype=self.dtype, **self.args['encoder'])
+        decoder = TransformerDecoder(dtype=self.dtype, **self.args['decoder'])
         self.feature_len = self.args['encoder']['input_size']
         self.use_generate = self.args['train_dataset']['use_generated_data']
         if not self.use_generate:
@@ -311,7 +315,6 @@ class Workflow:
         normalizer = GlobalMVN(
             self.use_generate, self.feature_len, mean=mean, inv_std=istd)
         loss_fn = LabelSmoothingLoss(**self.args['loss_fn'])
-        self.dtype = torch.float16 if self.args['train_dataset']['dtype'] == "FLOAT16" else torch.float32
         self.model = Conformer(
             normalizer=normalizer, encoder=encoder, decoder=decoder, loss_fn=loss_fn, args=self.args, dtype=self.dtype
         )
@@ -319,7 +322,6 @@ class Workflow:
         initialize(self.model, self.init_type)
         if self.args['trainer']['dtype'] == 'FLOAT16':
             self.model.half()
-        self.model.autocast(enabled=True)
 
     def wrap_pipeline_model(self):
         assert self.model

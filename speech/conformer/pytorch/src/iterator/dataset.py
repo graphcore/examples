@@ -215,6 +215,7 @@ class IPUCollateFn:
             padded_feature[index, :sample[1][0].size(0), :] = sample[1][0]
             padded_target[index, :sample[2][0].size(0)] = sample[2][0]
             keys.append(sample[0][0])
+        keys = torch.as_tensor(keys)
         target_out = padded_target.scatter(
             1, target_length.unsqueeze(1).long(), self.eos)
         target_in = torch.nn.functional.pad(

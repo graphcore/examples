@@ -27,6 +27,7 @@ import math
 import random
 import datetime
 import subprocess
+from enum import Enum, unique
 from collections import defaultdict, deque
 
 import numpy as np
@@ -37,6 +38,22 @@ import poptorch
 import popdist
 import popdist.poptorch
 import horovod.torch as hvd
+
+
+@unique
+class Precision(Enum):
+    # AMP operation with FP32 input multiplicands as well as Fp32 partial sums
+    # of products
+    FP32 = 'float32'
+    # AMP operation with FP16 input multiplicands and FP16 partial sums of
+    # products
+    FP16 = 'float16'
+    # AMP operation with FP16 input multiplicands and FP32 partial sums of
+    # products
+    MasterWeight = 'masterweight'
+
+    def __str__(self):
+        return str(self.value)
 
 
 def init_popdist(args):
@@ -193,18 +210,19 @@ def get_params_groups(model):
             else:
                 regularized.append(param)
 
-    return [{'params': regularized, 'weight_decay': 0.05},
+    return [{'params': regularized, 'weight_decay': 0.04},
             {'params': not_regularized, 'weight_decay': 0.},
-            {'params': weight_g, 'lr': 0., 'weight_decay': 0.},
-            {'params': weight_v, 'lr': 0., 'weight_decay': 0.}]
+            {'params': weight_g, 'lr': 0., 'weight_decay': 0.04},
+            {'params': weight_v, 'lr': 0., 'weight_decay': 0.04}]
 
 
-def save_checkpoint(epoch, model, optimizer, center, path):
+def save_checkpoint(epoch, model, optimizer, center, path, mid_save=False):
     save_state = {'model': model.state_dict(),
                   'optimizer': optimizer.state_dict(),
                   'center': center,
                   'epoch': epoch}
-    torch.save(save_state, f'{path}/model_{epoch}.pth')
+    if mid_save:
+        torch.save(save_state, f'{path}/model_{epoch}.pth')
     torch.save(save_state, f'{path}/checkpoint.pth')
 
 

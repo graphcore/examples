@@ -14,16 +14,11 @@
 # limitations under the License.
 
 import argparse
-import datetime
 import json
-import math
 import os
-import random
 import sys
 import time
-from collections import OrderedDict, namedtuple, Counter
-from socket import gethostname
-from itertools import chain
+from collections import OrderedDict
 from queue import Queue
 from threading import Thread
 
@@ -31,11 +26,10 @@ import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.python import ipu
 from tensorflow.python.ipu import ipu_infeed_queue, ipu_outfeed_queue
-from tensorflow.python.ipu.ops import pipelining_ops
 from tensorflow.python.ipu.scopes import ipu_scope
-from tensorflow.python.ipu.utils import reset_ipu_seed
 from tensorflow.python.ipu import application_compile_op
 from tensorflow.python.ipu import embedded_runtime
+from tensorflow.python.ipu import horovod as hvd
 
 import gc
 import log
@@ -43,36 +37,21 @@ import modeling as bert_ipu
 from bert_data import data_loader
 from bert_data import squad as squad_data
 from bert_data import squad_results, tokenization
-from ipu_utils import get_config, stages_constructor
+import ipu_utils
 from log import logger
 from options import make_global_options
 
+import popdist
 from poplar_options import set_poplar_engine_options
 from run_squad import (
-    build_squad_pipeline_stages,
     build_network,
     should_be_pipeline_when_inference,
     build_infer_network_without_pipeline,
-    build_network,
 )
 from evaluate_squad import evaluate_squad
 
-# Graph data structure
-GraphOps = namedtuple(
-    "graphOps",
-    [
-        "graph",
-        "session",
-        "init",
-        "ops",
-        "placeholders",
-        "iterator",
-        "outfeed",
-        "restore",
-        "tvars",
-        "exec_path",
-    ],
-)
+from mpi4py import MPI
+comm = MPI.COMM_WORLD
 
 
 def get_exec_path(seq_length, micro_batch_size, device_mapping, pipelined):
@@ -82,19 +61,19 @@ def get_exec_path(seq_length, micro_batch_size, device_mapping, pipelined):
 
 def build_graph(opts, iterations_per_step=1, is_training=True):
 
-    train_graph = tf.Graph()
-    with train_graph.as_default():
+    valid_graph = tf.Graph()
+
+    with valid_graph.as_default():
         bert_config = bert_ipu.BertConfig.from_dict(
             opts, config=bert_ipu.BertConfig(vocab_size=None)
         )
         bert_config.dtype = (
             tf.float32 if opts["precision"] == "32" else tf.float16
         )
-        placeholders = dict()
 
         learning_rate = None
         opts["version_2_with_negative"] = False
-        train_iterator = ipu_infeed_queue.IPUInfeedQueue(
+        valid_iterator = ipu_infeed_queue.IPUInfeedQueue(
             data_loader.load(opts, is_training=is_training)
         )
         outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
@@ -104,7 +83,7 @@ def build_graph(opts, iterations_per_step=1, is_training=True):
 
             def bert_net():
                 return build_infer_network_without_pipeline(
-                    train_iterator,
+                    valid_iterator,
                     outfeed_queue,
                     iterations_per_step,
                     bert_config=bert_config,
@@ -115,7 +94,7 @@ def build_graph(opts, iterations_per_step=1, is_training=True):
 
             def bert_net():
                 return build_network(
-                    train_iterator,
+                    valid_iterator,
                     outfeed_queue,
                     iterations_per_step,
                     bert_config,
@@ -132,12 +111,6 @@ def build_graph(opts, iterations_per_step=1, is_training=True):
                     "embedded_runtime is only to be used for inference."
                 )
 
-            train = (
-                ipu.ipu_compiler.compile(bert_net, [])
-                if not embedded
-                else None
-            )
-
         exec_path = None
         compile_op = None
         poplar_exec_filepath = get_exec_path(
@@ -149,102 +122,61 @@ def build_graph(opts, iterations_per_step=1, is_training=True):
         exec_path = os.path.join(poplar_exec_filepath)
         compile_op = (
             application_compile_op.experimental_application_compile_op(
-                bert_net, output_path=exec_path, freeze_variables=True
-            )
+                bert_net, output_path=exec_path, freeze_variables=True)
         )
 
-        outfeed = outfeed_queue.dequeue()
+        outfeed_queue.dequeue()
 
-        restore = tf.train.Saver(var_list=tf.global_variables())
+        tf.train.Saver(var_list=tf.global_variables())
 
         ipu.utils.move_variable_initialization_to_cpu()
-        train_init = tf.global_variables_initializer()
+        valid_init = tf.global_variables_initializer()
         tvars = tf.trainable_variables()
 
-    # Calculate the number of required IPU"""
-    num_ipus = (max(opts["device_mapping"]) + 1) * int(opts["replicas"])
-    # The number of acquired IPUs must be the power of 2.
-    if num_ipus & (num_ipus - 1) != 0:
-        num_ipus = 2 ** int(math.ceil(math.log(num_ipus) / math.log(2)))
-    ipu_config = get_config(
-        fp_exceptions=opts["fp_exceptions"],
-        enable_recomputation=opts["enable_recomputation"],
-        disable_graph_outlining=False,
-        num_required_ipus=num_ipus,
-        enable_stochastic_rounding=opts["stochastic_rounding"],
-        max_cross_replica_sum_buffer_size=opts[
-            "max_cross_replica_sum_buffer_size"
-        ],
-        max_reduce_scatter_buffer_size=opts["max_reduce_scatter_buffer_size"],
-        scheduler_selection="CLUSTERING",
-        compile_only=False,
-        ipu_id=None,
-        partials_type=opts["partials_type"],
-        available_memory_proportion=opts["available_memory_proportion"],
-    )
+    with tf.Session(graph=valid_graph, config=tf.ConfigProto()) as sess:
+        _ = sess.run(valid_init, [])
+        # -----------------
+        # Checkpoints    restore and save
+        init_checkpoint_path = opts["init_checkpoint"]
+        logger.info(f"At the checkpoint location {init_checkpoint_path}")
+        if init_checkpoint_path:
+            logger.info("Loading checkpoint...")
+            if os.path.isfile(init_checkpoint_path):
+                init_checkpoint_path = os.path.splitext(init_checkpoint_path)[0]
+                logger.info(f"checkpoint path: {init_checkpoint_path}")
 
-    ipu_config.configure_ipu_system()
-
-    train_sess = tf.Session(graph=train_graph)
-    _ = train_sess.run(train_init, [])
-    # -----------------
-    # Checkpoints    restore and save
-    init_checkpoint_path = opts["init_checkpoint"]
-    logger.info(f"At the checkpoint location {init_checkpoint_path}")
-    if init_checkpoint_path:
-        logger.info("Loading checkpoint...")
-        if os.path.isfile(init_checkpoint_path):
-            init_checkpoint_path = os.path.splitext(init_checkpoint_path)[0]
-            logger.info(f"checkpoint path: {init_checkpoint_path}")
-
-        (
-            assignment_map,
-            initialized_variable_names,
-        ) = bert_ipu.get_assignment_map_from_checkpoint(
-            tvars, init_checkpoint_path
-        )
-
-        for var in tvars:
-            if var.name in initialized_variable_names:
-                mark = "*"
-            else:
-                mark = " "
-            logger.info(
-                "%-60s [%s]\t%s (%s)",
-                var.name,
-                mark,
-                var.shape,
-                var.dtype.name,
+            (
+                assignment_map,
+                initialized_variable_names,
+            ) = bert_ipu.get_assignment_map_from_checkpoint(
+                tvars, init_checkpoint_path
             )
 
-        reader = tf.train.NewCheckpointReader(init_checkpoint_path)
-        load_vars = reader.get_variable_to_shape_map()
+            for var in tvars:
+                if var.name in initialized_variable_names:
+                    mark = "*"
+                else:
+                    mark = " "
+                logger.info(
+                    "%-60s [%s]\t%s (%s)",
+                    var.name,
+                    mark,
+                    var.shape,
+                    var.dtype.name,
+                )
 
-        saver_restore = tf.train.Saver(assignment_map)
-        saver_restore.restore(train_sess, init_checkpoint_path)
-    # -----------------
-    if compile_op is not None:
-        logger.info(
-            f"Compiling and saving Poplar executable to {poplar_exec_filepath}"
-        )
-        _ = train_sess.run(compile_op, [])
-    else:
-        exec_path = None
-    return (
-        GraphOps(
-            train_graph,
-            train_sess,
-            train_init,
-            [train],
-            placeholders,
-            train_iterator,
-            outfeed,
-            restore,
-            tvars,
-            exec_path,
-        ),
-        ipu_config,
-    )
+            reader = tf.train.NewCheckpointReader(init_checkpoint_path)
+            reader.get_variable_to_shape_map()
+
+            saver_restore = tf.train.Saver(assignment_map)
+            saver_restore.restore(sess, init_checkpoint_path)
+        # -----------------
+        if compile_op is not None:
+            logger.info(
+                f"Compiling and saving Poplar executable to {poplar_exec_filepath}"
+            )
+            _ = sess.run(compile_op, [])
+    valid_graph.finalize()
 
 
 def parse_feed_dict(placeholders, data, bs, seq_length, i=0):
@@ -294,7 +226,6 @@ def run_time(opts, dataset_list=None):
     placeholders = [input_ids, input_mask, segment_ids, unique_ids]
     durations = []
     master_durations = []
-    test_results = []
     durations = []
     call_result = embedded_runtime.embedded_runtime_call(placeholders, ctx)
     thread_queue = Queue()
@@ -358,7 +289,6 @@ def run_time(opts, dataset_list=None):
             Thread(target=runner, args=(feed_dict, sess))
             for _ in range(opts["num_inference_thread"])
         ]
-        start_time = time.time()
         for idx, _thread in enumerate(thp):
             _thread.start()
             logger.info(f"Thread {idx} started.")
@@ -367,16 +297,15 @@ def run_time(opts, dataset_list=None):
             _thread.join()
             logger.info(f"Thread {idx} join.")
 
-        total_dur = time.time() - start_time
 
         durations_from_th = []
         while not thread_queue.empty():
             durations_from_th += thread_queue.get()
 
         latencies = [y - x for x, y in durations_from_th]
-        latency = np.mean(latencies)
-        latency_99 = np.percentile(latencies, 99)
-        latency_99_9 = np.percentile(latencies, 99.9)
+        latency = np.mean(latencies)*1000
+        latency_99 = np.percentile(latencies, 99)*1000
+        latency_99_9 = np.percentile(latencies, 99.9)*1000
         min_start = min([x for x, _ in durations_from_th])
         max_stop = max([y for _, y in durations_from_th])
         tput = (
@@ -384,14 +313,27 @@ def run_time(opts, dataset_list=None):
             number_of_steps / (max_stop - min_start)
         )
 
-        test_results = {
-            "batch size": bs,
-            "latency": latency,
-            "latency_99": latency_99,
-            "latency_99_9": latency_99_9,
-            "throughput": tput,
-        }
-        logger.info(test_results)
+        with tf.Graph().as_default(), tf.Session():
+            throughputs = hvd.allgather(tf.constant([tput], name='Throughputs',
+                                        dtype = tf.float32)).eval()
+            all_results = hvd.allgather(tf.constant(all_results, name='InferenceResults',
+                                        dtype = tf.float32)).eval()
+
+        tput = sum(throughputs)
+
+        print_format = ("batch size: {bs:4d}, latency avg: {latency_avg:6f} ms, latency 99p: {latency_99:6.4f} ms, latency 99p9: {latency_99_9:6.4g} ms, throughput: {throughput_samples_per_sec:6.3f} samples/sec, ")
+        stats = OrderedDict(
+            [
+                ("bs", bs),
+                ("latency_avg", latency),
+                ("latency_99", latency_99),
+                ("latency_99_9", latency_99_9),
+                ("throughput_samples_per_sec", tput),
+            ]
+        )
+        if not popdist.isPopdistEnvSet() or popdist.getInstanceIndex() == 0:
+            logger.info(print_format.format(**stats))
+
     return all_results
 
 
@@ -462,14 +404,42 @@ def predict_loop(opts):
         ]
 
     iterations_per_step = 1
-    predict, ipu_config = build_graph(
-        opts, iterations_per_step, is_training=False
+
+    # Calculate the number of required IPU"""
+    num_ipus = (max(opts["device_mapping"]) + 1) * int(opts["replicas"])
+    num_ipus = ipu_utils.next_power_of_two(num_ipus)
+    # The number of acquired IPUs must be the power of 2.
+    ipu_config = ipu_utils.get_config(
+        fp_exceptions=opts["fp_exceptions"],
+        enable_recomputation=opts["enable_recomputation"],
+        disable_graph_outlining=False,
+        num_required_ipus=num_ipus,
+        enable_stochastic_rounding=opts["stochastic_rounding"],
+        max_cross_replica_sum_buffer_size=opts[
+            "max_cross_replica_sum_buffer_size"
+        ],
+        max_reduce_scatter_buffer_size=opts["max_reduce_scatter_buffer_size"],
+        scheduler_selection="CLUSTERING",
+        compile_only=False,
+        ipu_id=None,
+        partials_type=opts["partials_type"],
+        available_memory_proportion=opts["available_memory_proportion"],
     )
 
-    if predict.exec_path is not None:
-        all_results = run_time(opts, dataset_list)
+    ipu_config.configure_ipu_system()
+
+    if not popdist.isPopdistEnvSet() or popdist.getInstanceIndex() == 0:
+        build_graph(
+            opts, iterations_per_step, is_training=False
+        )
+
+    if popdist.isPopdistEnvSet():
+        comm.barrier()
+
+    all_results = run_time(opts, dataset_list)
+    if not popdist.isPopdistEnvSet() or popdist.getInstanceIndex() == 0:
         if opts["do_predict"] is True:
-            logger.info(f"Writing out the predictions:")
+            logger.info("Writing out the predictions:")
             output_dir = opts["output_dir"]
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
@@ -499,10 +469,8 @@ def predict_loop(opts):
                 opts["verbose_logging"],
             )
 
-            predict.session.close()
-
-            if opts["do_evaluation"]:
-                evaluate_squad(output_prediction_file, opts)
+    if opts["do_evaluation"]:
+        evaluate_squad(output_prediction_file, opts)
 
 
 def set_training_defaults(opts):
@@ -519,7 +487,7 @@ def set_defaults(opts):
         try:
             assert opts["do_predict"] is False
             assert opts["do_evaluation"] is False
-        except AssertionError as e:
+        except AssertionError:
             logger.info(
                 "Cannot write predictions on synthetic generated data.\n\t\t\t\tExiting."
             )
@@ -662,5 +630,7 @@ if __name__ == "__main__":
         tensorflow_progress_bar=opts["progress_bar"],
         ipu_replica_identical_seed=opts["ipu_replica_identical_seed"],
     )
+
+    hvd.init()
 
     predict_loop(opts)

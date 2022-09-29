@@ -11,31 +11,39 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-weights_path=$1
+arch=$1
+# backbone arch in this weight checkpoint
+weights_path=$2
+# checkpoint path
+knn_dir=./knn_accuracy
+mkdir $knn_dir
 
-train_features="python extract_feature.py 
-                --data_path ../data/imagenet1k/train
-                --weights $weights_path
+python script/extract_weights.py \
+	--arch $arch \
+       	--weights $weights_path \
+        --output $knn_dir/vit_model.pth
+
+train_features="python script/extract_feature.py 
+                --arch $arch
+                --data_path ./data/imagenet1k/train
+                --weights $knn_dir/vit_model.pth
                 --replic 8
                 --di 128
-                --output train.pth"
+                --output $knn_dir/train.pth"
 
-val_features="python extract_feature.py 
-                --data_path ../data/imagenet1k/validation
-                --weights $weights_path
+val_features="python script/extract_feature.py 
+                --arch $arch
+                --data_path ./data/imagenet1k/validation
+                --weights $knn_dir/vit_model.pth
                 --replic 8
                 --di 128
-                --output val.pth"
+                --output $knn_dir/val.pth"
 
-knn_acc="python knn_accuracy.py
-         --train train.pth
-         --validation val.pth"
+knn_acc="python script/knn_accuracy.py
+         --train $knn_dir/train.pth
+         --validation $knn_dir/val.pth"
 
-info="You can get vit weigths with extract_feature.py \n
-      comment like: \n
-      python extract_weights.py --weights dino_model.pth --output vit.pt
-      vit.pt will as a parameter for eval_knn.sh
-      "
+info="$2 not exists."
 
 if [ ! -f "$weights_path" ]; then
     echo $info

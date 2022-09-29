@@ -53,9 +53,11 @@ class ConformerEncoder(torch.nn.Module):
         concat_after: bool = False,
         zero_triu: bool = False,
         cnn_module_kernel: int = 31,
-        max_len: int = 512
+        max_len: int = 512,
+        dtype: torch.dtype = torch.float32
     ):
         super().__init__()
+        self.dtype = dtype
         self.normalize_before = normalize_before
         activation = Swish()
         pos_enc_class = RelPositionalEncoding
@@ -118,6 +120,11 @@ class ConformerEncoder(torch.nn.Module):
         """
         masks = (~make_pad_mask(ilens, xs_pad.size(1))[:, None, :])
         xs_pad, masks = self.embed(xs_pad, masks)
+        
+        # explicitly cast pos_emb to have the same type as batch
+        if isinstance(xs_pad, tuple):
+            xs_pad = (xs_pad[0], xs_pad[1].type(xs_pad[0].dtype))
+
         xs_pad, masks = self.encoders(xs_pad, masks)
         if isinstance(xs_pad, tuple):
             xs_pad = xs_pad[0]

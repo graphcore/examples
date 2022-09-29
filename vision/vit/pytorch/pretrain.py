@@ -20,15 +20,15 @@ from math import ceil
 
 import poptorch
 import torch
+import numpy as np
 import wandb
 import horovod.torch as hvd
 
 from args import parse_args
 from checkpoint import restore_checkpoint, save_checkpoint
-from dataset import get_dataset, get_dataloader, mixup_data, get_random_datum, DatasetWithStepLabel
+from dataset import get_dataset, get_dataloader, get_random_datum, sample_mixup_coefficients
 from ipu_options import get_options
 from log import logger
-from metrics import accuracy
 from models import PipelinedViTForImageClassificationPretraining
 import mpi_utils
 from optimization import get_lr_scheduler, get_optimizer
@@ -45,8 +45,8 @@ if __name__ == "__main__":
     # W&B
     if config.wandb:
         if not config.use_popdist or (config.use_popdist and config.popdist_rank == 0):
-            proj_name = config.wandb_project_name
-            wandb.init(project=proj_name,
+            wandb.init(project=config.wandb_project_name,
+                       name=config.wandb_run_name,
                        settings=wandb.Settings(console='off'))
             wandb.config.update(vars(config))
 
@@ -56,9 +56,6 @@ if __name__ == "__main__":
     # Dataloader
     logger.info('Loading data ... ')
     train_dataset = get_dataset(config, opts, train=True)
-    train_dataset = DatasetWithStepLabel(
-        train_dataset, config.samples_per_step, config.random_seed)
-
     train_dataloader = get_dataloader(
         config, opts, train_dataset, train=True, async_dataloader=True)
 
@@ -105,13 +102,11 @@ if __name__ == "__main__":
     start_compile = time.perf_counter()
     datum = get_random_datum(config)
     if config.mixup:
-        input_data, labels = datum[0], datum[1]
-        input_data, labels_a, labels_b, lam = mixup_data(
-            input_data, labels, config.alpha)
-        datum = [input_data, labels_a, labels_b, lam]
-        if config.byteio:
-            input_data = torch.clip(input_data.float()*255, 0, 255).byte()
-        datum = [input_data, labels_a, labels_b, lam]
+        random_generator = np.random.default_rng(config.random_seed)
+        mixup_coefficients = sample_mixup_coefficients(
+            config, random_generator)
+        datum = list(datum)
+        datum.append(mixup_coefficients)
     train_model.compile(*datum)
     duration_compilation = time.perf_counter() - start_compile
     logger.info(f"Compiled model in {duration_compilation} secs")
@@ -134,35 +129,54 @@ if __name__ == "__main__":
             data_duration = time.perf_counter() - start_step
 
             # train_data format when mixup is True / False
-            # input_data, labels_a, labels_b, lam / input_data, labels, step label
-            if not config.mixup:
-                *train_data, step_label = train_data
-            losses, logits = train_model(*train_data)
+            # input_data, labels, lam / input_data, labels
+
+            if config.mixup:
+                mixup_coefficients = sample_mixup_coefficients(
+                    config, random_generator)
+                train_data = list(train_data)
+                train_data.append(mixup_coefficients)
+
+            local_losses, local_accuracies = train_model(*train_data)
             scheduler.step()
             train_model.setOptimizer(optimizer)
             step_duration = time.perf_counter() - start_step
 
-            mean_loss = losses.mean().item()
-            preds = torch.argmax(logits, dim=-1)
-            acc = accuracy(preds, *train_data[1:])
             num_input_samples = len(train_data[0])
             step_throughput = num_input_samples / step_duration
             data_consumption_ratio = data_duration / step_duration
+
             if config.use_popdist:
+                # loss is per microbatch
+                total_micro_batches = len(local_losses) * config.popdist_size
+                mean_loss = mpi_utils.mpi_reduce(
+                    local_losses.sum().item(), average=False
+                ) / total_micro_batches
+                # accuracy is per global batch
+                total_samples = config.micro_batch_size * \
+                    len(local_accuracies) * config.popdist_size
+                acc = mpi_utils.mpi_reduce(
+                    (local_accuracies * config.micro_batch_size).sum().item(), average=False
+                ) / total_samples
                 step_throughput = mpi_utils.mpi_reduce(
                     step_throughput, average=False)
                 step_duration = mpi_utils.mpi_reduce(
                     step_duration, average=True)
                 data_consumption_ratio = mpi_utils.mpi_reduce(
                     data_consumption_ratio, average=True)
+            else:
+                # loss is per microbatch
+                mean_loss = local_losses.mean().item()
+                # accuracy is per global batch
+                acc = (local_accuracies * config.micro_batch_size).sum() / config.samples_per_step
 
             if not config.use_popdist or (config.use_popdist and config.popdist_rank == 0):
                 msg = ("Epoch: {:.2f}/{} "
                        "Step: {}/{} "
                        "Lr: {:.6f} "
-                       "Loss: {:.3f} "
-                       "Acc: {:.3f} "
-                       "Throughput: {:.2f} samples/sec "
+                       "loss: {:.3f} "
+                       "accuracy: {:.3f} %"
+                       "throughput: {:.2f} samples/sec "
                        "Mean step duration: {:.2f} seconds "
                        "Mean data consumption ratio: {:.2f}"
                        ).format(epoch, epochs,

@@ -1,14 +1,13 @@
 ---
 common_options: &common_options
-   location:
-      public_examples/vision/cnns/tensorflow1/training
+   location: training
    output:
-      - [Images/sec, 'throughput']
+      - [samples/sec, 'throughput']
       - [accuracy, 'accuracy']
       - [loss, 'loss']
 
 tf1_resnet50_train_synth_1ipu:
-   <<: *common_options
+   location: training
    description:
       ResNet training on a single Mk2 IPU, synthetic.
    cmd: >-
@@ -24,16 +23,10 @@ tf1_resnet50_train_synth_1ipu:
          --BN-span 1
    data:
       throughput:
-         regexp: 'img\/sec: *(.*?),'
+         regexp: 'throughput: *(.*?) samples\/sec,'
          skip: 1
-      accuracy:
-         reduction_type: 'final'
-         regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
-         skip: 1
-      loss:
-         reduction_type: 'final'
-         regexp: 'loss:\s*([\d\.]+|nan)\,'
-         skip: 1
+   output:
+      - [samples/sec, 'throughput']
 
 tf1_resnet50_train_real_pod4:
    <<: *common_options
@@ -58,15 +51,15 @@ tf1_resnet50_train_real_pod4:
       TF_POPLAR_FLAGS: "--executable_cache_path=/tmp/tf_cache/"
    data:
       throughput:
-         regexp: 'img\/sec: *(.*?),'
+         regexp: 'throughput: *(.*?) samples\/sec,'
          skip: 4
       accuracy:
          reduction_type: 'final'
-         regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
+         regexp: 'accuracy: *(.*?) \%'
          skip: 2
       loss:
          reduction_type: 'final'
-         regexp: 'loss:\s*([\d\.]+|nan)\,'
+         regexp: 'loss: *(\d*\.\d*)'
          skip: 2
 
 tf1_resnet50_train_real_pod16_conv:
@@ -94,21 +87,21 @@ tf1_resnet50_train_real_pod16_conv:
       POPLAR_ENGINE_OPTIONS: '{"target.hostSyncTimeout":"3000"}'
    data:
       throughput:
-         regexp: 'img\/sec: *(.*?),'
+         regexp: 'throughput: *(.*?) samples\/sec,'
          skip: 16
       accuracy:
          reduction_type: 'final'
-         regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
+         regexp: 'accuracy: *(.*?) \%'
          skip: 8
       loss:
          reduction_type: 'final'
-         regexp: 'loss:\s*([\d\.]+|nan)\,'
+         regexp: 'loss: *(\d*\.\d*)'
          skip: 8
 
 tf1_resnet50_train_real_pod64_conv:
    <<: *common_options
    description: |
-      ResNet50 training with real data, testing convergence. 
+      ResNet50 training with real data, testing convergence.
       Need to have a comma separated HOSTS env var set to
       run this benchmark as it requires multiple hosts.
    cmd: >-
@@ -147,9 +140,7 @@ tf1_resnet50_train_real_pod64_conv:
          --identical-replica-seeding
          --seed 1
          --data-dir $DATASETS_DIR/
-         --log-dir ./logs
-         --logs-path ./logs/checkpoints
-         --no-validation
+         --logs-path .
          --wandb
    env:
       TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
@@ -157,37 +148,34 @@ tf1_resnet50_train_real_pod64_conv:
          "target.hostSyncTimeout":"3000"}'
    data:
       throughput:
-         regexp: 'img\/sec: *(.*?),'
+         regexp: 'throughput: *(.*?) samples\/sec,'
          skip: 64
       accuracy:
          reduction_type: 'final'
-         regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
+         regexp: 'accuracy: *(.*?) \%'
          skip: 64
       loss:
          reduction_type: 'final'
-         regexp: 'loss:\s*([\d\.]+|nan)\,'
+         regexp: 'loss: *(\d*\.\d*)'
          skip: 64
 
-tf1_resnet50_val_real_pod64_conv:
+tf1_resnet50_train_real_pod256_conv:
   <<: *common_options
   description: |
-      ResNet50 training with real data, testing convergence. 
-      Need to have a comma separated HOSTS env var set to
-      run this benchmark as it requires multiple hosts.
+    ResNet50 validation with real data testing convergence on 256 IPUs.
   cmd: >-
     poprun
-      --vv
-      --num-instances 32
-      --num-replicas 64
-      --update-partition=yes
-      --remove-partition=yes
-      --reset-partition=no
-      --sync-type=ST_POD_NATIVE_DEFAULT
-      --vipu-server-timeout 300
-      --vipu-server-host $VIPU_CLI_API_HOST
-      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-      --vipu-cluster=$CLUSTER
+      -vv
+      --host $HOSTS
       --ipus-per-replica 1
+      --num-ilds 4
+      --num-instances 128
+      --num-replicas 256
+      --update-partition=yes
+      --reset-partition=no
+      --vipu-server-timeout 600
+      --vipu-server-host "$VIPU_SERVER_HOST"
+      --vipu-partition=$PARTITION
       --mpi-global-args="
         --mca oob_tcp_if_include $TCP_IF_INCLUDE
         --mca btl_tcp_if_include $TCP_IF_INCLUDE"
@@ -201,28 +189,34 @@ tf1_resnet50_val_real_pod64_conv:
         -x TF_POPLAR_FLAGS
         -x DATASETS_DIR
         -x POPLAR_ENGINE_OPTIONS
-        -x POPLAR_TARGET_OPTIONS"
-    python3
-      validation.py
+        -x POPLAR_RUNTIME_OPTIONS"
+    python3 train.py
       --config resnet50_mlperf_pod64_lars
-      --data-dir $DATASETS_DIR/imagenet-data
-      --restore-path ./logs/checkpoints
-      --log-dir ./logs/checkpoints
+      --identical-replica-seeding
+      --data-dir $DATASETS_DIR/
+      --logs-path .
+      --identical-replica-seeding
+      --seed 1
       --wandb
+      --gradient-accumulation-count 2
+      --replicas 256
+      --epochs 45
+      --abs-learning-rate 20.2
+      --max-reduce-many-buffer-size 216
   env:
     TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
-    POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+    POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false",
+        "target.hostSyncTimeout":"3000"}'
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
-      skip: 1
+        regexp: 'throughput: *(.*?) samples\/sec,'
+        skip: 64
     accuracy:
-      reduction_type: 'final'
-      regexp: '\):\s*([\d\.]+|nan)\%'
-  output:
-    - [Accuracy, 'accuracy']
+        reduction_type: 'final'
+        regexp: 'accuracy: *(.*?) \%'
+    loss:
+        reduction_type: 'final'
+        regexp: 'loss: *(\d*\.\d*)'
 
 tf1_resnext101_train_real_pod4:
    <<: *common_options
@@ -248,15 +242,15 @@ tf1_resnext101_train_real_pod4:
          --prefetch-depth 4
    data:
       throughput:
-         regexp: 'img\/sec: *(.*?),'
+         regexp: 'throughput: *(.*?) samples\/sec,'
          skip: 17
       accuracy:
          reduction_type: 'final'
-         regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
+         regexp: 'accuracy: *(.*?) \%'
          skip: 17
       loss:
          reduction_type: 'final'
-         regexp: 'loss:\s*([\d\.]+|nan)\,'
+         regexp: 'loss: *(\d*\.\d*)'
          skip: 17
 
 tf1_resnet50_serving_infer_real_1ipu:
@@ -265,21 +259,20 @@ tf1_resnet50_serving_infer_real_1ipu:
   parameters:
     batchsize: 1,8,16
   cmd: >-
-    python3 send_request.py resnet50 images 
+    python3 send_request.py resnet50 images
       --port=8504
       --num-threads 16
       --num-images 1600
-      --batch-size {batchsize} 
+      --batch-size {batchsize}
       --model-batch-size 16
-  location:
-    public_examples/vision/cnns/tensorflow1/inference
+  location: inference
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec'
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_resnext101_train_real_pod16:
    <<: *common_options
@@ -307,15 +300,15 @@ tf1_resnext101_train_real_pod16:
       TF_POPLAR_FLAGS: "--executable_cache_path=/tmp/tf_cache/"
    data:
       throughput:
-         regexp: 'img\/sec: *(.*?),'
+         regexp: 'throughput: *(.*?) samples\/sec,'
          skip: 8
       accuracy:
          reduction_type: 'final'
-         regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
+         regexp: 'accuracy: *(.*?) \%'
          skip: 8
       loss:
          reduction_type: 'final'
-         regexp: 'loss:\s*([\d\.]+|nan)\,'
+         regexp: 'loss: *(\d*\.\d*)'
          skip: 8
 
 tf1_efficientnet_b4_train_real_pod16:
@@ -337,22 +330,21 @@ tf1_efficientnet_b4_train_real_pod16:
       --epochs-per-ckpt 1
       --no-validation
       --eight-bit-io
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 4
     accuracy:
       reduction_type: 'final'
-      regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
+      regexp: 'accuracy: *(.*?) \%'
       skip: 10
     loss:
       reduction_type: 'final'
-      regexp: 'loss:\s*([\d\.]+|nan)\,'
+      regexp: 'loss: *(\d*\.\d*)'
       skip: 10
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b4_g16_train_real_pod16:
   description:
@@ -376,22 +368,21 @@ tf1_efficientnet_b4_g16_train_real_pod16:
       --eight-bit-io
       --num-io-tiles 32
       --prefetch-depth 3
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 4
     accuracy:
       reduction_type: 'final'
-      regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
+      regexp: 'accuracy: *(.*?) \%'
       skip: 10
     loss:
       reduction_type: 'final'
-      regexp: 'loss:\s*([\d\.]+|nan)\,'
+      regexp: 'loss: *(\d*\.\d*)'
       skip: 10
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b4_g16_train_real_pod64_conv:
   description:
@@ -442,23 +433,85 @@ tf1_efficientnet_b4_g16_train_real_pod64_conv:
   env:
     TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
     POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
     accuracy:
       reduction_type: 'final'
-      regexp: 'accuracy:\s*([\d\.]+|nan)\%\,'
+      regexp: 'accuracy: *(.*?) \%'
       skip: 10
     loss:
       reduction_type: 'final'
-      regexp: 'loss:\s*([\d\.]+|nan)\,'
+      regexp: 'loss: *(\d*\.\d*)'
       skip: 10
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
+tf1_efficientnet_b4_g16_train_real_pod256_conv:
+  description:
+    GS-16 EfficientNet-B4 training, testing convergence on Pod256
+  cmd: >-
+    poprun
+      --vv
+      --host $HOSTS
+      --num-instances 128
+      --num-replicas 128
+      --num=ilds 4
+      --ipus-per-replica 2
+      --reset-partition=no
+      --vipu-server-timeout 300
+      --vipu-server-host $VIPU_CLI_API_HOST
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster=$CLUSTER
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x IPUOF_VIPU_API_TIMEOUT=600
+        -x POPLAR_LOG_LEVEL=WARN
+        -x TF_POPLAR_FLAGS
+        -x DATASETS_DIR
+        -x POPLAR_ENGINE_OPTIONS
+        -x POPLAR_TARGET_OPTIONS"
+    python3 train.py
+      --config efficientnet_b4_g16_64ipus
+      --identical-replica-seeding
+      --epochs 350
+      --logs-per-epoch 2
+      --epochs-per-ckpt 1
+      --no-validation
+      --data-dir $DATASETS_DIR
+      --wandb
+      --eight-bit-io
+      --seed 1
+      --num-io-tiles 32
+      --prefetch-depth 3
+      --log-dir ./logs/checkpoints
+      --replicas 128
+      --gradient-accumulation-count 16
+  env:
+    TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
+    POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+  location:
+    examples_internal/vision/cnns/tensorflow1/training
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec,'
+      skip: 1
+    accuracy:
+      reduction_type: 'final'
+      regexp: 'accuracy: *(.*?) \%'
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss: *(\d*\.\d*)'
+  output:
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b4_g16_validation_real_pod16_conv:
   description:
@@ -490,7 +543,45 @@ tf1_efficientnet_b4_g16_validation_real_pod16_conv:
         -x TF_POPLAR_FLAGS
         -x DATASETS_DIR
         -x POPLAR_ENGINE_OPTIONS
-        -x POPLAR_TARGET_OPTIONS"           
+        -x POPLAR_TARGET_OPTIONS"
+    python3 train.py
+      --config efficientnet_b4_g16_256ipus
+      --identical-replica-seeding
+      --epochs 350
+      --logs-per-epoch 2
+      --epochs-per-ckpt 1
+      --no-validation
+      --data-dir $DATASETS_DIR
+      --wandb
+      --eight-bit-io
+      --identical-replica-seeding
+      --seed 1
+      --num-io-tiles 32
+      --prefetch-depth 3
+      --log-dir ./logs
+  env:
+    TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
+    POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+  location: training
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec,'
+      skip: 1
+    accuracy:
+      reduction_type: 'final'
+      regexp: 'accuracy: *(.*?) \%'
+      skip: 10
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss:\s*([\d\.]+|nan)\,'
+      skip: 10
+  output:
+    - [samples/sec, 'throughput']
+
+G16_EfficientNet_B4_pipelined_validation_convergence:
+  description:
+    GS-16 EfficientNet-B4 validation, testing convergence on Pod16
+  cmd: >-
     python3
       validation.py
       --config efficientnet_b4_g16_16ipus
@@ -505,17 +596,16 @@ tf1_efficientnet_b4_g16_validation_real_pod16_conv:
   env:
     TF_POPLAR_FLAGS: "--executable_cache_path=/localdata/$USER/tf_cache/"
     POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
     accuracy:
       reduction_type: 'final'
-      regexp: '\):\s*([\d\.]+|nan)\%'
+      regexp: 'top-1 accuracy: *(.*?) \%'
   output:
-    - [Accuracy, 'accuracy']
+    - [accuracy, 'accuracy']
 
 tf1_resnet50_infer_synth_1ipu:
   description: |
@@ -535,15 +625,14 @@ tf1_resnet50_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_resnet50_infer_gen_pod4:
   description: |
@@ -573,15 +662,14 @@ tf1_resnet50_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 64
       --prefetch-depth 2
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 4
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_resnet50_low_latency_infer_gen_pod4:
   description: |
@@ -612,28 +700,27 @@ tf1_resnet50_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 32
       --prefetch-depth 2
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
     latency:
-      regexp: 'Latencies - avg: *(.*?),'
+      regexp: 'latency avg: *(.*?) ms,'
     latency_99p:
-      regexp: '99th percentile: *(.*?),'
+      regexp: 'latency 99p: *(.*?) ms,'
     latency_99p9:
-      regexp: '99.9th percentile: *(\d*\.\d*),'
+      regexp: 'latency 99p9: *(.*?) ms,'
     latency_max:
-      regexp: 'max: *(\d*\.\d*)'
+      regexp: 'latency max: *(.*?) ms'
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
-    - [Latency avg(ms), 'latency']
-    - [Latency 99th percentile(ms), 'latency_99p']
-    - [Latency 99.9th percentile(ms), 'latency_99p9']
-    - [Latency max(ms), 'latency_max']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
+    - [latency max(ms), 'latency_max']
 
 tf1_resnext101_infer_gen_1ipu:
   description: |
@@ -653,14 +740,13 @@ tf1_resnext101_infer_gen_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_resnext101_long_infer_synth_1ipu:
   description: |
@@ -680,14 +766,13 @@ tf1_resnext101_long_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_resnext101_long_infer_gen_pod4:
   description: |
@@ -717,14 +802,13 @@ tf1_resnext101_long_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 64
       --prefetch-depth 4
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 4
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_resnext101_low_latency_infer_gen_pod4:
   description: |
@@ -755,28 +839,27 @@ tf1_resnext101_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 64
       --prefetch-depth 3
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
     latency:
-      regexp: 'Latencies - avg: *(.*?),'
+      regexp: 'latency avg: *(.*?) ms,'
     latency_99p:
-      regexp: '99th percentile: *(.*?),'
+      regexp: 'latency 99p: *(.*?) ms,'
     latency_99p9:
-      regexp: '99.9th percentile: *(\d*\.\d*),'
+      regexp: 'latency 99p9: *(.*?) ms,'
     latency_max:
-      regexp: 'max: *(\d*\.\d*)'
+      regexp: 'latency max: *(.*?) ms'
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
-    - [Latency avg(ms), 'latency']
-    - [Latency 99th percentile(ms), 'latency_99p']
-    - [Latency 99.9th percentile(ms), 'latency_99p9']
-    - [Latency max(ms), 'latency_max']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
+    - [latency max(ms), 'latency_max']
 
 tf1_efficientnet_b0_infer_synth_1ipu:
   description: |
@@ -797,14 +880,13 @@ tf1_efficientnet_b0_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b0_long_infer_synth_1ipu:
   description: |
@@ -825,14 +907,13 @@ tf1_efficientnet_b0_long_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b0_g16_infer_synth_1ipu:
   description: |
@@ -856,14 +937,13 @@ tf1_efficientnet_b0_g16_infer_synth_1ipu:
       --batch-norm
       --enable-half-partials
       --fused-preprocessing
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b0_long_infer_gen_pod4:
   description: |
@@ -894,14 +974,13 @@ tf1_efficientnet_b0_long_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 64
       --prefetch-depth 4
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 4
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b0_infer_gen_pod4:
   description: |
@@ -935,14 +1014,13 @@ tf1_efficientnet_b0_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 64
       --prefetch-depth 3
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 4
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b0_g16_low_latency_infer_gen_pod4:
   description: |
@@ -974,28 +1052,27 @@ tf1_efficientnet_b0_g16_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 64
       --prefetch-depth 2
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
     latency:
-      regexp: 'Latencies - avg: *(.*?),'
+      regexp: 'latency avg: *(.*?) ms,'
     latency_99p:
-      regexp: '99th percentile: *(.*?),'
+      regexp: 'latency 99p: *(.*?) ms,'
     latency_99p9:
-      regexp: '99.9th percentile: *(\d*\.\d*),'
+      regexp: 'latency 99p9: *(.*?) ms,'
     latency_max:
-      regexp: 'max: *(\d*\.\d*)'
+      regexp: 'latency max: *(.*?) ms'
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
-    - [Latency avg(ms), 'latency']
-    - [Latency 99th percentile(ms), 'latency_99p']
-    - [Latency 99.9th percentile(ms), 'latency_99p9']
-    - [Latency max(ms), 'latency_max']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
+    - [latency max(ms), 'latency_max']
 
 tf1_efficientnet_b0_low_latency_infer_gen_pod4:
   description: |
@@ -1028,28 +1105,27 @@ tf1_efficientnet_b0_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 32
       --prefetch-depth 2
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
     latency:
-      regexp: 'Latencies - avg: *(.*?),'
+      regexp: 'latency avg: *(.*?) ms,'
     latency_99p:
-      regexp: '99th percentile: *(.*?),'
+      regexp: 'latency 99p: *(.*?) ms,'
     latency_99p9:
-      regexp: '99.9th percentile: *(\d*\.\d*),'
+      regexp: 'latency 99p9: *(.*?) ms,'
     latency_max:
-      regexp: 'max: *(\d*\.\d*)'
+      regexp: 'latency max: *(.*?) ms'
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
-    - [Latency avg(ms), 'latency']
-    - [Latency 99th percentile(ms), 'latency_99p']
-    - [Latency 99.9th percentile(ms), 'latency_99p9']
-    - [Latency max(ms), 'latency_max']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
+    - [latency max(ms), 'latency_max']
 
 tf1_efficientnet_b4_infer_synth_1ipu:
   description: |
@@ -1071,14 +1147,13 @@ tf1_efficientnet_b4_infer_synth_1ipu:
       --enable-half-partials
       --eight-bit-io
       --fused-preprocessing
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b4_g16_infer_synth_1ipu:
   description: |
@@ -1103,14 +1178,13 @@ tf1_efficientnet_b4_g16_infer_synth_1ipu:
       --enable-half-partials
       --eight-bit-io
       --fused-preprocessing
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 1
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b4_infer_gen_pod4:
   description: |
@@ -1141,14 +1215,13 @@ tf1_efficientnet_b4_infer_gen_pod4:
       --fused-preprocessing
       --num-io-tiles 32
       --prefetch-depth 3
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 4
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b4_g16_infer_synth_1ipu:
   description: |
@@ -1182,14 +1255,13 @@ tf1_efficientnet_b4_g16_infer_synth_1ipu:
       --fused-preprocessing
       --num-io-tiles 32
       --prefetch-depth 3
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 4
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_efficientnet_b4_low_latency_infer_gen_pod4:
   description: |
@@ -1220,28 +1292,27 @@ tf1_efficientnet_b4_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 32
       --prefetch-depth 3
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
     latency:
-      regexp: 'Latencies - avg: *(.*?),'
+      regexp: 'latency avg: *(.*?) ms,'
     latency_99p:
-      regexp: '99th percentile: *(.*?),'
+      regexp: 'latency 99p: *(.*?) ms,'
     latency_99p9:
-      regexp: '99.9th percentile: *(\d*\.\d*),'
+      regexp: 'latency 99p9: *(.*?) ms,'
     latency_max:
-      regexp: 'max: *(\d*\.\d*)'
+      regexp: 'latency max: *(.*?) ms'
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
-    - [Latency avg(ms), 'latency']
-    - [Latency 99th percentile(ms), 'latency_99p']
-    - [Latency 99.9th percentile(ms), 'latency_99p9']
-    - [Latency max(ms), 'latency_max']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
+    - [latency max(ms), 'latency_max']
 
 tf1_efficientnet_b4_g16_low_latency_infer_gen_pod4:
   description: |
@@ -1277,28 +1348,27 @@ tf1_efficientnet_b4_g16_low_latency_infer_gen_pod4:
       --tmp-execs
       --num-io-tiles 64
       --prefetch-depth 2
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   env:
     POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"2"}'
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
     latency:
-      regexp: 'Latencies - avg: *(.*?),'
+      regexp: 'latency avg: *(.*?) ms,'
     latency_99p:
-      regexp: '99th percentile: *(.*?),'
+      regexp: 'latency 99p: *(.*?) ms,'
     latency_99p9:
-      regexp: '99.9th percentile: *(\d*\.\d*),'
+      regexp: 'latency 99p9: *(.*?) ms,'
     latency_max:
-      regexp: 'max: *(\d*\.\d*)'
+      regexp: 'latency max: *(.*?) ms'
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
-    - [Latency avg(ms), 'latency']
-    - [Latency 99th percentile(ms), 'latency_99p']
-    - [Latency 99.9th percentile(ms), 'latency_99p9']
-    - [Latency max(ms), 'latency_max']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
+    - [latency max(ms), 'latency_max']
 
 tf1_efficientnet_b7_infer_gen_pod4:
   description: |
@@ -1329,23 +1399,149 @@ tf1_efficientnet_b7_infer_gen_pod4:
       --no-dataset-cache
       --num-inference-thread 3
       --tmp-execs
-  location:
-    public_examples/vision/cnns/tensorflow1/training
+  location: training
   data:
     throughput:
-      regexp: 'img\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec'
     latency:
-      regexp: 'Latencies - avg: *(.*?),'
+      regexp: 'latency avg: *(.*?) ms'
     latency_99p:
-      regexp: '99th percentile: *(.*?),'
+      regexp: 'latency 99p: *(.*?) ms'
     latency_99p9:
-      regexp: '99.9th percentile: *(\d*\.\d*),'
+      regexp: 'latency 99p9: *(.*?) ms'
     latency_max:
-      regexp: 'max: *(\d*\.\d*)'
+      regexp: 'latency max: *(.*?) ms'
   output:
     - [Batch size, 'batchsize']
-    - [Images/sec, 'throughput']
-    - [Latency avg(ms), 'latency']
-    - [Latency 99th percentile(ms), 'latency_99p']
-    - [Latency 99.9th percentile(ms), 'latency_99p9']
-    - [Latency max(ms), 'latency_max']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
+    - [latency max(ms), 'latency_max']
+
+tf1_efficientnet_b4_batchnorm_train_real_pod16:
+  description:
+    Standard EfficientNet-B4 with batch norm training replicated on 16 IPUs.
+  cmd: >-
+    poprun
+      --num-instances=2
+      --num-replicas=16
+    python3 train.py
+      --config efficientnet_b4_g1_with_batch_norm_16ipus
+      --epochs 1
+      --data-dir $DATASETS_DIR/
+      --logs-per-epoch 16
+      --seed=1
+      --no-validation
+  env:
+    POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"unlimited"}'
+  location: training
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec'
+      skip: 6
+    accuracy:
+      reduction_type: 'final'
+      regexp: 'accuracy: *(.*?) \%'
+      skip: 10
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss: *(\d*\.\d*)'
+      skip: 10
+  output:
+    - [samples/sec, 'throughput']
+
+
+tf1_efficientnet_b4_batchnorm_train_real_pod64_conv:
+  description:
+    Standard EfficientNet-B4 with batch norm, testing convergence on Pod64
+  cmd: >-
+    poprun
+      --vv
+      --host $HOSTS
+      --mpi-global-args="
+        --mca oob_tcp_if_include $TCP_IF_INCLUDE
+        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+      --mpi-local-args="
+        -x OPAL_PREFIX
+        -x LD_LIBRARY_PATH
+        -x PATH
+        -x PYTHONPATH
+        -x IPUOF_VIPU_API_TIMEOUT=600
+        -x POPLAR_LOG_LEVEL=WARN
+        -x TF_POPLAR_FLAGS
+        -x DATASETS_DIR
+        -x POPLAR_ENGINE_OPTIONS
+        -x POPLAR_TARGET_OPTIONS"
+      --update-partition=no
+      --reset-partition=no
+      --vipu-server-timeout 300
+      --vipu-server-host=${IPUOF_VIPU_API_HOST}
+      --vipu-partition=${IPUOF_VIPU_API_PARTITION_ID}
+      --ipus-per-replica 1
+      --num-instances 8
+      --num-replicas 64
+    python3 train.py
+      --config efficientnet_b4_g1_with_batch_norm_64ipus
+      --identical-replica-seeding
+      --epochs 350
+      --logs-per-epoch 16
+      --epochs-per-ckpt 1
+      --no-validation
+      --data-dir $DATASETS_DIR
+      --wandb
+      --seed 1
+      --log-dir ./logs/checkpoints
+  env:
+    TF_POPLAR_FLAGS: "--executable_cache_path=./tf_cache/"
+    POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+    POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"unlimited"}'
+  location: training
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec'
+      skip: 1
+    accuracy:
+      reduction_type: 'final'
+      regexp: 'accuracy: *(.*?) \%'
+      skip: 10
+    loss:
+      reduction_type: 'final'
+      regexp: 'loss: *(\d*\.\d*)'
+      skip: 10
+  output:
+    - [samples/sec, 'throughput']
+  readme:
+    - "applications/tensorflow/cnns/training/README_Benchmarks.md"
+    - "Training"
+    - "Standard EfficientNet-B4 Training"
+    - "1 x IPU-POD64"
+
+
+tf1_efficientnet_b4_batchnorm_infer_real_pod16:
+  description:
+    Standard EfficientNet-B4 with batch norm validation, testing convergence on Pod16
+  cmd: >-
+    python3
+      validation.py
+      --config efficientnet_b4_g1_with_batch_norm_16ipus
+      --data-dir $DATASETS_DIR/imagenet-data
+      --restore-path ./logs/checkpoints
+      --log-dir ./logs/checkpoints
+      --epochs-per-ckpt 1
+      --logs-per-epoch 2
+      --wandb
+  env:
+    TF_POPLAR_FLAGS: "--executable_cache_path=./tf_cache/"
+    POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+    POPLAR_RUNTIME_OPTIONS: '{"streamCallbacks.maxLookahead":"unlimited"}'
+  location: training
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec'
+      skip: 1
+    accuracy:
+      reduction_type: 'final'
+      regexp: 'top-1 accuracy: *(.*?) \%'
+  output:
+    - [accuracy, 'accuracy']

@@ -1,0 +1,118 @@
+# ----------------------------------------------------------------------------------
+vit_base_pod16: 
+
+  # Execution
+  half: True
+  rts: True
+  batch_size: 6
+  gradient_accumulation_count: 172
+  replica: 4
+  epochs: 1600
+  device: ipu
+  num_workers: 48
+  output: checkpoint_mae_vit_base
+  log: vit_base_pod16
+  warmup_epochs: 40
+  saveckp_freq: 4
+  print_freq: 15
+  async_type: async
+  rebatched_worker_size: 1032
+  norm_pix_loss: True
+  resume: False
+  
+
+  # Model
+  model: mae_vit_base_patch16
+  checkpoint: checkpoint.pth
+  input_size: 224
+  mask_ratio: 0.75
+  embed_dim: 768
+  pipeline: [3, 3, 3, 3, 2, 2, 2, 2]
+  # tanh or erf
+  gelu_type: tanh
+
+  # Optimizer
+  blr: 1.5e-4
+  weight_decay: 0.05
+  loss_scale: 8388608.
+  optimizer_step: 10
+  use_als: False
+
+# ----------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------
+vit_base_pod64: 
+
+  # Execution
+  half: True
+  rts: False
+  batch_size: 6
+  gradient_accumulation_count: 43
+  replica: 16
+  epochs: 1600
+  device: ipu
+  num_workers: 64
+  output: checkpoint_mae_vit_base_pod64
+  log: vit_base_pod64
+  warmup_epochs: 40
+  saveckp_freq: 4
+  print_freq: 10
+  async_type: async
+  rebatched_worker_size: 1032
+  norm_pix_loss: True
+  resume: False
+  
+
+  # Model
+  model: mae_vit_base_patch16
+  checkpoint: checkpoint.pth
+  input_size: 224
+  mask_ratio: 0.75
+  embed_dim: 768
+  pipeline: [3, 3, 3, 3, 2, 2, 2, 2]
+  # tanh or erf
+  gelu_type: tanh
+
+  # Optimizer
+  blr: 1.5e-4
+  weight_decay: 0.05
+  loss_scale: 8388608.
+  optimizer_step: 10
+  use_als: False
+
+# ----------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------
+vit_base_finetune: 
+
+  # Execution
+  half: True
+  batch_size: 8
+  gradient_accumulation_count: 256
+  replica: 4
+  epochs: 100
+  device: ipu
+  num_workers: 64
+  output: checkpoint_mae_vit_base_finetune
+  log: finetune
+  saveckp_freq: 4
+  print_freq: 10
+  async_type: rebatch
+  rebatched_worker_size: 256
+  ipus: 4
+  eval: False
+  resume: False
+  # Model
+  model: vit_base_patch16
+  input_size: 224
+  pipeline: [3, 3, 3, 3]
+
+  blr: 5e-4
+  layer_decay: 0.65
+  weight_decay: 0.05
+  drop_path: 0.1
+  reprob: 0.25
+  mixup: 0.8
+  cutmix: 1.0
+  loss_scale: 1024
+# ----------------------------------------------------------------------------------

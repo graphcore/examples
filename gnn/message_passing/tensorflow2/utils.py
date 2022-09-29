@@ -26,7 +26,7 @@ class ThroughputCallback(keras.callbacks.Callback):
         if self.log_wandb:
             wandb.log({'throughput': samples_per_sec})
 
-        logging.info(f"\nThroughput: {samples_per_sec:.2f} graphs/sec")
+        logging.info(f"\nthroughput: {samples_per_sec:.2f} samples/sec")
 
 
 def get_optimizer(name="adam",

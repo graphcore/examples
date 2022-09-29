@@ -32,3 +32,4 @@ efficientdet-d3:
 
 efficientdet-d4:
   <<: *efficientdet-base
+  available_memory_proportion: 0.2

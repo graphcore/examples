@@ -16,7 +16,7 @@ resnet50: &resnet50
   seed: 42
   momentum: 0.9
   lr: 2.0
-  batch_size: 18
+  micro_batch_size: 18
   pipeline_splits: []
   replicas: 16
   gradient_accumulation: 57
@@ -81,25 +81,51 @@ efficientnet-b0-g16-gn-pod16:
   model: efficientnet-b0
   pipeline_splits: [blocks/3/0/conv_pw]
   lr: 0.05
-  batch_size: 20
+  micro_batch_size: 20
   replicas: 8
   gradient_accumulation: 5
   mixup_alpha: 0.1
 
 
-efficientnet-b4-g16-gn-pod16:
+efficientnet-b4-g16-gn-pod16: &efficientnet-b4-g16-gn-pod16
   <<: *efficientnet-g16-gn-16ipu-base
   model: efficientnet-b4
-  pipeline_splits: [blocks/1/1/conv_pw, blocks/3/0/conv_pw, blocks/4/5/conv_pw]
-  lr: 0.0483
-  batch_size: 6
-  replicas: 4
-  gradient_accumulation: 32
+  precision: "16.16"
+  enable_stochastic_rounding: true
+  micro_batch_size: 4
+  available_memory_proportion: [0.1]
+  pipeline_splits: [blocks/3/0/bn2]
+  recompute_checkpoints: [add_1, add_3]
+  lr: 0.1
+  replicas: 8
+  gradient_accumulation: 64
   device_iterations: 4
   mixup_alpha: 0.2
   cutmix_lambda_low: 0.65
   cutmix_lambda_high: 1.0
   cutmix_disable_prob: 0.35
+  precision: "16.16"
+  exchange_memory_target: memory
+  enable_optimizer_rts: true
+
+
+efficientnet-b4-g16-gn-pod64:
+  <<: *efficientnet-b4-g16-gn-pod16
+  replicas: 32
+  gradient_accumulation: 16
+
+
+# Converges to 82.14% val accuracy
+efficientnet-b4-g1-gn-pod16: &efficientnet-b4-g1-gn-pod16
+  <<: *efficientnet-b4-g16-gn-pod16
+  efficientnet_group_dim: 1
+  efficientnet_expand_ratio: 6
+  replicas: 4
+  micro_batch_size: 4
+  gradient_accumulation: 48
+  lr: 0.0483
+  pipeline_splits: [blocks/1/1/conv_pw, blocks/3/0/conv_pw, blocks/4/5/conv_pw]
+  recompute_checkpoints: []
 
 
 # --- MobileNet v3--- #
@@ -109,6 +135,9 @@ mobilenet-v3-base: &mobilenet-v3-base
   weight_decay: 0.00003
   optimizer: sgd_combined
   lr_schedule: cosine
+
+
+
   warmup_epoch: 5
   initial_loss_scaling: 128
   loss_scaling: 128
@@ -124,7 +153,7 @@ mobilenet-v3-base: &mobilenet-v3-base
   lr: 0.52
   device_iterations: 1
   validation_mode: after
-  batch_size: 32
+  micro_batch_size: 32
 
 
 mobilenet-v3-small: &mobilenet-v3-small

@@ -338,6 +338,7 @@ def run(config):
                 num_nodes_processed_per_execution=batch_config_training.num_nodes_processed_per_execution,
                 real_over_padded_ratio=batch_config_training.real_over_padded_ratio,
                 total_num_epochs=batch_config_training.scaled_num_epochs,
+                loss=loss,
                 checkpoint_path=config.save_ckpt_path.joinpath(universal_run_name),
                 config=config.dict(),
                 executions_per_log=config.executions_per_log,

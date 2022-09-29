@@ -100,14 +100,25 @@ class TestCustomAugmentations():
             torch.ones(1, 12, 12) * 3,
         ]).to(torch.float)
         labels = torch.tensor([1, 2, 3])
-        mixup_coeffs = torch.tensor([0.5, 0.5, 0.5])
 
-        model = poptorch.inferenceModel(AugmentationModel(
-            Model(),
-            use_mixup=True,
-            use_cutmix=False,
-        ))
-        mixed_images, all_coeffs = model((images, mixup_coeffs))
+        class args: pass
+        args = args()
+        args.mixup_alpha = 0.5
+        args.precision = "32.32"
+
+        model = AugmentationModel(
+                    Model(),
+                    use_mixup=True,
+                    use_cutmix=False,
+                    args=args
+                )
+
+        def dummy_sample(bs=3):
+            return torch.tensor([0.5, 0.5, 0.5])
+
+        model._sample_mixup_coefficients = dummy_sample
+        model = poptorch.inferenceModel(model)
+        mixed_images, all_coeffs = model(images)
 
         correct_mixed_images = torch.stack([
             torch.ones(1, 12, 12) * 2,    # 0.5 * 1 + 0.5 * 3
@@ -116,7 +127,7 @@ class TestCustomAugmentations():
         ]).to(torch.float)
 
         torch.testing.assert_allclose(mixed_images, correct_mixed_images)
-        torch.testing.assert_allclose(all_coeffs[0], mixup_coeffs)
+        torch.testing.assert_allclose(all_coeffs[0], dummy_sample())
 
         all_labels, weights = model.mix_labels(labels, all_coeffs)
         torch.testing.assert_allclose(
@@ -131,8 +142,8 @@ class TestCustomAugmentations():
             rtol=0,
             atol=0,
         )
-        torch.testing.assert_allclose(weights[0], mixup_coeffs)
-        torch.testing.assert_allclose(weights[1], 1.0 - mixup_coeffs)
+        torch.testing.assert_allclose(weights[0], dummy_sample())
+        torch.testing.assert_allclose(weights[1], 1.0 - dummy_sample())
 
     def test_cutmix(self):
         class Model(torch.nn.Module):
@@ -160,7 +171,7 @@ class TestCustomAugmentations():
             use_cutmix=True,
             args=args,
         ))
-        cutmixed_images, all_coeffs = model((images, ()))
+        cutmixed_images, all_coeffs = model(images)
 
         torch.testing.assert_allclose(all_coeffs[0], torch.tensor(0.75))
         torch.testing.assert_allclose(
@@ -231,7 +242,7 @@ class TestCustomAugmentations():
             use_cutmix=True,
             args=args,
         ))
-        cutmixed_images, all_coeff = model((images, ()))
+        cutmixed_images, all_coeff = model(images)
 
         torch.testing.assert_allclose(all_coeff[0], torch.tensor(1.0))
         torch.testing.assert_allclose(cutmixed_images, images)
@@ -239,12 +250,12 @@ class TestCustomAugmentations():
 
 class TestHostBenchmark:
     def test_host_benchmark_cifar10(self):
-        output = run_script("datasets/host_benchmark.py", "--data cifar10 --batch-size 256")
+        output = run_script("datasets/host_benchmark.py", "--data cifar10 --micro-batch-size 256")
         assert "Throughput of the iteration" in output
 
     def test_poprun_host_benchmark(self):
         executable = get_current_interpreter_executable()
-        output = run_script("poprun", f"--num-instances=2 --offline-mode=1 --num-replicas=2 {executable} datasets/host_benchmark.py --data cifar10 --batch-size 256", python=False)
+        output = run_script("poprun", f"--num-instances=2 --offline-mode=1 --num-replicas=2 {executable} datasets/host_benchmark.py --data cifar10 --micro-batch-size 256", python=False)
         assert "Throughput of the iteration" in output
 
 
@@ -269,7 +280,7 @@ def test_input_8bit(dataset, precision):
             pass
     args = HelperClass()
     opts = poptorch.Options()
-    args.batch_size = 1
+    args.micro_batch_size = 1
     args.dataloader_worker = 4
     args.data = dataset
     args.model = "resnet18"
@@ -302,7 +313,7 @@ def test_get_data(async_dataloader, return_remaining, num_instances):
     args.model = 'resnet50'
     args.device_iterations = 1
     args.replicas = 1
-    args.batch_size = 31
+    args.micro_batch_size = 31
     args.dataloader_worker = 8
     args.normalization_location = 'ipu'
     args.eight_bit_io = False

@@ -18,6 +18,7 @@ class CallbackFactory:
                       num_nodes_processed_per_execution,
                       real_over_padded_ratio,
                       total_num_epochs,
+                      loss,
                       checkpoint_path,
                       config={},
                       executions_per_log=1,
@@ -29,7 +30,7 @@ class CallbackFactory:
         log_period = executions_per_log
 
         logging.info("Creating callback to report batch statistics.")
-        callbacks.append(BatchStatisticsCallback(num_nodes_processed_per_execution, real_over_padded_ratio, total_num_epochs))
+        callbacks.append(BatchStatisticsCallback(num_nodes_processed_per_execution, real_over_padded_ratio, total_num_epochs, loss))
 
         if outfeed_queues is not None:
             logging.info(f"Creating callbacks to read outfeed queues: {outfeed_queues}")

@@ -15,10 +15,10 @@ tf1_sales_forecasting_train_real_2ipu:
       --no-lr-warmup
   data:
     throughput:
-      regexp: "Training:.*, *samples/sec: (.*), *time"
+      regexp: "throughput: *(.*?) samples\/sec"
       skip: 10
   output:
-    - [Samples/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_sales_forecasting_no_validation_train_real_2ipu:
   description: |
@@ -36,7 +36,7 @@ tf1_sales_forecasting_no_validation_train_real_2ipu:
       --no-lr-warmup
   data:
     throughput:
-      regexp: "Training:.*, *samples/sec: (.*), *time"
+      regexp: "throughput: *(.*?) samples\/sec"
       skip: 10
   output:
-    - [Samples/sec, 'throughput']
+    - [samples/sec, 'throughput']

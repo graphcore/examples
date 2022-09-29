@@ -6,7 +6,7 @@ from examples_tests.execute_once_per_fs import ExecuteOncePerFS
 import subprocess
 import pytest
 
-public_examples_dir = Path(__file__).parent.parent.parent.parent.parent
+examples_dir = Path(__file__).parent.parent.parent.parent.parent
 
 
 @pytest.fixture
@@ -14,7 +14,7 @@ def length_regulator_op(scope="session"):
     """This function builds the length_regulator_op
     library for any tests that rely on it.
     """
-    build_path = Path(public_examples_dir, "speech", "fastspeech2",
+    build_path = Path(examples_dir, "speech", "fastspeech2",
                       "tensorflow2", "custom_op", "length_regulator")
     shared_libs = ['liblengthRegulator.so']
     paths = [Path(build_path, f) for f in shared_libs]

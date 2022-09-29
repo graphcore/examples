@@ -79,12 +79,12 @@ def benchmark(inference_model, test_data, args):
     logging.info("-------------------------------------------------------------------------------------------")
     # Standardised metric reporting
     logging.info(f"{args.model} results:")
-    logging.info(f"\n\tbatch_size: {args.batch_size}")
+    logging.info(f"\n\tmicro_batch_size: {args.micro_batch_size}")
     logging.info(f"\n\tdata_mode: {args.data}")
     logging.info(f"\n\tdata_type: {result.data.dtype}")
     logging.info(f"\n\tnum_ipus: {num_instances * args.replicas * (len(args.pipeline_splits) + 1)}")
     logging.info(f"\n\tthroughput: {np.mean(throughputs)} samples/sec (mean) (min: {np.min(throughputs)}, max: {np.max(throughputs)}, std: {np.std(throughputs)})")
-    logging.info(f"\n\tlatency: {avg_latency} ms (mean) (min: {min_latency}, max: {max_latency})")
+    logging.info(f"\n\tlatency avg: {avg_latency} ms (mean) (min: {min_latency}, max: {max_latency})")
     if args.data == "synthetic":
         logging.info(f"\n\tNOTE: Using synthetic data, ignore these latency values.")
 

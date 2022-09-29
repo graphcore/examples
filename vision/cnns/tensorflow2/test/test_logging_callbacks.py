@@ -36,10 +36,10 @@ class TestLoggingCallbacks(unittest.TestCase):
             for batch in range(30):
 
                 callback.on_train_batch_begin(batch)
-                callback.on_train_batch_end(batch, logs={'Average images/s': 0})
+                callback.on_train_batch_end(batch, logs={'throughput': 0})
 
                 test_log_output_str = ' '.join(test_log.output)
-                search_str = f"batch {batch+1}: {{'Average images/s':"
+                search_str = f"batch {batch+1}: ['throughput:"
                 if (batch + 1) % log_period == 0:
                     self.assertIn(search_str, test_log_output_str)
                 else:
@@ -79,4 +79,4 @@ class TestLoggingCallbacks(unittest.TestCase):
             last_weigth = self.run_ipu_prog(callback, num_steps)
             print(test_log)
             self.assertEqual(last_weigth, 4.0)
-            self.assertIn("loss\': 2.5", test_log.output[1])
+            self.assertIn("loss: 2.5", test_log.output[1])

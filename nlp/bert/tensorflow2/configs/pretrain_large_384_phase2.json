@@ -46,6 +46,5 @@
     "seed": 1984,
     "global_batches_per_log": 1,
     "enable_wandb": true,
-    "wandb_tags": ["pretraining"],
-    "show_accuracy": false
+    "wandb_tags": ["pretraining"]
 }

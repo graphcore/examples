@@ -22,7 +22,15 @@ import popdist
 import popdist.poptorch
 import numpy as np
 
+from examples_utils import load_lib
 from tools import logger
+
+
+def load_custom_ops():
+    logger("Building (if necessary) and loading remap_tensor_ce.")
+    load_lib(os.path.dirname(__file__) + '/custom_ops/remap_tensor_ce.cpp')
+    logger("Building (if necessary) and loading residual_add_inplace_pattern.")
+    load_lib(os.path.dirname(__file__) + '/custom_ops/workarounds/residual_add_inplace_pattern.cpp')
 
 
 def get_options(config):
@@ -35,15 +43,8 @@ def get_options(config):
     np.random.seed(config.seed)
 
     # Load custom ops
-    if config.custom_ops is True:
-        file_dir = os.path.dirname(os.path.realpath(__file__))
-        CUSTOM_OP_PATH = os.path.join(file_dir, "custom_ops.so")
-        if os.path.exists(CUSTOM_OP_PATH):
-            ops_and_patterns = ctypes.cdll.LoadLibrary(CUSTOM_OP_PATH)
-        else:
-            logger(
-                "Could not find custom_ops.so. Execute `make` before running this script.")
-            exit()
+    if config.custom_ops:
+        load_custom_ops()
 
     # Poptorch options
     if config.use_popdist:
@@ -62,10 +63,9 @@ def get_options(config):
         poptorch.ReductionType.Mean)
 
     # Enable automatic loss scaling
-    # Note that this is an experimental feature. Note also that it expects
-    # accumulationAndReplicationReductionType to be set to Mean as above,
-    # and for accumulation by the optimizer to be done in half precision
-    # using accum_type=torch.float16 during optimizer instatiation.
+    # Note that it expects accumulationAndReplicationReductionType to be set
+    # to Mean as above, and for accumulation by the optimizer to be done in
+    # half precision using accum_type=torch.float16 during optimizer instatiation.
     if config.auto_loss_scaling is True:
         opts.Training.setAutomaticLossScaling(True)
 

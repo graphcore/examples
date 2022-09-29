@@ -256,7 +256,7 @@ def main(hparams):
     print(
         f"Processed num_images * num_threads: {hparams.num_images} * {hparams.num_threads} = {hparams.num_images*hparams.num_threads}")
     print(
-        f"Average img/s: {((hparams.num_images*hparams.num_threads)/exec_time):2.4f}")
+        f"Average throughput: {((hparams.num_images*hparams.num_threads)/exec_time):2.4f} samples/sec")
 
 
 if __name__ == '__main__':

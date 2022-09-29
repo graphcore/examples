@@ -98,7 +98,7 @@ def get_data(args, opts, train=True, async_dataloader=False, return_remaining=Fa
                                                use_bbox_info=use_bbox_info, fine_tuning=fine_tuning)
     # Determine the size of the small datasets
     if hasattr(args, "iterations"):
-        dataset_size = args.batch_size * \
+        dataset_size = args.micro_batch_size * \
                        opts.device_iterations * \
                        opts.replication_factor * \
                        opts.Training.gradient_accumulation * \
@@ -126,7 +126,7 @@ def get_data(args, opts, train=True, async_dataloader=False, return_remaining=Fa
     elif args.data == "cifar10":
         data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10")
         dataset = torchvision.datasets.CIFAR10(root=data_path, train=train, download=True, transform=transform)
-    global_batch_size = args.batch_size * opts.device_iterations * opts.replication_factor * opts.Training.gradient_accumulation
+    global_batch_size = args.micro_batch_size * opts.device_iterations * opts.replication_factor * opts.Training.gradient_accumulation
     if async_dataloader:
         if global_batch_size == 1:
             # Avoid rebatch overhead
@@ -142,7 +142,7 @@ def get_data(args, opts, train=True, async_dataloader=False, return_remaining=Fa
     rebatch_size = min(rebatch_size, global_batch_size)
     dataloader = poptorch.DataLoader(opts,
                                      dataset,
-                                     batch_size=args.batch_size,
+                                     batch_size=args.micro_batch_size,
                                      num_workers=args.dataloader_worker,
                                      shuffle=train,
                                      drop_last= not(return_remaining),

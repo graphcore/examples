@@ -286,8 +286,8 @@ def validation_run(valid, filepath, i, epoch, first_run, opts, latency_thread):
         latency = latency_thread.get_latency()
 
         valid_format = (
-            "Validation top-1 accuracy [{name}] (iteration: {iteration:6d}, epoch: {epoch:6.2f}, img/sec: {img_per_sec:6.2f},"
-            " time: {val_time:8.6f}, latency (ms): {latency:8.4f}): {val_acc:6.3f}%")
+            "Validation top-1 accuracy: {val_acc:6.3f} % [{name}] (iteration: {iteration:6d}, epoch: {epoch:6.2f}, throughput: {img_per_sec:6.2f} samples/sec,"
+            " time: {val_time:8.6f}, latency avg: {latency:8.4f} ms)")
 
         val_size = (opts["validation_iterations"] *
                     opts["validation_device_iterations"] *

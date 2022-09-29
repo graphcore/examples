@@ -166,7 +166,7 @@ def resize(x,
         raise not NotImplementedError
     roi = constant(
         np.array([0, -1] * x.shape.ndims).astype(
-            mappin_gc2npy[x.dtype])) if roi is None else roi
+            mappin_gc2npy[x.dtype]))
     scales = constant(np.array(
         [1.0] * x.shape.ndims).astype('FLOAT32')) if scales is None else scales
     sizes = constant(np.array(
@@ -748,15 +748,15 @@ def tile(input, repeats, debugContext=""):
 
 
 def roi_align(
-    x,
-    rois,
-    batch_indices,
-    mode='avg',
-    output_height=1,
-    output_width=1,
-    sampling_ratio=0,
-    spatial_scale=1.0,
-    name=''):
+        x,
+        rois,
+        batch_indices,
+        mode='avg',
+        output_height=1,
+        output_width=1,
+        sampling_ratio=0,
+        spatial_scale=1.0,
+        name=''):
     # check type and shape
     assert len(x.pureShape) == 4
     assert x.dtype in ['FLOAT', 'FLOAT16']

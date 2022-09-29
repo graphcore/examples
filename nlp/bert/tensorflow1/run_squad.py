@@ -592,7 +592,7 @@ def training_loop(opts):
     # Training loop
     print_format = (
         "step: {step:6d}, iteration: {iteration:6d}, epoch: {epoch:6.2f}, lr: {lr:6.4g}, loss: {loss:6.3f}, "
-        "throughput {throughput_samples_per_sec:6.2f} samples/sec, batch time: {avg_batch_time:8.6f} s, total_time: {total_time:8.1f} s"
+        "throughput: {throughput_samples_per_sec:6.2f} samples/sec, batch time: {avg_batch_time:8.6f} s, total_time: {total_time:8.1f} s"
     )
     step = 0
     start_all = time.time()

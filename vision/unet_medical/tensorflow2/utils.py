@@ -72,7 +72,7 @@ class PerfCallback(keras.callbacks.Callback):
         d = t1 - t0
         tput = '{0:.15f}'.format(self.samples_per_execution/d)
         logger.info(
-            f'Execution {epoch}.\t Time: {d} seconds\t Throughput {tput} images/sec.')
+            f'Execution {epoch}.\t Time: {d} seconds\t throughput: {tput} samples/sec.')
 
 
 def set_seed(seed):

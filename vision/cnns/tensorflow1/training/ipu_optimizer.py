@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
+
 from tensorflow import distribute
 from tensorflow.python.ipu import sharding
 from tensorflow.compiler.plugin.poplar.ops import gen_poputil_ops
@@ -32,7 +34,8 @@ class IPUOptimizer(optimizer.Optimizer):
                  grad_scale=1.0,
                  weight_decay=0.0,
                  weight_decay_filter_fn = lambda x: False,
-                 var_list=None
+                 var_list=None,
+                 gradient_mean_reduce_re=[]
                  ):
         super(IPUOptimizer, self).__init__(False, name="IPUOptimizer")
         self._optimizer = optimizer
@@ -44,6 +47,7 @@ class IPUOptimizer(optimizer.Optimizer):
         self._weight_decay = weight_decay
         self._weight_decay_filter_fn = weight_decay_filter_fn
         self._var_list = var_list
+        self._gradient_mean_reduce_re = gradient_mean_reduce_re
 
     def add_WD(self, grads_and_vars):
         if self._weight_decay != 0.0:
@@ -80,7 +84,15 @@ class IPUOptimizer(optimizer.Optimizer):
 
                     # replication
                     if self._replicas > 1:
-                        grad = gen_poputil_ops.ipu_replication_normalise(cross_replica_ops.cross_replica_sum(grad))
+
+                        if isinstance(self._gradient_mean_reduce_re, str):
+                            self._gradient_mean_reduce_re = [self._gradient_mean_reduce_re]
+
+                        if any(re.search(regex, var.name)
+                               for regex in self._gradient_mean_reduce_re):
+                            grad = cross_replica_ops.cross_replica_mean(grad)
+                        else:
+                            grad = gen_poputil_ops.ipu_replication_normalise(cross_replica_ops.cross_replica_sum(grad))
 
                     # distribution with IPUMultiWorkerStrategy needs additional normalisation by the number of workers
                     if isinstance(distribute.get_strategy(), ipu_multi_worker_strategy.IPUMultiWorkerStrategy):

@@ -50,11 +50,27 @@ to load the data, and if it is not present on the disk, it will be automatically
 | `precision.py`           | Handles application of floating point precision policies |
 | `requirements.txt`       | Project third-party dependencies |
 | `seed.py`                | Allows to set a seed for random number generator for reproducibility of results |
+| `send_request.py`        | TensorFlow Serving executor.
 | `test_common.py`         | Package that both test/ and tests_serial/ share |
 | `time_to_train.py`       | Provides code for measuring TTT (Total-Time-to-Train) |
 | `train.py`               | The main training program |
 | `utilities.py`           | Shared methods used across the whole project |
 
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 ## Executing training only or validation only
 
@@ -121,6 +137,12 @@ Note that the default behaviour when combining distributed training and pipeline
 
     poprun --num-instance X --num-replicas Y --ipus-per-replica Z python3 train.py --pipeline-splits split1 ... splitN --pipeline-validation-model
 
+## Regularization
+The application allows to apply the squared norm of the weights to the loss in two ways, which are `--weight-decay <lambda>` and `--l2-regularization <lambda>`. They are mathematically equivalent when applied to stateless optimisers (e.g. SGD without the momentum), however, for stateful optimisers they behave differently. `--l2-regularization` affects the optimiser state directly, whereas `--weight-decay` doesn't, i. e.:
+- weight decay:  `delta_W = -lr*(O(dL/dW, s) + lambda*W)`
+- L2 regularization:  `delta_W = -lr*(O(dL/dW + lambda*W, s)`
+
+where `L` is the loss with respect to weights `W`, `O` is an optimizer with state `s` and `lambda` is the regularization coefficient.
 
 ## Convergence optimized configurations
 
@@ -345,46 +367,49 @@ The following command line creates a SavedModel containing Resnet50 with weights
 Please keep in mind that the exported SavedModel can't be used to load the model back into a TensorFlow script, as it only contains the IPU runtime op and an opaque executable and no model state.
 
 ### Additional arguments for export_for_serving.py script
-  --export-dir EXPORT_DIR
+  --export-dir EXPORT_DIR  
                         Path to the directory where the SavedModel will be written. (default: None)
-  --iterations ITERATIONS
+                        
+  --iterations ITERATIONS  
                         Number of iterations for the model exported for TensorFlow Serving. (default: 1)
-  --pipeline-serving-model PIPELINE_SERVING_MODEL 
+                        
+  --pipeline-serving-model PIPELINE_SERVING_MODEL  
                         Reuse the training pipeline splits for inference in the model exported for TensorFlow Serving (default: False)
-  --checkpoint-file CHECKPOINT_FILE
+                        
+  --checkpoint-file CHECKPOINT_FILE  
                         Path to a checkpoint file that will be loaded before exporting model for TensorFlow Serving. If not set, the model will use randomly initialized parameters. (default: None)
 
-## Benchmarking
 
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
+### TensorFlow Serving example
 
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
+Example of TensorFlow Serving usage can be found in `send_request.py` file. Script exports selected model to SavedModel format, initializes serving server, and sends images to server for predictions. Execution ends after given number of prediction requests. The model should be defined using the same options or configuration file that have been provided to `train.py` for training.
 
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
+Basic usage example for Resnet50 model export in batch-size 16 and serving in batch-size 8: 
+    `python3 send_request.py --config resnet50_infer_bs16 --dataset-path $DATASETS_DIR/imagenet-data --batch-size 8 --port 8502 --num-threads 32`
 
-## Profiling
+### Additional arguments for send_request.py script
 
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
+   --port PORT  
+                        Serving service acces port
+                        
+   --batch-size BATCH_SIZE 
+                        Size of data batch used in single prediction request. Might be smaller than global-batch-size of exported model
+                        
+   --num-threads NUM_THREADS  
+                        Number of threads/processes used for prediction requests, optimal value depends from used model and host system specification
+                        
+   --num-images NUM_IMAGES  
+                        Number of image prediction requests
+                        
+   --serving-bin-path SERVING_BIN_PATH  
+                        Path to TensorFlow serving binary file
+                        
+   --use-async  
+                        When enabled client will send next prediction requests without blocking/waitg for server response. Each request returns `Future Object`
+                        
+   --verbose  
+                        Enables printing of each request execution time. Expect degradation in overall performace caused by printing
+                        
 
 ## Licensing
 The code in this directory is provided under the MIT License (see the license file at the top-level of this repository) with the exception of the following files that are derived work and licensed under the Apache License 2.0.

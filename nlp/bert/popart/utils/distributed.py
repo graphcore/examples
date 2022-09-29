@@ -17,7 +17,8 @@ import numpy as np
 
 
 __all__ = ["setup_comm", "average_distributed_deques",
-           "popdist_root", "distributed_barrier"]
+           "popdist_root", "distributed_barrier",
+           "broadcast_dict"]
 
 
 DISTRIBUTED_ROOT = 0
@@ -68,3 +69,8 @@ def average_distributed_deques(local_deque: deque, N: int = None) -> deque:
         for i, result in zip(range(_N, len(local_deque)), avg):
             local_deque[i] = result
     return local_deque
+
+
+def broadcast_dict(to_bcast):
+    comm = _get_comm()
+    return comm.bcast(to_bcast, root=DISTRIBUTED_ROOT)

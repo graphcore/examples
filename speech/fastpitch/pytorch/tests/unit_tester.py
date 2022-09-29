@@ -98,7 +98,7 @@ class Handler:
 
     def prepare_poptorch_model(self):
         for name, _ in self.poptorch_model.named_parameters():
-            self.ipu_option.anchorTensor(f'grad_{name}', f'Gradient___model.{name}')
+            self.ipu_option.anchorTensor(f'grad_{name}', f'Gradient___{name}')
         self.poptorch_model = poptorch.trainingModel(self.poptorch_model, self.ipu_option, self.poptorch_optimizer)
 
     def run_one_step(self):

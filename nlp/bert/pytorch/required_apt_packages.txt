@@ -1,0 +1,9 @@
+build-essential
+cmake
+git
+libboost-all-dev
+libre2-dev
+libssl-dev
+python3-dev
+rapidjson-dev
+virtualenv

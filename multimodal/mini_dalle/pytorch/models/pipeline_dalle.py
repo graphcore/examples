@@ -18,7 +18,7 @@ class SerializedLinear(nn.Linear):
     def forward(self, x):
         output = poptorch.serializedMatMul(x, self.weight.t(), self.mode, self.factor)
         if self.bias is not None:
-            output += self.bias
+            output = output + self.bias
         return output.view(x.shape[0], -1, self.out_features)
 
 

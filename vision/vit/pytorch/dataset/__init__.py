@@ -14,6 +14,6 @@
 
 
 from .customized_randaugment import ImageNetPolicy
-from .dataset import get_data, get_random_datum, get_dataset, get_dataloader, DatasetWithStepLabel
-from .mixup_utils import mixup_criterion, mixup_data
-from .preprocess import get_preprocessing_pipeline
+from .dataset import get_data, get_random_datum, get_dataset, get_dataloader
+from .mixup_utils import sample_mixup_coefficients
+from .preprocess import get_preprocessing_pipeline, NormalizeToTensor, normalization_parameters

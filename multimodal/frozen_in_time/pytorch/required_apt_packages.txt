@@ -1,0 +1,11 @@
+libavformat-dev
+libavcodec-dev
+libavdevice-dev
+libavutil-dev
+libswscale-dev
+libswresample-dev
+libavfilter-dev
+python3-dev
+pkg-config
+libsm6
+git

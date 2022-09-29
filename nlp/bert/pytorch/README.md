@@ -1,9 +1,10 @@
 # PyTorch BERT
 
-This directory contains an implementation of BERT models in PyTorch for the IPU, leveraging the HuggingFace Transformers library. There are two examples:
+This directory contains an implementation of BERT models in PyTorch for the IPU, leveraging the HuggingFace Transformers library. There are three examples:
 
 1. BERT for pre-training - `run_pretraining.py`
 2. BERT for SQuAD - `run_squad.py`
+3. BERT for inference with Triton Server - `run_benchmark_with_triton_server.py`
 
 Run our BERT-L Fine-tuning on SQuAD dataset on Paperspace.
 <br>
@@ -12,6 +13,12 @@ Run our BERT-L Fine-tuning on SQuAD dataset on Paperspace.
 ## Environment setup
 
 First, install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` scripts for Poplar and PopART.
+Install the apt dependencies, i.e. for Ubuntu 18.04 (requires admin privileges):
+
+```console
+sudo apt update
+sudo apt install $(< required_apt_packages.txt)
+```
 
 Then, create a virtual environment, install the required packages and build the custom ops.
 
@@ -19,8 +26,23 @@ Then, create a virtual environment, install the required packages and build the 
 virtualenv venv -p python3.6
 source venv/bin/activate
 pip3 install -r requirements.txt
-make
 ```
+
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 ## Run the pre-training application
 
@@ -40,6 +62,14 @@ To see the available options available to use in the command line interface use 
 python3 run_pretraining.py --help
 # or
 python3 run_squad.py --help
+# or
+python3 run_benchmark_with_triton_server.py --help ./tests_serial/tritonserver/
+```
+
+## Running inference with Triton Server
+To run all tests with Triton Server:
+```console
+python3 run_benchmark_with_triton_server.py -s ./tests_serial/tritonserver/
 ```
 
 ## Running pre-training with checkpointing
@@ -114,7 +144,7 @@ python3 run_pretraining.py --config demo_tiny_128 --packed-data --input-files da
 
 ## Employing automatic loss scaling (ALS) for half precision training
 
-ALS is an experimental feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision. 
+ALS is a feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision. 
 
 NB. This feature expects the `poptorch` training option `accumulationAndReplicationReductionType` to be set to `poptorch.ReductionType.Mean`, and for accumulation by the optimizer to be done in half precision (using `accum_type=torch.float16` when instantiating the optimizer), or else it may lead to unexpected behaviour.
 
@@ -298,37 +328,34 @@ sequence length 512
 ./data/packing/pack_512.sh <path-of-input-unpacked-data-folder> <path-of-output-packed-data-folder>
 ```
 
-## Benchmarking
+## Running and benchmarking
 
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
 
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-## Profiling
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
 
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
+## Troubleshooting
+
+If Triton server tests fails with such error:
+
+* ```[model_runtime:cpp] [error] Error in model_runtime/source/Executable.cpp:38:Failed to deserialize XXX : Error reading executable - package hash (YYY) differs from poplar hash (ZZZ)```
+
+	This mean that models were generated and saved with different version of SDK and needs to be recreated. Please remove `tests_serial/tritonserver/test_environment_ready.lock` and rerun tests.
+
+* ```Failed: Failed to download and/or compile Triton Server!```
+
+	Most probably some system packages are missing, ensure that all packages listed in `required_apt_packages.txt` are installed. Also refer to Triton Server build log file. After fixing error remove `../../../utils/triton_server/triton_environment_is_prepared.lock` and rerun tests.
+
 
 ## Licensing
 

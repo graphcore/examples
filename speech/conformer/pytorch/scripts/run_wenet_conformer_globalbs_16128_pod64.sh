@@ -1,7 +1,7 @@
 poprun
     -vv  \
     --host $HOSTS  \
-    --mpi-global-args="--allow-run-as-root  --tag-output --mca oob_tcp_if_include $TCP_IF_INCLUDE --mca btl_tcp_if_include $TCP_IF_INCLUDE"  \
+    --mpi-global-args="--mca oob_tcp_if_include $TCP_IF_INCLUDE --mca btl_tcp_if_include $TCP_IF_INCLUDE"  \
     --mpi-local-args="-x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x IPUOF_VIPU_API_TIMEOUT=600 -x POPLAR_LOG_LEVEL=WARN -x TF_POPLAR_FLAGS -x DATASETS_DIR -x POPLAR_ENGINE_OPTIONS -x POPLAR_RUNTIME_OPTIONS"  \
     --update-partition=yes  \
     --remove-partition=no  \
@@ -10,13 +10,11 @@ poprun
     --vipu-server-host "$VIPU_CLI_API_HOST"  \
     --vipu-cluster=$CLUSTER  \
     --vipu-partition=$PARTITION  \
-    --print-topology=yes  \
     --num-replicas=16  \
     --ipus-per-replica=4  \
     --num-ilds=1  \
     --sync-type=ST_POD_NATIVE_DEFAULT  \
     --num-instances=4  \
-    --numa-aware=yes  \
     python3 main.py train  \
     --ipu_options.executable_cache_dir exec_cache  \
     --trainer.num_epochs=2  \

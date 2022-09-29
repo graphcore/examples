@@ -1,0 +1,49 @@
+# -------- Models --------
+tiny: &tiny
+  model:
+    eval: true
+    layers: 2
+    hidden_size: 64
+    sequence_length: 8
+    attention:
+      heads: 4
+      rotary_dim: 16
+    embedding:
+      vocab_size: 128
+
+gpt-j: &gpt-j
+  model:
+    eval: true
+    layers: 28
+    hidden_size: 4096
+    sequence_length: 1024
+    attention:
+      heads: 16
+      rotary_positional_embeddings_base: 10000
+      rotary_dim: 64
+    embedding:
+      vocab_size: 50400
+# -------------------------
+
+# ------- Execution -------
+release:
+  tiny:
+    <<: *tiny
+    execution:
+      micro_batch_size: 1
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 4
+
+  gpt-j:
+    <<: *gpt-j
+    execution:
+      micro_batch_size: 12
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 16
+
+  gpt-j-mnli:
+    <<: *gpt-j
+    execution:
+      micro_batch_size: 16
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 16

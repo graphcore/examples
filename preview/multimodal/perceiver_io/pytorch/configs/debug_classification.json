@@ -1,0 +1,37 @@
+{
+    "output_dir": "/tmp/perceiver-io/",
+    "remove_unused_columns": false,
+    "do_eval": false,
+    "save_strategy": "epoch",
+    "logging_strategy": "epoch",
+    
+    "pod_type": "pod4",
+    "num_train_epochs": 1,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 51,
+    "ipu_config_name": "configs/debug_ipu_config.json",
+    
+    "dataset_name": "cifar10",
+    "dataset_path": "/localdata/datasets/imagenet_object_localization_patched2019.tar.gz",
+    "train_split": 0.03,
+    "dataloader_drop_last": true,
+    "dataloader_num_workers": 64,
+    "dataloader_mode": "async_rebatched",
+    
+    "model_name": "deepmind/vision-perceiver-conv",
+    "recomputation": true,
+
+    "num_blocks": 2,
+    "d_latents": 256,
+    "num_latents": 128,
+    "num_self_attention_heads": 4,
+    "num_cross_attention_heads": 1,
+    "num_self_attends_per_block": 3,
+    
+    "warmup_ratio": 0.5,
+    "learning_rate": 5e-4,
+    "constant_cosine": true,
+    
+    "lamb": true,
+    "adam_epsilon": 1e-6
+}

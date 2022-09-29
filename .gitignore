@@ -14,6 +14,8 @@
 **/data
 **/logs
 
+**/cifar-10-batches-bin
+
 *.pyc
 __pycache__
 .cache
@@ -37,6 +39,7 @@ vars.capnp
 
 # Remove VIM temp files
 *.swp
+**/.*.sw[a-p]
 
 # C++ examples build into the "build" directory
 **/build/
@@ -53,4 +56,3 @@ nohup.*
 
 utils/triton_server/backends
 !vision/cnns/pytorch/tests/tritonserver/models/*/*/*.json
-

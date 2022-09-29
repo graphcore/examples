@@ -11,10 +11,21 @@ class OverlapModel(torch.nn.Module):
         super().__init__()
         self.model = model
 
-    def forward(self, img):
-        img = poptorch.set_overlap_for_input(img, poptorch.OverlapMode.OverlapAccumulationLoop)
-        img = self.model(img)
-        img = poptorch.set_overlap_for_output(img, poptorch.OverlapMode.OverlapAccumulationLoop)
+    def forward(self, *img):
+        def parse(tensor, tensor_type="input"):
+            if isinstance(tensor, torch.Tensor):
+                if tensor_type == "input":
+                    tensor = poptorch.set_overlap_for_input(tensor, poptorch.OverlapMode.OverlapAccumulationLoop)
+                else:
+                    tensor = poptorch.set_overlap_for_output(tensor, poptorch.OverlapMode.OverlapAccumulationLoop)
+                return tensor
+            else:
+                tensor = tuple([parse(t, tensor_type) for t in tensor])
+                return tensor
+
+        img = parse(img, "input")
+        img = self.model(*img)
+        img = parse(img, "output")
         return img
 
 
@@ -38,6 +49,6 @@ class NormalizeInputModel(torch.nn.Module):
             img = img.half()
         elif self.output_cast == "full":
             img = img.float()
-        img = img.mul(self.mul)
-        img = img.sub(self.sub)
+        img = img.mul(self.mul.to(img.device))
+        img = img.sub(self.sub.to(img.device))
         return self.model(img)

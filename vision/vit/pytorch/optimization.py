@@ -57,6 +57,9 @@ def get_optimizer(config, model):
         {"params": regularized_params, "weight_decay": config.weight_decay},
         {"params": non_regularized_params, "weight_decay": 0}
     ]
+    if config.optimizer == "LAMB":
+        params[0]["max_weight_norm"] = config.max_norm
+        params[1]["max_weight_norm"] = config.max_norm_bias
 
     if config.optimizer == "SGD":
         optimizer = SGD(params,
@@ -70,7 +73,8 @@ def get_optimizer(config, model):
     elif config.optimizer == "Adam":
         optimizer = Adam(params,
                          lr=config.learning_rate,
-                         betas=None if config.adam_betas is None else (config.adam_betas[0], config.adam_betas[1]),
+                         betas=None if config.adam_betas is None else (
+                             config.adam_betas[0], config.adam_betas[1]),
                          weight_decay=config.weight_decay,
                          eps=config.adam_eps,
                          loss_scaling=config.loss_scaling,
@@ -80,7 +84,8 @@ def get_optimizer(config, model):
     elif config.optimizer == "LAMB":
         optimizer = LAMB(params,
                          lr=config.learning_rate,
-                         betas=None if config.adam_betas is None else (config.adam_betas[0], config.adam_betas[1]),
+                         betas=None if config.adam_betas is None else (
+                             config.adam_betas[0], config.adam_betas[1]),
                          weight_decay=config.weight_decay,
                          eps=config.adam_eps,
                          loss_scaling=config.loss_scaling,

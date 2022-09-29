@@ -20,6 +20,7 @@ from functools import partial
 from math import ceil
 import relative_timer
 import warnings
+import traceback
 
 DATASET_CONSTANTS = {
     'imagenet': {
@@ -64,22 +65,56 @@ DATASET_CONSTANTS = {
 
 
 def reconfigure_dataset_constants(opts):
+    for dataset in DATASET_CONSTANTS.values():
+        if 'UNSCALED_NUM_IMAGES' not in dataset:
+            dataset['UNSCALED_NUM_IMAGES'] = dataset['NUM_IMAGES']
+
     if opts['dataset'] == 'imagenet' and opts['dataset_percentage_to_use'] < 100:
-        DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] = opts['dataset_percentage_to_use'] * \
-            DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] // 100
-        num_train_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']
-                              ['TRAIN']) * opts['dataset_percentage_to_use'] // 100
-        num_test_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TEST']
-                             ) * opts['dataset_percentage_to_use'] // 100
+        if not DATASET_CONSTANTS['imagenet']['UNSCALED_NUM_IMAGES'] == DATASET_CONSTANTS['imagenet']['NUM_IMAGES']:
+            warnings.warn(f"reconfigure_dataset_constants() already invoked, skipping.\n{traceback.extract_stack()}")
+            return DATASET_CONSTANTS
+
+        old_num_images = DATASET_CONSTANTS['imagenet']['NUM_IMAGES']
+        old_num_train_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TRAIN'])
+        old_num_test_files = len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TEST'])
+
+        DATASET_CONSTANTS['imagenet']['NUM_IMAGES'] = (
+                opts['dataset_percentage_to_use'] *
+                DATASET_CONSTANTS['imagenet']['NUM_IMAGES']
+            ) // 100
+        num_train_files = (
+                len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TRAIN']) *
+                opts['dataset_percentage_to_use']
+            ) // 100
+        num_test_files = (
+                len(DATASET_CONSTANTS['imagenet']['FILENAMES']['TEST']) *
+                opts['dataset_percentage_to_use']
+            ) // 100
         DATASET_CONSTANTS['imagenet']['FILENAMES'] = {
-            'TRAIN': ['train-%05d-of-01024' % i for i in range(num_train_files)],
-            'TEST': ['validation-%05d-of-00128' % i for i in range(num_test_files)]
+            'TRAIN': ["train-%05d-of-01024" % i for i in range(num_train_files)],
+            'TEST': ["validation-%05d-of-00128" % i for i in range(num_test_files)]
         }
+
+        pct = opts['dataset_percentage_to_use']
+        print(f"DEBUG: Reducing NUM_IMAGES from {old_num_images} to {DATASET_CONSTANTS['imagenet']['NUM_IMAGES']} due to dataset_percentage_to_use of {pct}")
+        print(f"DEBUG: Reducing num_train_files from {old_num_train_files} to {num_train_files} due to dataset_percentage_to_use of {pct}")
+        print(f"DEBUG: Reducing num_test_files from {old_num_test_files} to {num_test_files} due to dataset_percentage_to_use of {pct}")
+
     return DATASET_CONSTANTS
 
 
 def data(opts, is_training=True):
-    reconfigure_dataset_constants(opts)
+    """
+    We originally called `reconfigure_dataset_constants(opts)` here:
+    `dataset.data` is invoked from `train.py:training_graph` and
+    `train.py:__main__`, as well as
+    `dataset.reconfigure_dataset_constants` being called by
+    `train.py:_train_process` - so calling
+    `reconfigure_dataset_constants` here feels superfluous (...although
+    no longer harmful, as the dataset reduction is now guarded from
+    being performed more than once)
+    """
+
     from .imagenet_dataset import ImageNetData
     batch_size = opts["micro_batch_size"]
     dtypes = opts["precision"].split('.')
@@ -148,34 +183,34 @@ def data(opts, is_training=True):
                     dataset = dataset.map(add_timestamp)
 
                 return dataset
-            else:
-                preprocess_fn = partial(imagenet_preprocess, is_training=training_preprocessing,
-                                        image_size=opts["image_size"],
-                                        dtype=tf.uint8 if opts['eight_bit_io'] else datatype,
-                                        seed=opts['seed'],
-                                        full_normalisation=opts['normalise_input'] if opts['hostside_norm'] else None)
-                dataset_fn = tf.data.TFRecordDataset
-                if is_distributed:
-                    # Shuffle after sharding
-                    dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
-                    dataset = dataset.shard(
-                        num_shards=opts['distributed_worker_count'],
-                        index=opts['distributed_worker_index'])
-                    if is_training:
-                        dataset = dataset.shuffle(
-                            ceil(len(filenames) / opts['distributed_worker_count']),
-                            seed=opts['seed'])
-                else:
-                    dataset = tf.data.Dataset.list_files(filenames, shuffle=is_training, seed=opts['seed'])
-                if not is_training:
-                    cycle_length = 1
-                    block_length = opts['total_replicas']
-                else:
-                    block_length = cycle_length
 
-                dataset = dataset.interleave(
-                    dataset_fn, cycle_length=cycle_length,
-                    block_length=block_length, num_parallel_calls=cycle_length)
+            preprocess_fn = partial(imagenet_preprocess, is_training=training_preprocessing,
+                                    image_size=opts["image_size"],
+                                    dtype=tf.uint8 if opts['eight_bit_io'] else datatype,
+                                    seed=opts['seed'],
+                                    full_normalisation=opts['normalise_input'] if opts['hostside_norm'] else None)
+            dataset_fn = tf.data.TFRecordDataset
+            if is_distributed:
+                # Shuffle after sharding
+                dataset = tf.data.Dataset.list_files(filenames, shuffle=False)
+                dataset = dataset.shard(
+                    num_shards=opts['distributed_worker_count'],
+                    index=opts['distributed_worker_index'])
+                if is_training:
+                    dataset = dataset.shuffle(
+                        ceil(len(filenames) / opts['distributed_worker_count']),
+                        seed=opts['seed'])
+            else:
+                dataset = tf.data.Dataset.list_files(filenames, shuffle=is_training, seed=opts['seed'])
+            if not is_training:
+                cycle_length = 1
+                block_length = opts['total_replicas']
+            else:
+                block_length = cycle_length
+
+            dataset = dataset.interleave(
+                dataset_fn, cycle_length=cycle_length,
+                block_length=block_length, num_parallel_calls=cycle_length)
         elif 'cifar' in opts["dataset"]:
             preprocess_fn = partial(cifar_preprocess, is_training=training_preprocessing, dtype=datatype,
                                     dataset=opts['dataset'], seed=opts['seed'])

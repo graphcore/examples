@@ -55,7 +55,7 @@ def add_shared_arguments(parser):
                         type=str_to_bool,
                         help="Enable generated dataset for pretraining and fine-tuning.")
     parser.add_argument("--compile-only",
-                        type=str_to_bool,
+                        action="store_true",
                         help="Enable compile only mode.")
     return parser
 

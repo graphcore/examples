@@ -75,10 +75,7 @@ class TestConvertHFToFunctionalBertFineTuning:
         }
 
         for key, val in self.sample_inputs.items():
-            if key == 'masked_lm_positions':
-                assert tuple(val.shape) == (self.micro_batch_size, self.max_position_embeddings)
-            else:
-                assert tuple(val.shape) == (self.micro_batch_size, self.max_position_embeddings)
+            assert tuple(val.shape) == (self.micro_batch_size, self.max_position_embeddings)
 
         assert len(self.sample_outputs) == 2
         assert self.sample_outputs['start_positions'].shape.as_list()[0] == self.micro_batch_size

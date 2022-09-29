@@ -1,3 +1,5 @@
+// cppimport
+//
 // Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,3 +61,14 @@ public:
 
 
 static popart::PatternCreator<ResidualAddInPlacePattern> c1("ResidualAddInPlacePattern", true);
+
+
+// -------------- cppimport --------------
+// clang-format off
+/*
+<%
+cfg['extra_compile_args'] = ['-std=c++14', '-fPIC', '-O2', '-DONNX_NAMESPACE=onnx', '-Wall', '-Wsign-compare', '-shared']
+cfg['libraries'] = ['popart', 'poplar', 'popops', 'poputil', 'popnn', 'poprand']
+setup_pybind11(cfg)
+%>
+*/

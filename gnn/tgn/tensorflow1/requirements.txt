@@ -9,4 +9,4 @@ torch-scatter==2.0.6
 torch-sparse==0.6.9
 tqdm==4.60.0
 types-dataclasses==0.6.1
-git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils

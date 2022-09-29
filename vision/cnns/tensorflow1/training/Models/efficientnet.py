@@ -552,6 +552,9 @@ def set_defaults(opts):
         # force stable norm on
         if not opts.get("stable_norm"):
             opts['stable_norm'] = True
+        if opts.get("force_unstable_norm"):
+            opts['stable_norm'] = False
+
 
         # exclude beta and gamma from weight decay calculation
         opts["wd_exclude"] = ['beta', 'gamma', 'proxy', 'moving_']

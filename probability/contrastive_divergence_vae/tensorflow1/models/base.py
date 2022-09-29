@@ -448,8 +448,9 @@ class BaseModel(object):
             return False
 
     def train_update_str(self, n_iter, tr_out, time_diff):
-        tr_out_fmt = " | ".join([f"{k}: {v}" for k, v in tr_out.items()])
-        return f'Number of iterations: {n_iter} of {self.max_iter} | {tr_out_fmt} | Time taken: {time_diff}'
+        tr_out_fmt = ", ".join([f"{k}: {v}" for k, v in tr_out.items()])
+        throughput = 100. * 10000. / time_diff
+        return f'Number of iterations: {n_iter} of {self.max_iter}, {tr_out_fmt}, Time taken: {time_diff}, throughput: {throughput} samples/sec'
 
     def on_save(self, checkpoint_dir, timestep=-1):
         if timestep == -1:

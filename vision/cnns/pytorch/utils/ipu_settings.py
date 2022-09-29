@@ -35,8 +35,7 @@ def inference_settings(args, opts):
 
     # Use offline IPU for compilation only, it needs an appropriate version.
     if args.compile_only:
-        opts.useOfflineIpuTarget(poptorch.ipuHardwareVersion())
-
+        opts.useOfflineIpuTarget(args.offline_target_ipu_version)
     return opts
 
 
@@ -74,4 +73,8 @@ def train_settings(args, opts):
         opts.Training.setAutomaticLossScaling(True)
 
     opts.outputMode(poptorch.OutputMode.Sum)
+    # merge all tensors before communication
+    opts._Popart.set("accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
+    opts._Popart.set("replicatedCollectivesSettings.prepareScheduleForMergingCollectives", True)
+    opts._Popart.set("replicatedCollectivesSettings.mergeAllReduceCollectives", True)
     return opts

@@ -5,9 +5,8 @@ poprun -vv --host $HOSTS \
         --num-instances=$NUM_INSTANCE --num-replicas=$NUM_REPLICA \
         --num-ilds $NUM_ILDS \
         --ipus-per-replica=8 \
-        --numa-aware=yes \
         --print-topology=yes \
-        --mpi-global-args="--tag-output --allow-run-as-root  --mca oob_tcp_if_include $TCP_IF_INCLUDE --mca btl_tcp_if_include $TCP_IF_INCLUDE" \
+        --mpi-global-args="--mca oob_tcp_if_include $TCP_IF_INCLUDE --mca btl_tcp_if_include $TCP_IF_INCLUDE" \
         --mpi-local-args="-x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x CPATH -x IPUOF_VIPU_API_TIMEOUT=3600 -x POPLAR_LOG_LEVEL=WARN -x POPLAR_SDK_ENABLED -x POPLAR_ENGINE_OPTIONS" \
         --vipu-server-timeout=3600 \
 python train_gpt2.py \
@@ -29,6 +28,5 @@ python train_gpt2.py \
     --embedding-serialization-factor 8 \
     --recompute-checkpoint-every-layer True \
     --enable-half-partials True \
-    --train-path 'generated' \
-    --replicated-tensor-sharding True \
-    --compile-only False
+    --dataset 'generated' \
+    --replicated-tensor-sharding True

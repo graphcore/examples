@@ -1,12 +1,12 @@
 ---
 common_options: &common_options
-  location: public_examples/recommendation/click_through_rate/tensorflow1/din/
+  location: din
   data:
     throughput:
-      regexp: 'sample\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 1
   output:
-    - [Sample/sec, 'throughput']
+    - [samples/sec, 'throughput']
 
 tf1_din_train_synth_1ipu:
   <<: *common_options

@@ -3,11 +3,18 @@ tf1_autoencoder_train_gen_2ipu:
   description: |
     Autoencoder for recommendation.
   cmd:
-    python3 autoencoder_benchmark.py --size 128 --num-ipus 2
-    --base-learning-rates 16..17 --epochs 10
+    python3 autoencoder_benchmark.py
+      --size 128
+      --num-ipus 2
+      --base-learning-rates 16..17
+      --epochs 10
   data:
     throughput:
       regexp:
-        'Aggregate average throughput over .* IPU devices = (.*) users/sec'
+        'throughput: *(.*?) samples\/sec'
+    loss:
+      regexp: 'loss: *(.*?)'
+      reduction_type: "final"
   output:
-    - [Users/sec, 'throughput']
+    - [samples/sec, 'throughput']
+    - [loss, 'loss']

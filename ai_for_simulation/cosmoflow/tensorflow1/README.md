@@ -33,13 +33,13 @@ This README describes how to run a conv3D based model called CosmoFlow on IPU ha
  - run without tensorflow estimator, with 2 IPUs:
    The workload is heavily IO bound, so merely increasing IPUs without increasing CPU numa-aware threads to pre-process
    the dataset will show marginal scalability. We use poprun to increase threads involved in processing
-   `poprun --num-replicas 2 --num-instances 2 --ipus-per-replica 1 --numa-aware 1 python train.py configs/graphcore.yaml`
+   `poprun --num-replicas 2 --num-instances 2 --ipus-per-replica 1 python train.py configs/graphcore.yaml`
 
  - run with tensorflow estimator, with 1 IPU:
    `python train.py configs/graphcore.yaml --use-estimator`
 
  - run with tensorflow estimator, with 2 IPUs:
-   `poprun --num-replicas 2 --num-instances 2 --ipus-per-replica 1 --numa-aware 1 python train.py configs/graphcore.yaml --use-estimator`
+   `poprun --num-replicas 2 --num-instances 2 --ipus-per-replica 1 python train.py configs/graphcore.yaml --use-estimator`
 
 ## Licensing
 

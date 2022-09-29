@@ -104,7 +104,7 @@ def test_replicas_reduction():
 @pytest.mark.parametrize("precision", ["16.16", "32.32"])
 def test_synthetic(precision):
     gc.collect()
-    run_script("train/train.py", f"--data synthetic --model resnet18 --epoch 1 --precision {precision} --validation-mode none --optimizer sgd_combined --lr 0.001 --gradient-accumulation 64 --batch-size 1 --dataloader-worker 4 --seed 0")
+    run_script("train/train.py", f"--data synthetic --model resnet18 --epoch 1 --precision {precision} --validation-mode none --optimizer sgd_combined --lr 0.001 --gradient-accumulation 64 --micro-batch-size 1 --dataloader-worker 4 --seed 0")
 
 
 @pytest.mark.parametrize("label_smoothing", [0.0, 1.0, 0.1, 0.5])
@@ -133,7 +133,7 @@ class TestTrainCIFAR10:
     @pytest.mark.ipus(1)
     def test_single_ipu_validation_groupnorm(self):
         gc.collect()
-        out = run_script("train/train.py", "--data cifar10 --model resnet18 --epoch 3 --precision 16.16 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
+        out = run_script("train/train.py", "--data cifar10 --model resnet18 --epoch 3 --precision 16.16 --optimizer sgd_combined --lr 0.1 --micro-batch-size 2 --gradient-accumulation 32 "
                                            "--norm-type group --norm-num-groups 32 --enable-stochastic-rounding --dataloader-worker 4 --seed 0")
         acc = get_test_accuracy(out)
         assert acc > 15.0
@@ -144,7 +144,7 @@ class TestTrainCIFAR10:
     def test_single_ipu_validation_batchnorm(self):
         gc.collect()
         out = run_script("train/train.py", "--data cifar10 --model resnet18 --epoch 2 --precision 16.16 --optimizer sgd_combined --lr 0.1 --gradient-accumulation 8 "
-                                           "--norm-type batch --batch-size 16 --enable-stochastic-rounding --dataloader-worker 4 --seed 0")
+                                           "--norm-type batch --micro-batch-size 16 --enable-stochastic-rounding --dataloader-worker 4 --seed 0")
         acc = get_test_accuracy(out)
         assert acc > 15.0
 
@@ -160,7 +160,7 @@ class TestTrainCIFAR10:
     @pytest.mark.ipus(1)
     def test_full_precision(self):
         gc.collect()
-        out = run_script("train/train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 32.32 --optimizer sgd_combined --lr 0.1 --batch-size 1 --gradient-accumulation 64 --dataloader-worker 4 --seed 0")
+        out = run_script("train/train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 32.32 --optimizer sgd_combined --lr 0.1 --micro-batch-size 1 --gradient-accumulation 64 --dataloader-worker 4 --seed 0")
         acc = get_train_accuracy(out)
         assert acc > 15.0
 
@@ -170,7 +170,7 @@ class TestTrainCIFAR10:
     def test_mixed_precision(self):
         gc.collect()
         out = run_script("train/train.py", "--data cifar10 --epoch 2 --model resnet18 --pipeline-splits layer4/0 --precision 16.32 --optimizer sgd_combined "
-                                           "--lr 0.1 --batch-size 1 --gradient-accumulation 64 --validation-mode none --dataloader-worker 4 --seed 0")
+                                           "--lr 0.1 --micro-batch-size 1 --gradient-accumulation 64 --validation-mode none --dataloader-worker 4 --seed 0")
         acc = get_train_accuracy(out)
         assert acc > 15.0
 
@@ -179,7 +179,7 @@ class TestTrainCIFAR10:
     @pytest.mark.ipu_version("ipu2")
     def test_half_resolution_training(self):
         gc.collect()
-        out = run_script("train/train.py", "--data cifar10 --model resnet18 --epoch 1 --precision 16.32 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 "
+        out = run_script("train/train.py", "--data cifar10 --model resnet18 --epoch 1 --precision 16.32 --optimizer sgd_combined --lr 0.1 --micro-batch-size 2 --gradient-accumulation 32 "
                                            "--norm-type batch --dataloader-worker 4 --half-res-training --fine-tune-epoch 1 --fine-tune-first-trainable-layer layer3 --weight-avg-strategy exponential "
                                            "--weight-avg-exp-decay 0.97 --checkpoint-path test_half_resolution_training --seed 0")
         acc = get_test_accuracy(out)
@@ -194,7 +194,7 @@ class TestRestoreCheckpoint:
     def test_restore_train(self):
         gc.collect()
         # create a model
-        out = run_script("train/train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 16.16 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 --seed 0 "
+        out = run_script("train/train.py", "--data cifar10 --epoch 2 --model resnet18 --precision 16.16 --optimizer sgd_combined --lr 0.1 --micro-batch-size 2 --gradient-accumulation 32 --seed 0 "
                                            "--validation-mode none --norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_restore_train --dataloader-worker 4")
         saved_train_acc = get_train_accuracy(out)
         # reload the model
@@ -210,7 +210,7 @@ class TestRestoreCheckpoint:
     def test_validation(self):
         gc.collect()
         # create a model
-        out = run_script("train/train.py", "--data cifar10 --epoch 1 --model resnet18 --precision 16.16 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 --seed 0 "
+        out = run_script("train/train.py", "--data cifar10 --epoch 1 --model resnet18 --precision 16.16 --optimizer sgd_combined --lr 0.1 --micro-batch-size 2 --gradient-accumulation 32 --seed 0 "
                                            "--norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_validation --dataloader-worker 4")
         saved_test_acc = get_test_accuracy(out)
         # validate the model
@@ -229,7 +229,7 @@ class TestRestoreCheckpoint:
         gc.collect()
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         out1 = run_script("train/train.py", "--data cifar10 --epoch 3 --model resnet18 --precision 16.16 --weight-avg-strategy mean --norm-type group "
-                          "--norm-num-groups 32 --optimizer sgd_combined --lr 0.1 --batch-size 2 --gradient-accumulation 32 --checkpoint-path restore_test_path_weight_avg "
+                          "--norm-num-groups 32 --optimizer sgd_combined --lr 0.1 --micro-batch-size 2 --gradient-accumulation 32 --checkpoint-path restore_test_path_weight_avg "
                           "--weight-avg-N 2 --dataloader-worker 4 --seed 0")
         os.remove(os.path.join(parent_dir, "restore_test_path_weight_avg", "resnet18_cifar10_3_averaged.pt"))
         _ = run_script("train/weight_avg.py", "--checkpoint-path restore_test_path_weight_avg --weight-avg-strategy mean --weight-avg-N 2")
@@ -246,7 +246,7 @@ class TestRestoreCheckpoint:
         # Only make sure that checkpoint loading works with mixup model wrapper.
         gc.collect()
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        run_script("train/train.py", f"--mixup-alpha 0.1 --cutmix-lambda-low 0.2 --cutmix-lambda-high 0.8 --data generated --checkpoint-path test_mixup_cutmix_validation_weight_avg --weight-avg-strategy exponential --weight-avg-exp-decay 0.97 --model resnet18 --epoch 2 --validation-mode after --optimizer sgd_combined --batch-size 4 --dataloader-worker 1 --seed 0")
+        run_script("train/train.py", f"--mixup-alpha 0.1 --cutmix-lambda-low 0.2 --cutmix-lambda-high 0.8 --data generated --checkpoint-path test_mixup_cutmix_validation_weight_avg --weight-avg-strategy exponential --weight-avg-exp-decay 0.97 --model resnet18 --epoch 2 --validation-mode after --optimizer sgd_combined --micro-batch-size 4 --dataloader-worker 1 --seed 0")
         shutil.rmtree(os.path.join(parent_dir, "test_mixup_cutmix_validation_weight_avg"))
 
     @pytest.mark.ipus(1)
@@ -255,6 +255,6 @@ class TestRestoreCheckpoint:
         # Only make sure that checkpoint loading works with mixup model wrapper.
         gc.collect()
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        run_script("train/train.py", f"--mixup-alpha 0.1 --cutmix-lambda-low 0.5 --cutmix-lambda-high 0.5 --data generated --checkpoint-path test_mixup_cutmix_restore_train --model resnet18 --epoch 2 --validation-mode none --optimizer sgd_combined --batch-size 4 --dataloader-worker 1 --seed 0")
+        run_script("train/train.py", f"--mixup-alpha 0.1 --cutmix-lambda-low 0.5 --cutmix-lambda-high 0.5 --data generated --checkpoint-path test_mixup_cutmix_restore_train --model resnet18 --epoch 2 --validation-mode none --optimizer sgd_combined --micro-batch-size 4 --dataloader-worker 1 --seed 0")
         run_script("train/restore.py", "--checkpoint-path test_mixup_cutmix_restore_train/resnet18_generated_1.pt")
         shutil.rmtree(os.path.join(parent_dir, "test_mixup_cutmix_restore_train"))

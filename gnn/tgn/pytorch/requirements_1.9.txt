@@ -1,0 +1,7 @@
+--find-links https://pytorch-geometric.com/whl/torch-1.9.0+cpu.html
+numpy
+torch==1.9.0
+torch-geometric
+torch-scatter
+torch-sparse
+tqdm==4.60.0
