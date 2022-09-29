@@ -6,7 +6,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 # regex that matches a link
-LINK_REGEX = r"(https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*))"
+LINK_REGEX = r"(https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?!&//=]*))"
 # command to collect possible link candidates in readme and python files
 GREP_CMD = "grep -REinH '(http|https)://' --include *.py --include=*.md"
 # Large files, slow response or not fitting into the pattern.

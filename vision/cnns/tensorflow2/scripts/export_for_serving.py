@@ -112,7 +112,6 @@ if __name__ == '__main__':
         accelerator_side_preprocess=hparams.accelerator_side_preprocess,
         eight_bit_transfer=eight_bit_transfer,
         pipeline_num_parallel=hparams.pipeline_num_parallel,
-        num_local_instances=1,
         fused_preprocessing=hparams.fused_preprocessing,
         synthetic_data=hparams.synthetic_data)
     logging.debug(ds)

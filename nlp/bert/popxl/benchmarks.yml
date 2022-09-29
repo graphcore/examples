@@ -3,11 +3,11 @@
 pretrain_options: &pretrain_options
   data:
    throughput:
-    regexp: 'Throughput\:\s*(.*) samples/s'
+    regexp: 'throughput: *(.*?) samples\/sec'
   output:
-   - [throughput, 'throughput']
+   - [samples/sec, 'throughput']
   env:
-    WANDB_MODE: offline
+    WANDB_MODE: "disabled"
 
 popxl_bert_pretrain_base_real_pod16:
   <<: *pretrain_options
@@ -16,16 +16,17 @@ popxl_bert_pretrain_base_real_pod16:
   parameters:
     phase: 128,512
   cmd: >-
-    python3 demo/pretraining/phased.py
+    python3 run_pretraining.py
       --config base_{phase}
       --input_files $DATASETS_DIR/wikipedia/{phase}/wiki_1[0-1]*.tfrecord
       --steps 100
       --save
       --load
+      --wandb False
   data:
     throughput:
       skip: 1
-      regexp: 'Throughput\:\s*(.*) samples/s'
+      regexp: 'throughput: *(.*?) samples\/sec'
   env:
     POPLAR_ENGINE_OPTIONS: '{"target.extendedMemory":"true"}'
 
@@ -37,16 +38,17 @@ popxl_bert_pretrain_large_real_pod16:
   parameters:
     phase: 128,512
   cmd: >-
-    python3 demo/pretraining/phased.py
+    python3 run_pretraining.py
       --config large_{phase}
       --input_files $DATASETS_DIR/wikipedia/{phase}/wiki_1[0-1]*.tfrecord
       --steps 100
       --save
       --load
+      --wandb False
   data:
     throughput:
       skip: 1
-      regexp: 'Throughput\:\s*(.*) samples/s'
+      regexp: 'throughput: *(.*?) samples\/sec'
   env:
     POPLAR_ENGINE_OPTIONS: '{"target.extendedMemory":"true"}'
 
@@ -57,7 +59,7 @@ popxl_bert_pretrain_base_generated_pod16:
   parameters:
     phase: 128,512
   cmd: >-
-    python3 execution/pretraining/phased.py
+    python3 pretraining.py
       --config base_{phase}
 
 popxl_bert_pretrain_large_generated_pod16:
@@ -67,7 +69,7 @@ popxl_bert_pretrain_large_generated_pod16:
   parameters:
     phase: 128,512
   cmd: >-
-    python3 execution/pretraining/phased.py
+    python3 pretraining.py
       --config large_{phase}
 
 popxl_squad_training_generated_pod16:
@@ -77,7 +79,7 @@ popxl_squad_training_generated_pod16:
   parameters:
     config: base,large
   cmd: >-
-    python3 execution/squad/training_phased.py
+    python3 squad_training.py
       --config {config}
 
 popxl_squad_infer_generated_pod4:
@@ -87,5 +89,5 @@ popxl_squad_infer_generated_pod4:
   parameters:
     config: base,large
   cmd: >-
-    python3 execution/squad/inference_phased.py
+    python3 squad_inference.py
       --config {config}

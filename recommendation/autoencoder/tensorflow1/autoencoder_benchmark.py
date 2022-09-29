@@ -255,8 +255,8 @@ def train_process_init(opts, training_data):
                                                                      tp["avg_users_per_sec"],
                                                                      tp["max_users_per_sec"]))
 
-    print("\nAggregate average throughput over {0} IPU devices = {1} users/sec".format(opts.num_ipus, int(aggregate_avg_throughput)))
-    print("\nAggregate maximum throughput over {0} IPU devices = {1} users/sec".format(opts.num_ipus, int(aggregate_max_throughput)))
+    print("\nAggregate maximum throughput over {0} IPU devices = {1} samples/sec".format(opts.num_ipus, int(aggregate_max_throughput)))
+    print("\nAggregate average throughput: {1} samples/sec over {0} IPU devices".format(opts.num_ipus, int(aggregate_max_throughput)))
 
 
 def train_process(graphParams, opts, training_data, device_index, q=None):

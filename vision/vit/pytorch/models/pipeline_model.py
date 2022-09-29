@@ -27,9 +27,11 @@ class PipelinedViTForImageClassification(transformers.ViTForImageClassification)
     HuggingFace ViT for Image Classification model parallelized over multiple IPUs
     to run with replicated pipeline parallelism.
     """
+
     def parallelize(self):
         self._hooks = []
-        self.vit.embeddings = poptorch.BeginBlock(self.vit.embeddings, "Embedding", ipu_id=0)
+        self.vit.embeddings = poptorch.BeginBlock(
+            self.vit.embeddings, "Embedding", ipu_id=0)
 
         layer_ipu = get_layer_ipu(self.config.layers_per_ipu)
         for index, layer in enumerate(self.vit.encoder.layer):
@@ -40,8 +42,10 @@ class PipelinedViTForImageClassification(transformers.ViTForImageClassification)
             ipu = layer_ipu[index]
             self.vit.encoder.layer[index] = poptorch.BeginBlock(layer, f"Encoder{index}", ipu_id=ipu)
 
-        self.vit.layernorm = poptorch.BeginBlock(self.vit.layernorm, "LayerNorm", ipu_id=3)
-        self.classifier = poptorch.BeginBlock(self.classifier, "Classifier", ipu_id=3)
+        self.vit.layernorm = poptorch.BeginBlock(
+            self.vit.layernorm, "LayerNorm", ipu_id=3)
+        self.classifier = poptorch.BeginBlock(
+            self.classifier, "Classifier", ipu_id=3)
         return self
 
     def deparallelize(self):
@@ -79,12 +83,14 @@ class PipelinedViTForImageClassificationPretraining(nn.Module):
         self.model.apply(weight_init)
         if self.config.pretrain:
             nn.init.constant_(self.model.head.bias, -10)
-            nn.init.normal_(self.model.embeddings.position_embeddings, std=0.02)
+            nn.init.normal_(
+                self.model.embeddings.position_embeddings, std=0.02)
         layer_ipu = get_layer_ipu(config.layers_per_ipu)
 
         print("---------- Device Allocation -----------")
         print("Embedding  --> IPU 0")
-        self.model.embeddings = poptorch.BeginBlock(self.model.embeddings, "Embedding", ipu_id=0)
+        self.model.embeddings = poptorch.BeginBlock(
+            self.model.embeddings, "Embedding", ipu_id=0)
 
         for index, layer in enumerate(self.model.encoder.layer):
             ipu = layer_ipu[index]
@@ -95,12 +101,14 @@ class PipelinedViTForImageClassificationPretraining(nn.Module):
                                                                   ipu_id=ipu)
 
         print("Representation --> IPU 3")
-        self.model.representation = poptorch.BeginBlock(self.model.representation, "Representation", ipu_id=3)
+        self.model.representation = poptorch.BeginBlock(
+            self.model.representation, "Representation", ipu_id=3)
 
         print("Head     --> IPU 3")
-        self.model.head = poptorch.BeginBlock(self.model.head, "Head", ipu_id=3)
+        self.model.head = poptorch.BeginBlock(
+            self.model.head, "Head", ipu_id=3)
         print("---------------------------------------")
 
-    def forward(self, x, labels=None, labels_b=None, lam=None):
-        logits, loss = self.model(x, labels, labels_b, lam)
-        return logits, loss
+    def forward(self, x, labels=None, lam=None):
+        logits, acc = self.model(x, labels, lam)
+        return logits, acc

@@ -15,7 +15,7 @@
 # This file has been modified by Graphcore Ltd.
 
 from . import abstract_dataset
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 import tensorflow as tf
 import os
 import glob
@@ -57,10 +57,6 @@ class ImagenetDataset(abstract_dataset.AbstractDataset):
                  accelerator_side_preprocess: bool = False,
                  fused_preprocessing: bool = False):
 
-        # The path is the one of dataset under TFRecord format
-        if not os.path.exists(dataset_path):
-            raise NameError(f'Directory {dataset_path} does not exist')
-
         if fused_preprocessing is True and accelerator_side_preprocess is False:
             raise ValueError('Fused preprocessing can only be done on the IPU. '
                              'Please enable preprocessing on the IPU.')
@@ -77,7 +73,11 @@ class ImagenetDataset(abstract_dataset.AbstractDataset):
         self.block_length = 4 if not deterministic else 1
         self.shuffle_buffer = 10000
 
-    def read_single_image(self) -> application_dataset.ApplicationDataset:
+    def read_single_image(self) -> tf.data.Dataset:
+
+        # The path is the one of dataset under TFRecord format
+        if not os.path.exists(self.dataset_path):
+            raise NameError(f'Directory {self.dataset_path} does not exist')
 
         tfrecord_prefix = tfrecord_prefix_from_split(self.split)
 
@@ -109,29 +109,22 @@ class ImagenetDataset(abstract_dataset.AbstractDataset):
 
         ImagenetDataset.logger.info(f'dataset = {ds}')
 
-        num_examples = IMAGENET_DS_SIZE[self.split]
-
-        ImagenetDataset.logger.info(f'number of examples {num_examples}')
-
-        iterator = iter(ds)
-        first_elem = iterator.get_next()
-
-        image, _ = parse_imagenet_record(
-            first_elem, True, tf.float32, seed=self.seed)
-
-        if len(image.shape) != 3:
-            raise DimensionError(
-                'Dataset input image should have at least 3 dimensions (h,w,c) '
-                f'but it has {len(first_elem[0].shape)}')
-
-        num_classes = 1000
-
         ds = ds.cache()
 
-        return application_dataset.ApplicationDataset(pipeline=ds,
-                                                      size=num_examples,
-                                                      image_shape=image.shape,
-                                                      num_classes=num_classes)
+        if self.split == 'train' and self.shuffle:
+            ds = ds.shuffle(self.shuffle_buffer, seed=self.seed)
+
+        return ds
+
+    def size(self) -> int:
+        num_examples = IMAGENET_DS_SIZE[self.split]
+        return num_examples
+
+    def image_shape(self) -> Tuple:
+        return (224, 224, 3)
+
+    def num_classes(self) ->int:
+        return 1000
 
     def cpu_preprocessing_fn(self) -> Callable:
 
@@ -156,11 +149,6 @@ class ImagenetDataset(abstract_dataset.AbstractDataset):
             preprocessing_fn = _imagenet_normalize
 
         return preprocessing_fn
-
-    def post_preprocessing_pipeline(self, ds: tf.data.Dataset) -> tf.data.Dataset:
-        if self.split == 'train' and self.shuffle:
-            ds = ds.shuffle(self.shuffle_buffer, seed=self.seed)
-        return ds
 
 
 def _imagenet_normalize(image):
@@ -201,11 +189,11 @@ def parse_imagenet_record(raw_record, is_training, dtype, cpu_preprocess_fn=None
         seed=seed)
     image = tf.cast(image, dtype)
 
-    # Subtract one so that labels are in [0, 1000), and cast to float32 for
+    # Subtract one so that labels are in [0, 1000), and cast to int32 for
     # Keras model.
     label = tf.cast(
         tf.cast(tf.reshape(label, shape=[1]), dtype=tf.int32) - 1,
-        dtype=tf.float32)
+        dtype=tf.int32)
     return image, label
 
 

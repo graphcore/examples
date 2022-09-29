@@ -1,0 +1,23 @@
+# NOTE: The versions can be updated by calling
+#        pre-commit autoupdate
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v3.3.0
+    hooks:
+      - id: no-commit-to-branch
+        args: [--branch, master, --branch, main]
+  - repo: https://github.com/pre-commit/mirrors-autopep8
+    rev: v1.6.0  # v1.7.0 is not compatible with python3.6
+    hooks:
+      - id: autopep8
+        args: [--in-place, --list-fixes, --ignore, 'E251,E303,E402,E501,E701,E226,E24,W50,W690']
+  - repo: local
+    hooks:
+    - id: copyright-header-check
+      name: Copyright header check
+      description: Ensures that files have the proper copyright line at the top
+      entry: python3 -m examples_utils test_copyright --amend --exclude_json utils/examples_tests/copyright_header_test_exclude.json
+      pass_filenames: false
+      language: python
+      additional_dependencies:
+        - 'git+https://github.com/graphcore/examples-utils.git@1aded5f35073d93fedcb516ad3782082daba3f87'

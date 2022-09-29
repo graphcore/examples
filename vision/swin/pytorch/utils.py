@@ -116,7 +116,7 @@ def load_pretrained(config, model):
     if (Nc1 != Nc2):
         if Nc1 == 21841 and Nc2 == 1000:
             print("loading ImageNet-22K weight to ImageNet-1K ......")
-            map22kto1k_path = f'./dataset/map22kto1k.txt'
+            map22kto1k_path = f'dataset/map22kto1k.txt'
             with open(map22kto1k_path) as f:
                 map22kto1k = f.readlines()
             map22kto1k = [int(id22k.strip()) for id22k in map22kto1k]

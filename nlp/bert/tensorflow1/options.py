@@ -201,7 +201,7 @@ def add_common_arguments(parser, required=True):
                        help='The reduction type applied to the pipeline, the choice is between summation and mean.')
     group.add_argument('--weight-norm-clip', type=float, default=0.,
                        help='The value from which we want to clip the w_norm value, value of 0 is no weight clipping.')
-    group.add_argument('--compile-only', action="store_true", default=False,
+    group.add_argument('--compile-only', action="store_true",
                        help="Configure Poplar to only compile the graph. This will not acquire any IPUs and thus facilitate profiling without using hardware resources.")
     group.add_argument('--matmul-serialize-factor', type=int, default=6,
                        help='Serialization factor of the embeddings lookup and projection. Must be a divisor of vocab_size.')

@@ -112,6 +112,7 @@ class TestYolov4P5:
     @pytest.mark.ipus(1)
     def test_inference_and_nms(self):
         cfg = get_cfg()
+        cfg.model.half = True
         ipu_model = prepare_model(cfg)
         y_ipu = ipu_model(self.transformed_images)
 

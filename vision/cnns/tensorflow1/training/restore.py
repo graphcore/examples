@@ -17,6 +17,7 @@ import json
 import os
 import importlib
 import train
+import log as logging
 
 
 if __name__ == '__main__':
@@ -24,11 +25,14 @@ if __name__ == '__main__':
         description='Restoring training run from a checkpoint')
     parser.add_argument(
         '--restore-path', help="Log folder to restore from", required=True)
+    parser.add_argument(
+        '--wandb-id', type=str, help="Continue the run in wandb under the specified ID."
+        " This option only affects wandb behaviour.")
     args = parser.parse_args()
     args = vars(args)
     with open(os.path.join(args["restore_path"], 'arguments.json'), 'r') as fp:
         opts = json.load(fp)
-
+        opts.update(args)
     print(opts)
 
     opts['restoring'] = True
@@ -53,5 +57,6 @@ if __name__ == '__main__':
     except ImportError:
         raise ValueError(
             "LR_Schedules/{}.py not found".format(opts['lr_schedule']))
-
+    if opts['wandb'] and opts['distributed_worker_index'] == 0:
+        logging.initialise_wandb(opts)
     train.train_process(model, lr_schedule.LearningRate, opts)

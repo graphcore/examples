@@ -360,13 +360,13 @@ def inference_run(exec_filename, ckpt_name, iteration, epoch, first_run, opts):
         perc_99 = np.percentile(latencies, 99)
         perc_99_9 = np.percentile(latencies, 99.9)
 
-        print(f"Latencies - avg: {mean_latency:8.4f}, 99th percentile: {perc_99:8.4f}, "
-              f"99.9th percentile: {perc_99_9:8.4f}, max: {max_latency:8.4f}")
+        print(f"latency avg: {mean_latency:8.4f} ms, latency 99p: {perc_99:8.4f} ms, "
+              f"latency 99p9: {perc_99_9:8.4f} ms, latency max: {max_latency:8.4f} ms")
 
         valid_format = (
             "Validation top-1 accuracy [{name}] (iteration: {iteration:6d}, epoch: {epoch:6.2f}, "
-            "img/sec: {img_per_sec:6.2f}, time: {inference_time:8.6f}, "
-            "latency (ms): {latency:8.4f}: {val_acc:6.3f}%")
+            "throughput: {img_per_sec:6.2f} samples/sec, time: {inference_time:8.6f}, "
+            "latency avg: {latency:8.4f} ms: {val_acc:6.3f}%")
 
         stats = OrderedDict([
                     ('name', ckpt_name),

@@ -5,12 +5,6 @@
 import re
 
 import tensorflow as tf
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training_ops
 
 from ipu_tensorflow_addons.keras.optimizers import IpuOptimizerBase
@@ -40,8 +34,6 @@ class LARSIpuOptimizer(IpuOptimizerBase):
         name='LARSOptimizer',
         exclude_from_weight_decay=None,
         exclude_from_layer_adaptation=None,
-        m_dtype=None,
-        optimizer_compute_precisions=(dtypes.float32, dtypes.float32),
         use_nesterov=False,
         **kwargs
     ):
@@ -81,40 +73,30 @@ class LARSIpuOptimizer(IpuOptimizerBase):
             compatibility, recommended to use `learning_rate` instead.
         """
         super().__init__(name, **kwargs)
-        self._set_hyper("eeta", eeta)
-        self._set_hyper("weight_decay", weight_decay)
         self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
-        self._set_hyper("decay", self._initial_decay)
-        self._set_hyper("momentum", momentum)
-        self.epsilon = epsilon or tf.keras.backend.epsilon()
+        self._set_hyper('eeta', tf.convert_to_tensor(eeta))
+        self._set_hyper('weight_decay', tf.convert_to_tensor(weight_decay))
+        self._set_hyper('momentum', tf.convert_to_tensor(momentum))
+        self._set_hyper('epsilon', tf.convert_to_tensor(epsilon or tf.keras.backend.epsilon()))
         self.exclude_from_weight_decay = exclude_from_weight_decay
         self.exclude_from_layer_adaptation = exclude_from_layer_adaptation
         self.use_nesterov = use_nesterov
-        self.m_dtype = m_dtype
-
-        self.opt_dtypes = optimizer_compute_precisions
-        if len(self.opt_dtypes) != 2:
-            raise ValueError(
-                "Must provide a list of two elements for the optimizer"
-                " compute precision. The final stage of the weight update"
-                " can be done in a different precision to the initial stage.")
 
     def _create_slots(self, var_list):
         for var in var_list:
-            self.add_slot_with_dtype(var, "momentum_var", self.m_dtype)
+            self.add_slot(var, "momentum_var")
 
     def _prepare_local(self, var_device, var_dtype, apply_state):
         super()._prepare_local(var_device, var_dtype, apply_state)
-        compute_dtype = self.opt_dtypes[0]
-        eeta = array_ops.identity(self._get_hyper("eeta", compute_dtype))
-        momentum = array_ops.identity(self._get_hyper("momentum", compute_dtype))
-        weight_decay = array_ops.identity(
-            self._get_hyper("weight_decay", compute_dtype))
+        eeta = tf.cast(self._get_hyper('eeta'), var_dtype)
+        momentum = tf.cast(self._get_hyper('momentum'), var_dtype)
+        weight_decay = tf.cast(self._get_hyper('weight_decay'), var_dtype)
+        epsilon = tf.cast(self._get_hyper('epsilon'), var_dtype)
         apply_state[(var_device, var_dtype)].update(
             dict(
                 eeta=eeta,
                 weight_decay=weight_decay,
-                epsilon=ops.convert_to_tensor(self.epsilon, compute_dtype),
+                epsilon=epsilon,
                 momentum=momentum,
             )
         )
@@ -130,35 +112,34 @@ class LARSIpuOptimizer(IpuOptimizerBase):
                             var,
                             eeta,
                             epsilon,
-                            weight_decay,
-                            compute_dtype):
+                            weight_decay):
 
         var_name = self._get_variable_name(var.name)
 
         if self._do_layer_adaptation(var_name):
-            w_norm = linalg_ops.norm(var, ord=2)
-            g_norm = linalg_ops.norm(grad, ord=2)
+            w_norm = tf.norm(var, ord=2)
+            g_norm = tf.norm(grad, ord=2)
 
-            w_norm_cast = math_ops.cast(w_norm, dtype=compute_dtype)
-            g_norm_cast = math_ops.cast(g_norm, dtype=compute_dtype)
+            w_norm_cast = tf.cast(w_norm, dtype=grad.dtype)
+            g_norm_cast = tf.cast(g_norm, dtype=grad.dtype)
 
             if self._do_use_weight_decay(var_name):
-                grad += (math_ops.cast(weight_decay, dtype=grad.dtype) *
-                         math_ops.cast(var, dtype=grad.dtype))
+                grad += (tf.cast(weight_decay, dtype=grad.dtype) *
+                         tf.cast(var, dtype=grad.dtype))
             else:
                 weight_decay = 0
 
-            trust_ratio = array_ops.where(
-                condition=math_ops.greater(w_norm_cast, 0),
-                x=array_ops.where(
-                    condition=math_ops.greater(g_norm_cast, 0),
+            trust_ratio = tf.where(
+                condition=tf.greater(w_norm_cast, 0),
+                x=tf.where(
+                    condition=tf.greater(g_norm_cast, 0),
                     x=eeta * w_norm_cast / (g_norm_cast + weight_decay * w_norm_cast + epsilon),
-                    y=constant_op.constant(1.0, dtype=compute_dtype, shape=w_norm.shape)),
-                y=constant_op.constant(1.0, dtype=compute_dtype, shape=w_norm.shape))
+                    y=tf.constant(1.0, dtype=grad.dtype)),
+                y=tf.constant(1.0, dtype=grad.dtype))
         else:
-            trust_ratio = constant_op.constant(1.0, dtype=compute_dtype)
+            trust_ratio = tf.constant(1.0, dtype=grad.dtype)
 
-        return math_ops.cast(trust_ratio, grad.dtype), grad
+        return tf.cast(trust_ratio, grad.dtype), grad
 
     def _resource_apply_dense(self, grad, var, apply_state=None):
         coefficients = self.update_coefficients(var, apply_state)
@@ -170,18 +151,16 @@ class LARSIpuOptimizer(IpuOptimizerBase):
 
         momentum_var = self.get_slot(var, 'momentum_var')
 
-        compute_dtype = self.opt_dtypes[0]
-
         trust_ratio, grad = self.compute_trust_ratio(
-            grad, var, eeta, epsilon, weight_decay, compute_dtype)
+            grad, var, eeta, epsilon, weight_decay)
         scaled_lr = lr_t * trust_ratio
 
         return training_ops.resource_apply_momentum(
             var=var.handle,
             accum=momentum_var.handle,
-            lr=math_ops.cast(1.0, var.dtype.base_dtype),
-            grad=math_ops.cast(grad * scaled_lr, var.dtype.base_dtype),
-            momentum=math_ops.cast(momentum, var.dtype.base_dtype),
+            lr=tf.cast(1.0, var.dtype.base_dtype),
+            grad=tf.cast(grad * scaled_lr, var.dtype.base_dtype),
+            momentum=tf.cast(momentum, var.dtype.base_dtype),
             use_locking=False,
             use_nesterov=self.use_nesterov
         )
@@ -195,7 +174,6 @@ class LARSIpuOptimizer(IpuOptimizerBase):
             "momentum": self._serialize_hyperparameter("momentum"),
             "eeta": self._serialize_hyperparameter("eeta"),
             "epsilon": self.epsilon,
-            'm_dtype': self.m_dtype
         })
         return config
 

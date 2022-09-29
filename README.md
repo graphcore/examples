@@ -40,7 +40,7 @@ If you require POD128/256 setup and configuration for our applications, please c
 | Model | Domain | Type |Links |
 | ------- | ------- |------- | ------- |
 | ResNet  | Image Classification | Training & Inference | [TensorFlow 1](vision/cnns/tensorflow1/) , [TensorFlow 2](vision/cnns/tensorflow2/), [PyTorch](vision/cnns/pytorch/), [PyTorch Lightning](https://github.com/graphcore/pytorch-lightning-examples/tree/release/applications)|
-| ResNeXt  | Image Classification | Training & Inference | [TensorFlow 1](vision/cnns/tensorflow1/) , [PopART (Inference)](vision/resnext_inference/popart)
+| ResNeXt  | Image Classification | Training & Inference | [TensorFlow 1](vision/cnns/tensorflow1/) , [PopART (Inference)](vision/resnext_inference/popart), [PyTorch (Inference)](vision/cnns/pytorch/inference)
 | EfficientNet | Image Classification | Training & Inference | [TensorFlow 1](vision/cnns/tensorflow1/) , [PyTorch](vision/cnns/pytorch/), [PyTorch Lightning](https://github.com/graphcore/pytorch-lightning-examples/tree/release/applications)|
 | MobileNet | Image Classification | Inference | [TensorFlow 1](vision/cnns/tensorflow1/inference) |
 | MobileNetv2 | Image Classification | Inference | [TensorFlow 1](vision/cnns/tensorflow1/inference) |
@@ -48,6 +48,7 @@ If you require POD128/256 setup and configuration for our applications, please c
 | ViT(Vision Transformer) | Image Classification | Training| [PyTorch](vision/vit/pytorch/), [Hugging Face Optimum](https://huggingface.co/Graphcore/vit-base-ipu) |
 | DINO | Image Classification | Training| [PyTorch](vision/dino/pytorch) |
 | Swin | Image Classification | Training | [PyTorch](vision/swin/pytorch)  |
+| MAE (Masked AutoEncoder) | Image Classification | Training | [PyTorch](vision/mae/pytorch)  |
 | Yolov3 | Object Detection | Training & Inference | [TensorFlow 1](vision/yolo_v3/tensorflow1) |
 | Yolov4-P5 | Object Detection | Inference | [PyTorch](vision/yolo_v4/pytorch) |
 | Faster RCNN | Object Detection | Training & Inference | [PopART](vision/faster_rcnn/popart) |
@@ -66,6 +67,8 @@ If you require POD128/256 setup and configuration for our applications, please c
 | Group BERT | NLP | Training |[TensorFlow 1](nlp/bert/tensorflow1/README.md#GroupBERT_model) |
 | Packed BERT | NLP | Training |[PyTorch](nlp/bert/pytorch), [PopART](nlp/bert/popart) |
 | GPT2 | NLP | Training |[PyTorch](nlp/gpt2/pytorch) , [Hugging Face Optimum](https://huggingface.co/Graphcore/gpt2-medium-ipu) |
+| GPTJ | NLP | Training |[PopXL](nlp/gpt_j/popxl)|  
+| GPT3-2.7B | NLP | Training |[PopXL](nlp/gpt3_2.7B/popxl) |
 | RoBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/roberta-large-ipu)|
 | DeBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/deberta-base-ipu)|
 | HuBERT | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/hubert-base-ipu)|
@@ -96,7 +99,8 @@ If you require POD128/256 setup and configuration for our applications, please c
 | miniDALL-E | multimodal | Training | [PyTorch](multimodal/mini_dalle/pytorch) |
 | CLIP | multimodal | Training |[PyTorch](multimodal/CLIP/pytorch)|
 | LXMERT | multimodal | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/lxmert-base-ipu)|
-
+| Frozen in time | multimodal | Training & Inference |[PyTorch](multimodal/frozen_in_time/pytorch)|
+| ruDalle (Preview) | multimodal | Inference |[PopXL](preview/multimodal/rudalle)|
 
 <br>
 
@@ -184,6 +188,16 @@ The following applications have been archived. More information can be provided 
 
 <br>
 
+## Benchmarking tools
+To easily run the examples with tested and optimised configurations and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), you can use the examples-utils benchmarking module, which comes with every example when you install its requirements. To use this simple, shared interface for almost any of the examples provided here, locate and look through the example's `benchmarks.yml` file and run:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
+<br>
 
 ## PopVision™ Tools
 Visualise your code's inner workings with a user-friendly, graphical interface to optimise your machine learning models.
@@ -193,7 +207,8 @@ Visualise your code's inner workings with a user-friendly, graphical interface t
 <br>
 
 ## Support
-Please note we are not currently accepting pull requests or issues on this repository. If you are actively using this repository and want to report any issues, please raise a ticket through the [Graphcore support portal](https://support.graphcore.ai/).
+If you encounter a problem or want to suggest an improvement to our examples please raise a Github issue or contact us at
+ [support@graphcore.ai](mailto:support@graphcore.ai?subject=General%20Feedback).
 
 <br>
 
@@ -211,6 +226,17 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 <br>
 
 ## Changelog
+
+<details>
+<summary>Sep 2022</summary>
+<br> 
+
+*  Added those models below to reference models
+    *  Vision : MAE (PyTorch), G16 EfficientNet (PyTorch)
+    *  NLP : GPTJ (PopXL), GPT3-2.7B (PopXL)
+    *  Multimodal : Frozen in time (PyTorchs), ruDalle(Preview) (PopXL)
+</details>
+
 <details>
 <summary>Aug 2022</summary>
 <br> 

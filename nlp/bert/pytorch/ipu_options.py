@@ -16,10 +16,9 @@ import torch
 import poptorch
 import popart
 import numpy as np
-import ctypes
 import os
-
-from utils import logger
+from examples_utils import load_lib
+import logging
 
 
 def get_options(config):
@@ -33,13 +32,8 @@ def get_options(config):
 
     # Load custom ops
     if config.custom_ops is True:
-        file_dir = os.path.dirname(os.path.realpath(__file__))
-        CUSTOM_OP_PATH = os.path.join(file_dir, "custom_ops.so")
-        if os.path.exists(CUSTOM_OP_PATH):
-            ops_and_patterns = ctypes.cdll.LoadLibrary(CUSTOM_OP_PATH)
-        else:
-            logger("Could not find custom_ops.so. Execute `make` before running this script.")
-            exit()
+        logging.info("Building (if necessary) and loading residual_add_inplace_pattern.")
+        load_lib(os.path.dirname(__file__) + '/custom_ops/workarounds/residual_add_inplace_pattern.cpp')
 
     # Poptorch options
     if config.use_popdist:
@@ -60,10 +54,9 @@ def get_options(config):
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
 
     # Enable automatic loss scaling
-    # Note that this is an experimental feature. Note also that it expects
-    # accumulationAndReplicationReductionType to be set to Mean as above,
-    # and for accumulation by the optimizer to be done in half precision
-    # using accum_type=torch.float16 during optimizer instatiation.
+    # Note that it expects accumulationAndReplicationReductionType to be set
+    # to Mean as above, and for accumulation by the optimizer to be done in
+    # half precision using accum_type=torch.float16 during optimizer instatiation.
     if config.auto_loss_scaling is True:
         opts.Training.setAutomaticLossScaling(True)
 

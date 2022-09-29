@@ -33,6 +33,8 @@ import torch
 import torchaudio
 import torchaudio.compliance.kaldi as kaldi
 from torch.nn.utils.rnn import pad_sequence
+from src.utils.key_utils import AishellKeyMapper
+
 
 AUDIO_FORMAT_SETS = set(['flac', 'mp3', 'm4a', 'ogg', 'opus', 'wav', 'wma'])
 
@@ -134,7 +136,7 @@ def parse_raw(data):
         assert 'key' in obj
         assert 'wav' in obj
         assert 'txt' in obj
-        key = obj['key']
+        key = AishellKeyMapper.encode(obj['key'])
         wav_file = obj['wav']
         txt = obj['txt']
         try:

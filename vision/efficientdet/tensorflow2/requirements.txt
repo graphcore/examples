@@ -1,10 +1,10 @@
 lxml==4.8.0
-absl-py==1.0.0
+absl-py~=0.10
 matplotlib==3.3.4
 Pillow==8.4.0
 PyYAML==5.4.1
-six==1.16.0
+six==1.15.0
 tensorflow-model-optimization==0.7.2
 pytest==6.2.5
 pytest-pythonpath==0.7.4
-git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils

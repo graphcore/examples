@@ -18,7 +18,10 @@ from transformers import BertModel
 
 from config import BertConfig
 from popxl_addons import GIT_COMMIT as ADDONS_GIT_COMMIT
-from utils import parse_args_with_presets
+from .simple_parsing_tools import parse_args_with_presets
+
+
+__all__ = ["bert_config_setup", "bert_fine_tuning_setup", "bert_pretraining_setup", "wandb_init"]
 
 
 def bert_config_setup(
@@ -33,8 +36,8 @@ def bert_config_setup(
         log_level = os.environ.get('APP_LOG_LEVEL', 'INFO')
         parser.add_argument("--log_level", choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], type=str,
                             default=log_level, help=(
-                "Loging level for the app. "
-                "Can also be set using the environment variable `APP_LOG_LEVEL`"))
+            "Loging level for the app. "
+            "Can also be set using the environment variable `APP_LOG_LEVEL`"))
         if custom_args:
             custom_args(parser)
 
@@ -144,7 +147,7 @@ def wandb_init(config: BertConfig, tags: Optional[List[str]] = None, disable: bo
     # Save config with addons and popxl version
     config_dict = config.to_dict()
     config_dict['gradient_accumulation'] = config.gradient_accumulation
-    config_dict['ipus'] = config.ipus
+    config_dict['ipus'] = config.execution.data_parallel
     config_dict['addons_version'] = ADDONS_GIT_COMMIT
     config_dict['popxl_version'] = popart.versionString()
 

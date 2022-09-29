@@ -1,4 +1,4 @@
 {
-    "input": "input",
-    "classifier\/classifier\/model\/classifier\/classifier\/Add:0": "output"
+    "input": "input_0",
+    "classifier\/classifier\/model\/classifier\/classifier\/Gemm:0": "output_0"
 }

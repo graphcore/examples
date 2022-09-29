@@ -270,7 +270,7 @@ def create_estimator(args):
     cfg.convolutions.poplar_options = {'partialsType': 'half' if args.partials_type == 'float16' else 'float'}
     cfg.matmuls.poplar_options = {'partialsType': 'half' if args.partials_type == 'float16' else 'float'}
 
-    iterations_per_loop = (args.batches_per_step *
+    iterations_per_loop = (args.device_iterations *
                            args.gradient_accumulation_batches)
 
     ipu_run_config = ipu.ipu_run_config.IPURunConfig(
@@ -299,7 +299,7 @@ def data_fn(args, mode, count_only=False):
     # Generate random data
     dtype = np.float16 if args.dtype == 'float16' else np.float32
     bs = args.batch_size_train if mode == tf.estimator.ModeKeys.TRAIN else args.batch_size_infer
-    l = args.batches_per_step * bs
+    l = args.device_iterations * bs
     if count_only:
         return l * 10
     s = args.input_size
@@ -332,7 +332,7 @@ def train(estimator, args):
 
     total_batch_size = args.batch_size_train * args.num_replicas_train
     steps = num_items_to_train_on // total_batch_size
-    iterations_per_loop = (args.batches_per_step *
+    iterations_per_loop = (args.device_iterations *
                            args.gradient_accumulation_batches)
     # IPUEstimator requires no remainder; steps must be divisible by iterations_per_loop
     steps += (iterations_per_loop - steps % iterations_per_loop)
@@ -366,7 +366,7 @@ def evaluate(estimator, args):
 
     total_batch_size = args.batch_size_infer * args.num_replicas_infer
     steps = num_eval_examples // total_batch_size
-    iterations_per_loop = (args.batches_per_step *
+    iterations_per_loop = (args.device_iterations *
                            args.gradient_accumulation_batches)
     # IPUEstimator requires no remainder; steps must be divisible by iterations_per_loop
     steps -= steps % iterations_per_loop
@@ -394,7 +394,7 @@ def inference_test(args):
     infeed = ipu.ipu_infeed_queue.IPUInfeedQueue(ds)
     outfeed = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
 
-    inference_batches_per_step = args.batches_per_step * \
+    inference_batches_per_step = args.device_iterations * \
         args.gradient_accumulation_batches
 
     def test_loop_op(args=None):
@@ -499,7 +499,7 @@ def parse_args():
         help="Number of warm up steps for throughput measuring")
 
     parser.add_argument(
-        "--batches-per-step",
+        "--device-iterations",
         type=int,
         default=50,
         help="Number of batches per execution loop on IPU")

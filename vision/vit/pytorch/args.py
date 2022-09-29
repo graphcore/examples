@@ -56,11 +56,16 @@ def parse_args(args=None):
     pargs, remaining_args = parser.parse_known_args(args=args)
 
     # Execution
-    parser.add_argument("--micro-batch-size", type=int, help="Set the micro batch-size")
-    parser.add_argument("--training-steps", type=int, default=0, help="Number of training steps")
-    parser.add_argument("--epochs", type=int, default=0, help="Number of epochs")
-    parser.add_argument("--device-iterations", type=int, help="Number of batches per training step")
-    parser.add_argument("--replication-factor", type=int, help="Number of replicas")
+    parser.add_argument("--micro-batch-size", type=int,
+                        help="Set the micro batch-size")
+    parser.add_argument("--training-steps", type=int,
+                        default=0, help="Number of training steps")
+    parser.add_argument("--epochs", type=int, default=0,
+                        help="Number of epochs")
+    parser.add_argument("--device-iterations", type=int,
+                        help="Number of batches per training step")
+    parser.add_argument("--replication-factor", type=int,
+                        help="Number of replicas")
     parser.add_argument("--gradient-accumulation", type=int,
                         help="Number of gradients to accumulate before updating the weights")
     parser.add_argument("--half-partials", type=str_to_bool,
@@ -111,7 +116,7 @@ def parse_args(args=None):
                         help="Type of learning rate schedule. "
                         "--learning-rate will be used as the max value")
     parser.add_argument("--auto-loss-scaling", type=str_to_bool, nargs="?", const=True, default=False,
-                        help="Enable automatic loss scaling for half precision training. Note that this is an experimental feature.")
+                        help="Enable automatic loss scaling for half precision training.")
     parser.add_argument("--loss-scaling", type=float,
                         help="Loss scaling factor (recommend using powers of 2)")
     parser.add_argument("--weight-decay", type=float,
@@ -137,6 +142,10 @@ def parse_args(args=None):
                         help="Data type used to store the first order momentum values for each parameter.")
     parser.add_argument("--second-order-type", type=str, choices=['fp16', 'fp32'], default='fp32',
                         help="Data type used to store the second order momentum values for each parameter.")
+    parser.add_argument('--max-norm', type=float,
+                        default=65535, help="the max weight norm for lamb")
+    parser.add_argument('--max-norm-bias', type=float,
+                        default=0.0, help="the max weight norm for bias param")
 
     # Model
     parser.add_argument("--hidden-size", type=int,
@@ -165,7 +174,7 @@ def parse_args(args=None):
                         "of an attention block")
 
     # Dataset
-    parser.add_argument('--dataset', choices=['cifar10', 'imagenet', 'generated'],
+    parser.add_argument('--dataset', choices=['cifar10', 'imagenet1k', 'generated'],
                         default='cifar10', help="Choose data")
     parser.add_argument("--dataset-path", type=str, help="Input data files")
     parser.add_argument("--rebatched-worker-size", type=int, default=None,
@@ -190,10 +199,13 @@ def parse_args(args=None):
                         help="Enabling logging to Weights and Biases")
     parser.add_argument("--wandb-project-name", type=str, default="torch-vit",
                         help="wandb project name")
+    parser.add_argument("--wandb-run-name", type=str, default=None,
+                        help="wandb run name")
     parser.add_argument("--executable-cache-dir", type=str, default="",
                         help="Directory where Poplar executables are cached. If set, recompilation of identical graphs can be avoided. "
                         "Required for both saving and loading executables.")
-    parser.add_argument("--profile-dir", type=str, help="Directory for profiling results")
+    parser.add_argument("--profile-dir", type=str,
+                        help="Directory for profiling results")
 
     # Checkpointing
     parser.add_argument("--checkpoint-output-dir", type=str, default="",
@@ -248,7 +260,8 @@ def parse_args(args=None):
         args.use_popdist = True
         init_popdist(args)
 
-    args.global_batch_size = args.replication_factor * args.gradient_accumulation * args.micro_batch_size
+    args.global_batch_size = args.replication_factor * \
+        args.gradient_accumulation * args.micro_batch_size
     args.samples_per_step = args.global_batch_size * args.device_iterations
     return args
 

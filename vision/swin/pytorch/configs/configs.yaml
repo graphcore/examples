@@ -1,0 +1,314 @@
+#----------------------------------------------------------------------------------
+SWIN_TINY: &SWIN_TINY
+  DATA:
+    NUM_WORKERS: 32
+    BATCH_SIZE: 4
+
+  IPU:
+    NUM_LOCALREPLICA: 4
+    GRADIENT_ACCUMULATION_STEPS: 64
+    DEVICE_ITERATIONS: 1
+    IPUS: 4
+    LAYERS_PER_IPU: [2, 3, 5, 2]
+
+  TRAIN:
+    START_EPOCH: 0
+    EPOCHS: 300
+    WARMUP_EPOCHS: 20
+    WEIGHT_DECAY: 0.05
+    BASE_LR: 0.001
+    WARMUP_LR: 5e-7
+    MIN_LR: 5e-6
+    # LR scheduler
+    LR_SCHEDULER:
+      NAME: 'cosine'
+      # Epoch interval to decay LR, used in StepLRScheduler
+      DECAY_EPOCHS: 30
+      # LR decay rate, used in StepLRScheduler
+      DECAY_RATE: 0.1
+    LOSS_SCALING: 1024
+
+  PRECISION: ['float','float']
+
+  AUG:
+    SSL_AUG: True
+  TEST:
+    CROP: True
+
+  MODEL:
+    TYPE: linear
+    NUM_CLASSES: 1000
+    DEVICE: ipu
+    NAME: swin_tiny__patch4_window7_224
+    DROP_PATH_RATE: 0.2
+    SWIN:
+      EMBED_DIM: 96
+      DEPTHS: [ 2, 2, 6, 2 ]
+      NUM_HEADS: [ 3, 6, 12, 24 ]
+      WINDOW_SIZE: 7
+
+#----------------------------------------------------------------------------------
+SWIN_BASE_LINEAR: &SWIN_BASE_LINEAR
+  DATA:
+    NUM_WORKERS: 32
+    BATCH_SIZE: 4
+
+  IPU:
+    NUM_LOCALREPLICA: 2
+    GRADIENT_ACCUMULATION_STEPS: 128
+    DEVICE_ITERATIONS: 1
+    IPUS: 8
+    LAYERS_PER_IPU: [2,2,3,3,5,5,2,2]
+
+  TRAIN:
+    START_EPOCH: 0
+    EPOCHS: 300
+    WARMUP_EPOCHS: 20
+    WEIGHT_DECAY: 0.05
+    BASE_LR: 0.001
+    WARMUP_LR: 5e-7
+    MIN_LR: 5e-6
+    # LR scheduler
+    LR_SCHEDULER:
+      NAME: 'cosine'
+      # Epoch interval to decay LR, used in StepLRScheduler
+      DECAY_EPOCHS: 30
+      # LR decay rate, used in StepLRScheduler
+      DECAY_RATE: 0.1
+
+    LOSS_SCALING: 1024
+
+  PRECISION: ['float','float']
+  AUG:
+    SSL_AUG: True
+
+  TEST:
+    CROP: True
+  MODEL:
+    TYPE: linear
+    DEVICE: ipu
+    NUM_CLASSES: 1000
+    NAME: swin_tiny__patch4_window7_224
+    DROP_PATH_RATE: 0.5
+    SWIN:
+      EMBED_DIM: 128
+      DEPTHS: [ 2, 2, 18, 2 ]
+      NUM_HEADS: [ 4, 8, 16, 32 ]
+      WINDOW_SIZE:  7
+
+#----------------------------------------------------------------------------------
+SWIN_BASE_384: &SWIN_BASE_384
+  DATA:
+    IMG_SIZE: [384,384]
+    NUM_WORKERS: 32
+    BATCH_SIZE: 1
+
+  IPU:
+    NUM_LOCALREPLICA: 2
+    GRADIENT_ACCUMULATION_STEPS: 512
+    DEVICE_ITERATIONS: 1
+    IPUS: 8
+    LAYERS_PER_IPU: [2,2,3,3,5,5,2,2]
+
+  TRAIN:
+    START_EPOCH: 0
+    EPOCHS: 30
+    WARMUP_EPOCHS: 5
+    WEIGHT_DECAY: 1e-8
+    BASE_LR: 4e-05
+    WARMUP_LR: 4e-08
+    MIN_LR: 4e-07
+    # LR scheduler
+    LR_SCHEDULER:
+      NAME: 'cosine'
+      # Epoch interval to decay LR, used in StepLRScheduler
+      DECAY_EPOCHS: 30
+      # LR decay rate, used in StepLRScheduler
+      DECAY_RATE: 0.1
+    LOSS_SCALING: 2048
+
+  PRECISION: ['float','float']
+  AUG:
+    SSL_AUG: True
+
+  TEST:
+    CROP: False
+
+  MODEL:
+    TYPE: swin
+    DEVICE: ipu
+    NUM_CLASSES: 1000
+    NAME: swin_tiny__patch4_window12_384
+    DROP_PATH_RATE: 0.5
+    SWIN:
+      EMBED_DIM: 128
+      DEPTHS: [ 2, 2, 18, 2 ]
+      NUM_HEADS: [ 4, 8, 16, 32 ]
+      WINDOW_SIZE:  12
+
+
+
+
+#----------------------------------------------------------------------------------
+SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16: &SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16
+  DATA:
+    NUM_WORKERS: 64
+    BATCH_SIZE: 6
+
+  IPU:
+    NUM_LOCALREPLICA: 2
+    GRADIENT_ACCUMULATION_STEPS: 683
+    DEVICE_ITERATIONS: 1
+    IPUS: 1
+    LAYERS_PER_IPU: [2,3,4,4,4,4,2,1]
+
+  TRAIN:
+    WEIGHT_DECAY: 1e-8
+    EPOCHS: 30
+    WARMUP_EPOCHS: 5
+    BASE_LR: 4e-05
+    WARMUP_LR: 4e-08
+    MIN_LR: 4e-07
+    LOSS_SCALING: 1024
+
+  AUG:
+    SSL_AUG: True
+
+  TEST:
+    CROP: False
+
+  MODEL:
+    TYPE: linear
+    DEVICE: ipu
+    NAME: swin_large__patch4_window7_224
+    DROP_PATH_RATE: 0.2
+    SWIN:
+      EMBED_DIM: 192
+      DEPTHS: [ 2, 2, 18, 2 ]
+      NUM_HEADS: [ 6, 12, 24, 48 ]
+      WINDOW_SIZE: 7
+
+#----------------------------------------------------------------------------------
+SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD128: &SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD128
+  <<: *SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16
+  IPU:
+    NUM_LOCALREPLICA: 2
+    GRADIENT_ACCUMULATION_STEPS: 1024
+    DEVICE_ITERATIONS: 1
+    IPUS: 1
+    LAYERS_PER_IPU: [ 2,4,4,4,4,4,1,1 ]
+    AMP: 0.08
+
+#----------------------------------------------------------------------------------
+SWIN_LARGE_224_22K_FINETUNE_1K_FP32_POD16: &SWIN_LARGE_224_22K_FINETUNE_1K_FP32_POD16
+  <<: *SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16
+  DATA:
+    NUM_WORKERS: 64
+    BATCH_SIZE: 1
+  IPU:
+    NUM_LOCALREPLICA: 2
+    GRADIENT_ACCUMULATION_STEPS: 2048
+    DEVICE_ITERATIONS: 1
+    IPUS: 1
+    LAYERS_PER_IPU: [3, 4, 4, 4, 4, 3, 1, 1]
+    AMP: 0.15
+  TRAIN:
+    WEIGHT_DECAY: 1e-8
+    EPOCHS: 30
+    WARMUP_EPOCHS: 5
+    BASE_LR: 4e-05
+    WARMUP_LR: 4e-08
+    MIN_LR: 4e-07
+  PRECISION: ['float', 'float']
+
+#----------------------------------------------------------------------------------
+SWIN_LARGE_224_22K_FINETUNE_1K_FP32_POD128: &SWIN_LARGE_224_22K_FINETUNE_1K_FP32_POD128
+  <<: *SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16
+  DATA:
+    NUM_WORKERS: 64
+    BATCH_SIZE: 1
+  IPU:
+    NUM_LOCALREPLICA: 2
+    GRADIENT_ACCUMULATION_STEPS: 2048
+    DEVICE_ITERATIONS: 1
+    IPUS: 1
+    LAYERS_PER_IPU: [3, 4, 4, 4, 4, 3, 1, 1]
+    AMP: 0.085
+  TRAIN:
+    WEIGHT_DECAY: 1e-8
+    EPOCHS: 30
+    WARMUP_EPOCHS: 5
+    BASE_LR: 4e-05
+    WARMUP_LR: 4e-08
+    MIN_LR: 4e-07
+  PRECISION: ['float', 'float']
+
+#----------------------------------------------------------------------------------
+SWIN_LARGE_224_22K_PRETRAIN: &SWIN_LARGE_224_22K_PRETRAIN
+  DATA:
+    DATASET: 'imagenet'
+    IMG_SIZE: [224,224]
+    INTERPOLATION: 'bicubic'
+    ZIP_MODE: False
+    CACHE_MODE: 'part'
+    PIN_MEMORY: True
+    NUM_WORKERS: 64
+    BATCH_SIZE: 4
+
+  IPU:
+    NUM_LOCALREPLICA: 2
+    GRADIENT_ACCUMULATION_STEPS: 1024
+    DEVICE_ITERATIONS: 1
+    IPUS: 1
+    LAYERS_PER_IPU: [3,4,4,4,4,3,2,0]
+    MAPPING_FOR_21K: True
+
+
+  TRAIN:
+    START_EPOCH: 0
+    EPOCHS: 30
+    WARMUP_EPOCHS: 5
+    WEIGHT_DECAY: 1e-8
+    BASE_LR: 4e-05
+    WARMUP_LR: 4e-08
+    MIN_LR: 4e-07
+    # Clip gradient norm
+    CLIP_GRAD: 5.0
+
+
+    # LR scheduler
+    LR_SCHEDULER:
+      NAME: 'cosine'
+      # Epoch interval to decay LR, used in StepLRScheduler
+      DECAY_EPOCHS: 30
+      # LR decay rate, used in StepLRScheduler
+      DECAY_RATE: 0.1
+
+    LOSS_SCALING: 4
+    # Optimizer
+    OPTIMIZER:
+      NAME: 'adamw'
+      RTS: True
+      # Optimizer Epsilon
+      EPS: 1e-8
+      # Optimizer Betas
+      BETAS: (0.9, 0.999)
+      # SGD momentum
+      MOMENTUM: 0.9
+
+  AUG:
+    SSL_AUG: True
+  TEST:
+    CROP: False
+
+  MODEL:
+    TYPE: linear
+    DEVICE: ipu
+    NAME: swin_large__patch4_window7_224
+    DROP_PATH_RATE: 0.2
+    NUM_CLASSES: 21841
+    SWIN:
+      EMBED_DIM: 192
+      DEPTHS: [ 2, 2, 18, 2 ]
+      NUM_HEADS: [ 6, 12, 24, 48 ]
+      WINDOW_SIZE: 7

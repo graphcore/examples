@@ -29,6 +29,21 @@ The ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 100
        python3 train.py --data imagenet --imagenet-data-path <path-to/imagenet>
 ```
 
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 ### Training examples
 
@@ -58,7 +73,7 @@ The program has a few command line options:
 
 `--seed`                        Provide a seed for random number generation
 
-`--batch-size`                  Sets the batch size for training
+`--micro-batch-size`            Sets the micro batch size for training
 
 `--model`                       Select the model (from a list of supported models) for training
 
@@ -186,14 +201,14 @@ The program has a few command line options:
 
 `--fine-tune-gradient-accumulation` Number of batches to accumulate before a gradient update during the fine-tuning phase when --half-res-training.
 
-`--fine-tune-batch-size`       Batch during the fine-tuning phase when --half-res-training.
+`--fine-tune-micro-batch-size`       Batch during the fine-tuning phase when --half-res-training.
 
 `--fine-tune-first-trainable-layer` First non-frozen layer in the fine-tuned model when --half-res-training.
 
 
 ### Automatic loss scaling (ALS) for half precision training
 
-ALS is an experimental feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision.
+ALS is a feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision.
 
 NB. This feature expects the `poptorch` training option `accumulationAndReplicationReductionType` to be set to `poptorch.ReductionType.Mean`, and for accumulation by the optimizer to be done in half precision (using `accum_type=torch.float16` when instantiating the optimizer), or else it may lead to unexpected behaviour.
 
@@ -261,35 +276,3 @@ EfficientNet-B4 (Group Norm, Group Conv) IPU-POD16 reference
 ```
 ./efficientnet_b4_pod16.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet>
 ```
-
-## Benchmarking
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
-
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
-
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
-
-## Profiling
-
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.

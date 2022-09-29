@@ -27,6 +27,7 @@ import numpy as np
 from transformers import GPT2Tokenizer, GPT2Model
 from transformers.models.gpt2.modeling_gpt2 import GPT2MLP
 
+from ipu_options import load_custom_ops
 from tools import _get_layer_ipu, str_to_bool
 from model.optimized_gpt2_attn import OptimizedGPT2AttentionBuffer, OptimizedGPT2AttentionCache
 
@@ -50,7 +51,7 @@ def set_args():
                         type=float, required=False, help='temperature')
     parser.add_argument('--repetition-penalty', default=2.0,
                         type=float, required=False, help="repetition_penalty")
-    parser.add_argument('--topk', default=8, type=int,
+    parser.add_argument('--topk', default=4, type=int,
                         required=False, help='topk to choice')
     parser.add_argument('--save-samples-path', type=str, default=None,
                         required=False, help="path to save generated text")
@@ -122,9 +123,9 @@ class GPT2Wrapper(torch.nn.Module):
                 kv_size)] for _ in range(self.model.config.n_layer)]
             new_past_keys = []
             new_past_values = []
-
+            position_ids_stage_1 = torch.arange(0, self.args.input_len, dtype=torch.long).unsqueeze(0)
             hidden_states = self.model(
-                context, past_key_values=None, return_dict=False)
+                context, position_ids=position_ids_stage_1, past_key_values=None, return_dict=False)
 
             presents = hidden_states[1]
             for ((past_key, past_value), (present_key, present_value)) in zip(past_key_values, presents):
@@ -169,7 +170,8 @@ class GPT2Wrapper(torch.nn.Module):
                 (next_token_value, next_token) = torch.topk(
                     next_token_logits, self.args.topk)
                 # We simply do a random selection after topk to avoid repetitions
-                random_choice_idx = torch.randint(0, self.args.topk-1, (1, ))
+                # Notice: Here we use 'argmax' + 'randn' instead of 'randint' which is unsupported.
+                random_choice_idx = torch.argmax(torch.randn((1, self.args.topk)), axis=1)
                 next_token = next_token[:, random_choice_idx]
 
                 next_dynamic_mask = torch.cat((torch.ones(self.args.batch_size, 1).to(
@@ -192,7 +194,8 @@ class GPT2Wrapper(torch.nn.Module):
             (next_token_value, next_token) = torch.topk(
                 next_token_logits, self.args.topk)
             # We simply do a random selection after topk to avoid repetitions
-            random_choice_idx = torch.randint(0, self.args.topk-1, (1, ))
+            # Notice: Here we use 'argmax' + 'randn' instead of 'randint' which is unsupported.
+            random_choice_idx = torch.argmax(torch.randn((1, self.args.topk)), axis=1)
             next_token = next_token[:, random_choice_idx]
 
             next_dynamic_mask = torch.cat((torch.ones(self.args.batch_size, 1).to(
@@ -216,9 +219,7 @@ class GPT2Wrapper(torch.nn.Module):
 
 def main():
     # custom op
-    so_path = os.path.join(os.path.dirname(
-        os.path.realpath(__file__)), "custom_ops.so")
-    ctypes.cdll.LoadLibrary(so_path)
+    load_custom_ops()
     args = set_args()
     if args.poptorch_loop and not args.single_ipu:
         raise("poptorch_loop did not support multi IPUs")
@@ -305,16 +306,16 @@ def main():
                 all_ids = torch.concat([input_ids_all.view(
                     args.batch_size, -1).to(torch.int64), output_tokens], axis=-1)
                 logging.info(
-                    "Latency: {0} sec/sentence_({1})".format(np.mean(model_time[1:]), args.output_len))
+                    "latency avg per sentence: {0} ms/sentence_({1})".format(np.mean(model_time[1:])*1000, args.output_len))
                 logging.info(
-                    "Latency: {} sec/token".format(np.mean(model_time[1:])/args.output_len))
-                logging.info("Batch size: {0}; Input length {1}; Output length {2}, Throughput: {3} sentence/sec \n".format(
+                    "Per-token latency avg: {} ms/token".format(np.mean(model_time[1:])*1000/args.output_len))
+                logging.info("Batch size: {0}; Input length {1}; Output length {2}, throughput: {3} samples/sec \n".format(
                     args.batch_size, txt_len, args.output_len, args.batch_size / np.mean(model_time[1:])))
             else:
                 for _ in range(args.input_len + args.output_len):
                     start_time = time.time()
                     input_ids, dynamic_mask = model(
-                        input_ids, dynamic_mask, position_ids)
+                        input_ids.to(torch.int64), dynamic_mask.to(torch.int64), position_ids)
                     end_time = time.time()
                     model_time.append(end_time - start_time)
                     position_ids += 1
@@ -324,10 +325,10 @@ def main():
                     all_ids = np.concatenate(
                         (all_ids, input_ids.view(args.batch_size, -1).numpy()), axis=1)
                 logging.info(
-                    "Latency: {0} sec/sentence_({1})".format(np.sum(model_time[1:]), args.output_len))
+                    "latency avg per sentence: {0} ms/sentence_({1})".format(np.sum(model_time[1:])*1000, args.output_len))
                 logging.info(
-                    "Latency: {} sec/token".format(np.mean(model_time[1:])))
-                logging.info("Batch size: {0}; Input length {1}; Output length {2}, Throughput: {3} sentence/sec \n".format(
+                    "Per-token latency avg: {} ms/token".format(np.mean(model_time[1:])*1000))
+                logging.info("Batch size: {0}; Input length {1}; Output length {2}, throughput: {3} samples/sec \n".format(
                     args.batch_size, txt_len, args.output_len, args.batch_size / np.sum(model_time[1:])))
 
             for batch in all_ids.tolist():

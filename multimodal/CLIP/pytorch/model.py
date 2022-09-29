@@ -8,18 +8,7 @@ from collections import OrderedDict
 import numpy as np
 import poptorch
 import torch
-import torch.nn.functional as F
 from torch import nn
-from torch.nn.modules import module
-
-
-class LayerNorm(nn.LayerNorm):
-    """Subclass torch's LayerNorm to handle fp16."""
-
-    def forward(self, x: torch.Tensor):
-        orig_type = x.dtype
-        ret = super().forward(x.type(torch.float32))
-        return ret.type(orig_type)
 
 
 class QuickGELU(nn.Module):
@@ -45,7 +34,7 @@ class ResidualAttentionBlock(nn.Module):
         super().__init__()
 
         self.attn = nn.MultiheadAttention(d_model, n_head)
-        self.ln_1 = LayerNorm(d_model)
+        self.ln_1 = nn.LayerNorm(d_model)
 
         self.mlp = nn.Sequential(OrderedDict([
             ("c_fc", nn.Linear(d_model, d_model * 4)),
@@ -53,11 +42,11 @@ class ResidualAttentionBlock(nn.Module):
             ("c_proj", nn.Linear(d_model * 4, d_model))
         ]))
 
-        self.ln_2 = LayerNorm(d_model)
+        self.ln_2 = nn.LayerNorm(d_model)
         self.attn_mask = attn_mask
 
     def attention(self, x: torch.Tensor):
-        self.attn_mask = self.attn_mask if self.attn_mask is not None else None
+        self.attn_mask = self.attn_mask.to(x.device) if self.attn_mask is not None else None
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
     def forward(self, x: torch.Tensor):
@@ -88,11 +77,11 @@ class VisionTransformer(nn.Module):
         scale = width ** -0.5
         self.class_embedding = nn.Parameter(scale * torch.randn(width))
         self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
-        self.ln_pre = LayerNorm(width)
+        self.ln_pre = nn.LayerNorm(width)
 
         self.transformer = Transformer(width, layers, heads, attn_mask=None)
 
-        self.ln_post = LayerNorm(width)
+        self.ln_post = nn.LayerNorm(width)
 
         # Scale the weight of self.proj
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
@@ -102,7 +91,7 @@ class VisionTransformer(nn.Module):
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
 
-        x = torch.cat([self.class_embedding + torch.zeros(x.shape[0], 1, x.shape[-1]), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        x = torch.cat([self.class_embedding + torch.zeros(x.shape[0], 1, x.shape[-1], device=x.device, dtype=x.dtype), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
         x = x + self.positional_embedding
 
         x = self.ln_pre(x)
@@ -123,6 +112,9 @@ class CLIP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.context_length = config.context_length
+        self.batch_size = config.batch_size
+        self.memory_size = config.memory_size
+        self.embed_dim = config.embed_dim
 
         vision_heads = config.vision_width // 64
         self.visual = VisionTransformer(
@@ -144,10 +136,14 @@ class CLIP(nn.Module):
         self.vocab_size = config.vocab_size
         self.token_embedding = torch.nn.Embedding(config.vocab_size, config.transformer_width)
         self.positional_embedding = nn.Parameter(torch.empty(self.context_length, config.transformer_width))
-        self.ln_final = LayerNorm(config.transformer_width)
+        self.ln_final = nn.LayerNorm(config.transformer_width)
         self.text_projection = nn.Parameter(torch.empty(config.transformer_width, config.embed_dim))
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         self.initialize_parameters()
+
+        # Allocate the register buffers to store the features of the passed steps
+        self.register_buffer("image_fea_queue", torch.normal(mean=0.0, std=(self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5), size=(self.memory_size * self.batch_size, self.embed_dim)))
+        self.register_buffer("text_fea_queue", torch.normal(mean=0.0, std=(self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5), size=(self.memory_size * self.batch_size, self.embed_dim)))
 
         # Loss
         self.loss = nn.CrossEntropyLoss()
@@ -167,6 +163,18 @@ class CLIP(nn.Module):
 
         if self.text_projection is not None:
             nn.init.normal_(self.text_projection, std=self.transformer.width ** -0.5)
+
+    @torch.no_grad()
+    def dequeue_enqueue(self, image_fea, text_fea):
+        # Update the image features encoded in the current step to the register buffer
+        last_image = self.image_fea_queue[: (self.memory_size-1) * self.batch_size, :]
+        update_image = torch.cat([image_fea, last_image], dim=0)
+        self.image_fea_queue.copy_(update_image)
+
+        # Update the text features encoded in the current step to the register buffer
+        last_text = self.text_fea_queue[: (self.memory_size-1) * self.batch_size, :]
+        update_text = torch.cat([text_fea, last_text], dim=0)
+        self.text_fea_queue.copy_(update_text)
 
     def build_attention_mask(self):
         # Lazily create causal attention mask, with full attention between the vision tokens
@@ -192,8 +200,7 @@ class CLIP(nn.Module):
 
         # x.shape = [batch_size, n_ctx, transformer.width]
         # Take features from the eot embedding (eot_token is the highest number in each sequence)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
-
+        x = x[torch.arange(x.shape[0], device=x.device).long(), text.argmax(dim=-1)] @ self.text_projection
         return x
 
     def parallelize(self, log):
@@ -243,6 +250,7 @@ class CLIP(nn.Module):
         log.logger.info("token_embedding --> IPU 5")
         self.token_embedding = poptorch.BeginBlock(self.token_embedding, "embedding", ipu_id=5)
 
+        log.logger.info("text_enocder 0 --> IPU 5")
         layer = self.transformer.resblocks[0]
         recomputation_checkpoint(layer)
         self.transformer.resblocks[0] = poptorch.BeginBlock(layer, "text_encoder_layer0", ipu_id=5)
@@ -273,16 +281,22 @@ class CLIP(nn.Module):
             image_features = image_features / image_features.norm(dim=1, keepdim=True)
             text_features = text_features / text_features.norm(dim=1, keepdim=True)
 
-            logits_per_image = self.logit_scale.exp() * image_features @ text_features.t()
+            # Concat the features encoded in the current step and from the register buffer
+            n_text_features = torch.cat([text_features, self.text_fea_queue.clone().detach()], dim=0)
+            n_image_features = torch.cat([image_features, self.image_fea_queue.clone().detach()], dim=0)
+
+            logits_per_image = self.logit_scale.exp() * torch.mm(n_image_features, n_text_features.t())
 
             logits_per_text = logits_per_image.t()
 
-            labels = torch.Tensor(np.arange(logits_per_image.size()[0])).long()
+            labels = torch.arange(logits_per_image.size()[0], device=logits_per_text.device).long()
 
             i_loss = self.loss(logits_per_image, labels)
             t_loss = self.loss(logits_per_text, labels)
 
             loss = (i_loss + t_loss) / 2.0
+
+            self.dequeue_enqueue(image_features, text_features)
 
             return poptorch.identity_loss(loss, reduction="mean")
 

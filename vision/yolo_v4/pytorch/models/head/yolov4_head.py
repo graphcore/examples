@@ -50,6 +50,11 @@ class Yolov4Head(nn.Module):
 
         # Predicted box width and height
         width, height = torch.split((weight_height * torch.tensor([2.0], dtype=self.precision)), [1, 1], dim=4)
+        if width.device != self.anchors.widths.device:
+            self.anchors.widths = self.anchors.widths.to(width.device)
+        if height.device != self.anchors.heights.device:
+            self.anchors.heights = self.anchors.heights.to(height.device)
+
         width = ((width * width) * self.anchors.widths.reshape(1, -1, 1, 1, 1))
         height = ((height * height) * self.anchors.heights.reshape(1, -1, 1, 1, 1))
 

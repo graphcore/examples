@@ -197,7 +197,7 @@ def load_or_cache_features(input_file,
                                                 is_training=is_training)
 
         logger.info(f"Saving Cache {cache_file}")
-        with open(cache_file, "wb") as f:
+        with open(os.path.basename(cache_file), "wb") as f:
             pickle.dump(features, f)
 
     return features, examples

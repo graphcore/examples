@@ -109,7 +109,7 @@ class ConformerDecoder(conformer_blocks.Block):
 
         logger.info("Shape of Decoder Input: {}".format(self.builder.getTensorShape(x_in)))
 
-        # transposing to shape [batch_size, seq_length, channel_dim]
+        # transposing to shape [global_batch_size, seq_length, channel_dim]
         out = self.builder.aiOnnx.transpose([x_in], perm=[0, 2, 1])
 
         # matmul for softmax layer

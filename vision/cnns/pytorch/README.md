@@ -83,6 +83,17 @@ After following installation instructions run:
 pytest
 ```
 
+## Troubleshooting
+
+If Triton server tests fails with such error:
+
+* ```[model_runtime:cpp] [error] Error in model_runtime/source/Executable.cpp:38:Failed to deserialize XXX : Error reading executable - package hash (YYY) differs from poplar hash (ZZZ)```
+
+	This mean that models were generated and saved with different version of SDK and needs to be recreated. Please remove `tests_serial/tritonserver/test_environment_ready.lock` and rerun tests.
+
+* ```Failed: Failed to download and/or compile Triton Server!```
+
+	Most probably some system packages are missing, ensure that all packages listed in `required_apt_packages.txt` are installed. Also refer to Triton Server build log file. After fixing error remove `../../../utils/triton_server/triton_environment_is_prepared.lock` and rerun tests.
 
 ### License
 
@@ -102,8 +113,12 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS", AND
 
 ###  Changelog
 
+#### September 2022
+* add troubleshooting for Triton server tests
+
 #### June 2022
 * Enable automatic loss scaling option
+* Merge collectives
 
 #### May 2022
 * Removed TFRecord and Webdataset support

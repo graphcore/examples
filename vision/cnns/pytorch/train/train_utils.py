@@ -63,7 +63,7 @@ def parse_arguments():
     parser.add_argument('--initial-loss-scaling', type=float, help="Initial loss scaling factor. The loss scaling interpolates between this and loss-scaling value."
                         "Example: 100 epoch, initial loss scaling 16, loss scaling 128: Epoch 1-25 ls=16;Epoch 26-50 ls=32;Epoch 51-75 ls=64;Epoch 76-100 ls=128")
     parser.add_argument("--auto-loss-scaling", action='store_true', help="Enable automatic loss scaling\
-                        for half precision training. Note that this is an experimental feature.")
+                        for half precision training.")
     parser.add_argument('--enable-stochastic-rounding', action="store_true", help="Enable Stochastic Rounding")
     parser.add_argument('--enable-fp-exceptions', action="store_true", help="Enable Floating Point Exceptions")
     parser.add_argument('--use-bbox-info', action='store_true', help='Use bbox information for training: reject the augmenetation, which does not overlap with the object.')
@@ -74,7 +74,7 @@ def parse_arguments():
     parser.add_argument("--half-res-training", action="store_true", help="Train the model on images that are half the original size and fine tune at the end on original size inputs.")
     parser.add_argument('--fine-tune-epoch', type=int, default=0, help="Number of fine-tuning epochs when training with --half-res-training.")
     parser.add_argument('--fine-tune-lr', type=float, default=0.25, help="Initial learning rate during the fine-tuning phase when --half-res-training.")
-    parser.add_argument('--fine-tune-batch-size', type=int, default=1, help='Batch during the fine-tuning phase when --half-res-training.')
+    parser.add_argument('--fine-tune-micro-batch-size', type=int, default=1, help='Batch during the fine-tuning phase when --half-res-training.')
     parser.add_argument('--fine-tune-gradient-accumulation', type=int, default=1, help="Number of batches to accumulate before a gradient update during the fine-tuning phase when --half-res-training.")
     parser.add_argument('--fine-tune-first-trainable-layer', type=str, default="", help="First non-frozen layer in the fine-tuned model when --half-res-training.")
 
@@ -106,8 +106,8 @@ def parse_arguments():
         logging.error('Please provide a --checkpoint-path folder to apply weight averaging to.')
         sys.exit(1)
 
-    if args.batch_size == 1 and args.norm_type == "batch":
-        logging.warning("BatchNorm with batch size of 1 may cause instability during inference.")
+    if args.micro_batch_size == 1 and args.norm_type == "batch":
+        logging.warning("BatchNorm with micro batch size of 1 may cause instability during inference.")
 
     if num_stages > 1:
         logging.info("Recomputation is always enabled when using pipelining.")
@@ -131,14 +131,14 @@ def parse_arguments():
     assert 0.0 <= args.cutmix_disable_prob <= 1.0, "Probability for disabling cutmix must be in [0, 1]"
     args.cutmix_enabled = (args.cutmix_lambda_low, args.cutmix_lambda_high) not in ((0.0, 0.0), (1.0, 1.0))
 
-    if args.mixup_enabled and args.cutmix_enabled and args.batch_size < 4:
-        logging.error('Using mixup and cutmix together requires at least batch size 4')
+    if args.mixup_enabled and args.cutmix_enabled and args.micro_batch_size < 4:
+        logging.error('Using mixup and cutmix together requires at least micro batch size 4')
         sys.exit(1)
-    elif args.mixup_enabled and args.batch_size < 2:
-        logging.error('Using mixup requires at least batch size 2')
+    elif args.mixup_enabled and args.micro_batch_size < 2:
+        logging.error('Using mixup requires at least micro batch size 2')
         sys.exit(1)
-    elif args.cutmix_enabled and args.batch_size < 3:
-        logging.error('Using cutmix requires at least batch size 3')
+    elif args.cutmix_enabled and args.micro_batch_size < 3:
+        logging.error('Using cutmix requires at least micro batch size 3')
         sys.exit(1)
 
     if args.compile_only and (args.data != "generated"):

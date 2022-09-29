@@ -15,14 +15,20 @@
 """
 The logging code used in train.py.
 """
-
+from typing import NamedTuple
 import os
+import pathlib
 import csv
 import random
 import string
 import json
 import wandb
 import tensorflow as tf
+import logging
+
+import numpy as np
+
+import pva
 
 try:
     # See
@@ -34,6 +40,8 @@ try:
     MLLOGGER = mllog.get_mllogger()
 except ImportError:
     MLPERF_LOGGING = False
+
+GCL_METHODS = {"auto", "broadcast", "clockwise_ring", "anticlockwise_ring", "bidirectional_ring_pair", "meet_in_middle_ring", "quad_directional_ring"}
 
 
 def add_arguments(parser):
@@ -59,6 +67,21 @@ def add_arguments(parser):
                        help="Enable logging to Weights and Biases.")
     group.add_argument("--wandb-project", type=str, default="tf-cnn",
                        help="Configures project Weights and Biases logs to.")
+    group.add_argument("--profile", action="store_true",
+                       help="Turns on graph profiling and saves memory profiles to wandb if it is active."
+                            " This option will stop execution after a single device iteration.")
+    group.add_argument("--profile-compilation", action="store_true",
+                       help="Turns on graph profiling for the compilation, "
+                            "saves memory profiles to wandb if it is active.")
+    group.add_argument("--gcl-method", type=str,
+                       help=f'Set the method in the GCL_OPTIONS environment variable. Must be one of: {GCL_METHODS}')
+    group.add_argument("--gcl-max-broadcast-size", type=int,
+                       help='Set maxBroadcastSize in the GCL_OPTIONS environment variable.')
+    group.add_argument("--executable-cache-path", type=str, default="",
+                       help="Set the executable cache path for the poplar_executable")
+    group.add_argument("--poplar-sync-configuration", type=str, default="",
+                       choices={"", "ipuAndInstanceAndIntraReplicaAndAll"},
+                       help=r"Sets the POPLAR_TARGET_OPTIONS='{syncConfiguration: ''} environment variable")
     return parser
 
 
@@ -206,10 +229,177 @@ def initialise_wandb(opts):
     name_suffix = opts.get("name_suffix", None)
     if name_suffix:
         name += name_suffix
-    wandb.init(project=project, name=name, sync_tensorboard=True)
-    wandb.config.update(opts)
+
+    wandb_id = opts.get("wandb_id", None)
+    if wandb_id is None:
+        wandb.init(project=project, name=name, sync_tensorboard=True)
+        wandb.config.update(opts)
+    else:
+        wandb.init(id=wandb_id, project=project, resume="must", sync_tensorboard=True)
+        wandb.run.summary["restored_config"] = opts
 
 
-def log_to_wandb(stats):
+def log_to_wandb(stats, commit=None):
     """Logs stats to weights and biases run"""
-    wandb.log(stats)
+    wandb.log(stats, commit=commit)
+
+
+def add_to_wandb_summary(opts, column, value):
+    """Add a column to the wandb summary"""
+    if opts['wandb'] and opts['distributed_worker_index'] == 0:
+        wandb.run.summary[column] = value
+
+
+def handle_profiling_options(opts):
+    """Processes the `--profile` and `--profile-compilation` options
+
+    Turns on profiling and updates the POPLAR_ENGINE_OPTIONS environment.
+    """
+    logging_dir = opts["logs_path"] if opts["logs_path"] else "./profile"
+
+    if opts["profile"] and opts["profile_compilation"]:
+        raise ValueError("Both `--profile` and `--profile-compilation` options were "
+                         "used but they are not compatible.")
+
+    if opts["profile"] or opts["profile_compilation"]:
+        engine_options = {
+                "debug.allowOutOfMemory": "true",
+                "autoReport.directory": logging_dir,
+                "autoReport.all": "true",
+        }
+        if opts["profile_compilation"]:
+            engine_options["autoReport.outputExecutionProfile"] = "false"
+
+        # Update the configuration set by the POPLAR_ENGINE_OPTIONS environment variable
+        engine_options.update(json.loads(os.environ.get("POPLAR_ENGINE_OPTIONS", "{}")))
+        logging_dir = engine_options["autoReport.directory"]
+        logging.info(f"Profile files will be available in {logging_dir}. Set --logs_path"
+                     " or the POPLAR_ENGINE_OPTIONS environment variable to change this.")
+        engine_options_str = json.dumps(engine_options)
+        logging.info(f"    Engine options: {engine_options_str}.")
+        os.environ["POPLAR_ENGINE_OPTIONS"] = engine_options_str
+
+
+def handle_gcl_options(opts):
+    """
+    Processes the `--gcl-method` and `--gcl-max-broadcast-size` option
+
+    Updates the GCP_OPTIONS environment.
+    """
+    if opts.get("gcl_method") or opts.get("gcl_max_broadcast_size"):
+        gcl_options = {}
+        if opts["gcl_method"]:
+            if opts["gcl_method"] not in GCL_METHODS:
+                raise ValueError(f"The argument of --gcl-broadcast must be one of {GCL_METHODS}")
+            gcl_options["method"] = opts["gcl_method"]
+
+        if opts["gcl_max_broadcast_size"]:
+            gcl_options["syncful.maxBroadcastSize"] = opts["gcl_max_broadcast_size"]
+
+        # Update the configuration set by the GCL_OPTIONS environment variable
+        gcl_options.update(json.loads(os.environ.get("GCL_OPTIONS", "{}")))
+        gcl_options_str = json.dumps(gcl_options)
+        logging.info(f"    GCL options: {gcl_options_str}.")
+        os.environ["GCL_OPTIONS"] = gcl_options_str
+
+
+def handle_cache_path(opts):
+    if opts.get("executable_cache_path"):
+        tf_poplar_flags = os.environ.get("TF_POPLAR_FLAGS", "")
+        if "executable_cache_path" in tf_poplar_flags:
+            raise ValueError("The executable cache path was set as an environemnt variable in TF_POPLAR_FLAGS"
+                             f" ({tf_poplar_flags}) and as an argument.")
+        os.makedirs(opts["executable_cache_path"], exist_ok=True)
+        new_cache_path = opts["executable_cache_path"]
+        os.environ["TF_POPLAR_FLAGS"] = f"{tf_poplar_flags} --executable_cache_path={new_cache_path}"
+
+
+def handle_poplar_target_options(opts):
+    """
+    Processes the `--poplar-sync-configuration` option
+
+    Updates the POPLAR_TARGET_OPTIONS environment.
+    """
+
+    if opts.get("poplar_sync_configuration"):
+        poplar_target_options = {}
+        if opts.get("poplar_sync_configuration"):
+            poplar_target_options["syncConfiguration"] = opts["poplar_sync_configuration"]
+
+        # Update the configuration set by the poplar_target_options environment variable
+        poplar_target_options.update(json.loads(os.environ.get("POPLAR_TARGET_OPTIONS", "{}")))
+        poplar_target_options_str = json.dumps(poplar_target_options)
+        logging.info(f"    Poplar target options: {poplar_target_options}.")
+        os.environ["POPLAR_TARGET_OPTIONS"] = poplar_target_options_str
+
+
+
+class SummarisedArray(NamedTuple):
+    """Calculate and store summary metrics for an array"""
+    min: float
+    max: float
+    mean: float
+
+    @classmethod
+    def from_array(cls, array: np.ndarray):
+        array = np.array(array)
+        return cls(
+            min=array.min(),
+            max=array.max(),
+            mean=array.mean(),
+        )
+
+
+def process_profile(opts):
+    """Logs the IPU memory profile to wandb"""
+    logging_dir = opts["logs_path"] if opts["logs_path"] else "./profile"
+
+    profile_paths = [*pathlib.Path(logging_dir).rglob("*.pop")]
+    if len(profile_paths) > 1:
+        logging.warning("Multiple Graph Analyzer profiles detected, only the first "
+                        f"will be processed: {profile_paths[0]}")
+    elif not profile_paths:
+        if opts["profile"]:
+            logging.warn(f"No profile found in {logging_dir} despite `--profile`.")
+        return
+
+    report = pva.openReport(str(profile_paths[0]))
+
+    always_live_memory = sum(v.size for v in report.compilation.alwaysLiveVariables)
+    not_always_live = [
+        step.notAlwaysLiveMemory.bytes
+        for step in report.compilation.livenessProgramSteps
+    ]
+    total_live_memory = np.array(always_live_memory) + not_always_live
+    tile_memory = [tile.memory.total.includingGaps for tile in report.compilation.tiles]
+    single_tile_mem = 624 * 1024
+    profile_data = dict(
+        not_always_live=np.array(not_always_live),
+        total_live_memory = total_live_memory,
+        free_live_memory = (single_tile_mem * 1472) - total_live_memory,
+        tile_memory=np.array(tile_memory),
+        tile_free_memory=single_tile_mem - np.array(tile_memory),
+    )
+
+    if not opts["wandb"] or opts['distributed_worker_index'] != 0:
+        return
+
+    data = [[x, y, z] for (x, (y, z)) in enumerate(zip(not_always_live, total_live_memory))]
+    table = wandb.Table(data=data, columns = ["program_step", "not_always_live_memory", "total_live_memory"])
+    wandb.log({"memory_liveness": wandb.plot.line(table, "program_step", "not_always_live_memory",
+               title="Memory Liveness")})
+    wandb.log({"memory_total_liveness": wandb.plot.line(table, "program_step", "total_live_memory",
+               title="Total Memory Liveness")})
+
+    data = [[x, y] for (x, y) in enumerate(tile_memory)]
+    table = wandb.Table(data=data, columns = ["tile", "tile_memory_usage"])
+    wandb.log({"tile_memory": wandb.plot.line(table, "tile", "tile_memory_usage",
+               title="Tile memory")})
+
+    for k, v in profile_data.items():
+        wandb.run.summary[k] = v
+    # Write a custom summary, makes sure that these metrics are available for reporting in wandb
+    wandb.run.summary["summaries"] = {
+        k: SummarisedArray.from_array(v)._asdict()
+        for k, v in profile_data.items()
+    }

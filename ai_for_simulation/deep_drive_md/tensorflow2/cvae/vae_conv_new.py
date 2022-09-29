@@ -81,6 +81,27 @@ class Sampling(Layer):
         return z_mean + K.exp(0.5 * z_log_var) * epsilon
 
 
+class ReconstructionLossLayer(tf.keras.layers.Layer):
+
+    def call(self, inputs):
+        data, reconstruction = inputs
+        reconstruction_loss = tf.reduce_mean(
+            tf.reduce_sum(
+                binary_crossentropy(data, reconstruction), axis=(1, 2)
+            )
+        )
+        return reconstruction_loss
+
+
+class KLLossLayer(tf.keras.layers.Layer):
+
+    def call(self, inputs):
+        z_mean, z_log_var = inputs
+        kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
+        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+        return kl_loss
+
+
 def encoder_decoder(latent_dim, channels, image_size, feature_maps, filter_shapes, activation,
                     strides, conv_layers, dense_layers, dense_neurons, dense_dropouts, eps_mean,
                     eps_std):
@@ -240,71 +261,23 @@ class conv_variational_autoencoder(Model):
             latent_dim, channels, image_size, feature_maps, filter_shapes, activation,
             strides, conv_layers, dense_layers, dense_neurons, dense_dropouts, eps_mean,
             eps_std)
-        self.total_loss_tracker = metrics.Mean(name="loss")
-        self.reconstruction_loss_tracker = metrics.Mean(
-            name="reconstruction_loss"
-        )
-        self.kl_loss_tracker = metrics.Mean(name="kl_loss")
+        # Overriding train_step() is not supported at the moment, but the VAEs loss calculation requires customization.
+        # Therefore, we define losses as layers so that they could be caclulated in call().
+        self.reconstruction_loss = ReconstructionLossLayer(name='reconstruction')
+        self.kl_loss = KLLossLayer(name='kl')
 
         self.optimizer = RMSprop(lr=0.001, rho=0.9, epsilon=1e-08, decay=0.0)
         self.encoder.set_infeed_queue_options(prefetch_depth=16)
         self.decoder.set_infeed_queue_options(prefetch_depth=16)
-        self.compile(optimizer=self.optimizer, steps_per_execution=steps_per_exec)
-        self.inputs = self.encoder.inputs
         self.build(tf.TensorShape((1, image_size[0], image_size[1], channels)))
+        self.compile(optimizer=self.optimizer, loss=self.dummy_loss, steps_per_execution=steps_per_exec)
+        self.inputs = self.encoder.inputs
         self.summary()
 
-    @property
-    def metrics(self):
-        return [
-            self.total_loss_tracker,
-            self.reconstruction_loss_tracker,
-            self.kl_loss_tracker,
-        ]
-
-    def train_step(self, data):
-        with tf.GradientTape() as tape:
-            z_mean, z_log_var, z = self.encoder(data)
-            reconstruction = self.decoder(z)
-            reconstruction_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    binary_crossentropy(data, reconstruction), axis=(1, 2)
-                )
-            )
-            kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
-            kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
-            total_loss = reconstruction_loss + kl_loss
-        grads = tape.gradient(total_loss, self.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
-        self.total_loss_tracker.update_state(total_loss)
-        self.reconstruction_loss_tracker.update_state(reconstruction_loss)
-        self.kl_loss_tracker.update_state(kl_loss)
-        return {
-            "loss": self.total_loss_tracker.result(),
-            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
-            "kl_loss": self.kl_loss_tracker.result(),
-        }
-
-    def test_step(self, data):
-        if isinstance(data, tuple):
-            data = data[0]
-
-            z_mean, z_log_var, z = self.encoder(data)
-            reconstruction = self.decoder(z)
-            reconstruction_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    binary_crossentropy(data, reconstruction), axis=(1, 2)
-                )
-            )
-            kl_loss = 1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var)
-            kl_loss = tf.reduce_mean(kl_loss)
-            kl_loss *= -0.5
-            total_loss = reconstruction_loss + kl_loss
-            return {
-                "loss": total_loss,
-                "reconstruction_loss": reconstruction_loss,
-                "kl_loss": kl_loss,
-            }
+    def dummy_loss(self, y_true, y_pred):
+        # y_pred is already the loss since loss is calculated in call(), so y_true (which we defined as 0.) will be ignored
+        loss = y_pred
+        return loss
 
     def save(self, filepath):
         '''
@@ -374,9 +347,11 @@ class conv_variational_autoencoder(Model):
         return self.decoder(embedding)
 
     def call(self, inputs):
-        _, _, z = self.encoder(inputs)
+        z_mean, z_log_var, z = self.encoder(inputs)
         reconstruction = self.decoder(z)
-        return reconstruction
+        reconstruction_loss = self.reconstruction_loss([inputs, reconstruction])
+        kl_loss = self.kl_loss([z_mean, z_log_var])
+        return reconstruction_loss, kl_loss
 
     def train(self, train_data, validation_data, batch_size, epochs, steps_per_epoch=1, validation_steps=1):
         self.fit(

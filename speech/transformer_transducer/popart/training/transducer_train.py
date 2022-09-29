@@ -72,14 +72,15 @@ def generate_train_step_summary(conf, training_runtime_conf, step, steps_per_epo
         log_str += "Epoch {}".format(epoch + 1)
         log_str += ", Step {}/{}".format(step %
                                          steps_per_epoch + 1, steps_per_epoch)
-        log_str += ", Current RNNT loss: {}".format(str(current_loss))
-        log_str += ", Average RNNT loss: {}".format(str(mean_rnnt_loss))
+        log_str += ", loss: {}".format(str(current_loss))
+        log_str += ", loss (average RNNT): {}".format(str(mean_rnnt_loss))
+
         if training_runtime_conf.num_instances > 1:
-            log_str += ", All instance Throughput: {:.6}".format(
+            log_str += ", All instance throughput: {:.6} samples/sec".format(
                 str(throughput))
             log_str += ", Step time: {:.6}".format(str(step_time))
         else:
-            log_str += ", Throughput: {:.6}".format(str(throughput))
+            log_str += ", throughput: {:.6} samples/sec".format(str(throughput))
             log_str += ", Step time: {:.6}".format(str(step_time))
 
         if wer is not None:

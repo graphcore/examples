@@ -23,8 +23,8 @@ from functools import partial
 
 import torch
 import torch.nn as nn
-from core.utils import trunc_normal_
-from core.gelu import ERF_GELU
+import poptorch
+from core.utils import trunc_normal_, Precision
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
@@ -205,8 +205,10 @@ class VisionTransformer(nn.Module):
             drop_path_rate=0.,
             norm_layer=nn.LayerNorm,
             act_layer=nn.GELU,
+            precision=Precision.FP32,
             **kwargs):
         super().__init__()
+        self.precision = precision
         self.num_features = self.embed_dim = embed_dim
 
         self.patch_embed = PatchEmbed(
@@ -267,16 +269,19 @@ class VisionTransformer(nn.Module):
         dim = x.shape[-1]
         # we add a small number to avoid floating point error in the interpolation
         # see discussion at https://github.com/facebookresearch/dino/issues/8
+        if self.precision is Precision.FP16:
+            patch_pos_embed = patch_pos_embed.float()
         patch_pos_embed = nn.functional.interpolate(
             patch_pos_embed.reshape(1, 14, 14, dim).permute(0, 3, 1, 2),
             # get scale_factor_w by: (w // self.patch_embed.patch_size + 0.1) / math.sqrt(N)
             # this scale_factor is for crop size 96*96
-            scale_factor=(0.4357, 0.4357),
-            mode='nearest',
+            scale_factor=(6.1 / 14, 6.1 / 14),
+            mode='bicubic',
         )
+        if self.precision is Precision.FP16:
+            patch_pos_embed = patch_pos_embed.half()
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
-        return torch.cat(
-            (class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1)
+        return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1)
 
     def prepare_tokens(self, x):
         B, nc, w, h = x.shape
@@ -285,7 +290,16 @@ class VisionTransformer(nn.Module):
 
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1)
+        if self.precision is Precision.FP32:
+            x = torch.cat((cls_tokens, x), dim=1)
+        else:
+            x = torch.cat(
+                (cls_tokens *
+                 torch.tensor(
+                     1.0,
+                     dtype=torch.float16),
+                    x),
+                dim=1)
 
         # add positional encoding to each token
         x = x + self.interpolate_pos_encoding(x, w, h)
@@ -330,7 +344,6 @@ def vit_tiny(patch_size=16, **kwargs):
         norm_layer=partial(
             nn.LayerNorm,
             eps=1e-6),
-        act_layer=ERF_GELU,
         **kwargs)
     return model
 
@@ -346,7 +359,6 @@ def vit_mini(patch_size=16, **kwargs):
         norm_layer=partial(
             nn.LayerNorm,
             eps=1e-6),
-        act_layer=ERF_GELU,
         **kwargs)
     return model
 
@@ -362,7 +374,6 @@ def vit_small(patch_size=16, **kwargs):
         norm_layer=partial(
             nn.LayerNorm,
             eps=1e-6),
-        act_layer=ERF_GELU,
         **kwargs)
     return model
 
@@ -378,6 +389,5 @@ def vit_base(patch_size=16, **kwargs):
         norm_layer=partial(
             nn.LayerNorm,
             eps=1e-6),
-        act_layer=ERF_GELU,
         **kwargs)
     return model

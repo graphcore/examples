@@ -1,0 +1,9 @@
+sklearn==0.0
+wandb==0.12.8
+protobuf==3.19.4
+torchvision==0.11.1
+transformers==4.18.0
+datasets==2.2.0
+timm==0.5.4
+git+https://github.com/huggingface/optimum-graphcore.git@55dad0ff50072b909f7957d1b8d012e21f48bde0
+opencv-python

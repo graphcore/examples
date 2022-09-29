@@ -36,7 +36,7 @@ class WeightNorm(object):
     def compute_weight(self, module):
         g = getattr(module, self.name + '_g')
         v = getattr(module, self.name + '_v')
-        return torch.nn.functional.normalize(v, p=2.0, dim=1, eps=1e-8) * g
+        return torch.nn.functional.normalize(v, p=2.0, dim=1, eps=1e-6) * g
 
     @staticmethod
     def apply(module, name: str, dim: int) -> 'WeightNorm':

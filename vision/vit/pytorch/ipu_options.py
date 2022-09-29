@@ -58,10 +58,9 @@ def get_options(config):
             "Expected reduction type to be 'sum' or 'mean', but got %s" % config.reduction_type)
 
     # Enable automatic loss scaling
-    # Note that this is an experimental feature. Note also that it expects
-    # accumulationAndReplicationReductionType to be set to Mean as above,
-    # and for accumulation by the optimizer to be done in half precision
-    # using accum_type=torch.float16 during optimizer instatiation.
+    # Note that it expects accumulationAndReplicationReductionType to be set
+    # to Mean as above, and for accumulation by the optimizer to be done in
+    # half precision using accum_type=torch.float16 during optimizer instatiation.
     if config.auto_loss_scaling is True:
         opts.Training.setAutomaticLossScaling(True)
 

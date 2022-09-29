@@ -2,20 +2,20 @@
 common_options: &common_options
   data:
     throughput:
-      regexp: 'Throughput: *(.*?) samples/sec'
-      skip: 1
-    accuracy:
-      reduction_type: "final"
-      regexp: 'Acc: *(.*?) '
+      regexp: 'throughput: *(.*?) samples\/sec'
+      skip: 2
     loss:
       reduction_type: "final"
-      regexp: 'Loss: *(.*?) '
+      regexp: 'loss: *(\d*\.\d*)'
   output:
-    - [Images/sec, "throughput"]
-    - [accuracy, "accuracy"]
+    - [samples/sec, "throughput"]
     - [loss, "loss"]
   env:
     PYTORCH_EXE_DIR: "./pt_cache/"
+
+validation_options: &validation_options
+  description: |
+    VIT validation for 4 IPUs.
 
 finetune_options: &finetune_options
   description: |
@@ -47,7 +47,7 @@ pytorch_vit_finetune_gen_pod16:
   cmd: >-
     python3 finetune.py
       --config b16_imagenet1k
-      --training-steps 6
+      --training-steps 10
       --dataset generated
       --checkpoint-output-dir ""
       --executable-cache-dir PYTORCH_EXE_DIR
@@ -148,4 +148,94 @@ pytorch_vit_lamb_pretrain_real_pod64_conv:
       --byteio true
       --gradient-accumulation 512
       --dataloader-workers 32
-      --mixup false
+      --mixup true
+      --wandb true
+      --wandb-project-name torch-vit
+      --wandb-run-name pytorch_vit_lamb_pretrain_real_pod64_conv
+
+pytorch_vit_pretrain_validation_real_pod4:
+  <<: *validation_options
+  cmd: >-
+    poprun
+      --vv
+      --ipus-per-replica=4
+      --num-replicas=1
+      --num-instances=1
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-partition=$PARTITION
+      --vipu-cluster=$CLUSTER
+      --executable-cache-path PYTORCH_EXE_DIR
+    python validation.py
+      --config b16_in1k_pretrain_valid
+      --dataset-path $DATASETS_DIR/imagenet1k
+      --pretrained-checkpoint output/ckpt-in1k-pretrain/step_11399
+      --wandb true
+      --wandb-project-name torch-vit
+      --wandb-run-name pytorch_vit_pretrain_validation_real_pod4
+      --device-iterations 4
+  data:
+    accuracy:
+      reduction_type: "final"
+      regexp: 'Valid Accuracy: *(\d+\.\d+)'
+  output:
+    - [accuracy, "accuracy"]
+  env:
+    PYTORCH_EXE_DIR: "./pt_cache/"
+
+pytorch_vit_finetune_real_pod16_conv:
+  <<: [*common_options, *finetune_options]
+  cmd: >-
+    poprun
+      --vv
+      --ipus-per-replica=4
+      --num-replicas=4
+      --num-instances=1
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-partition=$PARTITION
+      --vipu-cluster=$CLUSTER
+      --executable-cache-path PYTORCH_EXE_DIR
+    python3 finetune.py
+      --config b16_imagenet1k
+      --dataset-path $DATASETS_DIR/imagenet1k
+      --checkpoint-output-dir ./output/ckpt-in1k-finetune
+      --wandb true
+      --wandb-project-name torch-vit
+      --wandb-run-name pytorch_vit_finetune_real_pod16_conv
+
+pytorch_vit_finetune_validation_real_pod4:
+  <<: *validation_options
+  cmd: >-
+    poprun
+      --vv
+      --ipus-per-replica=4
+      --num-replicas=1
+      --num-instances=1
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-partition=$PARTITION
+      --vipu-cluster=$CLUSTER
+      --executable-cache-path PYTORCH_EXE_DIR
+    python validation.py
+      --config b16_imagenet1k_valid
+      --dataset-path $DATASETS_DIR/imagenet1k
+      --pretrained-checkpoint output/ckpt-in1k-finetune/step_625
+      --wandb true
+      --wandb-project-name torch-vit
+      --wandb-run-name pytorch_vit_finetune_validation_real_pod4
+      --device-iterations 4
+  data:
+    accuracy:
+      reduction_type: "final"
+      regexp: 'Valid Accuracy: *(\d+\.\d+)'
+  output:
+    - [accuracy, "accuracy"]
+  env:
+    PYTORCH_EXE_DIR: "./pt_cache/"

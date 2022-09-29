@@ -5,7 +5,7 @@ Implementation of ViT (Vision Transformer) model in PyTorch for IPU. This exampl
 
 ## Environment Setup
 
-First, Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` scripts for poplar and popART.
+First, install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` scripts for poplar and popART.
 
 Then, create a virtual environment, install the required packages and build the custom ops.
 
@@ -14,6 +14,22 @@ virtualenv venv -p python3.6
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 ## Configurations
 
@@ -34,9 +50,30 @@ The ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 100
 
 Please place or symlink the ImageNet data in `./data/imagenet1k`.
 
+The imagenet1k dataset folder contains `train` and `validation` folders, in which there are the 1000 folders of different classes of images.
+```console
+imagenet1k
+|-- train [1000 entries exceeds filelimit, not opening dir]
+`-- validation [1000 entries exceeds filelimit, not opening dir]
+```
 ## Run the application
 
-Setup your environment as explained above. You can run ViT fine-tuning on either CIFAR10 or ImageNet1k datasets.
+Setup your environment as explained above.
+ViT can be configured for either pre-training or fine-tuning.
+Pre-training initializes the weights and trains from scratch.
+Fine-tuning loads an already pre-trained checkpoint from HuggingFace and fine-tunes on the dataset provided.
+### Pre-Training
+To run ImageNet1k pre-training, i.e. randomly initialize the model weights and train from scratch:
+```console
+python pretrain.py --config b16_in1k_pretrain
+```
+Afterwards run ImageNet1k validation:
+```console
+python validation.py --config b16_in1k_pretrain_valid
+```
+Note: in pre-training Imagenet1k, `micro_batch_size` is set to 8, and all other parameters are tuned to reach a validation accuracy that is higher than 74.79% (released in [google official repository](https://github.com/google-research/vision_transformer/issues/62#issuecomment-888993463)). To achieve maximum throughput, `micro_batch_size` can be set to 14, then hyperparameters tuning is required to reach this validation accuracy.
+### Fine-Tuning
+You can run ViT fine-tuning on either CIFAR10 or ImageNet1k datasets. The default pretrained checkpoint is loaded from [`google/vit-base-patch16-224-in21k`](https://huggingface.co/google/vit-base-patch16-224-in21k). The commands for fine-tuning are:
 
 CIFAR10 fine-tuning:
 ```console
@@ -50,7 +87,7 @@ python validation.py --config b16_cifar10_valid
 
 To run ImageNet1k fine-tuning you need to first download the data as described above.
 
-ImageNet1k training:
+ImageNet1k fine-tuning:
 ```console
 python finetune.py --config b16_imagenet1k
 ```
@@ -59,29 +96,9 @@ Afterwards run ImageNet1k validation:
 ```console
 python validation.py --config b16_imagenet1k_valid
 ```
-
-The imagenet1k dataset folder contains `train` and `validation` folders, in which there are the 1000 folders of different classes of images.
-```console
-imagenet1k
-|-- train [1000 entries exceeds filelimit, not opening dir]
-`-- validation [1000 entries exceeds filelimit, not opening dir]
-```
-Note: the `finetune.py` is used solely for fine-tuning. In order to run pre-training experiments, please use `pretrain.py`.
-
-To run ImageNet1k pre-training, i.e. randomly initialize the model weights and train from scratch:
-```console
-python pretrain.py --config b16_in1k_pretrain
-```
-Afterwards run ImageNet1k validation:
-```console
-python validation.py --config b16_in1k_pretrain_valid
-```
-
-Note: in pre-training Imagenet1k, `micro_batch_size` is set to 8, and all other parameters are tuned to reach a validation accuracy that is higher than 74.79% (released in [google official repository](https://github.com/google-research/vision_transformer/issues/62#issuecomment-888993463)). To achieve maximum throughput, `micro_batch_size` can be set to 14, then hyperparameters tuning is required to reach this validation accuracy.
-
 ## Employing automatic loss scaling (ALS) for half precision training
 
-ALS is an experimental feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision. 
+ALS is a feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision. 
 
 NB. This feature expects the `poptorch` training option `accumulationAndReplicationReductionType` to be set to `poptorch.ReductionType.Mean`, and for accumulation by the optimizer to be done in half precision (using `accum_type=torch.float16` when instantiating the optimizer), or else it may lead to unexpected behaviour.
 
@@ -129,38 +146,6 @@ bash run_multihosts.sh -n host1,host2,host3,host4 -s host0 -o interface1 -b inte
 ```console
 pytest test_vit.py
 ```
-
-## Benchmarking
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
-
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
-
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
-
-## Profiling
-
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
 
 ## Licensing
 This application is licensed under Apache License 2.0.

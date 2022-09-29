@@ -74,7 +74,7 @@ class Assigner:
                     raise NotImplementedError(
                         'list not support inplace change, because it will not be changed in a training(inference) loop, need to work out another solution'
                     )
-                    struc[idx] = self.output_dict[struc[idx]]
+                struc[idx] = self.output_dict[struc[idx]]
         else:
             pass
 

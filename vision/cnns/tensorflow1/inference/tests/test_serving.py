@@ -5,6 +5,7 @@ import subprocess
 import os
 
 
+@pytest.mark.skip(reason="Missing TF serving binary in docker image, see https://phabricator.sourcevertex.net/T67924")
 def test_efficientnet_serving():
     app_dir = os.path.join(os.path.dirname(
         os.path.realpath(__file__)), os.pardir)

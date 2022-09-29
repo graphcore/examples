@@ -49,6 +49,14 @@ class LowLatencyTest(SubProcessChecker):
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_d0_bs1(self):
-        """Test throughput inference on EfficientDet D0"""
+        """Test low latency single image inference on EfficientDet D0"""
         self.run_command(
             "python ipu_embedded_inference.py --model-name efficientdet-d0 --config efficientdet-low-latency", current_path, ["Benchmark complete"])
+
+    @pytest.mark.category1
+    @pytest.mark.ipus(1)
+    @pytest.mark.ipu_version("ipu2")
+    def test_d4_bs1(self):
+        """Test low latency single image inference on EfficientDet D4"""
+        self.run_command(
+            "python ipu_embedded_inference.py --model-name efficientdet-d4 --config efficientdet-low-latency", current_path, ["Benchmark complete"])

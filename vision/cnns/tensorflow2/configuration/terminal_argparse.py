@@ -27,7 +27,7 @@ def add_arguments(parser):
                         help='path to the configuration file')
     parser.add_argument('--on-demand', type=str_to_bool, nargs='?', const=True, default=True,
                         help='If true, it will defer connection to when the IPU is needed')
-    parser.add_argument('--compile-only', type=str_to_bool, nargs='?', const=True, default=False,
+    parser.add_argument('--compile-only', action="store_true",
                         help='If true, the executable will be generated without attaching to the ipu.')
 
     # Randomness, reproducibility and determinism
@@ -43,8 +43,10 @@ def add_arguments(parser):
                              'guaranteed for the ImageNet dataset.')
 
     # Checkpoints
-    parser.add_argument('--checkpoints', type=str_to_bool, nargs='?', const=True, default=True,
-                        help='If true, it will save weights to files at each callback')
+    parser.add_argument('--ckpts-per-epoch', type=str_to_float, default=1,
+                        help='Checkpointing frequency, per epoch')
+    parser.add_argument('--first-ckpt-epoch', type=float, default=0.,
+                        help='First checkpoint, in epochs')
     parser.add_argument('--checkpoint-dir', type=str, default=None,
                         help='Path to checkpoints, if no argument is provided, directory /tmp/checkpoints_current_time/ will be used')
     parser.add_argument('--ckpt-all-instances', type=str_to_bool, nargs='?', const=True, default=False,
@@ -71,7 +73,7 @@ def add_arguments(parser):
                         help="Micro batch size, in number of samples")
     parser.add_argument('--num-epochs', type=int, default=1,
                         help="Number of training epochs")
-    parser.add_argument('--logs-per-epoch', type=str_to_float, default='1',
+    parser.add_argument('--logs-per-epoch', type=str_to_float, default=1,
                         help="Logging frequency, per epoch")
     parser.add_argument('--weight-updates-per-epoch', type=int, default=-1,
                         help="number of weight updates per run on the device for one epoch")
@@ -96,7 +98,8 @@ def add_arguments(parser):
                         help='Parameters to configure the optimizer with. To pass this argument from the terminal '
                              'use --optimizer-params \'{"arg1": value1, "arg2": value2...}\' format.')
     parser.add_argument('--loss-scaling', type=float, default=0.,
-                        help='The value of static loss scaling. When equal to 0, loss scaling is disabled.')
+                        help='The value of static loss scaling. When equal to 0, loss scaling is disabled. '
+                             'The loss scale is adjusted based on the replication factor, due to risk of loss underflow.')
     parser.add_argument('--weight-decay', type=float, default=0,
                         help='The value of weight decay used by the optimizer.')
     parser.add_argument('--l2-regularization', type=float, default=0.,
@@ -167,8 +170,12 @@ def add_arguments(parser):
     parser.add_argument('--scheduling-algorithm', type=str, default='CHOOSE_BEST',
                         choices=[str(p).split(".")[-1] for p in list(SchedulingAlgorithm)],
                         help='Controls the algorithm that the scheduler uses for planning the graph layout in the tile memory.')
+    parser.add_argument('--prefetch-depth', type=int, default=1,
+                        help='Controls the infeeds prefetch depth, which represents how many samples are prefetched onto the IPU ahead of time.')
 
     # Evaluation and logging choice arguments
+    parser.add_argument('--mlperf-logging', type=str_to_bool, nargs="?", const=True, default=False,
+                        help='TTT measurement as in MLPerf.')
     parser.add_argument('--wandb', type=str_to_bool, nargs="?", const=True, default=False,
                         help='Enable/disable logging to Weights & Biases')
     parser.add_argument('--wandb-params', type=yaml.safe_load, default='{}',
@@ -182,6 +189,11 @@ def add_arguments(parser):
                         help="Number of validation replicas")
     parser.add_argument('--pipeline-validation-model', type=str_to_bool, nargs="?", const=True, default=False,
                         help='Reuse the training pipeline splits for validation')
+
+    parser.add_argument('--sweep', type=str_to_bool, nargs="?", const=True, default=False,
+                        help='Computes metrics needed for hyperparameter optimization sweeps')
+    parser.add_argument('--target-accuracy', type=float, default=0.759,
+                        help='Target accuracy, useful for hyperparameter optimization.')
 
     return parser
 
@@ -243,6 +255,7 @@ def handle_cmdline_arguments(parser=None):
             hparams.num_replicas = popdist.getNumTotalReplicas()
 
         hvd.init()
+        popdist.init()
         hparams.num_hosts = hvd.size() // hvd.local_size()
 
         logging.info(f'Total number of instances {popdist.getNumInstances()}')
@@ -257,7 +270,6 @@ def handle_cmdline_arguments(parser=None):
             hparams.wandb = False
 
         if hvd.local_rank() != 0 and not hparams.ckpt_all_instances:
-            hparams.checkpoints = False
             hparams.clean_dir = False
 
     else:
@@ -271,6 +283,28 @@ def handle_cmdline_arguments(parser=None):
             hparams.accelerator_side_reduction = False
 
     hparams.num_instances = popdist.getNumInstances() if hparams.distributed_training else 1
+
+    if hparams.pipeline_validation_model:
+        hparams.validation_num_replicas = hparams.validation_num_replicas or hparams.num_replicas
+        hparams.validation_gradient_accumulation_count = 2 * (len(hparams.pipeline_splits) + 1)
+        hparams.validation_ipus_per_replica = hparams.num_ipus_per_replica
+    else:
+        hparams.validation_num_replicas = hparams.validation_num_replicas or (
+            hparams.num_replicas * hparams.num_ipus_per_replica)
+        hparams.validation_gradient_accumulation_count = 1
+        hparams.validation_ipus_per_replica = 1
+
+    if hparams.validation:
+        if hparams.distributed_training:
+            if hparams.validation_num_replicas != popdist.getNumTotalReplicas() * popdist.getNumIpusPerReplica():
+                logging.warning(f'Validation replication factor given to poprun '
+                                f'(=={popdist.getNumTotalReplicas() * popdist.getNumIpusPerReplica()}) '
+                                f'does not match the config (=={hparams.validation_num_replicas}). Poprun will override the config.')
+                hparams.validation_num_replicas = popdist.getNumTotalReplicas() * popdist.getNumIpusPerReplica()
+
+            if hparams.validation_ipus_per_replica != popdist.getNumIpusPerReplica():
+                raise ValueError(f'The number of ipus per replica in validation does not match the value provided to poprun'
+                                 f'({hparams.validation_ipus_per_replica} != {popdist.getNumIpusPerReplica()})')
 
     # when neither option is specified, assume gradient accumulation count 1
     if hparams.gradient_accumulation_count is None and hparams.global_batch_size is None:
@@ -291,6 +325,12 @@ def handle_cmdline_arguments(parser=None):
     if (hparams.logs_per_epoch > 0) and (hparams.logs_per_epoch < 1) and (hparams.num_epochs % (1 / hparams.logs_per_epoch) != 0):
         raise ValueError(
             f'It is not possible to log {1/hparams.logs_per_epoch} epochs a time for {hparams.num_epochs} epochs')
+
+    if hparams.ckpts_per_epoch < 0:
+        raise ValueError(f'--ckpts-per-epoch should be non-negative (>=0), it is {hparams.ckpts_per_epoch}')
+
+    if hparams.first_ckpt_epoch < 0:
+        raise ValueError(f'--first-ckpt-epoch should be non-negative (>=0), it is {hparams.first_ckpt_epoch}')
 
     if hparams.device_mapping:
         if len(hparams.device_mapping) != hparams.num_pipeline_stages:
@@ -317,9 +357,9 @@ def handle_cmdline_arguments(parser=None):
             f'There are {hparams.num_pipeline_stages} pipeline stages defined and {len(hparams.available_memory_proportion)} values of '
             'available memory proportion')
 
-    if not hparams.checkpoints and hparams.ckpt_all_instances:
+    if hparams.ckpts_per_epoch == 0 and hparams.ckpt_all_instances:
         raise ValueError('All instances cannot save weights when checkpointing is disabled. '
-                         'Pass --checkpoints True to save weights for all instances, or disable --ckpt-all-instances otherwise.')
+                         'Specify a non zero --ckpts-per-epoch to save weights for all instances, or disable --ckpt-all-instances otherwise.')
 
     if hparams.dbn_replica_group_size > 1 and hparams.num_ipus_per_replica != 1:
         raise ValueError('Distributed Batch Norm can only be applied when model fits on a single ipu.')

@@ -59,11 +59,14 @@ if cfg.MODEL.LOAD_STRICT:
     gcop.set_load_strict()
 
 # init log
-logger.init_log(output_dir,
+logger.init_log(log_dir=output_dir,
                 log_name=cfg.task_name,
                 resume=cfg.TRAIN.RESUME,
                 tb_on=cfg.TRAIN.TB_ON,
-                wandb_on=cfg.TRAIN.WANDB_ON)
+                wandb_on=cfg.TRAIN.WANDB_ON,
+                wandb_project_name=cfg.TRAIN.WANDB_PROJECT_NAME,
+                wandb_run_name=cfg.TRAIN.WANDB_RUN_NAME
+                )
 logger.log_str('output dir:', output_dir)
 
 # log sdk version
@@ -226,7 +229,7 @@ while 1:
 
     if local_iters % cfg.TRAIN.LOG_INTERVAL == 0 or local_iters in list(
             range(40)):
-        log_str = "iter: {}, lr: {}, throughput: {}, db_ind: {}\n".format(
+        log_str = "iter: {}, lr: {}, throughput: {} samples/sec, db_ind: {}\n".format(
             local_iters, current_lr, tput, db_inds)
         log_str = log_str + net.get_loss_info(results_dic)
 

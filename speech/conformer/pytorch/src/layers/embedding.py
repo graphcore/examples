@@ -102,7 +102,7 @@ class PositionalEncoding(torch.nn.Module):
             torch.Tensor: Encoded tensor (batch, time, `*`).
 
         """
-        x = x * self.xscale + self.pe[:, :x.size(1)]   # [:, :x.size(1)]
+        x = x * self.xscale + self.pe.to(x.device)[:, :x.size(1)]   # [:, :x.size(1)]
         return self.dropout(x)
 
 
@@ -153,5 +153,5 @@ class RelPositionalEncoding(torch.nn.Module):
 
         """
         x = self.dropout(x * self.xscale)
-        pos_emb = self.dropout(self.pe)
+        pos_emb = self.dropout(self.pe.to(x.device))
         return x, pos_emb

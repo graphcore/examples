@@ -1,18 +1,34 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
-# Hacked together by / Copyright 2020 Ross Wightman
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# --------------------------------------------------------
+# Swin Transformer
+# This file has been modified by Graphcore Ltd.
+# Copyright (c) 2021 Microsoft
+# Licensed under The MIT License
+# The LICENSE referenced above is reproduced below:
+# MIT License
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#     Copyright (c) Microsoft Corporation.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-
+#     Permission is hereby granted, free of charge, to any person obtaining a copy
+#     of this software and associated documentation files (the "Software"), to deal
+#     in the Software without restriction, including without limitation the rights
+#     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+#     copies of the Software, and to permit persons to whom the Software is
+#     furnished to do so, subject to the following conditions:
+#
+#     The above copyright notice and this permission notice shall be included in all
+#     copies or substantial portions of the Software.
+#
+#     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+#     AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+#     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+#     SOFTWARE
+# Written by Ze Liu
+# --------------------------------------------------------
+import popdist
 import os
 import torch
 import numpy as np
@@ -22,9 +38,12 @@ from torchvision import datasets, transforms
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from .ipu_mixup import Mixup
 from timm.data import create_transform
-
+from .raw_imagenet import ImageFolder
 from .cached_image_folder import CachedImageFolder
 from .samplers import SubsetRandomSampler
+from PIL import Image
+
+from .preprocess import *
 
 try:
     from torchvision.transforms import InterpolationMode
@@ -43,6 +62,31 @@ except BaseException:
     from timm.data.transforms import _pil_interp
 
 
+class collater():
+    def __init__(self, config, mixup_fn=None):
+        self.mixup_fn = mixup_fn
+        self.config = config
+
+    def __call__(self, batch):
+        data = [item[0] for item in batch]
+        target = [item[1] for item in batch]
+        data = torch.stack(data)
+        target = torch.tensor(target)
+        if data.shape[0] % 2 == 0:
+            data, targets = self.mixup_fn(data, target)
+        else:
+
+            print("WARNING: Batchsize is not even! ")
+            # fix data shape for uncomplete batch when rebatch is enabled
+            if data.shape[0] == 1:
+                data, targets = self.mixup_fn(data.repeat(2, 1, 1, 1), target.repeat(2))
+            else:
+                data, targets = self.mixup_fn(data[0:-1, :, :, :], target[0:-1])
+        if self.config.PRECISION[0] == 'half':
+            data = data.half()
+        return [data, targets]
+
+
 def build_loader(config, opts):
     config.defrost()
     dataset_train, config.MODEL.NUM_CLASSES = build_dataset(
@@ -50,18 +94,6 @@ def build_loader(config, opts):
     config.freeze()
     print(f"Data loaded with {len(dataset_train)} train  imgs.")
 
-    data_loader_train = poptorch.DataLoader(
-        options=opts,
-        dataset=dataset_train,
-        shuffle=True,
-        batch_size=config.DATA.BATCH_SIZE,
-        mode=poptorch.DataLoaderMode.Async,
-        async_options={'early_preload': True, "miss_sleep_time_in_ms": 0},
-        persistent_workers=True,
-        num_workers=config.DATA.NUM_WORKERS,
-        pin_memory=config.DATA.PIN_MEMORY,
-        drop_last=True,
-    )
     # setup mixup / cutmix
     mixup_fn = None
     mixup_active = config.AUG.MIXUP > 0 or config.AUG.CUTMIX > 0. or config.AUG.CUTMIX_MINMAX is not None
@@ -76,7 +108,24 @@ def build_loader(config, opts):
             label_smoothing=config.MODEL.LABEL_SMOOTHING,
             num_classes=config.MODEL.NUM_CLASSES)
 
-    return dataset_train, data_loader_train, mixup_fn  # dataset_val,data_loader_val,
+    collate_fn = collater(config, mixup_fn)
+    data_loader_train = poptorch.DataLoader(
+        options=opts,
+        dataset=dataset_train,
+        shuffle=True,
+        batch_size=config.DATA.BATCH_SIZE,
+        mode=poptorch.DataLoaderMode.AsyncRebatched,
+        async_options={'early_preload': True,
+                       "miss_sleep_time_in_ms": 0,
+                       "buffer_size": 4},
+        persistent_workers=True,
+        num_workers=config.DATA.NUM_WORKERS,
+        pin_memory=config.DATA.PIN_MEMORY,
+        drop_last=True,
+        rebatched_worker_size=1024,
+        collate_fn=collate_fn
+    )
+    return dataset_train, data_loader_train, mixup_fn
 
 
 def build_dataloader_val(config, opts):
@@ -88,7 +137,7 @@ def build_dataloader_val(config, opts):
         dataset=dataset_val,
         batch_size=256,
         shuffle=False,
-        num_workers=8,
+        num_workers=4,
         mode=poptorch.DataLoaderMode.Async,
         async_options={'early_preload': True, "miss_sleep_time_in_ms": 0},
         persistent_workers=True,
@@ -112,8 +161,12 @@ def build_dataset(is_train, config):
                 cache_mode=config.DATA.CACHE_MODE if is_train else 'part')
         else:
             root = os.path.join(config.DATA.DATA_PATH, prefix)
-            dataset = datasets.ImageFolder(root, transform=transform)
-        nb_classes = 1000
+            dataset = ImageFolder(root, transform=transform)
+
+
+
+
+        nb_classes = config.MODEL.NUM_CLASSES
     else:
         raise NotImplementedError("We only support ImageNet Now.")
 
@@ -126,6 +179,8 @@ def build_transform(is_train, config):
     input_size = config.DATA.IMG_SIZE[0]
     if is_train:
         # this should always dispatch to transforms_imagenet_train
+
+        added_transforms = [IgnoreBboxIfPresent(), LoadJpeg()]
         transform = create_transform(
             input_size=input_size,  # config.DATA.IMG_SIZE,
             is_training=True,
@@ -141,9 +196,11 @@ def build_transform(is_train, config):
             # RandomCrop
             transform.transforms[0] = transforms.RandomCrop(
                 config.DATA.IMG_SIZE, padding=4)
-        return transform
+        return transforms.Compose(added_transforms + transform.transforms)
 
     t = []
+    t.append(IgnoreBboxIfPresent())
+    t.append(LoadJpeg())
     if resize_im:
         if config.TEST.CROP:
             size = int((256 / 224) * config.DATA.IMG_SIZE[0])

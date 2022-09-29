@@ -2,30 +2,66 @@
 common_options: &common_options
   data:
     throughput:
-      regexp: '\s+tput:\s*(.*?),'
-      skip: 1
-    pure_throughput:
-      regexp: 'pure_tput:\s*(.*?),'
-      skip: 1
-    epoch_throughput:
-      regexp: 'epoch average tput:\s*(\d*)\s*'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 1
   output:
-    - [Step Images/sec, "throughput"]
-    - [Step pure Images/sec, "pure_throughput"]
-    - [Epoch Images/sec, "epoch_throughput"]
+    - [samples/sec, 'throughput']
 
 pytorch_wenet_conformer_globalbs_288_train_gen_pod16:
   <<: *common_options
   description: Conformer public model fp16 precision, 1 replica runs on 4 IPUs
-    replicate x4
+    replicate x4. Performance test.
   cmd: >-
     python3
-        main.py
-        train
-        --trainer.log_every_n_step 1
-        --train_dataset.use_generated_data true
-        --trainer.num_epochs=2
-        --ipu_options.num_replicas=4
-        --ipu_options.gradient_accumulation=18
-        --train_iterator.batch_size=4
+      main.py
+      train
+      --trainer.log_every_n_step 1
+      --train_dataset.use_generated_data true
+      --trainer.num_epochs=2
+      --ipu_options.num_replicas=4
+      --ipu_options.gradient_accumulation=18
+      --train_iterator.batch_size=4
+
+pytorch_wenet_conformer_globalbs_288_train_real_pod16_conv:
+  <<: *common_options
+  description: Conformer public model fp16 precision, 1 replica runs on 4 IPUs
+    replicate x4. Train to convergence.
+  cmd: >-
+    python3
+      main.py
+      train
+      --trainer.log_every_n_step 100
+      --train_dataset.data_list $DATASETS_DIR/aishell/train/data.list
+      --val_dataset.data_list $DATASETS_DIR/aishell/test/data.list
+      --vocab.vocab_path $DATASETS_DIR/aishell/dict/lang_char.txt
+      --normalizer.cmvn $DATASETS_DIR/aishell/train/global_cmvn
+      --compute_cer.label_text $DATASETS_DIR/aishell/test/text
+      --ipu_options.num_replicas=4
+      --ipu_options.gradient_accumulation=18
+      --train_iterator.batch_size=4
+      --trainer.wandb_project_name torch-conformer
+      --trainer.wandb_run_name pytorch_wenet_conformer_globalbs_288_train_real_pod16_conv
+
+
+pytorch_wenet_conformer_globalbs_288_validation_real_pod4:
+  description: Conformer public model fp16 precision, validation
+  cmd: >-
+    python3
+      main.py
+      validate
+      --val_dataset.data_list $DATASETS_DIR/aishell/test/data.list
+      --vocab.vocab_path $DATASETS_DIR/aishell/dict/lang_char.txt
+      --normalizer.cmvn $DATASETS_DIR/aishell/train/global_cmvn
+      --compute_cer.label_text $DATASETS_DIR/aishell/test/text
+      --checkpoints.save_checkpoint_path "./checkpoint"
+      --checkpoints.pretrained_checkpoint True
+      --trainer.num_epochs 240
+      --ipu_options.device_iterations 10
+      --trainer.wandb_project_name torch-conformer
+      --trainer.wandb_run_name pytorch_wenet_conformer_globalbs_288_validation_real_pod16
+  data:
+    loss: 
+      regexp: loss_valid:\s+([\d\.]+)'
+      reduction_type: 'final'
+  output:
+    - [Validation loss, 'loss']

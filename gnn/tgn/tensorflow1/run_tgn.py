@@ -65,7 +65,7 @@ def stats(outputs: Iterable[Dict[str, np.ndarray]],
     result.update(count=total, duration=time.time() - start_time)
 
     if not validation:
-        result.update(throughput=total / result["duration"])
+        result.update(throughput=f"{total / result['duration']} samples/sec")
 
     if first_epoch:
         result.update(compile_time=compile_time)

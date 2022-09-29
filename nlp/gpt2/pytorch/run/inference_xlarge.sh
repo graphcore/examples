@@ -12,6 +12,5 @@ python inference_gpt2.py \
     --gradient-accumulation 1 \
     --embedding-serialization-factor 4 \
     --enable-half-partials True \
-    --train-path 'generated' \
-    --replicated-tensor-sharding False \
-    --compile-only False
+    --dataset 'generated' \
+    --replicated-tensor-sharding False

@@ -3,17 +3,25 @@
 pretrain_options: &pretrain_options
    data:
       throughput:
-         regexp: 'Throughput\:\s*(.*) sequences/s'
-      accuracy:
-         regexp: 'Accuracy \(MLM NSP\)\:\ ([\d\.]+)'
+         regexp: 'throughput: *(.*?) samples\/sec'
+      mlm_acc:
+         regexp: 'mlm_acc: *(.*?) \%'
          reduction_type: "final"
-      loss:
-         regexp: 'Loss \(MLM NSP\)\:\ ([\d\.]+)'
+      nsp_acc:
+         regexp: 'nsp_acc: *(.*?) \%'
+         reduction_type: 'final'
+      mlm_loss:
+         regexp: 'mlm_loss: *(\d*\.\d*)'
+         reduction_type: "final"
+      nsp_loss:
+         regexp: 'nsp_loss: *(\d*\.\d*)'
          reduction_type: "final"
    output:
-      - [Sequences/s, "throughput"]
-      - [accuracy, "accuracy"]
-      - [loss, "loss"]
+      - [samples/sec, "throughput"]
+      - [mlm_acc, 'mlm_acc']
+      - [nsp_acc, 'nsp_acc']
+      - [mlm_loss, "mlm_loss"]
+      - [nsp_loss, "nsp_loss"]
 
 popart_bert_large_pretrain_real_pod16:
    <<: *pretrain_options
@@ -50,13 +58,11 @@ popart_bert_base_pretrain_real_pod16:
    description: |
       BERT Base pretraining benchmark on real data.
    parameters:
-      - [phase, input_file]
-      - [128, "$DATASETS_DIR/wikipedia/AA/sequence_128/wiki_00_tokenised"]
-      - [384, "$DATASETS_DIR/wikipedia/AA/sequence_384/wiki_00_tokenised"]
+      phase: 128,512
    cmd: >-
       python3 bert.py
          --config configs/pretrain_base_{phase}.json
-         --input-files={input_file}
+         --input-files=$DATASETS_DIR/wikipedia/AA/sequence_{phase}/wiki_00_tokenised
          --epochs 1
          --no-model-save
          --no-validation
@@ -67,7 +73,7 @@ popart_bert_base_packed_pretrain_real_pod16:
    description: |
       BERT Base pretraining benchmark on packed real data.
    parameters:
-      phase: 128,384
+      phase: 128,512
    cmd: >-
       python3 bert.py
          --config configs/packed/packed_pretrain_base_{phase}.json
@@ -130,61 +136,20 @@ popart_bert_large_packed_sl128_pretrain_real_pod64_conv:
          --checkpoint-dir "checkpoint/phase1"
          --wandb
 
-
-popart_bert_large_sl384_pretrain_real_pod64_conv:
+popart_bert_large_packed_sl128_pretrain_real_pod256_conv:
    <<: *pretrain_options
    description: |
-      BERT Large pretraining sequence length 384 benchmark with real data
-      on 64 IPUs for convergence testing.
-   cmd: >-
-      poprun
-         --vv
-         --num-instances 1
-         --num-replicas 16
-         --update-partition=yes
-         --remove-partition=yes
-         --reset-partition=no
-         --sync-type=ST_POD_NATIVE_DEFAULT
-         --vipu-server-timeout 300
-         --vipu-server-host $VIPU_CLI_API_HOST
-         --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-         --ipus-per-replica 4
-         --mpi-global-args="
-         --mca oob_tcp_if_include $TCP_IF_INCLUDE
-         --mca btl_tcp_if_include $TCP_IF_INCLUDE"
-         --mpi-local-args="
-         -x OPAL_PREFIX
-         -x LD_LIBRARY_PATH
-         -x PATH
-         -x PYTHONPATH
-         -x IPUOF_VIPU_API_TIMEOUT=600
-         -x POPLAR_LOG_LEVEL=WARN
-         -x DATASETS_DIR
-         -x POPLAR_ENGINE_OPTIONS
-         -x POPLAR_TARGET_OPTIONS"
-      python3 bert.py
-         --config configs/pretrain_large_384.json
-         --steps-per-log 100
-         --replication-factor 16
-         --input-files=$DATASETS_DIR/wikipedia/AA/sequence_384/wiki_*_tokenised
-         --wandb
-         --onnx-checkpoint "checkpoint/phase1_rank_0/model.onnx"
-         --checkpoint-dir "checkpoint/phase2"
-
-popart_bert_large_packed_sl384_pretrain_real_pod64_conv:
-   <<: *pretrain_options
-   description: |
-      BERT Large pretraining sequence length 384 benchmark with packed real data
-      on 64 IPUs for convergence testing.
+      BERT Large pretraining sequence length 128 benchmark with packed real data
+      on 256 IPUs for convergence testing.
    cmd: >-
       python3 bert.py
-         --config configs/packed/packed_pretrain_large_384.json
+         --config configs/packed/packed_pretrain_large_128.json
          --steps-per-log 100
-         --replication-factor 16
-         --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_384/duplication_*
+         --replication-factor 64
+         --loss-scaling 32768.0
+         --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_128/duplication_*
+         --checkpoint-dir "checkpoint/phase1"
          --wandb
-         --onnx-checkpoint "checkpoint/phase1/model.onnx"
-         --checkpoint-dir "checkpoint/phase2"
 
 popart_bert_large_sl512_pretrain_real_pod64_conv:
    <<: *pretrain_options
@@ -226,19 +191,50 @@ popart_bert_large_sl512_pretrain_real_pod64_conv:
          --onnx-checkpoint "checkpoint/phase1_rank_0/model.onnx"
          --checkpoint-dir "checkpoint/phase2"
 
+
+popart_bert_large_packed_sl512_pretrain_real_pod64_conv:
+   <<: *pretrain_options
+   description: |
+      BERT Large pretraining sequence length 512 benchmark with packed real data
+      on 64 IPUs for convergence testing.
+   cmd: >-
+      python3 bert.py
+         --config configs/packed/packed_pretrain_large_512.json
+         --steps-per-log 100
+         --replication-factor 16
+         --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_512/duplication_*
+         --wandb
+         --onnx-checkpoint "checkpoint/phase1/model.onnx"
+         --checkpoint-dir "checkpoint/phase2"
+
+popart_bert_large_packed_sl512_pretrain_real_pod256_conv:
+   <<: *pretrain_options
+   description: |
+      BERT Large pretraining sequence length 512 benchmark with packed real data
+      on 256 IPUs for convergence testing.
+   cmd: >-
+      python3 bert.py
+         --config configs/packed/packed_pretrain_large_512.json
+         --steps-per-log 100
+         --replication-factor 64
+         --loss-scaling 32768.0
+         --input-files=$DATASETS_DIR/wikipedia/popart_packed_bert/packed_512/duplication_*
+         --checkpoint-dir "checkpoint/phase1"
+         --wandb
+
 # --- SQuAD ---
 squad_options: &squad_options
    data:
       throughput:
-         regexp: 'Throughput\:\s*(.*) sequences/s'
+         regexp: 'throughput: *(.*?) samples\/sec'
       accuracy:
-         regexp: 'Accuracy\:\s*([\d\.]+|nan) Learning Rate'
+         regexp: 'accuracy: *(.*?) \%'
          reduction_type: "final"
       loss:
-         regexp: 'Loss\:\s*([\d\.]+|nan) Accuracy'
+         regexp: 'loss: *(\d*\.\d*)'
          reduction_type: "final"
    output:
-      - [Sequences/s, "throughput"]
+      - [samples/sec, "throughput"]
       - [accuracy, "accuracy"]
       - [loss, "loss"]
 
@@ -287,7 +283,6 @@ popart_bert_squad_large_train_real_pod16_conv:
          --num-replicas 2
          --num-ilds=1
          --ipus-per-replica 8
-         --numa-aware=yes
          --vipu-server-host=$VIPU_CLI_API_HOST
          --vipu-partition=$PARTITION
          --vipu-cluster=$CLUSTER
@@ -297,18 +292,18 @@ popart_bert_squad_large_train_real_pod16_conv:
          --sync-type=ST_POD_NATIVE_DEFAULT
          --print-topology=yes
          --mpi-global-args="
-        --mca oob_tcp_if_include $TCP_IF_INCLUDE
-        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
+            --mca oob_tcp_if_include $TCP_IF_INCLUDE
+            --mca btl_tcp_if_include $TCP_IF_INCLUDE"
          --mpi-local-args="
-         -x OPAL_PREFIX
-         -x LD_LIBRARY_PATH
-         -x PATH
-         -x PYTHONPATH
-         -x IPUOF_VIPU_API_TIMEOUT=600
-         -x POPLAR_LOG_LEVEL=WARN
-         -x DATASETS_DIR
-         -x POPLAR_ENGINE_OPTIONS
-         -x POPLAR_TARGET_OPTIONS"
+          -x OPAL_PREFIX
+          -x LD_LIBRARY_PATH
+          -x PATH
+          -x PYTHONPATH
+          -x IPUOF_VIPU_API_TIMEOUT=600
+          -x POPLAR_LOG_LEVEL=WARN
+          -x DATASETS_DIR
+          -x POPLAR_ENGINE_OPTIONS
+          -x POPLAR_TARGET_OPTIONS"
       python3 bert.py
          --config configs/squad_large_384.json
          --input-files=$DATASETS_DIR/squad/train-v1.1.json
@@ -338,46 +333,30 @@ popart_bert_squad_large_infer_gen_pod4:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch": false}'
   data:
     throughput:
-      regexp: 'Throughput\:\s*(.*) sequences/s'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 4
-    latency_s:
-      regexp: 'Per-sample: Mean Latency=\s*(\d\.\d*)'
-      skip: 4
-    latency_min_s:
-      regexp: 'Min Latency=\s*(\d\.\d*)'
-      skip: 4
-    latency_max_s:
-      regexp: 'Max Latency=\s*(\d\.\d*)'
-      skip: 4
-    latency_p99_s:
-      regexp: 'p99 Latency=\s*(\d\.\d*)'
-      skip: 4
-    latency_p999_s:
-      regexp: 'p999 Latency=\s*(\d\.\d*)'
-      skip: 4
-  derived:
     latency:
-      expr: '{latency_s} * 1000.'
+      regexp: 'latency avg: *(.*?) ms'
+      skip: 4
     latency_min:
-      expr: '{latency_min_s} * 1000.'
-      reduction_type: 'min'
+      regexp: 'latency min: *(.*?) ms'
+      skip: 4
     latency_max:
-      expr: '{latency_max_s} * 1000.'
-      reduction_type: 'max'
-    latency_p99:
-      expr: '{latency_p99_s} * 1000.'
-      reduction_type: 'p99'
-    latency_p999:
-      expr: '{latency_p999_s} * 1000.'
-      reduction_type: 'p999'
+      regexp: 'latency max: *(.*?) ms'
+      skip: 4
+    latency_99p:
+      regexp: 'latency 99p: *(.*?) ms'
+      skip: 4
+    latency_99p9:
+      regexp: 'latency 99p9: *(.*?) ms'
+      skip: 4
   output:
-    - [Batchsize, 'batchsize']
-    - [Sequences/s, 'throughput']
-    - [Latency(ms), 'latency']
-    - [MinLatency(ms), 'latency_min']
-    - [MaxLatency(ms), 'latency_max']
-    - [p99Latency(ms), 'latency_p99']
-    - [p999Latency(ms), 'latency_p999']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency min(ms), 'latency_min']
+    - [latency max(ms), 'latency_max']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
 
 squad_base_128_4_ipu_inference_opts: &squad_base_128_4_ipu_inference_opts
   description: |
@@ -385,38 +364,23 @@ squad_base_128_4_ipu_inference_opts: &squad_base_128_4_ipu_inference_opts
     data generated on the host
   data:
     throughput:
-      regexp: 'Throughput\:\s*(.*) sequences/s'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 4
-    latency_s:
-      regexp: 'Per-sample: Mean Latency=\s*(\d\.\d*)'
-      skip: 4
-    latency_min_s:
-      regexp: 'Min Latency=\s*(\d\.\d*)'
-      skip: 4
-    latency_max_s:
-      regexp: 'Max Latency=\s*(\d\.\d*)'
-      skip: 4
-    latency_p99_s:
-      regexp: 'p99 Latency=\s*(\d\.\d*)'
-      skip: 4
-    latency_p999_s:
-      regexp: 'p999 Latency=\s*(\d\.\d*)'
-      skip: 4
-  derived:
     latency:
-      expr: '{latency_s} * 1000.'
+      regexp: 'latency avg: *(.*?) ms'
+      skip: 4
     latency_min:
-      expr: '{latency_min_s} * 1000.'
-      reduction_type: 'min'
+      regexp: 'latency min: *(.*?) ms'
+      skip: 4
     latency_max:
-      expr: '{latency_max_s} * 1000.'
-      reduction_type: 'max'
-    latency_p99:
-      expr: '{latency_p99_s} * 1000.'
-      reduction_type: 'p99'
-    latency_p999:
-      expr: '{latency_p999_s} * 1000.'
-      reduction_type: 'p999'
+      regexp: 'latency max: *(.*?) ms'
+      skip: 4
+    latency_99p:
+      regexp: 'latency 99p: *(.*?) ms'
+      skip: 4
+    latency_99p9:
+      regexp: 'latency 99p9: *(.*?) ms'
+      skip: 4
 
 popart_bert_squad_base_infer_gen_pod4:
   <<: *squad_base_128_4_ipu_inference_opts
@@ -437,13 +401,12 @@ popart_bert_squad_base_infer_gen_pod4:
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch": false}'
   output:
-    - [Batchsize, 'batchsize']
-    - [Sequences/s, 'throughput']
-    - [Latency(ms), 'latency']
-    - [MinLatency(ms), 'latency_min']
-    - [MaxLatency(ms), 'latency_max']
-    - [p99Latency(ms), 'latency_p99']
-    - [p999Latency(ms), 'latency_p999']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency min(ms), 'latency_min']
+    - [latency max(ms), 'latency_max']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
 
 popart_bert_squad_base_bs_80_infer_gen_pod4:
   <<: *squad_base_128_4_ipu_inference_opts
@@ -456,16 +419,16 @@ popart_bert_squad_base_bs_80_infer_gen_pod4:
         --generated-data=true
         --epochs-inference 10
         --input-files=$DATASETS_DIR/squad/dev-v1.1.json
-        --available-memory-proportion 0.55
+        --available-memory-proportion 0.58
+        --use-default-available-memory-proportion false
         --minimum-latency-inference
         --buffering-depth 1
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch": false}'
   output:
-    - [Batchsize, '80']
-    - [Sequences/s, 'throughput']
-    - [Latency(ms), 'latency']
-    - [MinLatency(ms), 'latency_min']
-    - [MaxLatency(ms), 'latency_max']
-    - [p99Latency(ms), 'latency_p99']
-    - [p999Latency(ms), 'latency_p999']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency min(ms), 'latency_min']
+    - [latency max(ms), 'latency_max']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']

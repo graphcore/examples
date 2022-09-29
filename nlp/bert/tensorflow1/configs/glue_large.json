@@ -70,6 +70,6 @@
 
     "output_dir": "tmp/glue/",
     "save_path": "checkpoint/glue",
-    "vocab_file": "data/ckpts/uncased_L-24_H-1024_A-16/vocab.txt",
+    "vocab_file": "$DATASETS_DIR/ckpts/uncased_L-24_H-1024_A-16/vocab.txt",
     "tfrecord_dir": "tmp/tf_record_cache/"
 }

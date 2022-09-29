@@ -8,12 +8,12 @@ poprun \
     --ipus-per-replica=2 \
 python3 train.py \
     --config=efficientnet-b0-g16-gn-pod16 \
-    --batch-size 40 \
+    --micro-batch-size 40 \
     --gradient-accumulation 3 \
     --half-res-training \
     --fine-tune-epoch 2 \
     --fine-tune-lr 0.25 \
-    --fine-tune-batch-size 20 \
+    --fine-tune-micro-batch-size 20 \
     --fine-tune-gradient-accumulation 5 \
     --fine-tune-first-trainable-layer blocks/5/3 \
     --dataloader-worker=16 \

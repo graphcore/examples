@@ -106,7 +106,7 @@ def add_arguments(parser):
                         type=str,
                         help="Path to a load a checkpoint from.")
     parser.add_argument("--compile-only",
-                        type=str_to_bool,
+                        action="store_true",
                         help="Enable compile only mode.")
     parser.add_argument("--calculate-cluster-statistics",
                         type=str_to_bool,

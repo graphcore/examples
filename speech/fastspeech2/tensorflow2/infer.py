@@ -102,11 +102,11 @@ def run_model(opts):
             tputs.append(tput)
             latencies.append(latency)
             logger.info(
-                f'Step: {cur_step}\t Throughput {tput:0.1f} samples/s.\t Latency: {latency:0.5f}ms')
+                f'Step: {cur_step}\t throughput = {tput:0.1f} samples/sec.\t Latency = {latency:0.5f} ms')
 
             mels_before, mels_after, duration_outputs, f0_outputs, energy_outputs = predictions
         logger.info(
-            f"Averaged Metrics:\nThroughput: {int(np.mean(tputs[1:])):d} samples/s\tLatency: {np.mean(latencies[1:]):.2f}ms")
+            f"Averaged Metrics:\nthroughput: {int(np.mean(tputs[1:])):d} samples/sec\tlatency avg: {np.mean(latencies[1:]):.2f} ms")
 
 
 if __name__ == "__main__":

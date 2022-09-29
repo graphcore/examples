@@ -60,9 +60,6 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
             state.epoch_progress = (state.epoch - 1) + (state.batch_idx + 1) / state.iterations_per_epoch
             state.epoch_sample_size += labels.size()[0]
 
-            if args.mixup_enabled or args.cutmix_enabled:
-                input_data = get_augmented_samples(args, input_data, augmentation_generator)
-
             if args.compile_only:
                 _ = training_model.compile(input_data, labels)
                 logging.info("Graph compilation complete, --compile-only was set, exiting.")
@@ -98,7 +95,7 @@ def get_augmented_samples(args, input_data, random_generator):
     if args.mixup_enabled:
         mixup_coeffs = augmentations.sample_mixup_coefficients(
             alpha=args.mixup_alpha,
-            batch_size=args.batch_size * args.gradient_accumulation * args.replicas * args.device_iterations,
+            global_batch_size=args.micro_batch_size * args.gradient_accumulation * args.replicas * args.device_iterations,
             np_type=np.float16 if args.precision[:3] == "16." else np.float,
             random_generator=random_generator,
         )
@@ -186,7 +183,7 @@ def handle_metrics(metrics, loss, sublosses, accuracy, state, bar, validation_fu
             logging.info(f"Epoch {state.epoch}")
             # Standardised metric reporting
             logging.info(f"loss: {running_mean_loss:0.4f},")
-            logging.info(f"accuracy: {running_mean_acc:0.2f}%")
+            logging.info(f"accuracy: {running_mean_acc:0.2f} %")
             logging.info(f"throughput: {current_throughput:0.1f} samples/sec")
 
     return running_mean_loss, running_mean_acc
@@ -247,11 +244,17 @@ def persist_checkpoint(training_model, optimizer, state, running_mean_loss, runn
 
 
 def create_training_opts(args):
+    ipus_per_replica = len(args.pipeline_splits) + 1
+    total_replicas = args.replicas
     if args.use_popdist:
-        opts = popdist.poptorch.Options(ipus_per_replica=len(args.pipeline_splits) + 1)
+        opts = popdist.poptorch.Options(ipus_per_replica = ipus_per_replica)
+        total_replicas = popdist.getNumTotalReplicas()
     else:
         opts = poptorch.Options()
         opts.replicationFactor(args.replicas)
+    logging.info("Total replicas: " + str(total_replicas))
+    logging.info("Global batch size: " + str(total_replicas * args.micro_batch_size * args.gradient_accumulation))
+    logging.info("Number of IPUs required: " + str(total_replicas * ipus_per_replica))
     opts = utils.train_settings(args, opts)
     opts.deviceIterations(args.device_iterations)
     opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
@@ -357,7 +360,7 @@ def fine_tune(args):
     args.lr = args.fine_tune_lr
     args.lr_schedule = 'cosine'
     args.lr_scheduler_freq = 0
-    args.batch_size = args.fine_tune_batch_size
+    args.micro_batch_size = args.fine_tune_micro_batch_size
     args.gradient_accumulation = args.fine_tune_gradient_accumulation
     opts = create_training_opts(args)
 

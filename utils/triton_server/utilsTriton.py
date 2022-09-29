@@ -1,11 +1,16 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
 
+import glob
+import os
+import pytest
 import signal
 import traceback
-import pytest
-import os
-import subprocess as sp
-import json
+
+
+def IsModelPathValid(path_candidate):
+    ts_model_configs = glob.glob(
+        path_candidate + '/*/*.pbtxt')
+    return len(ts_model_configs) > 0
 
 
 def GetModelPath(config, optionsKey):
@@ -13,23 +18,23 @@ def GetModelPath(config, optionsKey):
     invParDir = config.invocation_params.dir
     if optionsPath is not None:
         possibleModelPath = os.path.abspath(optionsPath)
-        if not os.path.exists(possibleModelPath):
+        if not IsModelPathValid(possibleModelPath):
             optionsPath = str(invParDir) + "/" + optionsPath
         else:
             optionsPath = possibleModelPath
 
-    if optionsPath is None or not os.path.exists(optionsPath):
+    if optionsPath is None or not IsModelPathValid(optionsPath):
         optionsPath = str(invParDir) + "/models"
-        if not os.path.exists(optionsPath):
+        if not IsModelPathValid(optionsPath):
             optionsPath = os.path.abspath(config.args[0]) + "/models"
-            if not os.path.exists(optionsPath):
+            if not IsModelPathValid(optionsPath):
                 optionsPath = os.path.abspath(
                     config.args[0]) + "/tritonserver/models"
-                if not os.path.exists(optionsPath):
+                if not IsModelPathValid(optionsPath):
                     optionsPath = str(invParDir) + "/" + \
                         config.args[0] + "/models"
 
-    if not os.path.exists(optionsPath):
+    if not IsModelPathValid(optionsPath):
         pytest.fail("Model repo path: " +
                     optionsPath + " doesn't exist!")
 

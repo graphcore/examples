@@ -333,6 +333,7 @@ def run_model(opts, use_pipeline_model=True):
             history = train(fastspeech2, train_datasets=train_datasets,
                             opts=opts, wandb=wandb)
             training_time = time.time() - train_start_time
+            logger.info(f"final train loss: {history.history['loss'][-1]}")
             logger.info(f"[Duration: {training_time:.2f}s]Training finish.")
         if opts["eval"]:
             logger.info("Start to evaluate...")

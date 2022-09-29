@@ -17,7 +17,7 @@
     "max_seq_length": 128,
     "max_predictions_per_seq": 20,
     "global_batch": {
-        "micro_batch_size": 4,
+        "micro_batch_size": 8,
         "replicas": 16,
         "grad_acc_steps_per_replica": 1020
     },
@@ -30,8 +30,8 @@
             ["enc_out", "pool", "heads"]
         ],
        "pipeline_device_mapping": [0, 1, 2, 3, 0],
-       "matmul_available_memory_proportion_per_pipeline_stage": [0.1, 0.15, 0.18, 0.2],
-       "replicated_tensor_sharding": false
+       "matmul_available_memory_proportion_per_pipeline_stage": [0.1, 0.19, 0.2, 0.2],
+       "replicated_tensor_sharding": true
     },
     "optimizer_opts": {
         "name": "LAMB",
@@ -43,6 +43,7 @@
             "warmup_frac": 0.28
         }
     },
+    "embedding_serialization_factor": 5,
     "seed": 4708,
     "global_batches_per_log": 1,
     "enable_wandb": true,

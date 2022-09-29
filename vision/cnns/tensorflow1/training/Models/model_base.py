@@ -11,8 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Dict, List
 import tensorflow as tf
 from functools import partial
+import warnings
 
 
 def custom_dtype_getter(getter, name, dtype, trainable,
@@ -32,10 +34,18 @@ class ModelBase:
     def __init__(self, opts, is_training=True):
         dtypes = opts["precision"].split(".")
         self.dtype = tf.float16 if dtypes[0] == "16" else tf.float32
+        self.master_weight_default_dtype = tf.float32 if dtypes[1] == "32" else tf.float16
 
-        self.master_weight_filter_fn = (
-            lambda name: tf.float32 if dtypes[1] == "32" else tf.float16
-        )
+        # Sometimes the argument is parsed as a string try and take corrective
+        # action and warn the user.
+        self._master_weight_dtype_overrides: Dict["dtype", List[str]] = {}
+        for dtype, option in ((tf.float16, "force_weight_to_fp16"), (tf.float32, "force_weight_to_fp32")):
+            value = opts.get(option, [])
+            if isinstance(value, str):
+                value = [value]
+                warnings.warn(f"'{option}' was set with a string rather than a list of strings,"
+                              f" filter interpreted as {value}")
+            self._master_weight_dtype_overrides[dtype] = value
 
         self.custom_dtype_getter = partial(
             custom_dtype_getter,
@@ -51,6 +61,19 @@ class ModelBase:
             self.num_classes = 100
         else:
             raise ValueError("Unknown Dataset {}".format(opts["dataset"]))
+
+    def master_weight_filter_fn(self, name):
+        output_dtype = None
+        for dtype, variable_filters in self._master_weight_dtype_overrides.items():
+            if any(variable_filter in name for variable_filter in variable_filters):
+                if output_dtype is not None:
+                    raise RuntimeError(
+                        f"Attempting to force master weight of variable '{name}' "
+                        "into both FP16 and FP32. Check the filters that were set with "
+                        "--force-weight-to-fp32 and --force-weight-to-fp16")
+                output_dtype = dtype
+
+        return output_dtype if output_dtype is not None else self.master_weight_default_dtype
 
     def _build_function_list(self):
         raise NotImplementedError

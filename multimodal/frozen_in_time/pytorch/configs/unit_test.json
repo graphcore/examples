@@ -1,0 +1,114 @@
+{
+    "name": "IPU-Frozen-UNIT-TEST",
+    "arch": {
+        "type": "FrozenInTime",
+        "args": {
+            "video_params": {
+                "model": "SpaceTimeTransformer",
+                "arch_config": "base_patch32_224",
+                "num_frames": 4,
+                "pretrained": true,
+                "time_init": "random",
+                "num_layers":1
+            },
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "pretrained": true,
+                "input": "text",
+                "max_length": 36,
+                "num_layers":1,
+                "dropout":0.0,
+                "attention_dropout":0.0
+            },
+            "load_checkpoint" : ""
+        }
+    },
+    "data_loader": {
+        "type": "TextVideoDataLoader",
+        "training":{
+            "dataset_name": "synthetic",
+            "data_dir": "",
+            "shuffle": true,
+            "num_workers": 1,
+            "batch_size": 2,
+            "cut": "jsfusion",
+            "subsample": 1,
+            "split": "training",
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "input": "text"
+            },
+            "video_params": {
+                "input_res": 224,
+                "num_frames": 1,
+                "stride": 1
+            }
+        },
+        "inference":{
+            "dataset_name": "synthetic",
+            "data_dir": "",
+            "shuffle": true,
+            "num_workers": 1,
+            "batch_size": 2,
+            "cut": "jsfusion",
+            "subsample": 1,
+            "split": "inference",
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "input": "text"
+            },
+            "video_params": {
+                "input_res": 224,
+                "num_frames": 1,
+                "stride": 1
+            }
+        }
+    },
+    "optimizer": {
+        "type": "AdamW",
+        "args":{
+            "lr": 3e-5,
+            "betas": [0.98,0.9],
+            "weight_decay": 0.2,
+            "loss_scaling": 1.0
+        }
+    },
+    "loss": {
+        "type": "CrossEntropy",
+        "args": {
+            "temperature": 0.07
+        }
+    },
+    "metrics": [
+        "t2v_metrics",
+        "v2t_metrics"
+     ],
+     "trainer": {
+        "epochs": 2,
+        "max_samples_per_epoch": 1000,
+        "save_dir": "exps",
+        "save_period": 5,
+        "verbosity": 2,
+        "monitor": "max t2v_metrics@geometric_mean_R1-R5-R10"
+    },
+    "IPU_options":{
+        "available_memory_proportion":{"IPU0": 0.3,"IPU1": 0.3},
+        "enableFloatingPointExceptions": true,
+        "executable_cache_dir": "./exps/exe_cache",
+        "pipelined_layers":{
+            "txt_embeddings": 0,
+            "txt_transformer": [0, 0],
+            "txt_proj":0,
+            "vid_patch_embed":1,
+            "vid_blocks": [1, 1],
+            "vid_proj" : 1
+        },
+        "training":{
+            "gradientAccumulation": 3,
+            "batches_per_step": 1
+        },
+        "inference":{
+            "batches_per_step": 2
+        }  
+    }
+}

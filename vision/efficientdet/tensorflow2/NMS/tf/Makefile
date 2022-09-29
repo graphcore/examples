@@ -1,5 +1,5 @@
 CC = g++
-CXXFLAGS_LIB = -std=c++14 -g -fPIC -shared -I..
+CXXFLAGS_LIB = -std=c++14 -g -fPIC -shared -I.. -I/opt/graphcore/boost/include/
 LDLIBS = -lpoplar -lpopops -lpoputil -lpopnn
 BUILD_DIR = build
 SOURCES = nms_custom_op.cpp

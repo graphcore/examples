@@ -411,7 +411,7 @@ def compute_cer(ref, pre, cer_txt, tochar=True, verbose=1):
 
         result = calculator.overall()
         if result['all'] != 0:
-            wer = float(1 - result['cor'] / result['all'])
+            wer = float(result['ins'] + result['sub'] + result['del']) * 100.0 / result['all']
 
         else:
             wer = 0.0
@@ -425,7 +425,7 @@ def compute_cer(ref, pre, cer_txt, tochar=True, verbose=1):
             result = calculator.cluster(
                 [k for k in default_clusters[cluster_id]])
             if result['all'] != 0:
-                wer = float(1 - result['cor'] / result['all'])
+                wer = float(result['ins'] + result['sub'] + result['del']) * 100.0 / result['all']
             else:
                 wer = 0.0
 
@@ -442,7 +442,7 @@ def compute_cer(ref, pre, cer_txt, tochar=True, verbose=1):
                             token.lstrip('</').rstrip('>') == cluster_id:
                         result = calculator.cluster(cluster)
                         if result['all'] != 0:
-                            wer = float(1 - result['cor'] / result['all'])
+                            wer = float(result['ins'] + result['sub'] + result['del']) * 100.0 / result['all']
                         else:
                             wer = 0.0
                         cer_file.write('\n' + str(cluster_id) +

@@ -52,7 +52,7 @@ def log_performance_results(args, model_name, request_type, data_type, number_of
         "-------------------------------------------------------------------------------------------")
     # Standardised metric reporting
     logging.info(f"{model_name}-{request_type}-{number_of_processes} results:")
-    logging.info(f"\n\tbatch_size: {args.batch_size}")
+    logging.info(f"\n\tmicro_batch_size: {args.micro_batch_size}")
     logging.info(f"\n\tdata_mode: {args.data}")
     logging.info(f"\n\tdata_type: {data_type}")
     logging.info(
@@ -61,4 +61,19 @@ def log_performance_results(args, model_name, request_type, data_type, number_of
         f"\n\tthroughput: {np.mean(throughputs)} samples/sec (mean) (min: {np.min(throughputs)},"
         f" max: {np.max(throughputs)}, std: {np.std(throughputs)})")
     logging.info(
-        f"\n\tlatency: {avg_latency} ms (mean) (min: {min_latency}, max: {max_latency})")
+        f"\n\tlatency avg: {avg_latency} ms (mean) (min: {min_latency}, max: {max_latency})")
+
+
+class DataGeneratorWrapper:
+    def __init__(self, data_generator):
+        self.data_generator = data_generator
+
+    def __iter__(self):
+        self.gen_iter = iter(self.data_generator)
+        return self
+
+    def __next__(self):
+        data_item = next(self.gen_iter)[0]
+        data_list = [data_item]
+        processed_data_list = [data_item.numpy()]
+        return processed_data_list, data_list

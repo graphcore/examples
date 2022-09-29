@@ -1,0 +1,11 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+numpy
+timm==0.5.4
+transformers==4.11.3
+torchvision==0.11.1
+pytest==6.2.4
+pyyaml>=5.4.1
+horovod>=0.24.0
+simplejpeg>=1.6.4
+wandb==0.12.1
+git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils

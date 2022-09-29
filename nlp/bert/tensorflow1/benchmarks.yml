@@ -1,27 +1,29 @@
 ---
 # --- Pretraining ---
 pretrain_options: &pretrain_options
+  env:
+    TF_POPLAR_FLAGS: "--executable_cache_path=/tmp/tf_cache/"
   data:
     throughput:
-      regexp: 'samples\/sec: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 3
-    mlm_accuracy:
+    mlm_acc:
       reduction_type: "final"
-      regexp: 'mlm_acc:\s*([\d\.]+|nan),'
+      regexp: 'mlm_acc: *(.*?) \%'
     mlm_loss:
       reduction_type: "final"
-      regexp: 'mlm_loss:\s*([\d\.]+|nan),'
-    nsp_accuracy:
+      regexp: 'mlm_loss: *(\d*\.\d*)'
+    nsp_acc:
       reduction_type: "final"
-      regexp: 'nsp_acc:\s*([\d\.]+|nan),'
+      regexp: 'nsp_acc: *(.*?) \%'
     nsp_loss:
       reduction_type: "final"
-      regexp: 'nsp_loss:\s*([\d\.]+|nan),'
+      regexp: 'nsp_loss: *(\d*\.\d*)'
   output:
-    - [Samples/s, "throughput"]
-    - [mlm_accuracy, "mlm_accuracy"]
+    - [samples/sec, "throughput"]
+    - [mlm_acc, "mlm_acc"]
     - [mlm_loss, "mlm_loss"]
-    - [nsp_accuracy, "nsp_accuracy"]
+    - [nsp_acc, "nsp_acc"]
     - [nsp_loss, "nsp_loss"]
 
 tf1_bert_large_pretrain_real_pod16:
@@ -139,7 +141,7 @@ tf1_bert_large_sl384_pretrain_real_pod64_conv:
       --init-checkpoint "checkpoint/phase1/ckpt-7031"
       --save-path "checkpoint/phase2/"
       --steps-per-ckpts 8000
-      --steps-per-logs 100 
+      --steps-per-logs 100
       --wandb
       --wandb-name tf1_bert_large_sl384_pretrain_real_pod64_conv
 
@@ -164,9 +166,7 @@ tf1_groupbert_base_sl128_pretrain_real_pod64_conv:
     phase1 pretraining on 64 IPUs.
   cmd: >-
     poprun
-      --mpi-global-args="--allow-run-as-root --tag-output"
       --mpi-local-args="-x TF_POPLAR_FLAGS"
-      --numa-aware 1
       --ipus-per-replica 4
       --num-instances 4
       --num-replicas 16
@@ -190,7 +190,6 @@ tf1_groupbert_base_sl384_pretrain_real_pod64_conv:
     poprun
       --mpi-global-args="--allow-run-as-root --tag-output"
       --mpi-local-args="-x TF_POPLAR_FLAGS"
-      --numa-aware 1
       --ipus-per-replica 4
       --num-instances 4
       --num-replicas 16
@@ -208,14 +207,14 @@ tf1_groupbert_base_sl384_pretrain_real_pod64_conv:
 
 # --- SQuAD training ---
 squad_options: &squad_options
+  env:
+    TF_POPLAR_FLAGS: "--null_data_feed --executable_cache_path=/tmp/tf_cache/"
   data:
     throughput:
-      regexp: 'throughput\s+(\S+)\s+'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 2
   output:
-    - [Samples/s, 'throughput']
-  env:
-    TF_POPLAR_FLAGS: "--null_data_feed"
+    - [samples/sec, 'throughput']
 
 tf1_bert_squad_large_train_real_pod16:
   <<: *squad_options
@@ -231,6 +230,7 @@ tf1_bert_squad_large_train_real_pod16:
       --vocab-file $DATASETS_DIR/ckpts/uncased_L-24_H-1024_A-16/vocab.txt
 
 tf1_groupbert_squad_base_finetune_real_pod4_conv:
+  <<: *squad_options
   description:
     Tests BERT SQuAD base (fine tuning) training convergence
   cmd: >-
@@ -276,6 +276,7 @@ tf1_groupbert_squad_base_finetune_real_pod4_conv:
     - [samples/sec, 'throughput']
 
 tf1_bert_squad_large_train_real_pod16_conv:
+  <<: *squad_options
   description:
     Tests BERT SQuAD (fine tuning) training convergence
   cmd: >-
@@ -318,19 +319,25 @@ tf1_bert_squad_large_train_real_pod16_conv:
       --wandb-name tf1_bert_squad_large_train_real_pod16_conv
   data:
     throughput:
-      regexp: 'throughput\s+(\S+)\s+'
+      regexp: 'throughput: *(.*?) samples\/sec"'
       skip: 2
   output:
-    - [Samples/s, 'throughput']
+    - [samples/sec, 'throughput']
 
 # --- GLUE training ---
 glue_options: &glue_options
+  env:
+    TF_POPLAR_FLAGS: "--executable_cache_path=/tmp/tf_cache/"
   data:
     throughput:
-      regexp: 'throughput\s+(\S+)\s+'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 2
+    loss:
+      regexp: 'loss: *(\d*\.\d*)'
+      reduction_type: "final"
   output:
-    - [Samples/s, 'throughput']
+    - [samples/sec, 'throughput']
+    - [loss, 'loss']
 
 tf1_glue_base_train_real_pod16:
   <<: *glue_options
@@ -343,7 +350,7 @@ tf1_glue_base_train_real_pod16:
       --do-training
       --init-checkpoint ""
       --num-train-steps 4
-      --data-dir /a/scratch/software-apps-datasets/reference/glue/MRPC
+      --data-dir $DATASETS_DIR/glue/MRPC
 
 tf1_glue_large_train_real_pod16:
   <<: *glue_options
@@ -356,10 +363,11 @@ tf1_glue_large_train_real_pod16:
       --do-training
       --init-checkpoint ""
       --num-train-steps 4
-      --data-dir /a/scratch/software-apps-datasets/reference/glue/MRPC
+      --data-dir $DATASETS_DIR/glue/MRPC
 
 # --- Inference ---
 tf1_bert_squad_large_infer_gen_2ipu:
+  <<: *squad_options
   description:
     Tests BERT SQuAD runtime inference and records the throughput and latency
     on 2 IPUs (1x 2IPU model)
@@ -375,33 +383,31 @@ tf1_bert_squad_large_infer_gen_2ipu:
       --embedded-runtime
       --micro-batch-size 1
       --num-iter 10000
-  env:
-    TF_POPLAR_FLAGS: ""
   data:
     latency:
-      regexp: 'latency\W*(\d\.\d*)'
-    latency_99:
-      regexp: 'latency_99\W*(\d\.\d*)'
-    latency_99_9:
-      regexp: 'latency_99_9\W*(\d\.\d*)'
+      regexp: 'latency avg: *(.*?) ms'
+    latency_99p:
+      regexp: 'latency 99p: *(.*?) ms'
+    latency_99p9:
+      regexp: 'latency 99p9: *(.*?) ms'
     throughput:
-      regexp: 'throughput\W*(\d*\.\d*)'
+      regexp: 'throughput: *(.*?) samples\/sec'
   output:
-    - [Batchsize, '1']
-    - [Samples/s, 'throughput']
-    - [Latency, 'latency']
-    - [Latency_99, 'latency_99']
-    - [Latency_99_9, 'latency_99_9']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']
 
 tf1_bert_squad_large_infer_gen_4ipu:
+  <<: *squad_options
   description:
     Tests BERT SQuAD runtime inference and records the throughput and latency
     on 4 IPUs (2x 2IPU models)
   cmd: >-
-    mpirun 
-      --tag-output
-      --np 2
-      --allow-run-as-root
+    poprun
+      --vv
+      --num-instances 2
+      --num-replicas 2
     python3
       run_squad_runtime.py
       --config configs/squad_large_inference_2ipu.json
@@ -414,20 +420,17 @@ tf1_bert_squad_large_infer_gen_4ipu:
       --embedded-runtime
       --micro-batch-size 1
       --num-iter 10000
-  env:
-    TF_POPLAR_FLAGS: ""
   data:
     latency:
-      regexp: 'latency\W*(\d\.\d*)'
-    latency_99:
-      regexp: 'latency_99\W*(\d\.\d*)'
-    latency_99_9:
-      regexp: 'latency_99_9\W*(\d\.\d*)'
+      regexp: 'latency avg: *(.*?) ms'
+    latency_99p:
+      regexp: 'latency 99p: *(.*?) ms'
+    latency_99p9:
+      regexp: 'latency 99p9: *(.*?) ms'
     throughput:
-      regexp: 'throughput\W*(\d*\.\d*)'
+      regexp: 'throughput: *(.*?) samples\/sec'
   output:
-    - [Batchsize, '1']
-    - [Samples/s, 'throughput']
-    - [Latency, 'latency']
-    - [Latency_99, 'latency_99']
-    - [Latency_99_9, 'latency_99_9']
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+    - [latency 99th percentile(ms), 'latency_99p']
+    - [latency 99.9th percentile(ms), 'latency_99p9']

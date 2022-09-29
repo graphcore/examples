@@ -3,24 +3,25 @@
 pretrain_options: &pretrain_options
    data:
       throughput:
-         regexp: \s([\d\.]+|nan)\ssequences
-      mlm_accuracy:
-         regexp: Acc\/MLM\:\s([\d\.]+|nan)\s
+         regexp: 'throughput: *(.*?) samples/sec'
+      mlm_acc:
+         regexp: 'mlm_acc: *(.*?) \%'
          reduction_type: "final"
-      nsp_accuracy:
-         regexp: Acc\/NSP\:\s([\d\.]+|nan)\:\s
+      nsp_acc:
+         regexp: 'nsp_acc: *(.*?) \%'
          reduction_type: "final"
       nsp_loss:
-         regexp: Loss\/NSP\:\s([\d\.|nan]+)\s
+         regexp: 'nsp_loss: *(\d*\.\d*)'
          reduction_type: "final"
       mlm_loss:
-         regexp: Loss\/MLM\:\s([\d\.|nan]+)\s
+         regexp: 'mlm_loss: *(\d*\.\d*)'
          reduction_type: "final"
       loss:
-         regexp: Loss\:\s([\d\.]+|nan)\s
+         regexp: 'total loss: *(\d*\.\d*)'
          reduction_type: "final"
    output:
-      - [Samples/s, "throughput"]
+      - [samples/sec, "throughput"]
+      - [loss, "loss"]
 
 pytorch_bert_base_pretrain_real_pod16:
    <<: *pretrain_options
@@ -69,15 +70,12 @@ pytorch_bert_large_packed_pretrain_real_pod64:
       BERT Large pretraining phase 1 and 2 with real data on 16 IPUs
       for performance testing.
    parameters:
-      - [phase, input_file]
-      - [128, "$DATASETS_DIR/wikipedia/psc_128/wiki_000.tfrecord"]
-      - [384, "$DATASETS_DIR/wikipedia/psc_384/wiki_000.tfrecord"]
-      - [512, "$DATASETS_DIR/wikipedia/psc_512/wiki_000.tfrecord"]
+      phase: 128,512
    cmd: >-
       python3 run_pretraining.py
          --config pretrain_large_{phase}_POD64
          --training-steps 10
-         --input-files {input_file}
+         --input-files $DATASETS_DIR/wikipedia/psc_{phase}/wiki_000.tfrecord
          --disable-progress-bar
          --packed-data
 
@@ -118,46 +116,6 @@ pytorch_bert_large_sl128_pretrain_real_pod64_conv:
          --input-file $DATASETS_DIR/wikipedia/128/*.tfrecord
          --disable-progress-bar
          --checkpoint-output-dir "checkpoint/phase1"
-         --wandb
-
-pytorch_bert_large_sl384_pretrain_real_pod64_conv:
-   <<: *pretrain_options
-   description: |
-      BERT Large pretraining phase 2 with real data on 64 IPUs
-      for convergence testing.
-   cmd: >-
-      poprun
-         --vv
-         --num-instances 1
-         --num-replicas 16
-         --update-partition=yes
-         --remove-partition=yes
-         --reset-partition=no
-         --sync-type=ST_POD_NATIVE_DEFAULT
-         --vipu-server-timeout 300
-         --vipu-server-host $VIPU_CLI_API_HOST
-         --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-         --vipu-cluster=$CLUSTER
-         --ipus-per-replica 4
-         --mpi-global-args="
-         --mca oob_tcp_if_include $TCP_IF_INCLUDE
-         --mca btl_tcp_if_include $TCP_IF_INCLUDE"
-         --mpi-local-args="
-         -x OPAL_PREFIX
-         -x LD_LIBRARY_PATH
-         -x PATH
-         -x PYTHONPATH
-         -x IPUOF_VIPU_API_TIMEOUT=600
-         -x POPLAR_LOG_LEVEL=WARN
-         -x DATASETS_DIR
-         -x POPLAR_ENGINE_OPTIONS
-         -x POPLAR_TARGET_OPTIONS"      
-      python3 run_pretraining.py
-         --config pretrain_large_384_POD64
-         --input-file $DATASETS_DIR/wikipedia/384/*.tfrecord
-         --disable-progress-bar
-         --checkpoint-output-dir "checkpoint/phase2"
-         --pretrained-checkpoint "checkpoint/phase1"
          --wandb
 
 pytorch_bert_large_sl512_pretrain_real_pod64_conv:
@@ -203,7 +161,7 @@ pytorch_bert_large_sl512_pretrain_real_pod64_conv:
 pytorch_bert_large_packed_sl128_pretrain_real_pod64_conv:
    <<: *pretrain_options
    description: |
-      BERT Large pretraining phase 1 with real data on 16 IPUs
+      BERT Large pretraining phase 1 with real data on 64 IPUs
       for convergence testing.
    cmd: >-
       python3 run_pretraining.py
@@ -214,31 +172,69 @@ pytorch_bert_large_packed_sl128_pretrain_real_pod64_conv:
          --wandb
          --packed-data
 
-pytorch_bert_large_packed_sl384_pretrain_real_pod64_conv:
-   <<: *pretrain_options
-   description: |
-      BERT Large pretraining phase 2 with real data on 16 IPUs
-      for convergence testing.
-   cmd: >-
-      python3 run_pretraining.py
-         --config pretrain_large_384_POD64
-         --input-file $DATASETS_DIR/wikipedia/psc_384/*.tfrecord
-         --disable-progress-bar
-         --checkpoint-output-dir "checkpoint/phase2"
-         --pretrained-checkpoint "checkpoint/phase1"
-         --wandb
-         --packed-data
+pytorch_bert_large_packed_sl512_pretrain_real_pod64_conv:
+  <<: *pretrain_options
+  description: |
+    BERT Large pretraining phase 2 (SL 512) with real data on 64 IPUs
+    for convergence testing.
+  cmd: >-
+    python3 run_pretraining.py
+        --config pretrain_large_512_POD64
+        --input-file $DATASETS_DIR/wikipedia/psc_512/*.tfrecord
+        --disable-progress-bar
+        --checkpoint-output-dir "checkpoint/phase2"
+        --pretrained-checkpoint "checkpoint/phase1"
+        --wandb
+        --packed-data
+
+pytorch_bert_large_packed_sl128_pretrain_real_pod256_conv:
+  <<: *pretrain_options
+  description: |
+    BERT Large pretraining phase 1 with real data on 256 IPUs
+    for convergence testing.
+  cmd: >-
+    python3 run_pretraining.py
+      --config pretrain_large_128_POD64
+      --input-files $DATASETS_DIR/wikipedia/psc_128/*.tfrecord
+      --disable-progress-bar
+      --checkpoint-output-dir "checkpoint/phase1"
+      --wandb
+      --packed-data
+      --replication_factor 64
+      --gradient_accumulation 128
+      --matmul_proportion [0.14, 0.19, 0.19, 0.19]
+      --loss_scaling 32768.0
+
+pytorch_bert_large_packed_sl512_pretrain_real_pod256_conv:
+  <<: *pretrain_options
+  description: |
+    BERT Large pretraining phase 2 (SL 512) with real data on 256 IPUs
+    for convergence testing.
+  cmd: >-
+    python3 run_pretraining.py
+      --config pretrain_large_512_POD64
+      --input-file $DATASETS_DIR/wikipedia/psc_512/*.tfrecord
+      --disable-progress-bar
+      --checkpoint-output-dir "checkpoint/phase2"
+      --pretrained-checkpoint "checkpoint/phase1"
+      --wandb
+      --packed-data
+      --replication_factor 64
+      --gradient_accumulation 128
+      --matmul_proportion [0.14, 0.19, 0.19, 0.19]
+      --loss_scaling 32768.0
 
 # --- SQuAD ---
 squad_options: &squad_options
    data:
       throughput:
-         regexp: "throughput=(.*) samples/s"
+         regexp: 'throughput: *(.*?) samples\/sec'
       loss:
-         regexp: 'loss=([\d\.]+),'
+         regexp: 'loss: *(\d*\.\d*)'
          reduction_type: "final"
    output:
-      - [Samples/s, "throughput"]
+      - [samples/sec, "throughput"]
+      - [loss, "loss"]
 
 pytorch_bert_squad_large_pretrain_real_pod16:
    <<: *squad_options
@@ -252,7 +248,7 @@ pytorch_bert_squad_large_pretrain_real_pod16:
          --config squad_large_{phase}
          --num-epochs 1
 
-pytorch_bert_squad_large_pretrain_real_pod64_conv:
+pytorch_bert_squad_large_finetune_real_pod16_conv:
    <<: *squad_options
    description: |
       BERT Large SQuAD benchmark on real data.
@@ -294,11 +290,32 @@ pytorch_bert_squad_large_infer_gen_pod16:
     BERT Large SQuAD in inference.
   data:
     throughput:
-      regexp: throughput=(.*) samples/s
+      regexp: 'throughput: *(.*?) samples\/sec'
   output:
-    - [Samples/s, 'throughput']
+    - [samples/sec, 'throughput']
   cmd: >-
     python3 run_squad.py
       --config squad_large_384
       --squad-do-training False
       --dataset generated
+
+pytorch_bert_squad_large_tritonserver_infer_gen_pod16:
+  description: |
+    BERT Large SQuAD in inference hosted by Triton server.
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec'
+    latency:
+      regexp: 'latency: *(.*?) ms \(mean\)'
+  output:
+    - [samples/sec, 'throughput']
+    - [latency(ms), 'latency']
+  parameters:
+    request_type: SYNC,ASYNC
+    parallel_processes: 1,4,8
+  cmd: >-
+    python3 run_benchmark_with_triton_server.py 
+      -s
+      -k test_single_model[bert-squad_large_384-RequestType.{request_type}-{parallel_processes}]
+      --benchmark_only=true
+      ./tests_serial/tritonserver/

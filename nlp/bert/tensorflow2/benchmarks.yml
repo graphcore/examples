@@ -5,10 +5,19 @@ pretrain_options: &pretrain_options
     TF_POPLAR_FLAGS: '--executable_cache_path=./tf_cache/'
   data:
     throughput:
-      regexp: 'throughput:\s*([\d\.]+),'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 1
+    mlm_loss:
+      regexp: 'mlm_loss: *(\d*\.\d*)'
+      reduction_type: "final"
+    nsp_loss:
+      regexp: 'nsp_loss: *(\d*\.\d*)'
+      reduction_type: "final"
+
   output:
-    - [Samples/s, 'throughput']
+    - [samples/sec, 'throughput']
+    - [mlm_loss, 'mlm_loss']
+    - [nsp_loss, 'nsp_loss']
 
 tf2_bert_large_pretrain_real_pod16:
   <<: *pretrain_options
@@ -71,10 +80,10 @@ tf2_bert_large_sl384_pretrain_real_pod64_conv:
 squad_options: &squad_options
   data:
     throughput:
-      regexp: 'throughput:\s*([\d\.]+)'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 2
   output:
-    - [Samples/s, '{throughput}']
+    - [samples/sec, 'throughput']
 
 tf2_bert_squad_base_train_real_pod16:
   <<: *squad_options
@@ -111,10 +120,10 @@ tf2_bert_squad_large_train_real_pod16_conv:
 glue_options: &glue_options
   data:
     throughput:
-      regexp: 'throughput:\s*([\d\.]+)'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 2
   output:
-    - [Samples/s, '{throughput}']
+    - [samples/sec, 'throughput']
 
 tf2_glue_base_train_real_pod16:
   <<: *glue_options

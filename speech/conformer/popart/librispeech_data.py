@@ -24,7 +24,7 @@ class LibriSpeechDataset(torchaudio.datasets.LIBRISPEECH):
         # randomize the order of samples for training
         random.seed(1222)
         random.shuffle(self.indices)
-        self.step_size = conf.batch_size * conf.device_iterations
+        self.step_size = conf.global_batch_size * conf.device_iterations
         self.num_steps = int(len(self) / self.step_size)
 
     def __getitem__(self, n):
@@ -59,15 +59,15 @@ class LibriSpeechDataset(torchaudio.datasets.LIBRISPEECH):
             return out
 
         conf = self.conf
-        # Determine the shape of the step-data based on batch size, device_iterations and replication factor
-        batch_shape = [conf.samples_per_device]
+        # Determine the shape of the step-data based on replica_batch_size, device_iterations and replication_factor
+        batch_shape = [conf.replica_batch_size]
         if conf.replication_factor > 1:
             batch_shape = [conf.replication_factor] + batch_shape
 
         if conf.device_iterations > 1:
             batch_shape = [conf.device_iterations] + batch_shape
 
-        num_samples_per_step = conf.batch_size * conf.device_iterations
+        num_samples_per_step = conf.global_batch_size * conf.device_iterations
         samples_in_set = len(self)
         num_steps_per_epoch = int(samples_in_set // num_samples_per_step)
 
@@ -77,9 +77,9 @@ class LibriSpeechDataset(torchaudio.datasets.LIBRISPEECH):
             step_data = [[], [], [], []]
             if conf.not_multi_thread_dataloader:
                 for batch_ind in range(conf.device_iterations):
-                    for sample_ind in range(conf.batch_size):
+                    for sample_ind in range(conf.global_batch_size):
                         abs_sample_ind = step_ind * num_samples_per_step + \
-                                         batch_ind * conf.batch_size + \
+                                         batch_ind * conf.global_batch_size + \
                                          sample_ind
                         abs_sample_ind = self.indices[abs_sample_ind]
                         sample_data = self[abs_sample_ind]

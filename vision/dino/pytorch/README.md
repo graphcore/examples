@@ -36,6 +36,22 @@ imagenet1k
 `-- validation [1000 entries exceeds filelimit, not opening dir]
 ```
 
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
 ## Run the application
 
 Setup your environment as explained above. You can run DINO on ImageNet1k datasets and choosing between fp32 and fp16.
@@ -51,11 +67,6 @@ The `vit_base_pod16` configuration reaches the state-of-the-art results and take
 
 bash training_scripts/vit_base_pod16.sh
 
-
-Trained with the default fp16, the knn accuracy is 71.7%(top1) after 100 epochs. Trained with fp32, the knn accuracy is 72.4%(top1) after 100 epochs. We set the learning rate as 0.0005 and global batch size as 256.
-
-Once the training finishes, you can validate with knn accuracy:
-
 ## Run the application with pod16
 
 ```
@@ -68,58 +79,19 @@ bash training_scripts/vit_base_pod16.sh
 bash training_scripts/vit_base_pod64.sh
 ```
 
-console
-cd script
-# checkpoint.pth is the latest weight of DINO
-python extract_weights.py --weights path/to/checkpoint.pth --output vit_model.pth
-sh eval_knn.sh vit_model.pth
+# Evaluation
 
-Once the training finishes, you can validate with knn accuracy:
-```console
-cd script
-# checkpoint.pth is the latest weight of DINO
-python extract_weights.py --weights path/to/checkpoint.pth --output vit_model.pth
-sh eval_knn.sh vit_model.pth
-```
+Once the training finishes, you can validate with knn accuracy, eval_knn.sh is available in script.
+Trained with configuration vit_base_pod16, the knn accuracy is 71.7%(top1). Trained with fp32, the knn accuracy is 72.4%(top1) .
 
+You also can validate with linear accuracy, linear_train.py is available in script.
+Trained with configuration vit_small_pod16, the linear accuracy is 76.86%(top1).
 
 ## Run the test
 
 ```console
-pytest tests_serial/test_dino.py
+pytest tests/test_dino.py
 ```
-
-## Benchmarking
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
-
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
-
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
-
-## Profiling
-
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
 
 ## Licensing
 This application is licensed under Apache License 2.0.
@@ -144,10 +116,15 @@ The following files are created by Graphcore and are licensed under Apache Licen
 * script/alignment.sh
 * script/alignment.py
 * script/grad_compare.py
-* script/eval_knn.sh
 * script/extract_weights.py
 * script/extract_feature.py
 * script/knn_accuracy.py
+* script/linear_train.py
+* training_scripts/vit_base_pod16.sh
+* training_scripts/vit_base_pod64.sh
+* training_scripts/vit_small_pod16.sh
+* training_scripts/eval_linear.sh
+* training_scripts/eval_knn.sh
 
 The following files include code derived from this [repo](https://github.com/facebookresearch/dino) which uses MIT license:
 * core/dino.py
@@ -158,3 +135,4 @@ External packages:
 - `transformers` is licenced under Apache License, Version 2.0
 - `pytest` is licensed under MIT License
 - `torchvision` is licensed under BSD 3-Clause License
+

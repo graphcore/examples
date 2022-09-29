@@ -174,7 +174,7 @@ def batch_norm(x,
                                    bias,
                                    mean,
                                    var,
-                                   5 if train else 1,
+                                   5,
                                    momentum=momentum,
                                    epsilon=epsilon,
                                    debugContext='')

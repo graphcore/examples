@@ -74,6 +74,7 @@ def parse_args(args=None):
     parser.add_argument("--learning-rate", type=float, help="Learning rate value for constant schedule, maximum for linear schedule.")
     parser.add_argument("--lr-scheduler", type=str, choices=["ReduceLROnPlateau", "multi_step", "constant"], help="Learning rate scheduler")
     parser.add_argument("--loss-scaling", type=float, help="Loss scaling factor (recommend using powers of 2)")
+    parser.add_argument("--enable-als", action='store_true', help="Enable automatic loss scaling")
     parser.add_argument("--weight-decay", type=float, default=0, help="Set the weight decay")
     parser.add_argument("--enable-half-first-order-momentum", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Use float16 for the first order momentum in the optimizer.")
@@ -117,7 +118,8 @@ def parse_args(args=None):
     parser.add_argument("--dataloader-workers", type=int, help="The number of dataloader workers")
     parser.add_argument("--wandb", type=str_to_bool, nargs="?", const=True, default=False, help="Enabling logging to Weights and Biases")
     parser.add_argument("--wandb-project-name", default="miniDALL-E", help="Wandb project name")
-    parser.add_argument("--compile-only", type=str_to_bool, nargs="?", const=True, default=False,
+    parser.add_argument("--wandb-run-name", default=None, help="Weights & Biases run name.")
+    parser.add_argument("--compile-only", action="store_true",
                         help="Create an offline IPU target that can only be used for offline compilation.")
     parser.add_argument("--executable-cache-dir", type=str, default="",
                         help="Directory where Poplar executables are cached. If set, recompilation of identical graphs can be avoided. "

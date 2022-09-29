@@ -165,7 +165,7 @@ def train_process(opts, restore=False):
             avg_time = time.time() - start
             total_time += avg_time
             batch_throughput = opts["micro_batch_size"] * opts["device_iterations"] / avg_time
-            logger.print_to_file_and_screen("epochs:{}, index:{}, loss: {:.4f}, accuracy: {:.4f}, time over batch: {:.4f}, sample/sec: {:.1f}, learning rate: {}".format(epoch, i, loss, accuracy, avg_time, batch_throughput, lr_value), opts)
+            logger.print_to_file_and_screen("epochs:{}, index:{}, loss: {:.4f}, accuracy: {:.4f}, time over batch: {:.4f}, throughput: {:.1f} samples/sec, learning rate: {}".format(epoch, i, loss, accuracy, avg_time, batch_throughput, lr_value), opts)
             i += 1
     train_graph.saver.save(train_graph.session, save_path=path)
     throughput = opts["micro_batch_size"] * iterations / total_time

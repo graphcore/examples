@@ -1,3 +1,5 @@
+// cppimport
+// 
 // Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -154,3 +156,14 @@ RemapCEGradOpxCreator(CustomGradOperators::remapCEGradId);
 static popart::RegisterShapeInferenceFunction
     remapCEOpShapeInference(CustomOperators::remapCEId,
                          [](auto &ctx) { ctx.outInfo(0) = ctx.inInfo(0); });
+
+
+// -------------- cppimport --------------
+// clang-format off
+/*
+<%
+cfg['extra_compile_args'] = ['-std=c++14', '-fPIC', '-O2', '-DONNX_NAMESPACE=onnx', '-Wall', '-Wsign-compare', '-shared']
+cfg['libraries'] = ['popart', 'poplar', 'popops', 'poputil', 'popnn', 'poprand']
+setup_pybind11(cfg)
+%>
+*/

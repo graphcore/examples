@@ -11,8 +11,29 @@ from tensorflow.python.ipu.config import (DeviceConnectionType,
                                           StochasticRoundingBehaviour)
 
 
-def configure_ipu(hparams) -> ipu.config.IPUConfig:
-    cfg = ipu.config.IPUConfig()
+def select_ipus(distributed_training: bool,
+                num_replicas: int,
+                num_ipus_per_replica: int,
+                cfg=None) -> ipu.config.IPUConfig:
+
+    cfg = cfg or ipu.config.IPUConfig()
+
+    if distributed_training:
+        popdist.tensorflow.set_ipu_config(
+            config=cfg,
+            ipus_per_replica=num_ipus_per_replica,
+            configure_device=True
+        )
+    else:
+        cfg.auto_select_ipus = num_replicas * num_ipus_per_replica
+
+    cfg.configure_ipu_system()
+
+    return cfg
+
+
+def configure_ipu(hparams, cfg=None) -> ipu.config.IPUConfig:
+    cfg = cfg or ipu.config.IPUConfig()
 
     cfg.allow_recompute = hparams.recomputation
 
@@ -71,12 +92,21 @@ def configure_ipu(hparams) -> ipu.config.IPUConfig:
     if hparams.internal_exchange_optimization_target is not None:
         cfg.compilation_poplar_options['opt.internalExchangeOptimisationTarget'] = hparams.internal_exchange_optimization_target
 
-    if hparams.training:
-        if hparams.distributed_training:
-            popdist.tensorflow.set_ipu_config(cfg, ipus_per_replica=hparams.num_ipus_per_replica, configure_device=True)
+    assert hparams.synthetic_data in {'host', 'ipu', None}, (f'Synthetic data option \'{hparams.synthetic_data}\' not recognized')
+    if hparams.synthetic_data == 'ipu':
+        logging.info(f'Activating synthetic data on the ipu.')
+        tf_poplar_flags = ' --use_synthetic_data --synthetic_data_initializer=random'
+        if 'TF_POPLAR_FLAGS' in os.environ:
+            os.environ['TF_POPLAR_FLAGS'] += tf_poplar_flags
         else:
-            cfg.auto_select_ipus = hparams.num_ipus_per_replica * hparams.num_replicas
+            os.environ['TF_POPLAR_FLAGS'] = tf_poplar_flags
+            
+    cfg.configure_ipu_system()
 
-        cfg.configure_ipu_system()
+    return cfg
 
+
+def reconfigure_for_validation(cfg):
+    cfg.floating_point_behaviour.esr = ipu.config.StochasticRoundingBehaviour.from_bool(False)
+    cfg.configure_ipu_system()
     return cfg

@@ -16,17 +16,17 @@ tf2_unet_train_real_pod4:
       --benchmark
   data:
     throughput:
-      regexp: 'Throughput *(.*?) images'
-      skip: 1
+      regexp: 'throughput: *(.*?) samples\/sec'
+      skip: 2
     loss:
-      regexp: 'loss\: *(\d*\.\d*) -'
-      skip: 1
+      reduction_type: "final"
+      regexp: 'loss: *(\d*\.\d*)'
     celoss:
-      regexp: 'ce_loss\: *(\d*\.\d*)'
-      skip: 1
+      reduction_type: "final"
+      regexp: 'ce_loss: *(\d*\.\d*)'
   output:
-    - [Images/sec, 'throughput']
-    - [Loss, 'loss']
+    - [samples/sec, 'throughput']
+    - [loss, 'loss']
     - [CE-loss, 'celoss']
 
 tf2_unet_infer_gen_pod4:
@@ -36,11 +36,10 @@ tf2_unet_infer_gen_pod4:
     batchsize: 1,2
   cmd: >-
     mpirun
-      --tag-output
-      --allow-run-as-root
       --np 4
       --bind-to socket
       -x POPLAR_RUNTIME_OPTIONS
+      -x POPLAR_ENGINE_OPTIONS
     python3 main.py
       --nb-ipus-per-replica 1
       --micro-batch-size {batchsize}
@@ -50,6 +49,8 @@ tf2_unet_infer_gen_pod4:
       --benchmark
   data:
     throughput:
-      regexp: 'Throughput *(\d*\.\d*) images'
+      regexp: 'throughput: *(.*?) samples\/sec'
   output:
-    - [Images/sec, 'throughput']
+    - [samples/sec, 'throughput']
+  env:
+    POPLAR_ENGINE_OPTIONS: '{"debug.retainDebugInformation":"true"}'

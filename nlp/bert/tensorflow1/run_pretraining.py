@@ -637,7 +637,7 @@ def train(opts):
 
     # ------------- TRAINING LOOP ----------------
     print_format = "step: {step:6d}, epoch: {epoch:6.2f}, lr: {lr:6.7f}, mlm_loss: {mlm_loss:6.3f}, nsp_loss: {nsp_loss:6.3f},\
-        mlm_acc: {mlm_acc:6.5f}, nsp_acc: {nsp_acc:6.5f}, samples/sec: {samples_per_sec:6.2f}, time: {iter_time:8.6f}, total_time: {total_time:8.1f}"
+        mlm_acc: {mlm_acc:6.5f} %, nsp_acc: {nsp_acc:6.5f} %, throughput: {samples_per_sec:6.2f} samples/sec, time: {iter_time:8.6f}, total_time: {total_time:8.1f}"
     learning_rate = mlm_loss = nsp_loss = 0
     start_all = time.time()
 

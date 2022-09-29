@@ -18,8 +18,8 @@ resnet50_mlperf_pod16: &resnet50_mlperf_pod16
   pipeline: True
   shards: 1
   pipeline_splits: [
-    stage1/unit1/relu, 
-    stage1/unit3/relu, 
+    stage1/unit1/relu,
+    stage1/unit3/relu,
     stage2/unit4/relu]
   gradient_accumulation_count: 9
   enable_recomputation: True
@@ -61,11 +61,11 @@ resnet50_mlperf_pod16_bs20:
   abs_learning_rate: 3.824
   epochs: 40
   pipeline_splits: [
-    stage1/unit1/relu, 
-    stage1/unit3/relu, 
-    stage2/unit1/relu, 
-    stage2/unit3/relu, 
-    stage3/unit1/relu, 
+    stage1/unit1/relu,
+    stage1/unit3/relu,
+    stage2/unit1/relu,
+    stage2/unit3/relu,
+    stage3/unit1/relu,
     stage3/unit4/relu]
 
 resnet50_mlperf_pod64_bs20:
@@ -81,11 +81,11 @@ resnet50_mlperf_pod64_bs20:
   replicas: 64
   device_iterations: 100000
   pipeline_splits: [
-    stage1/unit1/relu, 
-    stage1/unit3/relu, 
-    stage2/unit1/relu, 
-    stage2/unit3/relu, 
-    stage3/unit1/relu, 
+    stage1/unit1/relu,
+    stage1/unit3/relu,
+    stage2/unit1/relu,
+    stage2/unit3/relu,
+    stage3/unit1/relu,
     stage3/unit4/relu]
 
 resnet50_base: &resnet50_base
@@ -127,8 +127,8 @@ resnet50_bn_16ipus: &resnet50_bn_16ipus
   pipeline_schedule: Grouped
   shards: 4
   pipeline_splits: [
-    stage1/unit3/relu, 
-    stage2/unit4/relu, 
+    stage1/unit3/relu,
+    stage2/unit4/relu,
     stage3/unit4/relu]
   pipeline: True
   batch_norm: True
@@ -234,7 +234,7 @@ efficientnet_b4_g16_large_batch_size_high_throughput: &efficientnet_b4_g16_large
   expand_ratio: 4
   label_smoothing: 0.1
   warmup_epochs: 70
-  batch_size: 3
+  micro_batch_size: 3
   base_learning_rate_exponent: -9.5
   momentum: 0.885
   lars_weight_decay: 2.5e-6
@@ -261,11 +261,11 @@ resnet50_mlperf_pod16_lars: &resnet50_mlperf_pod16_lars
   pipeline: True
   shards: 1
   pipeline_splits: [
-    stage1/unit1/relu, 
-    stage1/unit3/relu, 
-    stage2/unit1/relu, 
-    stage2/unit3/relu, 
-    stage3/unit1/relu, 
+    stage1/unit1/relu,
+    stage1/unit3/relu,
+    stage2/unit1/relu,
+    stage2/unit3/relu,
+    stage3/unit1/relu,
     stage3/unit4/relu]
   enable_recomputation: True
   optimiser: LARS
@@ -315,3 +315,55 @@ resnet50_mlperf_pod64_lars:
   abs_learning_rate: 14.225
   max_reduce_many_buffer_size: 216
   warmup_epochs: 2
+
+efficientnet_b4_g1_with_batch_norm_base: &efficientnet_b4_g1_with_batch_norm_base
+# modification for EfficientNet-B4 with batch norm this config entry
+# should be used in combination with another EfficientNet B4 config to be
+# valid. (e.g. efficientnet_b4_16ipus_base, efficientnet_b4_g16_large_batch_size_high_throughput)
+  data_dir: ./datasets
+  executable_cache_path: ./poplar_executable_cache
+  gather_conv_output: True
+  fused_preprocessing: True
+  normalise_input: True
+  eight_bit_io: True
+  group_dim: 1
+  shards: 1
+  expand_ratio: 6
+  batch_norm: True
+  force_weight_to_fp32:
+    - batch_norm/moving_variance
+  only_use_slic_vmac_16: True
+  max_cross_replica_buffer_size: 38934496
+  stable_norm: False
+  force_unstable_norm: True
+  gcl_max_broadcast_size: 100000
+  min_remote_tensor_size: 65536
+  max_reduce_many_buffer_size: 1000000000
+  pipeline_schedule: Sequential
+  pipeline_splits: [block0, block2a, block2a/b, block2b, block2c, block2d, block3a, block3c, block4a, block4c, block5a, block5d, block6a, block6e]
+
+efficientnet_b4_g1_with_batch_norm_16ipus: &efficientnet_b4_g1_with_batch_norm_16ipus
+# 16.16 POD16 based on the G16 config uses the LARS optimiser
+  <<: *efficientnet_b4_g16_large_batch_size_high_throughput
+  <<: *efficientnet_b4_g1_with_batch_norm_base
+  available_memory_proportion: ["0.15"]
+  disable_variable_offloading: False
+  BN_span: 8
+  micro_batch_size: 6
+  replicas: 16
+  gradient_accumulation_count: 64
+  base_learning_rate_exponent: -10
+  weight_decay: 0
+  name_suffix: _LARS
+
+efficientnet_b4_g1_with_batch_norm_pod64_modification: &efficientnet_b4_g1_with_batch_norm_pod64_modification
+  replicas: 64
+  identical_replica_seeding: True
+  seed: 1
+  gradient_mean_reduce_re:
+    - ".*"
+
+efficientnet_b4_g1_with_batch_norm_64ipus: &efficientnet_b4_g1_with_batch_norm_64ipus
+  <<: *efficientnet_b4_g1_with_batch_norm_16ipus
+  <<: *efficientnet_b4_g1_with_batch_norm_pod64_modification
+  gradient_accumulation_count: 16

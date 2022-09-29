@@ -21,24 +21,15 @@ import torch
 # Code below derived from https://github.com/facebookresearch/mixup-cifar10/blob/master/train.py
 
 
-def mixup_data(x, y, alpha=1.0, seed=None):
-    '''Returns mixed inputs, pairs of targets, and lambda'''
-    if seed is not None:
-        np.random.seed(seed)
-    if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    batch_size = x.size()[0]
-    index = torch.randperm(batch_size)
-
-    mixed_x = lam * x + (1 - lam) * x[index, :]
-    y_a, y_b = y, y[index]
-    return mixed_x, y_a, y_b, torch.stack([torch.tensor(lam)]*batch_size)
-
-
-def mixup_criterion(criterion, pred, y_a, y_b, lam):
-    loss1 = lam * criterion(pred, y_a)
-    loss2 = (1 - lam) * criterion(pred, y_b)
-    return poptorch.identity_loss(loss1 + loss2, reduction='none')
+def sample_mixup_coefficients(config, random_generator):
+    # need to generate num weight updates lambda coefficients
+    coefficients = np.repeat(
+        # 1 lambda per weight update
+        random_generator.beta(config.alpha, config.alpha,
+                              size=config.device_iterations),
+        # repeat each lambda so there is one per micro batch
+        int(config.samples_per_step / (config.device_iterations * config.micro_batch_size)))
+    coefficients = coefficients.astype(np.float32, copy=False)
+    coefficients = torch.from_numpy(coefficients.astype(
+        np.float16 if config.precision[:3] == "16." else np.float))
+    return coefficients

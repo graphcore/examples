@@ -17,7 +17,8 @@ import logging
 from pathlib import Path
 
 import numpy as np
-
+import os
+import sys
 
 from data_utils.generated_dataset_loader import generate_mock_graph_data
 from data_utils.graphsage_dataset_loader import load_graphsage_data
@@ -31,6 +32,12 @@ from data_utils.ogb_lsc_dataset_loader import load_ogb_lsc_mag_dataset
 from utilities.constants import GraphType, Task
 from utilities.options import ALLOWED_DATASET_TYPE
 
+
+def check_data_exists(dataset_path, dataset_name):
+    if not os.path.exists(dataset_path):
+        logging.fatal("Data {} is not present at {}.".format(dataset_name, dataset_path))
+        logging.fatal("Please download data using python3 data_utils/dataset_loader.py --dataset-name {} --data-path {}".format(dataset_name, dataset_path))
+        sys.exit(-1)
 
 def load_dataset(
         dataset_path,
@@ -85,6 +92,7 @@ def load_dataset(
         )
         add_undirected_connections = True
     elif dataset_name == "ppi":
+        check_data_exists(dataset_path, dataset_name)
         num_nodes, edges, features, labels, dataset_splits = load_graphsage_data(
             dataset_path, dataset_name)
         dataset = HomogeneousGraphDataset(
@@ -99,6 +107,7 @@ def load_dataset(
         )
         add_undirected_connections = True
     elif dataset_name == "reddit":
+        check_data_exists(dataset_path, dataset_name)
         num_nodes, edges, features, labels, dataset_splits = load_graphsage_data(
             dataset_path, dataset_name)
         dataset = HomogeneousGraphDataset(
@@ -113,8 +122,9 @@ def load_dataset(
         )
         add_undirected_connections = True
     elif dataset_name == "ogbn-arxiv":
+        check_data_exists(dataset_path, dataset_name)
         num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(
-            dataset_path, "ogbn-arxiv")
+            dataset_path, dataset_name)
         dataset = HomogeneousGraphDataset(
             dataset_name=dataset_name,
             total_num_nodes=num_nodes,
@@ -128,6 +138,7 @@ def load_dataset(
         # Making this directed graph undirected improves accuracy
         add_undirected_connections = True
     elif dataset_name == "ogbn-products":
+        check_data_exists(dataset_path, dataset_name)
         num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(
             dataset_path, "ogbn-products")
         dataset = HomogeneousGraphDataset(
@@ -142,6 +153,7 @@ def load_dataset(
         )
         add_undirected_connections = False
     elif dataset_name == "ogbn-mag":
+        check_data_exists(dataset_path, dataset_name)
         num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(
             dataset_path,
             dataset_name
@@ -175,6 +187,7 @@ def load_dataset(
             ("institution", {"feature": "author",
                              "edge_list": ('author', 'affiliated_with', 'institution')})]
     elif dataset_name == "ogbn-lsc-mag240":
+        check_data_exists(dataset_path, dataset_name)
         num_nodes, edges, features, labels, dataset_splits = load_ogb_lsc_mag_dataset(
             dataset_path,
             dataset_name,
@@ -242,3 +255,25 @@ def load_dataset(
         elif dataset_name == "ogbn-lsc-mag240":
             dataset.save_mag(base_directory)
     return dataset
+
+if __name__ == "__main__":
+    import argparse
+    logging.basicConfig(format="%(asctime)s %(levelname)-8s %(message)s",
+                        datefmt="%Y-%m-%d %H:%M:%S")
+    parser = argparse.ArgumentParser(description="Cluster-GCN data downloader")
+    parser.add_argument("--data-path",
+                        type=str,
+                        help="Path for the dataset.")
+    parser.add_argument("--dataset-name",
+                        type=str,
+                        choices=ALLOWED_DATASET_TYPE,
+                        help="Select dataset to use.")
+    args = parser.parse_args()
+    logging.info("Downloading {} to {}".format(args.dataset_name, args.data_path))
+    if args.dataset_name in ["ppi", "reddit"]:
+        load_graphsage_data(args.data_path, args.dataset_name)
+    elif args.dataset_name in ["ogbn-arxiv", "ogbn-products", "ogbn-mag"]:
+        load_ogb_dataset(args.data_path, args.dataset_name)
+    elif args.dataset_name == "ogbn-lsc-mag240":
+        pca_features_path = "/mag240m_kddcup2021/merged_feat_from_paper_feat_pca_129.npy"
+        load_ogb_lsc_mag_dataset(args.data_path, args.dataset_name, pca_features_path)

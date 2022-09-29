@@ -6,6 +6,7 @@ import numpy as np
 from tensorflow.python.ipu.dataset_benchmark import dataset_benchmark
 from eight_bit_transfer import EightBitTransfer
 from datasets.dataset_factory import DatasetFactory
+import batch_config
 
 import logging
 
@@ -13,7 +14,6 @@ from configuration.terminal_argparse import str_to_bool
 from precision import Precision
 import popdist
 from tensorflow.python.ipu import horovod as hvd
-import os
 
 
 def add_arguments(parser):
@@ -42,7 +42,7 @@ def add_arguments(parser):
 
 
 def estimate_ds_throughput(ds, ds_size: int, epochs: int, micro_batch_size: int, num_instances: int) -> float:
-    results_tfdatatype = dataset_benchmark(ds, epochs, elements_per_epochs=ds_size / micro_batch_size / num_instances)
+    results_tfdatatype = dataset_benchmark(ds, epochs, elements_per_epochs=ds_size // micro_batch_size // num_instances)
     results_dict = json.loads(results_tfdatatype.numpy()[0].decode('utf-8'))
     throughputs = [epoch['elements_per_second'] * micro_batch_size for epoch in results_dict['epochs']]
     logging.info(f'All epochs throughputs {throughputs}')
@@ -75,26 +75,27 @@ if __name__ == '__main__':
     if num_instances > 1:
         hvd.init()
 
-    num_local_instances = 1 if num_instances <= 1 else hvd.local_size()
-
     if args.synthetic_data == 'ipu':
         logging.warn(
             'Synthetic data on ipu not allowed for this benchmark, because datasets are supposed to be on the host. Changing it to host')
         args.synthetic_data = 'host'
 
-    ds, _, ds_size, _, _, _ = DatasetFactory.get_dataset(
+    batch_config = batch_config.BatchConfig(args.micro_batch_size,
+                                            num_replicas=1,
+                                            gradient_accumulation_count=1)
+
+    app_dataset, _, _ = DatasetFactory.get_dataset(
         dataset_name=args.dataset,
         dataset_path=args.dataset_path,
         split=args.split,
         img_datatype=fp_precision.compute_precision,
-        micro_batch_size=args.micro_batch_size,
+        batch_config=batch_config,
         eight_bit_transfer=eight_bit_transfer,
         pipeline_num_parallel=pipeline_num_parallel,
-        num_local_instances=num_local_instances,
         synthetic_data=args.synthetic_data,
         accelerator_side_preprocess=args.accelerator_side_preprocess
     )
 
-    throughput = estimate_ds_throughput(ds, ds_size, args.num_epochs, args.micro_batch_size, num_instances)
+    throughput = estimate_ds_throughput(app_dataset.pipeline, app_dataset.size, args.num_epochs, args.micro_batch_size, num_instances)
 
     logging.info(f'Throughput = {throughput:.2f} examples/sec')

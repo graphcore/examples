@@ -138,7 +138,7 @@ def infer_model(args, model, ds_infer):
         total_nb_samples = args.steps_per_execution * args.micro_batch_size
         tput = f"{total_nb_samples / duration:0.15f}"
         logger.info(
-            f'Inference\t Time: {duration} seconds\t Throughput {tput} images/sec.')
+            f'Inference\t Time: {duration} seconds\t throughput: {tput} samples/sec.')
     else:
         if args.model_dir:
             model.load_weights(os.path.join(

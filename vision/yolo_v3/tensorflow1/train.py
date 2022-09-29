@@ -424,7 +424,7 @@ class YoloTrain(object):
                     start_time = time.time()
                     total_samples = global_step*total_batch_size
                     logger.info("epoch:{}, global_steps:{}, total_samples:{}, lr:{:.3e}, \
- moving_total_loss:{:.2f}, duration:{:.2f}, samples/s:{:.2f},\
+ moving_total_loss: {:.2f}, duration:{:.2f}, throughput: {:.2f} samples/sec,\
  total_time:{:.2f}".format(
                         epoch+1,
                         global_step,

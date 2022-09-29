@@ -30,6 +30,9 @@ def get_options(config):
     # Return the final results from IPU to host
     opts.outputMode(poptorch.OutputMode.Final)
 
+    opts.broadcastBuffers(False)
+    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
+
     # Enable Replicated Tensor Sharding (RTS) of optimizer state with optimizer state residing either on-chip or in DRAM
     opts.TensorLocations.setOptimizerLocation(
         poptorch.TensorLocationSettings()
@@ -70,7 +73,7 @@ def get_options(config):
                      int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
     opts._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
     # Set the prefetch depth
-    opts._Popart.set("defaultPrefetchBufferingDepth", 3)
+    opts._Popart.set("defaultPrefetchBufferingDepth", 4)
 
 
     opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Pipeline))

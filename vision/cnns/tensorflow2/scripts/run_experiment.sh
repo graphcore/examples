@@ -158,8 +158,8 @@ if [ $MULTIHOST = true ]; then
   echo "bash ../../../utils/distributed_training/config_pod.sh $PARTITION ${host_array[@]}"
   eval "bash ../../../utils/distributed_training/config_pod.sh $PARTITION ${host_array[@]}"
 
-  MULTIHOST_SETTINGS="-vv --host $HOSTS --numa-aware 1 \
-      --mpi-global-args='--tag-output --allow-run-as-root --mca oob_tcp_if_include eno1 --mca btl_tcp_if_include eno1' \
+  MULTIHOST_SETTINGS="-vv --host $HOSTS
+      --mpi-global-args='--mca oob_tcp_if_include eno1 --mca btl_tcp_if_include eno1' \
       --vipu-partition="$PARTITION" --update-partition=yes --reset-partition=no --vipu-server-host "$VIPU_SERVER_HOST" "
 fi
 

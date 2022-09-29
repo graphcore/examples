@@ -13,4 +13,4 @@ checksumdir==1.2.0
 horovod==0.24.3
 tritonclient[grpc]==2.16.0
 git+https://github.com/lilohuang/PyTurboJPEG.git@8706665787c7290397859075ae2f0bf35afeb41a
-git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils

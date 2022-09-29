@@ -3,9 +3,9 @@
 import argparse
 import os
 import sys
-
 import yaml
 
+from datasets.simple_tokenizer import default_bpe
 
 config_file = os.path.join(os.path.dirname(__file__), "configs.yml")
 
@@ -52,6 +52,7 @@ def parse_args(args=None):
     parser.add_argument("--dataloader_workers", type=int, help="The number of dataloader workers")
     parser.add_argument("--wandb", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Enabling logging to Weights and Biases")
+    parser.add_argument("--wandb_run_name", type=str, default=None, help="Weights & Biases run name")
     parser.add_argument("--enable-half-partials", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Enable half partials for matmuls and convolutions globally")
     parser.add_argument("--enable-rts", type=str_to_bool, nargs="?", const=True, default=False,
@@ -84,8 +85,10 @@ def parse_args(args=None):
                         help="Restore a checkpoint model to continue training.")
 
     # CLIP
-    parser.add_argument("--image_path", type=str, nargs="+", help="The path of image files")
-    parser.add_argument("--captions_path", type=str, nargs="+", help="The path of text file")
+    parser.add_argument('--memory_size', type=int, default=6, help="The number batches in memory bank")
+    parser.add_argument("--image_path", type=str, default="./data/cc3m/images", help="The path of image files")
+    parser.add_argument("--captions_path", type=str, default="./data/cc3m/img_cap.csv", help="The path of text file")
+    parser.add_argument("--bpe_vocab_path", type=str, default=default_bpe(), help="The path to the bpe vocab.")
     parser.add_argument('--image_resolution', type=int, default=224, help="The shape of image after preprocess")
     parser.add_argument('--context_length', type=int, default=77, help="The model can handle fix length text")
     parser.add_argument('--transformer_heads', type=int, default=8, help="Set the number of heads in self attention of  custom transformer")

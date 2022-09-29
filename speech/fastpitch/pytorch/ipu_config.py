@@ -37,4 +37,11 @@ def build_ipu_config(args, seed=1234, gradient_accmulation=128, availble_memory_
     ipu_config._Popart.setPatterns({'TiedGather': True, 'TiedGatherAccumulate': True, 'UpdateInplacePrioritiesForIpu': True})
     ipu_config.enableExecutableCaching('exec')
     ipu_config.replicationFactor(args.replication_factor)
+    ipu_config.TensorLocations.setOptimizerLocation(
+        poptorch.TensorLocationSettings()
+        .useOnChipStorage(not args.optimizer_state_offchip)
+        .useReplicatedTensorSharding(args.replication_factor > 1)
+    )
+
+
     return ipu_config

@@ -63,7 +63,7 @@ def get_conf(parser):
     set_model_conf(conf)
 
     # The number of samples that each MultiIPU device will process
-    conf.samples_per_device = int(conf.batch_size / conf.replication_factor)
+    conf.replica_batch_size = int(conf.global_batch_size / conf.replication_factor)
 
     return conf
 

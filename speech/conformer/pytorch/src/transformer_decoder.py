@@ -48,10 +48,11 @@ class TransformerDecoder(torch.nn.Module):
         self_attention_dropout_rate: float = 0.0,
         src_attention_dropout_rate: float = 0.0,
         concat_after: bool = False,
-        max_len: int = 50
+        max_len: int = 50,
+        dtype: torch.dtype = torch.float32
     ):
         super().__init__()
-
+        self.dtype = dtype
         attention_dim = encoder_output_size
         pos_enc_class = PositionalEncoding
         self.embed = torch.nn.Sequential(
@@ -102,10 +103,14 @@ class TransformerDecoder(torch.nn.Module):
             olens: (batch, )
         """
         tgt_mask = (~make_pad_mask(ys_in_lens, ys_in_pad.size(1))[:, None, :])
-        m = subsequent_mask(tgt_mask.size(-1)).unsqueeze(0)
+        m = subsequent_mask(tgt_mask.size(-1), tgt_mask.device).unsqueeze(0)
         tgt_attention_mask = (tgt_mask.int().repeat(1, m.size(1), 1) + m.int()).eq(2)
         memory_mask = (~make_pad_mask(hlens, hs_pad.size(1)))[:, None, :]
         x = self.embed(ys_in_pad)
+
+        if self.dtype == torch.float16:
+            x = x.type(torch.float16)
+
         x, tgt_attention_mask, hs_pad, memory_mask = self.decoders(
             x, tgt_attention_mask, hs_pad, memory_mask
         )

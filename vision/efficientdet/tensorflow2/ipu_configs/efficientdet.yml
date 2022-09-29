@@ -41,3 +41,4 @@ efficientdet-d4:
   opt_use_io_tiles: false
   opt_internal_exchange_target: "memory"
   micro_batch_size: 1
+  available_memory_proportion: 0.2

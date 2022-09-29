@@ -2,6 +2,9 @@
 import os
 import sys
 from pathlib import Path
+import glob
+import shutil
+import pytest
 from examples_tests.test_util import SubProcessChecker
 
 sys.path.append(str(Path(__file__).absolute().parent.parent))
@@ -54,6 +57,7 @@ class SimplePass(SubProcessChecker):
         output = run_train(self, '--help')
         self.assertIn('usage', output)
 
+    @pytest.mark.skip(reason='use of external data (T68092)')
     def test_one_update_mnist(self):
         path_to_mnist = '/localdata/datasets/mnist'
         if not os.path.exists(path_to_mnist):
@@ -65,6 +69,7 @@ class SimplePass(SubProcessChecker):
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
 
+    @pytest.mark.skip(reason='use of external data (T68092)')
     def test_one_update_accelerator(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
@@ -78,7 +83,26 @@ class SimplePass(SubProcessChecker):
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
 
+    @pytest.mark.skip(reason='use of external data (T68092)')
+    def test_first_ckpt_epoch(self):
+        path_to_cifar10 = '/localdata/datasets/cifar10'
+        if not os.path.exists(path_to_cifar10):
+            raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
+        checkpoint_dir = '/tmp/first_ckpt_epoch_test/'
+        output = run_train(self, '--weight-updates-per-epoch', '1',
+                           '--logs-per-epoch', '1',
+                           '--ckpts-per-epoch', '1/3',
+                           '--first-ckpt-epoch', '2',
+                           '--num-epochs', '5',
+                           '--checkpoint-dir', checkpoint_dir,
+                           '--clean-dir', 'False')
+        checkpoint_files = glob.glob(os.path.join(checkpoint_dir, '*.h5'))
+        for idx, epoch in [(0, 2.0), (1, 5.0)]:
+            self.assertTrue(checkpoint_files[idx].endswith(f'epoch_{epoch}.h5'))
+        shutil.rmtree(checkpoint_dir)
 
+
+@pytest.mark.skip(reason='use of external data (T68092)')
 class Resnet8(SubProcessChecker):
     def test_config(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
@@ -103,7 +127,7 @@ class Resnet8(SubProcessChecker):
                            '--logs-per-epoch', '1/3')
         self.assertIn('loss:', output)
         self.assertIn('training_accuracy:', output)
-
+    @pytest.mark.skip(reason='use of external data (T68092)')
     def test_pipeline(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
@@ -118,6 +142,7 @@ class Resnet8(SubProcessChecker):
         self.assertIn('training_accuracy:', output)
 
 
+@pytest.mark.skip(reason='use of external data (T68092)')
 class ImageNet(SubProcessChecker):
     def test_accelerated(self):
         path_to_imagenet = '/localdata/datasets/imagenet-data'
@@ -179,8 +204,8 @@ class ImageNet(SubProcessChecker):
                                '--fused-preprocessing', 'True')
 
 
+@pytest.mark.skip(reason='use of external data (T68092)')
 class DisableVariableOffloading(SubProcessChecker):
-
     def test_disable_variable_offloading_global_batch_size(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
@@ -202,8 +227,8 @@ class DisableVariableOffloading(SubProcessChecker):
                                '--global-batch-size', '10')
 
 
+@pytest.mark.skip(reason='use of external data (T68092)')
 class AvailableMemoryProportion(SubProcessChecker):
-
     def test_single_value_pipeline(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
@@ -229,7 +254,6 @@ class AvailableMemoryProportion(SubProcessChecker):
                                '--available-memory-proportion', '50', '50')
 
     def test_multiple_values_pipeline(self):
-
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
             raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
@@ -244,7 +268,6 @@ class AvailableMemoryProportion(SubProcessChecker):
         self.assertIn('training_accuracy:', output)
 
     def test_pipeline_mixed_precision_resnet50(self):
-
         path_to_imagenet = '/localdata/datasets/imagenet-data'
         if not os.path.exists(path_to_imagenet):
             raise NameError(f'Directory {path_to_imagenet} should have been copied to CI for this test')
@@ -272,8 +295,8 @@ class AvailableMemoryProportion(SubProcessChecker):
                                '--gradient-accumulation-count', '4')
 
 
+@pytest.mark.skip(reason='use of external data (T68092)')
 class StableNormStochasticRoundingFloatingPointExceptions(SubProcessChecker):
-
     def test_stable_norm_stochastic_rounding_fp_exceptions_enabled(self):
         path_to_cifar10 = '/localdata/datasets/cifar10'
         if not os.path.exists(path_to_cifar10):
@@ -303,6 +326,7 @@ class StableNormStochasticRoundingFloatingPointExceptions(SubProcessChecker):
         self.assertIn('training_accuracy:', output)
 
 
+@pytest.mark.skip(reason='use of external data (T68092)')
 class LRSchedules(SubProcessChecker):
 
     def test_cosine_lr_schedule(self):

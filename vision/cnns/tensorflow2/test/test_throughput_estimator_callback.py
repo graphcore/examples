@@ -31,4 +31,4 @@ class ThroughputEstimatorTest(unittest.TestCase):
         callback.on_train_batch_begin(0, logs)
         callback.on_train_batch_end(0, logs)
 
-        self.assertAlmostEqual(logs, {'Average images/s': 0.4})
+        self.assertAlmostEqual(logs, {'throughput': 0.4})

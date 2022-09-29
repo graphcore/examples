@@ -44,13 +44,13 @@ def run_bert_cmdline(cmdline_args):
 
 def parse_result_for_loss_accuracy(out):
     """
-    Look for "Loss: <val>" and "Acc/NSP: <val>" in the output
+    Look for "loss: <val>" and "Acc/NSP: <val>" in the output
     """
     losses = []
     accs = []
     for line in out.split("\n"):
-        match_loss = re.match(r".*(Loss: ([\d.]+)).*", line)
-        match_acc = re.match(r".*(Acc\/MLM: ([\d.]+)).*", line)
+        match_loss = re.match(r".*(loss: ([\d.]+)).*", line)
+        match_acc = re.match(r".*(mlm_acc: ([\d.]+)).*", line)
         if match_loss:
             loss = match_loss.groups()[1]
             losses.append(float(loss))

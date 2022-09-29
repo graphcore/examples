@@ -76,7 +76,7 @@ class ThroughputCallback(keras.callbacks.Callback):
         self.epoch_time = time.time() - self.epoch_time
         tput = self.samples_per_epoch / self.epoch_time
         print(
-            "Duration: {:.2f}s, Throughput: {:.2f} samples/s".format(self.epoch_time, tput))
+            "Duration: {:.2f}s, throughput: {:.2f} samples/sec".format(self.epoch_time, tput))
         logs = logs or {}
         logs.update({'throughput': tput, 'duration': self.epoch_time})
         super().on_epoch_end(epoch, logs)

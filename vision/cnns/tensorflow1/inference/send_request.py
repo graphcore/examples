@@ -296,7 +296,7 @@ def main(model_arch, image_dir, host, port, batch_size, num_threads,
     print("Full time in ms:", exec_time * 1000)
     print(
         f"Processed num_images * num_threads: {num_images} * {num_threads} = {num_images*num_threads}")
-    print(f"Average img/s: {((num_images*num_threads)/exec_time):2.4f}")
+    print(f"throughput: {((num_images*num_threads)/exec_time):2.4f} samples/sec")
 
 
 if __name__ == "__main__":

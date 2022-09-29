@@ -104,7 +104,7 @@ def parse_bert_args(args=None, config_file="configs_pretraining.yml"):
                         help="Type of learning rate schedule. --learning-rate will be used as the max value")
     parser.add_argument("--lr-warmup", type=float, help="Proportion of lr-schedule spent in warm-up. Number in range [0.0, 1.0]")
     parser.add_argument("--auto-loss-scaling", type=str_to_bool, nargs="?", const=True, default=False, help="Enable automatic loss scaling\
-                             for half precision training. Note that this is an experimental feature.")
+                             for half precision training.")
     parser.add_argument("--loss-scaling", type=float, help="Loss scaling factor (recommend using powers of 2).\
                              If using automatic loss scaling, this value will be the initial value.")
     parser.add_argument("--weight-decay", type=float, help="Set the weight decay")
@@ -153,7 +153,7 @@ def parse_bert_args(args=None, config_file="configs_pretraining.yml"):
                         help="Log the model parameter statistics to Weights and Biases after every n training steps")
     parser.add_argument("--disable-progress-bar", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Disable the training progress bar. This is useful if you want to parse the stdout of a run")
-    parser.add_argument("--compile-only", type=str_to_bool, nargs="?", const=True, default=False,
+    parser.add_argument("--compile-only", action="store_true",
                         help="Create an offline IPU target that can only be used for offline compilation.")
     parser.add_argument("--executable-cache-dir", type=str, default="",
                         help="Directory where Poplar executables are cached. If set, recompilation of identical graphs can be avoided. "

@@ -20,6 +20,5 @@ python train_gpt2.py \
     --embedding-serialization-factor 8 \
     --recompute-checkpoint-every-layer True \
     --enable-half-partials True \
-    --train-path 'generated' \
-    --replicated-tensor-sharding True \
-    --compile-only False
+    --dataset 'generated' \
+    --replicated-tensor-sharding True

@@ -44,7 +44,7 @@ def parse_with_config(parser, config_file, custom_args=None):
 
 def get_common_parser():
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--batch-size', type=int, default=1, help='batch size for training')
+    parser.add_argument('--micro-batch-size', type=int, default=1, help='Micro batch size for training')
     parser.add_argument('--dataloader-rebatch-size', type=int, help='Dataloader rebatching size. (Helps to optimise the host memory footprint)')
     parser.add_argument('--iterations', type=int, default=100, help='number of program iterations')
     parser.add_argument('--model', choices=models.available_models.keys(),  default='resnet18', help="Choose model")
@@ -67,8 +67,9 @@ def get_common_parser():
     parser.add_argument('--model-cache-path', type=str, help='Load the precompiled model from the given path. If the given path is empty / not existing the compiled model is saved to the given folder')
     parser.add_argument('--input-image-padding', action='store_true', help='Pad input images to be 4 channel images. This could speed up the model.')
     parser.add_argument('--num-io-tiles', type=int, default=0, help='Number of IO tiles. Minimum 32. Default 0 (no overlap)')
+    parser.add_argument("--compile-only", action="store_true", help="Create an offline IPU target that can only be used for offline compilation.")
+    parser.add_argument('--offline-target-ipu-version', type=int, default=2, help="IPU version used for offline compilation.")
     # EfficientNet parameters
     parser.add_argument('--efficientnet-expand-ratio', type=int, default=6, help='Expand ratio of the blocks in EfficientNet')
     parser.add_argument('--efficientnet-group-dim', type=int, default=1, help='Group dimensionality of depthwise convolution in EfficientNet')
-    parser.add_argument("--compile-only", action="store_true", help="Create an offline IPU target that can only be used for offline compilation.")
     return parser

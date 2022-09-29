@@ -276,7 +276,10 @@ class Mixup:
         return lam
 
     def __call__(self, x, target):
-        assert len(x) % 2 == 0, 'Batch size should be even when using this'
+        assert len(x) % 2 == 0, '@@@Batch size should be even when using this!!!'
+        # if not (len(x) % 2 == 0):
+        #     print('@@@Batch size should be even when using this!!!')
+        #     return x, target
         if self.mode == 'elem':
             lam = self._mix_elem(x)
         elif self.mode == 'pair':
@@ -379,7 +382,7 @@ class FastCollateMixup(Mixup):
         half = 'half' in self.mode
         if half:
             batch_size //= 2
-        output = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8)
+        output = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8, device=batch.device)
         if self.mode == 'elem' or self.mode == 'half':
             lam = self._mix_elem_collate(output, batch, half=half)
         elif self.mode == 'pair':

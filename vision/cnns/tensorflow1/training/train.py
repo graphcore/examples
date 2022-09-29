@@ -33,12 +33,10 @@ from functools import partial
 import numpy as np
 import sys
 import importlib
-from pathlib import Path
 import validation
 import log as logging
 from tensorflow.python import ipu
 from ipu_utils import get_config
-from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.ipu import loops, ipu_infeed_queue, ipu_outfeed_queue, ipu_compiler
 from tensorflow.python.ipu.utils import reset_ipu_seed
 from tensorflow.python.ipu.ops import pipelining_ops
@@ -59,9 +57,9 @@ from Datasets import augmentations
 import json
 import configurations
 from tensorflow.python.ipu.config import SchedulingAlgorithm
+from analyse_checkpoints import count_nans
 
 
-DATASET_CONSTANTS = dataset.DATASET_CONSTANTS
 MLPERF_EVAL_TARGET = 75.9
 
 
@@ -251,7 +249,8 @@ def get_optimizer(opts, lr):
                         grad_scale=opts["grad_scale"],
                         weight_decay=opts["weight_decay"] * opts['loss_scaling'],
                         weight_decay_filter_fn=filter_fn,
-                        var_list=var_list)
+                        var_list=var_list,
+                        gradient_mean_reduce_re=opts['gradient_mean_reduce_re'])
 
 
 def calculate_and_apply_gradients(loss, opts=None, learning_rate=None):
@@ -296,7 +295,7 @@ def basic_training_step(data_dict, model, opts, learning_rate):
 
     ipuside_preprocessing(data_dict, opts)
 
-    image, label = data_dict['image'], data_dict['label']
+    image = data_dict['image']
     logits = model(opts, training=True, image=image)
     loss, cross_entropy, accuracy = calculate_loss(logits, data_dict, opts)
 
@@ -330,18 +329,17 @@ def basic_pipelined_training_step(model, opts, learning_rate, infeed, outfeed, i
         x = pipeline_stage(x)
         if not final_stage:
             return [learning_rate, x, label] + inputs
-        else:
-            data_dict = {'label': label}
-            if opts['mixup_alpha'] > 0.:
-                data_dict.update({'label_mixed_up': inputs.pop(0), 'mixup_coefficients': inputs.pop(0)})
-            if opts['cutmix_lambda'] < 1.:
-                data_dict.update({'cutmix_label': inputs.pop(0), 'cutmix_lambda': inputs.pop(0)})
-            if opts['cutmix_lambda'] < 1. and opts['mixup_alpha'] > 0.:
-                data_dict.update({'cutmix_label2': inputs.pop(0), 'mixup_coefficients_2': inputs.pop(0)})
+        data_dict = {'label': label}
+        if opts['mixup_alpha'] > 0.:
+            data_dict.update({'label_mixed_up': inputs.pop(0), 'mixup_coefficients': inputs.pop(0)})
+        if opts['cutmix_lambda'] < 1.:
+            data_dict.update({'cutmix_label': inputs.pop(0), 'cutmix_lambda': inputs.pop(0)})
+        if opts['cutmix_lambda'] < 1. and opts['mixup_alpha'] > 0.:
+            data_dict.update({'cutmix_label2': inputs.pop(0), 'mixup_coefficients_2': inputs.pop(0)})
 
-            loss, cross_entropy, accuracy = calculate_loss(x, data_dict, opts)
-            # note: would ideally add in scaling in optimizer_function for learning_rate
-            return loss, cross_entropy, accuracy, learning_rate / opts["lr_scale"]
+        loss, cross_entropy, accuracy = calculate_loss(x, data_dict, opts)
+        # note: would ideally add in scaling in optimizer_function for learning_rate
+        return loss, cross_entropy, accuracy, learning_rate / opts["lr_scale"]
 
     model_stages = model(opts)
     computational_stages = [partial(first_stage, pipeline_stage=model_stages[0])]
@@ -391,8 +389,7 @@ def distributed_per_replica(function):
         if tf.distribute.has_strategy():
             strategy = tf.distribute.get_strategy()
             return strategy.experimental_run_v2(function, args=arguments)
-        else:
-            return function(*arguments)
+        return function(*arguments)
 
     return wrapper
 
@@ -414,24 +411,24 @@ def training_step_with_infeeds_and_outfeeds(train_iterator, outfeed, model, opts
                                 iterations_per_step=iterations_per_step)
 
         return ipu_compiler.compile(training_step, [])
-    else:
-        training_step = partial(basic_training_step,
-                                model=model.Model,
-                                opts=opts,
-                                learning_rate=learning_rate)
 
-        def training_step_loop(data_dict, outfeed=None):
-            loss, cross_ent, accuracy, lr_out, apply_grads = training_step(data_dict)
-            outfeed = outfeed.enqueue((loss, cross_ent, accuracy, lr_out))
-            return outfeed, apply_grads
+    training_step = partial(basic_training_step,
+                            model=model.Model,
+                            opts=opts,
+                            learning_rate=learning_rate)
 
-        def compiled_fn():
-            return loops.repeat(iterations_per_step,
-                                partial(training_step_loop, outfeed=outfeed),
-                                [],
-                                train_iterator)
+    def training_step_loop(data_dict, outfeed=None):
+        loss, cross_ent, accuracy, lr_out, apply_grads = training_step(data_dict)
+        outfeed = outfeed.enqueue((loss, cross_ent, accuracy, lr_out))
+        return outfeed, apply_grads
 
-        return ipu_compiler.compile(compiled_fn, [])
+    def compiled_fn():
+        return loops.repeat(iterations_per_step,
+                            partial(training_step_loop, outfeed=outfeed),
+                            [],
+                            train_iterator)
+
+    return ipu_compiler.compile(compiled_fn, [])
 
 
 def configure_distribution(opts, sess_config):
@@ -557,7 +554,8 @@ def training_graph(model, opts, iterations_per_step=1):
                              nanoo=not opts["saturate_on_overflow"],
                              scheduling_algorithm=scheduling_algorith_map[opts['scheduling_algorithm']],
                              max_reduce_many_buffer_size=opts["max_reduce_many_buffer_size"],
-                             compile_only=opts["compile_only"]
+                             compile_only=opts["compile_only"],
+                             only_use_slic_vmac_16=opts["only_use_slic_vmac_16"]
                              )
 
     if opts['use_popdist']:
@@ -581,14 +579,14 @@ def training_graph(model, opts, iterations_per_step=1):
     return GraphOps(train_graph, train_sess, train_init, ops, placeholders, train_iterator, outfeed, train_saver)
 
 
-def training_step(train, e, learning_rate):
+def training_step(train, _e, learning_rate):
     # Run Training
     start = time.time()
     _ = train.session.run(train.ops['train'], feed_dict={train.placeholders['learning_rate']: learning_rate})
     batch_time = (time.time() - start)
 
     if not os.environ.get('TF_POPLAR_FLAGS') or '--use_synthetic_data' not in os.environ.get('TF_POPLAR_FLAGS'):
-        loss, cross_ent, accuracy, lr_out = train.session.run(train.outfeed)
+        loss, _cross_ent, accuracy, lr_out = train.session.run(train.outfeed)
         loss = np.mean(loss)
         accuracy = 100.0 * np.mean(accuracy)
         lr = lr_out.flatten()[-1]
@@ -598,27 +596,47 @@ def training_step(train, e, learning_rate):
 
 
 def train_process(model, LR_Class, opts):
-    DATASET_CONSTANTS = dataset.reconfigure_dataset_constants(opts)
+    """Handles setting environment variables and logging based on options.
+
+    The compilation and execution is handled in `_train_process`.
+    """
+    logging.handle_profiling_options(opts)
+    logging.handle_gcl_options(opts)
+    logging.handle_cache_path(opts)
+    logging.handle_poplar_target_options(opts)
+    try:
+        _train_process(model, LR_Class, opts)
+    finally:
+        # Make sure that we process profiles even in the case of compilation failures
+        logging.process_profile(opts)
+
+
+def _train_process(model, LR_Class, opts):
+    dataset_constants = dataset.reconfigure_dataset_constants(opts)
 
     # --------------- OPTIONS --------------------
     epochs = opts['epochs']
-    iterations_per_epoch = DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES'] // opts['global_batch_size']
+
+    # Use the total images in the dataset (rather than the reduced) one
+    # to avoid impacting the number of iterations and the learning rate
+    # schedule.
+    iterations_per_epoch = dataset_constants[opts['dataset']]['NUM_IMAGES'] // opts['global_batch_size']
 
     logging.mlperf_logging(
         key="TRAIN_SAMPLES",
-        value=DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES'])
+        value=dataset_constants[opts['dataset']]['NUM_IMAGES'])
     logging.mlperf_logging(
         key="EVAL_SAMPLES",
-        value=DATASET_CONSTANTS[opts['dataset']]['NUM_VALIDATION_IMAGES'])
+        value=dataset_constants[opts['dataset']]['NUM_VALIDATION_IMAGES'])
 
     if not opts['iterations']:
-        iterations = DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']*epochs // opts['global_batch_size']
+        iterations = dataset_constants[opts['dataset']]['NUM_IMAGES'] * epochs // opts['global_batch_size']
         log_freq = iterations_per_epoch // opts['logs_per_epoch']
     else:
         iterations = opts['iterations']
         log_freq = opts['log_freq']
         if not opts['epochs']:
-            opts['epochs'] = 1.0 * iterations * opts['global_batch_size'] / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
+            opts['epochs'] = 1.0 * iterations * opts['global_batch_size'] / dataset_constants[opts['dataset']]['NUM_IMAGES']
 
     if log_freq < opts['device_iterations']:
         iterations_per_step = log_freq
@@ -626,7 +644,7 @@ def train_process(model, LR_Class, opts):
         iterations_per_step = log_freq // int(round(log_freq / opts['device_iterations']))
 
     iterations_per_valid = iterations_per_epoch
-    if type(opts['ckpts_per_epoch']) is int:
+    if isinstance(opts['ckpts_per_epoch'], int):
         iterations_per_ckpt = (iterations_per_epoch // opts['ckpts_per_epoch']
                                if opts['ckpts_per_epoch'] else np.inf)
     else:
@@ -636,14 +654,14 @@ def train_process(model, LR_Class, opts):
         iterations_per_ckpt = 1
     if not opts['ckpt_epochs_offset'] and \
         opts['epochs_per_ckpt'] and       \
-        type(opts['epochs']) is int and   \
-            type(opts['epochs_per_ckpt']) is int:
+        isinstance(opts['epochs'], int) and   \
+            isinstance(opts['epochs_per_ckpt'], int):
         ckpt_offset = opts['epochs'] % opts['epochs_per_ckpt']
     else:
         ckpt_offset = opts['ckpt_epochs_offset']
     ckpt_offset = ckpt_offset * iterations_per_epoch
 
-    if type(opts['syncs_per_epoch']) is int:
+    if isinstance(opts['syncs_per_epoch'], int):
         iterations_per_sync = (iterations_per_epoch // opts['syncs_per_epoch']
                                if opts['syncs_per_epoch'] else np.inf)
     else:
@@ -680,7 +698,7 @@ def train_process(model, LR_Class, opts):
 
     if opts.get('restoring'):
         if opts['distributed_worker_index'] == 0:
-            filename_pattern = re.compile('(.*ckpt-(\d+)).index')
+            filename_pattern = re.compile(r'(.*ckpt-(\d+)).index')
             patterns = map(lambda x: filename_pattern.match(x), os.listdir(opts['logs_path']))  # apply regex
             filtered = filter(lambda x: x is not None, patterns)  # remove patterns that don't match regex
             tuples = list(map(lambda x: (int(x.group(2)), os.path.join(opts['logs_path'], x.group(1))),
@@ -694,7 +712,7 @@ def train_process(model, LR_Class, opts):
 
             # restore list of saved checkpoints
             for j, f in filenames:
-                epoch = float(opts['global_batch_size'] * j) / DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
+                epoch = float(opts['global_batch_size'] * j) / dataset_constants[opts['dataset']]['NUM_IMAGES']
                 if j != 0:
                     ckpts.append((j, epoch, False, f))
 
@@ -723,11 +741,20 @@ def train_process(model, LR_Class, opts):
 
     if opts['ckpts_per_epoch'] and opts['distributed_worker_index'] == 0:
         filepath = train.saver.save(train.session, opts['checkpoint_path'], global_step=0)
+        if opts["analyse_nans"] and opts['wandb']:
+            nans = count_nans(filepath)
+            logging.log_to_wandb({"NaNs": nans}, commit=False)
         print("Saved initial checkpoint to {}".format(filepath))
 
     # single warm up step without weight update or training
     # Graph gets compiled in here
-    _, _, compilation_time, _ = training_step(train, 0, 0)
+    logging.add_to_wandb_summary(opts, "compilation_status", "in progress")
+    try:
+        _, _, compilation_time, _ = training_step(train, 0, 0)
+    except:
+        logging.add_to_wandb_summary(opts, "compilation_status", "failed")
+        raise
+    logging.add_to_wandb_summary(opts, "compilation_status", "compiled")
 
     logging.print_to_file_and_screen(
             "Compilation time: {}s.".format(compilation_time), opts)
@@ -736,13 +763,15 @@ def train_process(model, LR_Class, opts):
     if opts['compile_only']:
         print("Training graph successfully compiled")
         sys.exit(0)
+    if opts["profile"]:
+        iterations = iterations_per_step
 
     # ------------- TRAINING LOOP ----------------
 
     print_format = (
         "step: {step:6d}, iteration: {iteration:6d}, epoch: {epoch:6.2f}"
-        ", lr: {lr:6.4g}, loss: {loss_avg:6.3f}, top-1 accuracy: {train_acc_avg:6.3f}%"
-        ", img/sec: {img_per_sec:6.2f}, time: {it_time:8.6f}, total_time: {total_time:8.1f}")
+        ", lr: {lr:6.4g}, loss: {loss_avg:6.3f}, top-1 accuracy: {train_acc_avg:6.3f} %"
+        ", throughput: {img_per_sec:6.2f} samples/sec, time: {it_time:8.6f}, total_time: {total_time:8.1f}")
 
     step = 0
     logging.mlperf_logging(key="INIT_STOP", log_type="stop")
@@ -758,7 +787,7 @@ def train_process(model, LR_Class, opts):
     log_epoch = 1
     while i < iterations:
         epoch = float(opts['global_batch_size'] * (i + iterations_per_step)) /\
-            DATASET_CONSTANTS[opts['dataset']]['NUM_IMAGES']
+            dataset_constants[opts['dataset']]['NUM_IMAGES']
         if not opts['pipeline']:
             step += opts['gradient_accumulation_count']
         else:
@@ -851,6 +880,9 @@ def train_process(model, LR_Class, opts):
                 train.session, opts['checkpoint_path'],
                 global_step=(i + iterations_per_step),
                 write_meta_graph=False)
+            if opts["analyse_nans"] and opts['wandb']:
+                nans = count_nans(filepath)
+                logging.log_to_wandb({"NaNs": nans}, commit=False)
             ckpt_time = time.time() - ckpt_start
             logging.print_to_file_and_screen(
                 "Saved checkpoint to {} in {}s".format(filepath, ckpt_time), opts)
@@ -946,7 +978,7 @@ def train_process(model, LR_Class, opts):
     train.session.close()
 
 
-def add_main_arguments(parser, required=True):
+def add_main_arguments(parser):
     group = parser.add_argument_group('Main')
     group.add_argument('--model', type=str.lower, default='resnet', help="Choose model")
     group.add_argument('--lr-schedule', default='stepped',
@@ -992,6 +1024,13 @@ def add_training_arguments(parser):
                           help="Loss scaling factor")
     tr_group.add_argument('--label-smoothing', type=float, default=0,
                           help="Label smoothing factor (Default=0 => no smoothing)")
+
+    tr_group.add_argument('--gradient-mean-reduce-re',
+                          default=[],
+                          nargs='+',
+                          help='Gradients for variables matching these '
+                          'regexes will be reduced using a more stable '
+                          'mean reduction')
 
     tr_group.add_argument('--ckpts-per-epoch', type=int, default=1,
                           help="Checkpoints per epoch")
@@ -1046,6 +1085,9 @@ def add_training_arguments(parser):
 
     tr_group.add_argument('--stable-norm', action="store_true",
                           help="Use stable implementation of normalization functions")
+    tr_group.add_argument('--force-unstable-norm', action="store_true",
+                          help="Force the use of unstable implementation of normalization functions"
+                               " [EfficientNet only].")
 
     tr_group.add_argument('--weight-avg-N', nargs='+', type=int, default=None,
                           help="Number of checkpoints to average over")
@@ -1137,6 +1179,8 @@ def add_ipu_arguments(parser):
     group = parser.add_argument_group('IPU')
     group.add_argument('--precision', type=str, default="16.16", choices=["16.16", "16.32", "32.32"],
                        help="Precision of Ops(weights/activations/gradients) and Master data types: 16.16, 16.32, 32.32")
+    group.add_argument('--force-weight-to-fp16', nargs="+", default=[], help="Force specific Master weights to fp16")
+    group.add_argument('--force-weight-to-fp32',  nargs="+", default=[], help="Force specific Master weights to fp32")
     group.add_argument('--enable-half-partials', action="store_true", default=False,
                        help="Use half (float16) partials for both convolutions and matmuls. This option will be ignored "
                        "if enabled and precision is set to 32.32 as half partials are incompatible with float32 training.")
@@ -1165,7 +1209,7 @@ def add_ipu_arguments(parser):
     group.add_argument('--internal-exchange-optimisation-target', type=str, default=None,
                        choices=["balanced", "cycles", "memory"],
                        help="""The optimisation approach for internal exchanges.""")
-    group.add_argument('--compile-only', action="store_true", default=False,
+    group.add_argument('--compile-only', action="store_true",
                        help="Configure TensorFlow to only compile the graph. This will not acquire any IPUs and thus "
                        "facilitates profiling without using hardware resources.")
     group.add_argument('--on-demand', action="store_true", default=True,
@@ -1186,6 +1230,11 @@ def add_ipu_arguments(parser):
                        help="calculate batch latency.")
     group.add_argument('--scheduling-algorithm', type=str, default='choose-best',
                        choices=scheduling_algorith_map.keys())
+    group.add_argument('--only-use-slic-vmac-16', action='store_true',
+                       help="Make the Poplibs convolution planner use "
+                       "vertices specialised for depthwise convolutions.")
+    group.add_argument('--analyse-nans', action='store_true',
+                       help="Count the number of NaNs at each checkpoint and show the number in wandb.")
     return parser
 
 
@@ -1332,7 +1381,7 @@ if __name__ == '__main__':
             raise ValueError('Both --batch-size and --micro-batch-size arguments were given, '
                              'use --micro-batch-size, as --batch-size is deprecated and kept '
                              'for backwards compatibility.')
-        elif opts['batch_size']:
+        if opts['batch_size']:
             opts['micro_batch_size'] = opts['batch_size']
 
         amps = opts['available_memory_proportion']
@@ -1407,6 +1456,7 @@ if __name__ == '__main__':
             opts['image_size'] = 32
         if opts['wandb'] and opts['distributed_worker_index'] == 0:
             logging.initialise_wandb(opts)
+        logging.add_to_wandb_summary(opts, "compilation_status", "not started")
         logging.print_to_file_and_screen("Command line: " + opts['command'], opts)
         logging.print_to_file_and_screen(opts['summary_str'].format(**opts), opts)
         opts['summary_str'] = ""

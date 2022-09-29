@@ -38,7 +38,7 @@ for config in $CONFIG_PATH; do
                         --do-validation false  \
                         --do-test false \
                         --training.device $DEVICE 2>&1 | tee $log_file_name
-                    grep 'Mean throughput over real nodes (no padding) for training:' $log_file_name \
+                    grep 'Mean throughput:' $log_file_name \
                         | (echo $case_name; sed -e 's/^.*: //') | tee -a tput_benchmark.csv
                 fi
             done

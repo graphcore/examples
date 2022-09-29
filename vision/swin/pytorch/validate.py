@@ -17,11 +17,10 @@ import numpy as np
 import torch
 from config import get_config
 from models.build import build_pipeline as build_model
-
+import ctypes
 from utils import AverageMeter
 
 import poptorch
-import pdb
 from dataset.build_ipu import build_dataloader_val, build_loader
 from timm.utils import accuracy, AverageMeter
 from timm.models import load_checkpoint
@@ -40,7 +39,7 @@ def set_opts():
         poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
     opts.enableExecutableCaching('./cache')
-    opts.anchorMode(poptorch.AnchorMode.All)
+    opts.outputMode(poptorch.OutputMode.All)
     opts.Precision.enableStochasticRounding(False)
     return opts
 
@@ -56,7 +55,23 @@ def parse_option():
         metavar="FILE",
         help='path to config file',
     )
-
+    parser.add_argument(
+        '--data-path',
+        type=str,
+        required=True,
+        metavar="FILE",
+        help='path to dataset')
+    parser.add_argument(
+        '--output',
+        type=str,
+        required=True,
+        metavar="FILE",
+        help='path to save output files')
+    parser.add_argument(
+        '--pretrained-model',
+        type=str,
+        default=None,
+        help='path to init checkpoint when fine tune models')
     parser.add_argument(
         '--batch-size',
         type=int,
@@ -106,8 +121,8 @@ def validate(data_loader, model):
         # compute output
         output = model(images)
         # measure accuracy and record loss
-        loss = criterion(output, target)
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        loss = criterion(output.type(torch.float32), target)
+        acc1, acc5 = accuracy(output.type(torch.float32), target, topk=(1, 5))
         loss_meter.update(loss.item(), target.size(0))
         acc1_meter.update(acc1.item(), target.size(0))
         acc5_meter.update(acc5.item(), target.size(0))
@@ -137,11 +152,12 @@ def main():
     print(args.checkpoint)
     valid_opts = poptorch.Options()
     valid_opts.deviceIterations(256)
-    valid_opts.anchorMode(poptorch.AnchorMode.All)
+    valid_opts.outputMode(poptorch.OutputMode.All)
     model = poptorch.inferenceModel(model, valid_opts)
     load_checkpoint(model, args.checkpoint, strict=False)
     validate(data_loader_val, model)
 
 
 if __name__ == '__main__':
+    ctypes.cdll.LoadLibrary('./custom_ops.so')
     main()

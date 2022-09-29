@@ -14,7 +14,7 @@
 
 import argparse
 import time
-from typing import Iterable, List, Optional
+from typing import Iterable
 
 import libpvti as pvti
 import tensorflow as tf
@@ -51,6 +51,8 @@ from ipu_utils.dataset import (
 )
 from tf2 import efficientdet_keras
 
+import popdist
+
 channel = pvti.createTraceChannel("StepTraceChannel")
 
 
@@ -82,6 +84,8 @@ def main(args: argparse.Namespace):
     config = create_config(args)
 
     create_app_json(args, config)
+
+    popdist.init()
 
     ipu_configure(args)
     in_shape = (args.micro_batch_size, ) + \

@@ -62,9 +62,10 @@ class TrainingLoggingCallback(LoggingCallback):
 
     def on_train_end(self, logs=None):
         if logs is not None:
-            logging.info(f"Mean throughput for training: {logs.get('mean_throughput', 'nan')},"
-                         f" STD throughput for training: {logs.get('std_throughput', 'nan')},"
-                         f" Mean throughput over real nodes (no padding) for training: {logs.get('mean_real_throughput', 'nan')}")
+            logging.info(f"Mean throughput for training: {logs.get('mean_throughput', 'nan')} samples/sec,"
+                         f" STD throughput for training: {logs.get('std_throughput', 'nan')} samples/sec,"
+                         f" Mean throughput: {logs.get('mean_real_throughput', 'nan')} samples/sec over real nodes (no padding) for training"
+                         f" loss: {logs.get('loss', 'nan')}")
 
 
 class ValidationLoggingCallback(LoggingCallback):

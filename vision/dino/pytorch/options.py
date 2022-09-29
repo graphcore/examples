@@ -16,6 +16,7 @@ import torch
 import popart
 import poptorch
 import popdist
+from core.utils import Precision
 
 
 def alignment_options():
@@ -29,7 +30,7 @@ def alignment_options():
     return opts
 
 
-def get_options(ga, pipeline=None, half=False, replic=1):
+def get_options(ga, pipeline=None, precision=Precision.FP32, replica=1):
     opts = poptorch.Options()
     ipu_list = [0] if pipeline is None else pipeline
     mem_prop = {f'IPU{i}': 0.15 for i, _ in enumerate(ipu_list)}
@@ -44,16 +45,11 @@ def get_options(ga, pipeline=None, half=False, replic=1):
         poptorch.PipelinedExecution(
             poptorch.AutoStage.SameAsIpu))
     opts.setAvailableMemoryProportion(mem_prop)
-    if half:
-        opts.Precision.setPartialsType(torch.half)
+    if precision is not Precision.FP32:
         opts.Precision.enableStochasticRounding(True)
-    if replic > 1:
-        opts.broadcastBuffers(False)
-        # rts
-        opts.TensorLocations.setOptimizerLocation(
-            poptorch.TensorLocationSettings().useReplicatedTensorSharding(
-                True).minElementsForReplicatedTensorSharding(len(pipeline))
-        )
+        if precision is Precision.FP16:
+            opts.Precision.setPartialsType(torch.half)
+
     return opts
 
 
@@ -62,18 +58,18 @@ def train_options(
         ipu_per_replica=8,
         pipeline=None,
         ga=16,
-        replic=1,
+        replica=1,
         di=1,
         synthetic_data=False,
-        half=False,
+        precision=Precision.FP32,
+        use_rts=True,
+        output_mode='final',
         cachedir='./cachedir'):
     if use_popdist:
         opts = popdist.poptorch.Options(ipu_per_replica)
     else:
         opts = poptorch.Options()
-        opts.replicationFactor(replic)
-
-    opts.randomSeed(42)
+        opts.replicationFactor(replica)
     opts.enableExecutableCaching(cachedir)
     ipu_list = [0] if pipeline is None else pipeline
     mem_prop = {f'IPU{i}': 0.15 for i, _ in enumerate(ipu_list)}
@@ -86,17 +82,21 @@ def train_options(
         poptorch.PipelinedExecution(
             poptorch.AutoStage.SameAsIpu))
     opts.setAvailableMemoryProportion(mem_prop)
-    opts.outputMode(poptorch.OutputMode.All)
-    if half:
-        opts.Precision.setPartialsType(torch.half)
+    if output_mode == 'all':
+        opts.outputMode(poptorch.OutputMode.All)
+    opts.randomSeed(0)
+    opts.Precision.enableFloatingPointExceptions(True)
+    if precision is not Precision.FP32:
         opts.Precision.enableStochasticRounding(True)
-    if replic > 1:
+        if precision is Precision.FP16:
+            opts.Precision.setPartialsType(torch.half)
+
+    if use_rts:
         # rts
         opts.TensorLocations.setOptimizerLocation(
             poptorch.TensorLocationSettings().useReplicatedTensorSharding(
                 True).minElementsForReplicatedTensorSharding(len(pipeline))
         )
-
     # Enable synthetic random data generated on device (so with no I/O)
     if synthetic_data:
         opts.enableSyntheticData(int(popart.SyntheticDataMode.RandomNormal))

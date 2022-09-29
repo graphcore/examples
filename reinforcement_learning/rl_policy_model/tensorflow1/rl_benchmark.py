@@ -209,7 +209,8 @@ def train(replication_factor, micro_batch_size, batch_per_step, num_iter, time_s
         if iters > skip_iterations:
             total_time += (t1 - t0)
             total_samples += global_batch_size * batch_per_step
-            print("Average %.1f items/sec" % (total_samples / total_time))
+            print("throughput: %.1f samples/sec" % (total_samples / total_time))
+            print("latency avg: %.1f ms" % (16000 * total_time / total_samples))
 
 
 if __name__ == '__main__':

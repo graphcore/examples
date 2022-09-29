@@ -27,9 +27,11 @@
 #     SOFTWARE
 # Written by Ze Liu
 # --------------------------------------------------------
+import popdist
 import torch
 from torch import optim as optim
 from poptorch.optim import AdamW, SGD
+import horovod.torch as hvd
 
 
 def build_optimizer(config, model):
@@ -56,17 +58,22 @@ def build_optimizer(config, model):
                         use_combined_accum=True)
 
     elif opt_lower == 'adamw':
+        if config.PRECISION[0] == 'float':
+            accum_type = torch.float32
+        else:
+            accum_type = torch.float16
         optimizer = AdamW(parameters,
                           lr=config.TRAIN.BASE_LR,
                           betas=config.TRAIN.OPTIMIZER.BETAS,
                           eps=config.TRAIN.OPTIMIZER.EPS,
                           weight_decay=config.TRAIN.WEIGHT_DECAY,
                           loss_scaling=config.TRAIN.LOSS_SCALING,
-                          accum_type=torch.float32,
-                          first_order_momentum_accum_type=torch.float32,
+                          accum_type=accum_type,
+                          first_order_momentum_accum_type=torch.float16,
                           second_order_momentum_accum_type=torch.float32,
                           max_grad_norm=config.TRAIN.CLIP_GRAD)
-
+    if popdist.isPopdistEnvSet():
+        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
     return optimizer
 
 

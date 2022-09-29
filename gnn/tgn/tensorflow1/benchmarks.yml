@@ -1,12 +1,14 @@
 ---
-common_options: &common_options
+
+
+tf1_tgn_train_real_1ipu_conv:
   data:
     throughput:
-      regexp: 'throughput: *(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec'
       skip: 2
     loss:
       reduction_type: 'final'
-      regexp: 'loss: *(.*?),'
+      regexp: 'loss: *(\d*\.\d*)'
     compile_time:
       reduction_type: 'final'
       regexp: 'compile_time: *(.*?),'
@@ -14,25 +16,18 @@ common_options: &common_options
       reduction_type: 'final'
       regexp: 'average_precision: *(.*?),'
   output:
-    - [Samples/sec, 'throughput']
     - [loss, 'loss']
     - [sec, 'compile_time']
     - [accuracy, 'accuracy']
-
-tf1_tgn_train_real_1ipu:
-  <<: *common_options
-  description: TGN - Training mode, to convergence
-  cmd: >-
-    python run_tgn.py
-        --mode train
-        --data $DATASETS_DIR/JODIE
-        --validate-every 25
-
-tf1_tgn_train_real_1ipu_conv:
-  <<: *common_options
+    - [samples/sec, 'throughput']
   description: TGN - Training mode, to convergence, validating every epoch for
     measuring average precision frequently enough to generate training curves
   cmd: >-
     python run_tgn.py
         --mode train
         --data $DATASETS_DIR/JODIE
+        --batch-size 40
+        --nodes-size 500
+        --edges-size 1200
+        --validate-every 1
+        --n-epoch 25

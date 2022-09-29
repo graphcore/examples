@@ -1,5 +1,4 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
-from attr import dataclass
 from dataclasses import dataclass
 import tensorflow as tf
 
@@ -11,3 +10,7 @@ class ApplicationDataset:
     size: int
     image_shape: tuple
     num_classes: int
+    padded_size: int = -1
+
+    def evaluate_size(self, micro_batch_size) -> int:
+        return self.pipeline.reduce(0, lambda x, _: x + 1) * micro_batch_size

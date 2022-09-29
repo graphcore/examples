@@ -36,7 +36,7 @@ class TestCheckpointCallbacks(unittest.TestCase):
         cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
 
-        callback = CheckpointCallback(ckpt_period=num_steps, checkpoint_dir=checkpoint_dir)
+        callback = CheckpointCallback(ckpt_period=num_steps, ckpt_phase=0, checkpoint_dir=checkpoint_dir)
 
         weight_value = 160.0
 

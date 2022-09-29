@@ -58,7 +58,7 @@ class Logger:
         elif profile_path is not None:
             cls.logdirname = profile_path
         else:
-            basename = f'{args.model}_bs{args.batch_size}_{args.precision}fp_r{args.replicas}_di{args.device_iterations}'
+            basename = f'{args.model}_bs{args.micro_batch_size}_{args.precision}fp_r{args.replicas}_di{args.device_iterations}'
             while True:
                 logdirname = os.path.join("logs", basename + "_" + get_random_str())
                 if not os.path.exists(logdirname):

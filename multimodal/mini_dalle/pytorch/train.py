@@ -166,6 +166,7 @@ def main(args):
     if args.wandb and (not args.use_popdist or args.popdist_rank == 0):
         run = wandb.init(
             project=args.wandb_project_name,
+            name=args.wandb_run_name,
             entity=None,
             resume=False,
             config=model_config,
@@ -236,8 +237,8 @@ def main(args):
                 msg = ("Epoch: {:.2f}/{} "
                        "Step: {}/{} "
                        "Lr: {:.6f} "
-                       "Loss: {:.3f} "
-                       "Throughput: {:.2f} samples/sec"
+                       "loss: {:.3f} "
+                       "throughput: {:.2f} samples/sec"
                        ).format(epoch, args.epochs,
                                 current_step, training_steps,
                                 opt.param_groups[0]['lr'],
@@ -276,7 +277,7 @@ def main(args):
         num_samples = samples_per_step * num_instances * (training_steps-1)
         overall_throughput = num_samples / total_compute_time
         log.logger.info(f"Training time: {duration_run:.3f} secs")
-        log.logger.info("Throughput: {:5f} samples/sec.".format(overall_throughput))
+        log.logger.info("throughput: {:5f} samples/sec.".format(overall_throughput))
         log.logger.info("---------------------------------------")
 
 if __name__ == "__main__":

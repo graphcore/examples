@@ -21,7 +21,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.framework import dtypes
 
 
-class SGD(tf.train.GradientDescentOptimizer):
+class SGD(tf.compat.v1.train.GradientDescentOptimizer):
     """
     Refactoring of the SGD optimizer with distinct functions for the weight update
     logic and variable assignment.
@@ -35,7 +35,7 @@ class SGD(tf.train.GradientDescentOptimizer):
         return var.assign(self._apply_weight_update(grad, var))
 
 
-class Momentum(tf.train.MomentumOptimizer):
+class Momentum(tf.compat.v1.train.MomentumOptimizer):
     """
     Refactoring of the Momentum optimizer with distinct functions for the weight update
     logic and variable assignment.
@@ -52,7 +52,7 @@ class Momentum(tf.train.MomentumOptimizer):
         return var.assign(self._apply_weight_update(grad, var))
 
 
-class RMSProp(tf.train.RMSPropOptimizer):
+class RMSProp(tf.compat.v1.train.RMSPropOptimizer):
     """
     Refactoring of the RMSProp optimizer with distinct functions for the weight update
     logic and variable assignment.

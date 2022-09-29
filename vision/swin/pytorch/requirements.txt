@@ -1,10 +1,14 @@
---find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+--find-links https://download.pytorch.org/whl/torch_stable.html
 torchvision==0.11.1+cpu
 timm==0.4.5
 tlt==0.1.0
 protobuf==3.19.4
-wandb==0.12.8
+wandb==0.12.1
 transformers==4.18.0
 yacs==0.1.8
 pyyaml==5.4.1
-git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
+horovod==0.24.3
+simplejpeg==1.6.4
+pytest==6.2.5
+pytest-pythonpath==0.7.4
+git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils

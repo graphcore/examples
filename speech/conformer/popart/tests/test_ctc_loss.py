@@ -16,17 +16,17 @@ def torch_ctc_loss(input_data, target_data, input_lengths, target_lengths, opts)
     if opts.precision == "FLOAT16":
         input_data = input_data.astype(np.float32)
 
-    # PyTorch CTCLoss expect inputs with shape (seq_length, batch_size, num_symbols)
+    # PyTorch CTCLoss expect inputs with shape (seq_length, global_batch_size, num_symbols)
     input_data = np.transpose(input_data, (1, 0, 2)).reshape(
-        (opts.input_size, opts.batch_size, opts.num_classes)
+        (opts.input_size, opts.global_batch_size, opts.num_classes)
     )
 
     # PyTorch doesn't support uint32
     target_data = target_data.astype(np.int32).reshape(
-        (opts.batch_size, opts.target_size)
+        (opts.global_batch_size, opts.target_size)
     )
-    _, batch_size, _ = input_data.shape
-    assert target_data.shape[0] == batch_size
+    _, global_batch_size, _ = input_data.shape
+    assert target_data.shape[0] == global_batch_size
 
     ctc_loss = torch.nn.CTCLoss(blank=0, reduction=opts.reduction_type)
 
@@ -53,18 +53,18 @@ def build_popart_graph(opts):
 
     builder = popart.Builder()
     inputs_info = popart.TensorInfo(
-        opts.precision, [opts.batch_size, opts.input_size, opts.num_classes]
+        opts.precision, [opts.global_batch_size, opts.input_size, opts.num_classes]
     )
     inputs = builder.addInputTensor(inputs_info, "log_probs")
     log_probs = builder.aiOnnx.logsoftmax([inputs], axis=2)
 
-    targets_info = popart.TensorInfo("UINT32", [opts.batch_size, opts.target_size])
+    targets_info = popart.TensorInfo("UINT32", [opts.global_batch_size, opts.target_size])
     targets = builder.addInputTensor(targets_info, "targets")
 
-    input_lengths_info = popart.TensorInfo("UINT32", [opts.batch_size])
+    input_lengths_info = popart.TensorInfo("UINT32", [opts.global_batch_size])
     input_lengths = builder.addInputTensor(input_lengths_info, "input_length")
 
-    target_lengths_info = popart.TensorInfo("UINT32", [opts.batch_size])
+    target_lengths_info = popart.TensorInfo("UINT32", [opts.global_batch_size])
     target_lengths = builder.addInputTensor(target_lengths_info, "target_length")
 
     if opts.reduction_type == "mean":
@@ -204,7 +204,7 @@ def run_single_case(args):
 # Note that we do not test NoReduction at BS > 1 as Popart requires scalar losses
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize(
-    "input_size, target_size, num_classes, batch_size, reduction_type, ipu",
+    "input_size, target_size, num_classes, global_batch_size, reduction_type, ipu",
     [
         (4, 2, 5, 1, "mean", False),
         (4, 2, 5, 1, "mean", True),
@@ -222,10 +222,10 @@ def run_single_case(args):
         (4, 2, 5, 3, "sum", True),
     ],
 )
-def test_ctc_loss_batch_size(custom_ops, input_size, target_size, num_classes, batch_size, reduction_type, ipu):
+def test_ctc_loss_batch_size(custom_ops, input_size, target_size, num_classes, global_batch_size, reduction_type, ipu):
     """ test across different batch-sizes """
     args = test_utils.args_from_params(
-        input_size, target_size, num_classes, batch_size, reduction_type
+        input_size, target_size, num_classes, global_batch_size, reduction_type
     )
     grad_err, loss_err = run_single_case(args)
     assert grad_err < 1e-4
@@ -244,7 +244,7 @@ def test_ctc_loss_precision(custom_ops, reduction_type, precision, ipu):
         "input_size": 6,
         "target_size": 3,
         "num_classes": 5,
-        "batch_size": 3,
+        "global_batch_size": 3,
         "reduction_type": reduction_type,
         "precision": precision,
         "ipu": ipu,
@@ -258,14 +258,14 @@ def test_ctc_loss_precision(custom_ops, reduction_type, precision, ipu):
 
 @pytest.mark.ipus(1)
 @pytest.mark.parametrize(
-    "batch_size, precision, ipu",
+    "global_batch_size, precision, ipu",
     [(1, "FLOAT16", False), (1, "FLOAT", False), (2, "FLOAT16", False), (2, "FLOAT", False),
      (4, "FLOAT16", False), (4, "FLOAT", False),
      (1, "FLOAT16", True), (1, "FLOAT", True), (2, "FLOAT16", True), (2, "FLOAT", True),
      (4, "FLOAT16", True), (4, "FLOAT", True)
      ],
 )
-def test_ctc_loss_asr_dim(custom_ops, batch_size, precision, ipu):
+def test_ctc_loss_asr_dim(custom_ops, global_batch_size, precision, ipu):
     """ test for typical ASR model dimensions"""
     num_classes = 36
     input_size = 375
@@ -273,7 +273,7 @@ def test_ctc_loss_asr_dim(custom_ops, batch_size, precision, ipu):
     reduction_type = "mean"
 
     args = test_utils.args_from_params(
-        input_size, target_size, num_classes, batch_size, reduction_type, precision, ipu
+        input_size, target_size, num_classes, global_batch_size, reduction_type, precision, ipu
     )
     grad_err, loss_err = run_single_case(args)
     assert grad_err < 1e-4
@@ -292,7 +292,7 @@ def test_ctc_loss_variable_tgt(custom_ops, reduction_type, variable_input, ipu):
         "input_size": 20,
         "target_size": 10,
         "num_classes": 5,
-        "batch_size": 3,
+        "global_batch_size": 3,
         "reduction_type": reduction_type,
         "variable_input": variable_input,
         "ipu": ipu,

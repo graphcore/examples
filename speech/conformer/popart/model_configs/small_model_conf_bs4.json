@@ -21,7 +21,7 @@
   "beta1": 0.9,
   "beta2": 0.98,
   "adam_eps": 1e-6,
-  "batch_size": 4,
+  "global_batch_size": 4,
   "replication_factor": 1,
   "device_iterations": 32
 }

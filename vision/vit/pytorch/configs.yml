@@ -270,6 +270,8 @@ b16_in1k_pretrain_lamb: &b16_in1k_pretrain_lamb
   accum_type: "fp32"
   first_order_type: "fp32"
   second_order_type: "fp32"
+  max_norm: 65535
+  max_norm_bias: 0
 
   # Dataset
   dataset: imagenet1k

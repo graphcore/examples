@@ -24,14 +24,14 @@ python validate_dataset.py --imagenet-data-path <path>
 
 Example:
 ```
-python host_benchmark.py --data imagenet --batch-size 1024
+python host_benchmark.py --data imagenet --mirco-batch-size 1024
 ```
 
 Options:
 
 `-h`                            Show usage information
 
-`--batch-size`                  Batch size of the dataloader
+`--micro-batch-size`            Batch size of the dataloader
 
 `--data`                        Choose the dataset between: `real`, `generated`, `cifar10` or `imagenet`
 
@@ -43,5 +43,5 @@ Options:
 
 It is possible to run it in distributed settings too:
 ```
-poprun --offline-mode=yes --num-instances 8 --num-replicas 8 python host_benchmark.py --data imagenet --batch-size 1024
+poprun --offline-mode=yes --num-instances 8 --num-replicas 8 python host_benchmark.py --data imagenet --mirco-batch-size 1024
 ```

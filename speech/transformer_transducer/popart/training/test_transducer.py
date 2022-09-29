@@ -170,7 +170,7 @@ def test_transformer_transducer_train():
             print(f"stderr={e.stderr.decode('utf-8', errors='ignore')}")
             raise
 
-        strings_to_match = ["Training graph preparation complete", "Throughput"]
+        strings_to_match = ["Training graph preparation complete", "throughput:"]
         regexes = [re.compile(s) for s in strings_to_match]
         for i, r in enumerate(regexes):
             match = r.search(output)

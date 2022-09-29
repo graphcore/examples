@@ -2,43 +2,46 @@
 common_options: &common_options
   data:
     throughput:
-      regexp: 'Throughput:\s*(.*?),'
+      regexp: 'throughput: *(.*?) samples\/sec,'
       skip: 3
-    current_rnnt_loss:
+    loss:
       reduction_type: "final"
-      regexp: 'Current RNNT loss:\s*([\d\.]+|nan),'
+      regexp: 'current loss: *(\d*\.\d*)'
     average_rnnt_loss:
       reduction_type: "final"
-      regexp: 'Average RNNT loss:\s*([\d\.]+|nan),'
+      regexp: 'loss (average RNNT): *(\d*\.\d*)'
   output:
-    - [speech_queries/s, "throughput"]
-    - [rnnt_loss, "current_rnnt_loss"]
+    - [samples/sec, "throughput"]
+    - [loss, "loss"]
     - [average_rnnt_loss, "average_rnnt_loss"]
 
 popart_transformer_transducer_train_gen_pod16:
-  <<: *common_options
   description:
     Train Transformer Transducer on 16IPUs using host generated
     data for a performance test
-  cmd: poprun
-    --vv
-    --numa-aware=yes
-    --vipu-server-timeout 600
-    --num-instances=4
-    --num-replicas=16
-    --ipus-per-replica=1
-    --mpi-global-args="
-    --tag-output --allow-run-as-root
-    --output-filename poprun_output"
+  data:
+    throughput:
+      regexp: 'throughput: *(.*?) samples\/sec,'
+      skip: 3
+  output:
+    - [samples/sec, "throughput"]
+  cmd: >-
+    poprun
+      --vv
+      --vipu-server-timeout 600
+      --num-instances=4
+      --num-replicas=16
+      --ipus-per-replica=1
+      --mpi-global-args="--output-filename poprun_output"
     python3 transducer_train.py
-    --model-conf-file configs/transducer-1023sp.yaml
-    --model-dir checkpoint
-    --data-dir $DATASETS_DIR/LibriSpeech/
-    --generated-data
-    --enable-half-partials
-    --enable-lstm-half-partials
-    --enable-stochastic-rounding
-    --num-steps 10
+      --model-conf-file configs/transducer-1023sp.yaml
+      --model-dir checkpoint
+      --data-dir $DATASETS_DIR/LibriSpeech/
+      --generated-data
+      --enable-half-partials
+      --enable-lstm-half-partials
+      --enable-stochastic-rounding
+      --num-steps 10
 
 popart_transformer_transducer_train_real_pod16_conv:
   <<: *common_options
@@ -47,14 +50,11 @@ popart_transformer_transducer_train_real_pod16_conv:
     to convergence
   cmd: poprun
     --vv
-    --numa-aware=yes
     --vipu-server-timeout 600
     --num-instances=4
     --num-replicas=16
     --ipus-per-replica=1
-    --mpi-global-args="
-    --tag-output --allow-run-as-root
-    --output-filename poprun_output"
+    --mpi-global-args="--output-filename poprun_output"
     python3 transducer_train.py
     --model-conf-file configs/transducer-1023sp.yaml
     --model-dir checkpoint

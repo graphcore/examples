@@ -2,9 +2,56 @@
 
 import argparse
 import logging
+import tensorflow as tf
 
-from data.dataset_factory import DatasetFactory
-from data.data_generator import DataGenerator
+from datasets.dataset_factory import DatasetFactory
+from batch_config import BatchConfig
+
+def main(dataset, dataset_path):
+    
+    batch_config = BatchConfig(
+        micro_batch_size=1,
+        num_replicas=1,
+        gradient_accumulation_count=1)
+
+    app_train_dataset, _, _ = DatasetFactory.get_dataset(
+        dataset_name=dataset,
+        dataset_path=dataset_path,
+        split='train',
+        img_datatype=tf.float32,
+        batch_config=batch_config,
+        accelerator_side_preprocess=False,
+        repeat=False
+    )
+
+    evaluated_train_size = app_train_dataset.evaluate_size(batch_config.micro_batch_size)
+    train_split_match = evaluated_train_size == app_train_dataset.size
+
+    app_test_dataset, _, _ = DatasetFactory.get_dataset(
+        dataset_name=dataset,
+        dataset_path=dataset_path,
+        split='test',
+        img_datatype=tf.float32,
+        batch_config=batch_config,
+        accelerator_side_preprocess=False,
+        repeat=False
+    )
+
+    evaluated_test_size = app_test_dataset.evaluate_size(batch_config.micro_batch_size)
+    test_split_match = evaluated_test_size == app_test_dataset.size
+
+    if not train_split_match:
+        logging.warning(
+            f'Train split of "{dataset}" provided at "{dataset_path}" does not match expected size. '
+            f'Expected {app_train_dataset.size}, found {evaluated_train_size}')
+
+    if not test_split_match:
+        logging.warning(
+            f'Test split of dataset "{dataset}" provided at "{dataset_path}" does not match expected size. '
+            f'Expected {app_test_dataset.size}, found {evaluated_test_size}')
+
+    if train_split_match and test_split_match:
+        logging.info(f'Dataset "{dataset}" provided at "{dataset_path}" matches the expected size.')
 
 
 if __name__ == '__main__':
@@ -23,29 +70,4 @@ if __name__ == '__main__':
     parser = add_arguments(parser)
     args = parser.parse_args()
     logging.info(f'args = {args}')
-
-    dataset_name = args.dataset
-    dataset_path = args.dataset_path
-
-    ds_train, _, ds_size, _, _ = DatasetFactory.get_dataset(
-        dataset_name=dataset_name, dataset_path=dataset_path, split='train', img_datatype=float,
-        micro_batch_size=1, accelerator_side_preprocess=False, apply_preprocessing=False)
-
-    train_split_match = DataGenerator.evaluate_size_dataset(ds_train) == ds_size
-
-    ds_valid, _, ds_valid_size, _, _ = DatasetFactory.get_dataset(
-        dataset_name=dataset_name, dataset_path=dataset_path, split='test', img_datatype=float,
-        micro_batch_size=1, accelerator_side_preprocess=False, apply_preprocessing=False)
-
-    test_split_match = DataGenerator.evaluate_size_dataset(ds_valid) == ds_valid_size
-
-    if not train_split_match:
-        logging.warning(
-            f'Train split of "{dataset_name}" provided at "{dataset_path}" does not match the size DatasetFactory returned.')
-
-    if not test_split_match:
-        logging.warning(
-            f'Test split of dataset "{dataset_name}" provided at "{dataset_path}" does not match the size DatasetFactory returned.')
-
-    if train_split_match and test_split_match:
-        logging.info(f'Dataset "{dataset_name}" provided at "{dataset_path}" matches the size DatasetFactory returned.')
+    main(**vars(args))

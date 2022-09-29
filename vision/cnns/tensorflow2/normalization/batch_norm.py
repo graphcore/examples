@@ -6,7 +6,8 @@ from tensorflow.python.framework import tensor_shape
 from keras.engine.input_spec import InputSpec
 from tensorflow.python.ops import nn, math_ops
 from typing import Any, Optional, Mapping
-
+import warnings
+import numpy as np
 
 class BatchNormIPU(tf.keras.layers.Layer):
 
@@ -140,9 +141,9 @@ class BatchNormIPU(tf.keras.layers.Layer):
         outputs = tf.cast(outputs, tf.keras.mixed_precision.global_policy().compute_dtype)
 
         @tf.custom_gradient
-        def moving_avg_updates(x, moving_m, moving_v):
+        def moving_avg_updates(x, moving_mean, moving_variance):
             def bw(dx):
-                return dx, moving_m - mean, moving_v - variance
+                return dx, mean, variance
             return x, bw
 
         return moving_avg_updates(outputs, self.moving_mean, self.moving_variance)
@@ -159,13 +160,12 @@ class BatchNormIPU(tf.keras.layers.Layer):
         return config
 
 
-def add_bn_moving_vars_updates_to_optimizer(optimizer_class, bn_momentum=0.99):
+def add_bn_moving_vars_updates_to_optimizer(optimizer_class, model, batch_config, bn_momentum=0.99):
 
     class BatchNormMovingAveragesUpdater(optimizer_class):
 
         def __init__(self, *args, **kwargs,):
             super(BatchNormMovingAveragesUpdater, self).__init__(*args, **kwargs)
-            self._update_step = 1 - bn_momentum
 
         def _create_slots(self, var_list):
             non_moving_vars = [var for var in var_list if 'moving_' not in var.name]
@@ -173,13 +173,127 @@ def add_bn_moving_vars_updates_to_optimizer(optimizer_class, bn_momentum=0.99):
             return super()._create_slots(non_moving_vars)
 
         def _resource_apply_dense(self, grad, var, apply_state):
+            bn_m = tf.cast(bn_momentum, grad.dtype)
             if var.name in self.non_moving_var_names:
                 return super()._resource_apply_dense(grad, var, apply_state)
             else:
-                return tf.raw_ops.ResourceApplyGradientDescent(
-                    var=var.handle,
-                    alpha=math_ops.cast(self._update_step, grad.dtype.base_dtype),
-                    delta=grad,
+                return var.assign(
+                    value=var * bn_m + grad*(1-bn_m),
                     use_locking=self._use_locking)
+
+        def _transform_gradients(self, grads_and_vars):
+
+            # filter moving BN variables
+            bn_moving_grads_and_vars = []
+            non_moving_grads_and_vars = []
+            for grad, var in grads_and_vars:
+                if 'moving_' in var.name:
+                    bn_moving_grads_and_vars.append((grad, var))
+                else:
+                    non_moving_grads_and_vars.append((grad, var))
+
+            # only transform non moving grads
+            non_moving_grads_and_vars = super()._transform_gradients(non_moving_grads_and_vars)
+
+            return non_moving_grads_and_vars + bn_moving_grads_and_vars
+
+        def _aggregate_gradients(self, grads_and_vars):
+
+            moving_variance_grads_and_vars = []
+            moving_mean_grads_and_vars = []
+            remaining_grads_and_vars = []
+
+            # filter moving BN mean and variance variables
+            for grad, var in grads_and_vars:
+                if 'moving_variance' in var.name:
+                    moving_variance_grads_and_vars.append((grad, var))
+                elif 'moving_mean' in var.name:
+                    moving_mean_grads_and_vars.append((grad, var))
+                else:
+                    remaining_grads_and_vars.append((grad, var))
+
+            assert len(moving_mean_grads_and_vars) == len(moving_mean_grads_and_vars), \
+                'There should be an equal number of mean and variance variables to update'
+
+            if len(moving_mean_grads_and_vars) > 0:
+                agg_mov_mean_grad_and_vars = self.__aggregate_bn_moving_means(
+                    moving_mean_grads_and_vars)
+
+                agg_mov_variance_grads_and_vars = self.__agregate_bn_moving_variances(
+                    moving_mean_grads_and_vars,
+                    agg_mov_mean_grad_and_vars,
+                    moving_variance_grads_and_vars)
+            else:
+                agg_mov_mean_grad_and_vars = []
+                agg_mov_variance_grads_and_vars = []
+
+            # normal aggregation applied to remaining gradients
+            remaining_vars_aggregation = super()._aggregate_gradients(remaining_grads_and_vars)
+
+            return agg_mov_mean_grad_and_vars + agg_mov_variance_grads_and_vars + remaining_vars_aggregation
+
+        def __aggregate_bn_moving_means(self, mov_mean_grad_and_vars):
+            grads, vars = zip(*mov_mean_grad_and_vars)
+            grads = tf.distribute.get_replica_context().all_reduce(
+                tf.distribute.ReduceOp.MEAN, grads)
+            return list(zip(grads, vars))
+
+        def __agregate_bn_moving_variances(self,
+                                           mov_mean_grad_and_vars,
+                                           agg_mean_grad_and_vars,
+                                           mov_variance_grad_and_vars):
+
+            dtype = mov_mean_grad_and_vars[0][0].dtype
+
+            mov_mean_grads = [grad for grad, _ in mov_mean_grad_and_vars]
+            agg_mean_grads = [grad for grad, _ in agg_mean_grad_and_vars]
+            mov_variance_grads, mov_variance_vars = zip(*mov_variance_grad_and_vars)
+            mov_variance_grads = list(mov_variance_grads)
+
+            # variance is unbiased, we need to bias it
+            for idx in range(len(mov_variance_grad_and_vars)):
+                layer_name = '/'.join(mov_variance_vars[idx].name.split('/')[:-1])
+                layer = model.get_layer(layer_name)
+                elements_in_var = np.prod((batch_config.micro_batch_size, *layer.input.shape[1:-1]))
+                mov_variance_grads[idx] *= tf.constant((elements_in_var - 1) / elements_in_var, dtype=dtype)
+
+            # var_i = E[(mean_i - mean)^2 + var_i]
+            per_replica_corrected_var = [tf.square(mov_mean - agg_mean) + mov_variance
+                   for mov_mean, agg_mean, mov_variance in zip(mov_mean_grads, agg_mean_grads, mov_variance_grads)]
+            mov_variance_grads = tf.distribute.get_replica_context().all_reduce(
+                tf.distribute.ReduceOp.MEAN, per_replica_corrected_var)
+
+            # now we need to debias the previously biased variance
+            for idx in range(len(mov_variance_grad_and_vars)):
+                layer_name = '/'.join(mov_variance_vars[idx].name.split('/')[:-1])
+                layer = model.get_layer(layer_name)
+                elements_in_var = np.prod((batch_config.num_replicas, batch_config.micro_batch_size, *layer.input.shape[1:-1]))
+                mov_variance_grads[idx] *= tf.constant(elements_in_var / (elements_in_var - 1), dtype=dtype)
+
+            return list(zip(mov_variance_grads, mov_variance_vars))
+
+        def _aggregate_moving_vars(self, bn_moving_grads_and_vars):
+
+            grads, vars = zip(*bn_moving_grads_and_vars)
+
+            all_reduced_vars = tf.distribute.get_replica_context().all_reduce(
+                tf.distribute.ReduceOp.MEAN, grads)
+
+            return list(zip(all_reduced_vars, vars))
+
+        def apply_gradients(self,
+                            grads_and_vars,
+                            name=None,
+                            experimental_aggregate_gradients=True,
+                            **kwargs):
+
+            if not experimental_aggregate_gradients:
+                warnings.warn('IPU Batch Norm layer requires gradients to be aggregated to properly function. '
+                              'Make sure to invoke optimizer._aggregate_gradients yourself.')
+
+            return super().apply_gradients(grads_and_vars,
+                                           name=name,
+                                           experimental_aggregate_gradients=experimental_aggregate_gradients,
+                                           **kwargs)
 
     return BatchNormMovingAveragesUpdater

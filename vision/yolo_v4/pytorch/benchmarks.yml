@@ -24,14 +24,14 @@ pytorch_yolov4_infer_real_pod4:
         --pre-nms-topk-k {topk_nums}
   data:
     throughput:
-      regexp: 'Average Inference Throughput: (\d*.\d*) img\/s'
+      regexp: 'throughput: *(.*?) samples\/sec'
     latency:
-      regexp: 'Average Latency per Batch: (\d*.\d*) ms'
+      regexp: 'latency avg: *(.*?) ms'
   output:
     - [Batchsize, "batch_size"]
     - [Device iterations, "device_iterations"]
     - [Image size, "img_size"]
     - [Pre-nms Topk, "topk_nums"]
     - [NMS max detections, "max_detections"]
-    - [Inference throughput(img/s), "throughput"]
-    - [Inference Latency(ms), "latency"]
+    - [samples/sec, "throughput"]
+    - [latency(ms), "latency"]

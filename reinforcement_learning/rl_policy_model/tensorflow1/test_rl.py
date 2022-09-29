@@ -15,4 +15,4 @@ class TestReadmeCommands(SubProcessChecker):
     def test_reinforcement_learning_model(self):
         self.run_command("python3 rl_benchmark.py --micro_batch_size 8 --time_steps 16 --num_ipus 8",
                          working_path,
-                         [r"Average (\w+.\w+) items/sec"])
+                         [r"throughput: (\w+.\w+) samples/sec"])

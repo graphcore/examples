@@ -146,7 +146,7 @@ squad_large_384_4x4:
   micro_batch_size: 2
   device_iterations: 1
   gradient_accumulation: 64
-  replication_factor: 2
+  replication_factor: 4
   num_epochs: 3
 
   # Model

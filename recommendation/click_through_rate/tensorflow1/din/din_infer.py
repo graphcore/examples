@@ -163,7 +163,7 @@ def inference(opts):
                 stored_arr.append([p, t])
 
             throughput = opts["micro_batch_size"] * opts["device_iterations"] / total_time
-            tf_log.info(f"i={i // opts['device_iterations']}, validation accuracy: {accuracy:.4f}, throughput:{throughput}, latency:{total_time * 1000 / opts['device_iterations']}")
+            tf_log.info(f"i={i // opts['device_iterations']}, validation accuracy: {accuracy:.4f}, throughput: {throughput} samples/sec, latency: {total_time * 1000 / opts['device_iterations']} ms")
     total_time = time.time() - start
     test_auc = calc_auc(stored_arr)
     test_acc = np.mean(accs)

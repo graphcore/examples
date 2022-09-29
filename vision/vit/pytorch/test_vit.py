@@ -74,8 +74,8 @@ def run_vit(cmd):
 
 
 def extract_step_metrics(line):
-    loss = float(re.findall("Loss:\s+([\d\.]+)", line)[0])
-    acc = float(re.findall("Acc:\s+([\d\.]+)", line)[0])
+    loss = float(re.findall("loss:\s+([\d\.]+)", line)[0])
+    acc = float(re.findall("accuracy:\s+([\d\.]+)", line)[0])
     return loss, acc
 
 

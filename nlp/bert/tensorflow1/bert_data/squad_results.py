@@ -185,7 +185,6 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
     all_predictions = OrderedDict()
     all_nbest_json = OrderedDict()
     scores_diff_json = OrderedDict()
-
     for (example_index, example) in enumerate(all_examples):
         features = example_index_to_features[example_index]
 
@@ -329,6 +328,12 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
             output["end_logit"] = entry.end_logit
             nbest_json.append(output)
 
+            if entry.text == "":
+                null_answer = {
+                    k: v for k,v in output.items()
+                }
+                null_answer["probability"] = probs[i]
+
         assert len(nbest_json) >= 1
 
         if not is_version_2_with_negative:
@@ -339,9 +344,15 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                 best_non_null_entry.end_logit)
             scores_diff_json[example.qas_id] = score_diff
             if score_diff > null_score_diff_threshold:
-                all_predictions[example.qas_id] = ""
+                all_predictions[example.qas_id] = {
+                    "prediction_text": "",
+                    "no_answer_probability": null_answer["probability"]
+                    }
             else:
-                all_predictions[example.qas_id] = best_non_null_entry.text
+                all_predictions[example.qas_id] = {
+                    "prediction_text": best_non_null_entry.text,
+                    "no_answer_probability": null_answer["probability"]
+                    }
         all_nbest_json[example.qas_id] = nbest_json
 
     with tf.gfile.GFile(output_prediction_file, "w") as writer:

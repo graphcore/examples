@@ -161,8 +161,8 @@ class Iteration:
     def training_metrics_string(self):
         avg = np.average
         status_string = \
-            f"Loss: {avg(self.losses):5.3f} " \
-            f"Accuracy: {avg(self.accuracies):5.3f} "
+            f"loss: {avg(self.losses):5.3f} " \
+            f"accuracy: {avg(self.accuracies):5.3f} %"
         return status_string
 
     def optimizer_string(self):
@@ -172,7 +172,7 @@ class Iteration:
         avg = np.average
         status_string = \
             f"Duration: {avg(self.durations):6.4f} s " \
-            f"Throughput: {avg(self.throughput):6.1f} sequences/s "
+            f"throughput: {avg(self.throughput):6.1f} samples/sec "
         if self.cycles:
             status_string += f"Cycles: {int(avg(self.cycles))} "
         return status_string
@@ -201,7 +201,7 @@ class Iteration:
         status_string += self.inference_metrics_string()
         status_string += self.throughput_string()
         if mean_latency is not None:
-            status_string += f"Per-sample: Mean Latency={mean_latency} Min Latency={min_latency} Max Latency={max_latency} p99 Latency={p99_latency} p999 Latency={p999_latency} seconds"
+            status_string += f"Per-sample: latency avg: {mean_latency*1000} ms, latency min: {min_latency*1000} ms, latency max:{max_latency*1000} ms, latency 99p: {p99_latency*1000} ms, latency 99p9: {p999_latency*1000} ms"
         logger.info(status_string)
 
 
@@ -272,8 +272,10 @@ class PretrainingIteration(Iteration):
     def training_metrics_string(self):
         avg = np.average
         status_string = \
-            f"Loss (MLM NSP): {avg(self.losses[0]):5.3f} {avg(self.losses[1]):5.3f} " \
-            f"Accuracy (MLM NSP): {avg(self.accuracies[0]):5.3f} {avg(self.accuracies[1]):5.3f} "
+            f"mlm_loss: {avg(self.losses[0]):5.3f} " \
+            f"nsp_loss: {avg(self.losses[1]):5.3f} " \
+            f"mlm_acc: {avg(self.accuracies[0]):5.3f} % " \
+            f"nsp_acc: {avg(self.accuracies[1]):5.3f} % "
         return status_string
 
     def add_inference_stats(self, *args):
@@ -287,7 +289,8 @@ class PretrainingIteration(Iteration):
     def inference_metrics_string(self):
         avg = np.average
         status_string = \
-            f"Accuracy (MLM NSP): {avg(self.accuracies[0]):5.3f} {avg(self.accuracies[1]):5.3f} "
+            f"mlm_acc: {avg(self.accuracies[0]):5.3f} %" \
+            f"nsp_acc: {avg(self.accuracies[1]):5.3f} %"
         if self.calculate_perplexity:
             status_string += \
                 f"LM Perplexity: {np.exp(avg(self.losses[0])):5.3f} "

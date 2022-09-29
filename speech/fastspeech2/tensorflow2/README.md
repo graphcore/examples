@@ -101,7 +101,23 @@ python3 relocate_duration.py --root-path /path/to/preprocessed_dataset --duratio
 
 After relocation, you will see `duration` folder under both `train/` and `valid/` directory.
 
-### 3. Train FastSpeech2 on IPU
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
+### Train FastSpeech2 on IPU
 
 Now that the data are ready we can start training our FastSpeech2 model on the IPU! Run this script:
 
@@ -119,7 +135,7 @@ All command line options can find in `options.py`. For example, you can specify 
 
 Then all profiles stay in `./profiles` folder and you can use our PopVision tool for deeper analysis.
 
-### 4. Inference FastSpeech2 on IPU
+### Inference FastSpeech2 on IPU
 
 Once you have finished training and got the checkpoint, you can do inference by:
 
@@ -133,44 +149,6 @@ python3 infer.py --config config/fastspeech2.json \
 ```
 
 If you don't have `init-checkpoint`, then the inference step will use random weights instead. Increasing the `steps-per-epoch` will give you better performance.
-
-## Benchmarking
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-
-```shell
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
-
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-
-```shell
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
-
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
-
-## Profiling
-
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-
-```shell
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
 
 ## Licensing
 

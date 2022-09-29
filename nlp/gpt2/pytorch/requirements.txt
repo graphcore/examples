@@ -3,9 +3,10 @@ datasets>=1.7.0
 tokenizers>=0.10.3
 scipy>=1.5.4
 wandb==0.12.8
+protobuf==3.20.*; python_version > '3.6'
 tfrecord>=1.13
 pytest==6.2.5
 pytest-pythonpath>=0.7.3
-horovod>=0.24.0 --no-binary=horovod
-git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
+horovod>=0.24.0
+git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
 tqdm>=4.63.1

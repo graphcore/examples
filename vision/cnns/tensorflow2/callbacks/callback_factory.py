@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 
 import tensorflow as tf
 from tensorflow.python import ipu
+import wandb
 
 from .allreduce_metrics_callback import AllReduceMetricsCallback
 from .checkpoint_callback import CheckpointCallback
@@ -18,6 +19,9 @@ from .throughput_estimator_callback import ThroughputEstimatorCallback
 from .correction_metric_callback import CorrectionMetricCallback
 from .epoch_calculation_callback import EpochCalculationCallback
 from .lr_logger_callback import LRLoggerCallback
+from .epoch_from_ckpt_name_callback import EpochFromCkptNameCallback
+from .epochs_to_target_callback import EpochsToTargetCallback
+from .optimization_metric_callback import OptimizationMetricCallback
 
 
 class CallbackFactory:
@@ -29,7 +33,8 @@ class CallbackFactory:
                       micro_batches_per_epoch: int,
                       outfeed_queues: Optional[List[Tuple[str, ipu.ipu_outfeed_queue.IPUOutfeedQueue]]] = None,
                       debug_outfeed_queues: List[Tuple[str, ipu.ipu_outfeed_queue.IPUOutfeedQueue]] = [],
-                      checkpoints: bool = False,
+                      checkpoint_period: int = 0,
+                      checkpoint_phase: int = 0,
                       checkpoint_dir: str = '/tmp/checkpoints',
                       hyperparams: dict = {},
                       correct_metric: Optional[Tuple[str, float]] = None,
@@ -58,8 +63,9 @@ class CallbackFactory:
         if hyperparams.distributed_training and not hyperparams.accelerator_side_reduction:
             callbacks.append(AllReduceMetricsCallback())
 
-        if checkpoints:
-            callbacks.append(CheckpointCallback(ckpt_period=log_period,
+        if checkpoint_period != 0:
+            callbacks.append(CheckpointCallback(ckpt_period=checkpoint_period,
+                                                ckpt_phase=checkpoint_phase,
                                                 checkpoint_dir=checkpoint_dir))
 
 
@@ -80,3 +86,32 @@ class CallbackFactory:
                                                      model=model))
 
         return callbacks
+
+    @staticmethod
+    def set_validation_only_callbacks(
+            callbacks: List[tf.keras.callbacks.Callback],
+            ckpt_list: List[str],
+            sweep: bool,
+            target_field: str,
+            target_value: float):
+        callback_replaced = False
+        for idx in range(len(callbacks)):
+            if isinstance(callbacks[idx], EpochCalculationCallback):
+                # replace callback
+                callbacks[idx] = EpochFromCkptNameCallback(ckpt_list)
+                callback_replaced = True
+            if isinstance(callbacks[idx], LoggingCallback) and sweep:
+                # insert before logging callback
+                callbacks.insert(idx, EpochsToTargetCallback(target_field, target_value))
+                callbacks.insert(idx, OptimizationMetricCallback(target_field, target_value))
+
+        if not callback_replaced:
+            raise ValueError('EpochCalculationCallback not found and therefore not replaced')
+
+        return callbacks
+
+    @staticmethod
+    def log_optimization_metric(callbacks: List[tf.keras.callbacks.Callback]):
+        for callback in callbacks:
+            if isinstance(callback, OptimizationMetricCallback):
+                wandb.log({'optimization_metric' : callback.optimization_metric})

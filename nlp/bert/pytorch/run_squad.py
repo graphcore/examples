@@ -17,6 +17,7 @@ import time
 import torch
 import wandb
 import poptorch
+from poptorch.enums import DataLoaderMode
 import transformers
 from transformers import default_data_collator
 from modeling import PipelinedBertForQuestionAnswering
@@ -137,7 +138,7 @@ def main():
                 step_length = time.perf_counter() - start_step
                 step_throughput = samples_per_step / step_length
                 loss = outputs[0].mean().item()
-                logger(f"Epoch: {epoch}, Step:{step}, LR={scheduler.get_last_lr()[0]:.2e}, loss={loss:3.3f}, throughput={step_throughput:3.3f} samples/s")
+                logger(f"Epoch: {epoch}, Step:{step}, LR={scheduler.get_last_lr()[0]:.2e}, loss: {loss:3.3f}, throughput: {step_throughput:3.3f} samples/sec")
 
                 if config.wandb:
                     wandb.log({"Loss": loss,
@@ -147,10 +148,19 @@ def main():
         training_model.detachFromDevice()
 
     if do_validation:
-        config.micro_batch_size = 2
-        config.device_iterations = 16
+        # Setup validation configuration
+        config.micro_batch_size = 20
+        config.device_iterations = 4
         config.gradient_accumulation = 1
-        config.replication_factor = 1
+
+        # Set replication factor so that the number of IPUs used is the same as for training
+        config.replication_factor = (config.ipus_per_replica * config.replication_factor) // 2
+
+        # Configure to a smaller 2 IPU pipeline
+        config.ipus_per_replica = 2
+        config.layers_per_ipu = [config.num_hidden_layers // 2, config.num_hidden_layers - config.num_hidden_layers // 2]
+        config.matmul_proportion = [0.3] * 2
+
         samples_per_step = config.device_iterations * config.micro_batch_size * \
             config.gradient_accumulation * config.replication_factor
         opts = get_options(config)
@@ -161,9 +171,20 @@ def main():
                                      batch_size=config.micro_batch_size,
                                      shuffle=False,
                                      drop_last=False,
-                                     collate_fn=default_data_collator)
+                                     collate_fn=PadCollate(samples_per_step,
+                                                           {"input_ids": 0,
+                                                            "attention_mask": 0,
+                                                            "token_type_ids": 0,
+                                                            "start_positions": config.sequence_length,
+                                                            "end_positions": config.sequence_length}))
         raw_predictions = [[], []]
+
+        # Re-parallelize model to work with smaller validation pipeline
+        logger("Reconfiguring Validation Pipeline...")
         model_ipu.eval()
+        model_ipu.deparallelize()
+        model_ipu.parallelize()
+
         inference_model = poptorch.inferenceModel(model_ipu, opts)
         sample_batch = next(iter(val_dl))
         logger("Compiling Inference Model...")
@@ -184,7 +205,7 @@ def main():
             step_throughput = samples_per_step / step_length
             raw_predictions[0].append(outputs[0])
             raw_predictions[1].append(outputs[1])
-            logger(f"Step:{step}, throughput={step_throughput} samples/s")
+            logger(f"Step:{step}, throughput: {step_throughput} samples/sec")
 
         raw_predictions[0] = torch.vstack(raw_predictions[0]).float().numpy()
         raw_predictions[1] = torch.vstack(raw_predictions[1]).float().numpy()

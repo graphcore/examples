@@ -85,12 +85,11 @@ def get_val_dataloader(config):
                 labels.append(int(label))
 
         dataset = ImagenetDataset(os.path.dirname(imagenet_file), images, labels, preprocess)
-        text_inference.half()
         classnames = templates_dict["imagenet_classnames"]
         templates = templates_dict["imagenet_templates"]
     else:
         # Download the dataset
-        dataset = CIFAR100(root=os.path.expanduser("data/cifar100"), download=True, train=True, transform=preprocess)
+        dataset = CIFAR100(root=os.path.expanduser("data/cifar100"), download=True, train=False, transform=preprocess)
         classnames = templates_dict["cifar100_classnames"]
         templates = templates_dict["cifar100_templates"]
 
@@ -112,6 +111,7 @@ def get_val_dataloader(config):
 
 
 def encode_text(text_inference, classnames, templates):
+    text_inference.half()
     zeroshot_weights = []
     for classname in tqdm(classnames):
         texts = [template.replace("{c}", classname) for template in templates]
@@ -146,14 +146,14 @@ if __name__ == "__main__":
         # Reload checkpoint
         state_dict = torch.jit.load(config.ckpt_file, map_location="cpu")
         new_state_dict = OrderedDict()
-        ori_state_dict = OrderedDict()
 
         for k, v in state_dict.state_dict().items():
-            ori_state_dict[k] = v
             if k in ['input_resolution', 'context_length', 'vocab_size']:
                 continue
 
             new_state_dict[k] = v
+        new_state_dict['image_fea_queue'] = model.state_dict()['image_fea_queue']
+        new_state_dict['text_fea_queue'] = model.state_dict()['text_fea_queue']
 
         inference_model.load_state_dict(new_state_dict)
         text_inference.load_state_dict(new_state_dict)

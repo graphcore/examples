@@ -35,8 +35,8 @@ class OptimizedGPT2Attention(GPT2Attention):
         if not self.is_cross_attention:
             # if only "normal" attention layer implements causal mask
             query_length, key_length = query.size(-2), key.size(-2)
-            causal_mask = self.bias[:, :, key_length -
-                                    query_length: key_length, :key_length]
+            # causal_mask = self.bias[:, :, key_length-query_length:key_length, :key_length]
+            causal_mask = self.bias[:, :, :key_length, :key_length]
             attn_weights -= 1e4 * (1 - causal_mask)
 
         if attention_mask is not None:
@@ -136,8 +136,8 @@ class OptimizedGPT2AttentionBuffer(GPT2Attention):
         else:
             query_length, key_length = query.size(-2), key.size(-2)
             # causal_mask = torch.tril(torch.ones((query_length, key_length)))
-            causal_mask = self.bias[:, :, key_length -
-                                    query_length: key_length, :key_length]
+            # causal_mask = self.bias[:, :, key_length-query_length:key_length, :key_length]
+            causal_mask = self.bias[:, :, :key_length, :key_length]
             attn_weights -= 1e4 * (1 - causal_mask)
 
         attn_weights = attn_weights.type(value.dtype)
@@ -239,8 +239,8 @@ class OptimizedGPT2AttentionCache(GPT2Attention):
             attn_weights = attn_weights + attention_mask
         else:
             query_length, key_length = query.size(-2), key.size(-2)
-            causal_mask = self.bias[:, :, key_length -
-                                    query_length: key_length, :key_length]
+            # causal_mask = self.bias[:, :, key_length-query_length:key_length, :key_length]
+            causal_mask = self.bias[:, :, :key_length, :key_length]
             attn_weights -= 1e4 * (1 - causal_mask)
 
         attn_weights = attn_weights.type(value.dtype)

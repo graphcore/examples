@@ -1,0 +1,2 @@
+libspdlog-dev
+libboost-all-dev

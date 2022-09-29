@@ -16,6 +16,5 @@ pyyaml==5.4.1
 wandb==0.12.8
 filelock==3.0.12
 numba==0.53.1
-git+https://github.com/graphcore/examples-utils@0863d5e6df28dacdf75d9c4aa212337f26d05c0d#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
 mpi4py==3.1.3
-

@@ -8,7 +8,7 @@ The script will download and encode articles from the wikitext-2 and wikitext-10
 
 Install the requirements for this repo:
 
-    cd <public_examples>/sparsity/dynamic_sparsity/tensorflow1/dataset-encoder
+    cd <examples>/sparsity/dynamic_sparsity/tensorflow1/dataset-encoder
     pip install -r requirements.txt
 
 Clone the GPT-2 Repo:

@@ -3,14 +3,14 @@ backend: "poplar"
 max_batch_size: 6272
 input [
         {
-                name: "input"
+                name: "input_0"
                 data_type: TYPE_UINT8
                 dims: [ 3, 224, 224 ] 
         }
 ]
 output [
         {
-                name: "output"
+                name: "output_0"
                 data_type: TYPE_FP16
                 dims: [ 1000 ] 
         }

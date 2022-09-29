@@ -6,7 +6,7 @@ from subprocess import PIPE, run
 import pytest
 from examples_tests.execute_once_per_fs import ExecuteOncePerFS
 
-public_examples_dir = Path(__file__).parent.parent.parent.parent
+examples_dir = Path(__file__).parent.parent.parent.parent
 
 
 @pytest.fixture
@@ -15,7 +15,7 @@ def ipu_static_ops(scope="session"):
     library for any tests that rely on it.
     """
     build_path = Path(
-        public_examples_dir,
+        examples_dir,
         "gnn",
         "message_passing",
         "tensorflow2",

@@ -2,11 +2,11 @@ common_options: &common_options
     data:
         throughput:
             reduction_type: "mean"
-            regexp: "Throughput: *(.*?) samples/sec"
+            regexp: "throughput: *(.*?) samples\/sec"
             skip: 1
         loss:
             reduction_type: "final"
-            regexp: "Loss: *(.*?) "
+            regexp: 'loss: *(\d*\.\d*)'
         compile_time:
             regexp: "Compiled model in *(.*?) secs"
     output:
@@ -16,7 +16,7 @@ common_options: &common_options
 
 pytorch_clip_vit_b_32_train_gen_pod16:
     <<: *common_options
-    description: 
+    description:
         Pytorch CLIP_ViT-B-32 8 IPU throughput benchmark using host generated synthetic data.
     cmd: >-
         python train.py
@@ -27,9 +27,13 @@ pytorch_clip_vit_b_32_train_gen_pod16:
 
 pytorch_clip_vit_b_32_train_real_pod16_conv:
     <<: *common_options
-    description: 
+    description:
         Pytorch CLIP_ViT-B-32 8 IPU loss benchmark using cc3m dataset.
     cmd: >-
         python train.py
             --config CLIP_ViT-B-32_cc3m
             --wandb
+            --wandb_run_name pytorch_clip_vit_b_32_train_real_pod16_conv
+            --image_path $DATASETS_DIR/cc3m/images
+            --captions_path $DATASETS_DIR/cc3m/img_cap.csv
+            --bpe_vocab_path $DATASETS_DIR/bpe_vocabulary/bpe_simple_vocab_16e6.txt.gz

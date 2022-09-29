@@ -12,15 +12,18 @@ class Logger:
     def __init__(self,
                  log_dir,
                  log_name,
+                 wandb_on,
+                 wandb_project_name,
+                 wandb_run_name,
                  post_fix='',
                  tb_on=True,
-                 wandb_on=True,
-                 project_name='faster-rcnn',
                  resume=False):
         self.log_dir = log_dir
         self.log_name = log_name
         self.tb_on = tb_on
         self.wandb_on = wandb_on
+        self.wandb_project_name = wandb_project_name
+        self.wandb_run_name = wandb_run_name
 
         log_filemode = 'a' if resume else 'w'
         logging.basicConfig(level=logging.INFO,
@@ -35,10 +38,10 @@ class Logger:
                 os.mkdir(tb_dir)
             self.tbWriter = tb.writer.FileWriter(tb_dir)
         if self.wandb_on:
-            wandb.init(project=project_name,
+            wandb.init(project=wandb_project_name,
                        settings=wandb.Settings(console='off'),
                        id=self.log_name,
-                       name=self.log_name)
+                       name=self.wandb_project_name if self.wandb_run_name else self.log_name)
 
     def log_str(self, str_input):
         self.logger.info(str_input)
@@ -54,15 +57,16 @@ class Logger:
 
 def init_log(log_dir,
              log_name,
+             wandb_on,
+             wandb_project_name,
+             wandb_run_name,
              post_fix='',
              tb_on=True,
-             wandb_on=True,
-             project_name='faster-rcnn',
              resume=False):
     global GLOBAL_LOGGER
     assert GLOBAL_LOGGER is None
-    GLOBAL_LOGGER = Logger(log_dir, log_name, post_fix, tb_on, wandb_on,
-                           project_name, resume)
+    GLOBAL_LOGGER = Logger(log_dir, log_name, wandb_on, wandb_project_name,
+                            wandb_run_name, post_fix, tb_on,resume)
 
 
 def log_str(*elements):

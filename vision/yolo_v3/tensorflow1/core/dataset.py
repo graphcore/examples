@@ -496,7 +496,7 @@ class Dataset(object):
 
             return images
 
-            logger.info("loading images done")
+        logger.info("loading images done")
 
         if not dump or not os.path.exists(dump_dir) or len(os.listdir(dump_dir)) == 0:
             images = generate_data()

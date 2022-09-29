@@ -5,39 +5,8 @@ This readme describes how to run CNN models such as ResNet and EfficientNet for 
 ## Overview
 
 Deep CNN residual learning models such as ResNet and EfficientNet are used for image recognition and classification.
+
 The training examples given below use models implemented in TensorFlow, optimised for Graphcore's IPU.
-
-## Benchmarking
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
-```
-
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
-```
-
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
-
-## Profiling
-
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
-
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
 
 ## Graphcore ResNet-50 and EfficientNet models
 
@@ -59,7 +28,7 @@ A ResNeXt model is also available.
    for your IPU system. Make sure to run the `enable.sh` script for Poplar and activate a Python 3 virtualenv with
    the TensorFlow 1 wheel from the Poplar SDK installed.
 2. Download the data. See below for details on obtaining the datasets.
-3. Install the packages required by this application using (`pip install -r requirements.txt`)
+3. Install the packages required by this application using `pip install -r requirements.txt`
 4. Run the training script. For example:
    `python3 train.py --dataset imagenet --data-dir path-to/imagenet`
 
@@ -68,8 +37,8 @@ A ResNeXt model is also available.
 You can download the ImageNet LSVRC 2012 dataset, which contains about 1.28 million images in 1000 classes,
 from http://image-net.org/download. It is approximately 150GB for the training and validation sets.
 
-The CIFAR-10 dataset is available here https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz, and the
-CIFAR-100 dataset is available here https://www.cs.toronto.edu/~kriz/cifar-100-binary.tar.gz.
+The CIFAR-10 dataset is available from https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz, and the
+CIFAR-100 dataset is available from https://www.cs.toronto.edu/~kriz/cifar-100-binary.tar.gz.
 
 ## File structure
 
@@ -90,6 +59,21 @@ CIFAR-100 dataset is available here https://www.cs.toronto.edu/~kriz/cifar-100-b
 | `configs.yml`       | File where configurations are defined. |
 | `test/`             | Test files - run using `python3 -m pytest` after installing the required packages. |
 
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```python
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 ## Configurations
 
@@ -166,7 +150,7 @@ available the user needs to make sure that independent copies of the Poplar SDK,
 across the filesystems of the different hosts.
 
 After the setup mentioned above is in place, the Poplar SDK only needs to be enabled on the host the user is connected to. The command line is then
-extended with system information to make sure the other hosts execute the program with a similar development environment. We assume that `$WORKSPACE` has been set appropriately. Replace with IP addresses as appropriate for the target hardware. '--mca btl_tcp_if_include xxx.xxx.xxx.0/xx' sets the default route for traffic between Poplar hosts. It should be configured for a network to which all Poplar hosts have access, and for which the interfaces only have a single IP address. Replace 'pod64_partition_name' with the name of your POD64 partition.
+extended with system information to make sure the other hosts execute the program with a similar development environment. We assume that `$WORKSPACE` has been set appropriately. Replace with IP addresses as appropriate for the target hardware. `--mca btl_tcp_if_include xxx.xxx.xxx.0/xx` sets the default route for traffic between Poplar hosts. It should be configured for a network to which all Poplar hosts have access, and for which the interfaces only have a single IP address. Replace `pod64_partition_name` with the name of your POD64 partition.
 
     poprun -v --host xxx.xxx.xxx.1,xxx.xxx.xxx.2,xxx.xxx.xxx.3,xxx.xxx.xxx.4 --vipu-server-host=xxx.xxx.xxx.xxx \ --vipu-partition=pod64_partition_name --reset-partition=yes --mpi-global-args=" \
     --mca btl_tcp_if_include xxx.xxx.xxx.0/24" --mpi-local-args="-x LD_LIBRARY_PATH -x PATH -x PYTHONPATH \
@@ -243,7 +227,7 @@ As above, you can run validation after training:
 
 The following configuration trains EfficientNet-B4 to ~82% using 16 IPUs. Each model is pipelined across 4 IPUs with a micro-batch size of 3. We use a gradient accumulation count of 64, and 4 replicas in total for a global batch size of 768 (3 * 64 * 4).
 
-    poprun --mpi-global-args="--allow-run-as-root --tag-output" --numa-aware 1 --num-replicas 4 --num-instances 4 --ipus-per-replica 4 \ python3 train.py --config efficientnet_b4_g1_16ipus --data-dir your_dataset_path --no-validation
+    poprun --num-replicas 4 --num-instances 4 --ipus-per-replica 4 \ python3 train.py --config efficientnet_b4_g1_16ipus --data-dir your_dataset_path --no-validation
 
 As above, you can run validation after training:
 
@@ -255,11 +239,35 @@ Changing the dimension of the group convolutions can make the model more efficie
 number of parameters approximately the same, you can reduce the expansion ratio. For example a modified
 EfficientNet-B4 model, with a similar number of trainable parameters can be trained using:
 
-    poprun --num-replicas 8 --num-instances 8 --ipus-per-replica 2 \ 
+    poprun --num-replicas 8 --num-instances 8 --ipus-per-replica 2 \
     python3 train.py --config efficientnet_b4_g16_16ipus --data-dir your_dataset_path --no-validation --identical-replica-seeding
 
 This configuration trains EfficientNet-B4 to ~82.6% validation accuracy with improved training throughput, achieved by using half-precision arithmetic throughput and by pipelining across just 2 IPUs. The global batch size is 6144, enabled by using the LARS optimizer and polynomial decay learning rate, in addition to other hyperparameter tuning. This makes the configuration appropriate for a range of different sized systems. For example, to train over 64 IPUs, simply change the `--config` argument in the above argument to `efficientnet_b4_g16_64ipus` and `--num-replicas 32`.
 
+The original EfficientNet-B4 described by [Tan and Le](https://arxiv.org/abs/1905.11946) fits on a single IPU and uses distributed batch norm, in which batches are split across replicas and the mean and variance statistics are calculated across several replicas.
+In order to train as expected, a minimum of 8 IPUs are required to train 8 replicas concurrently.
+The `efficientnet_b4_g1_with_batch_norm_16ipus` configuration replicates the model over 16 IPUs and calculates batch norm statistics across 8 replicas. The micro-batch size is 5 so the statistics are calculated across 40 examples (8 * 5).
+This configuration achieves ~82.6% ImageNet Top-1 accuracy in 350 epochs. It uses 16-bit floating point arithmetic for maximum throughput. It can be executed with the following command:
+
+```sh
+python train.py --config efficientnet_b4_g1_with_batch_norm_16ipus
+```
+
+A similar config adapted to run on 64 IPUs is also available. It can be run with `poprun` to achieve much shorter time to train
+given additional hardware. That command which uses 64 IPUs is available as part of the benchmarking suite under `tf1_efficientnet_b4_batchnorm_train_real_pod64_conv`. This command uses multiple CPU hosts to perform the data loading across the 64 replicas. For this configuration to work additional environment variables must be set:
+
+- `DATASET_DIR`: the path to a directory containing a folder called `imagenet-data` containing the ImageNet dataset;
+- `HOSTS`: must a comma separated list of host names or IPs for `poprun` to connect to;
+- `TCP_IF_INCLUDE`: must be an IP subnet which all hosts have access to (not the rdma network), and not a subnet in which their are interfaces with multiple IP addresses (not the management network);
+- V-IPU host and partition will be collected from the standard `IPUOF_VIPU_API_HOST` and `IPUOF_VIPU_API_PARTITION_ID`  environment variables.
+
+Once these variables are set in your shell, run training followed by validation using this command:
+
+```sh
+python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark\
+    tf1_efficientnet_b4_batchnorm_train_real_pod64_conv \
+    tf1_efficientnet_b4_batchnorm_infer_real_pod16
+```
 
 ### ImageNet - EfficientNet - Inference
 
@@ -432,8 +440,8 @@ Multiple values may be specified when using pipelining. In this case two values 
 
 `--no-validation` : Turns off validation.
 
-Note that the `validation.py` script can be run to validate previously generated checkpoints. Use the `--restore-path`
-option to point to the checkpoints, and either select the same configuration file as used in training with `--config` or pass `--model`, `--model-size`, `--dataset` matching those used in the training. If arguments.json is present the directory given in `--restore-path`, global_batch_size is extracted from that file, but it can be overwritten with `--global-batch-size` argument. If neither the argument nor the file are available, then global_batch_size becomes `--micro-batch-size`)
+Note that the `validation.py` script can be run to validate previously generated checkpoints: Use the `--restore-path`
+option to point to the checkpoints, and either select the same configuration file as used in training with `--config` or pass `--model`, `--model-size`, `--dataset` matching those used in the training. If `arguments.json` is present the directory given in `--restore-path`, `global_batch_size` is extracted from that file, but it can be overwritten with `--global-batch-size` argument. If neither the argument nor the file are available, then `global_batch_size` becomes `--micro-batch-size`).
 
 ## Other options
 

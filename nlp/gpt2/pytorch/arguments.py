@@ -21,7 +21,7 @@ import horovod.torch as hvd
 from tools import str_to_bool
 
 
-def set_args():
+def set_args(args=None):
     """
     Sets up the arguments.
     """
@@ -40,12 +40,10 @@ def set_args():
                         help='Enable custom ops.')
 
     # Dataset
-    parser.add_argument('--train-path', default='generated', type=str, required=False,
-                        help='Path to dataset for the pretraining.')
-    parser.add_argument('--data-prefix', type=str, required=False,
-                        help='Input file prefix while using Megatron dataset.')
-    parser.add_argument('--tfrecord-path', nargs='+',
-                        help='Input data files while using TFRecord dataset.')
+    parser.add_argument('--dataset', type=str, choices=['generated', 'mmap', 'tfrecord', 'pickle'],
+                        help="dataset to use for the training.")
+    parser.add_argument('--input-files', type=str, required=False,
+                        help='Path to the training dataset, or the prefix if using "mmap" dataset.')
     parser.add_argument('--enable-sequence-serialized', type=str_to_bool, nargs='?', const=True, default=False,
                         help='Enable sequence serialization for language model loss.')
     parser.add_argument('--serialized-seq-len', default=128, type=int, required=False,
@@ -77,7 +75,7 @@ def set_args():
     parser.add_argument('--loss-scaling', default=50000.0, type=float, required=False,
                         help='Loss scaling factor (recommend using powers of 2).')
     parser.add_argument('--auto-loss-scaling', type=str_to_bool, nargs='?', const=True, default=False,
-                        help='Enable automatic loss scaling for half precision training. Note that this is an experimental feature.')
+                        help='Enable automatic loss scaling for half precision training.')
     parser.add_argument('--lr-warmup', default=0.1, type=float, required=False,
                         help='fraction of train steps(or --lr-decay-steps) to linearly warmup learning rate over.')
     parser.add_argument('--lr-warmup-steps', default=None, type=int, required=False,
@@ -131,10 +129,10 @@ def set_args():
                         help='Enable half partials for matmuls and convolutions globally.')
     parser.add_argument('--executable-cache-dir', default=None, type=str, required=False,
                         help='Directory where Poplar executables are cached. If set, recompilation of identical graphs can be avoided. Required for both saving and loading executables.')
-    parser.add_argument('--compile-only', type=str_to_bool, nargs='?', const=True, default=False,
+    parser.add_argument('--compile-only', action="store_true",
                         help='Create an offline IPU target that can only be used for offline compilation.')
 
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     # Initialise PopDist
     if popdist.isPopdistEnvSet():
         hvd.init()

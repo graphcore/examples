@@ -13,12 +13,21 @@
 # limitations under the License.
 import torch
 import torch.nn as nn
+from core.utils import Precision
 
 
 class ERF_GELU(nn.Module):
-    def __init__(self):
+    def __init__(self, precision=Precision.FP32):
         super().__init__()
+        self.precision = precision
 
     def forward(self, x):
-        cdf = 0.5 * (1.0 + torch.erf(x / (2.0 ** 0.5)))
-        return x * cdf
+        if self.precision is Precision.FP32 or self.precision is Precision.FP16:
+            cdf = 0.5 * (1.0 + torch.erf(x / (2.0 ** 0.5)))
+            return x * cdf
+        else:
+            x_float = torch.ops.poptorch.internal_cast(x, "FLOAT")
+            cdf = 0.5 * (1.0 + torch.erf(x_float / (2.0 ** 0.5)))
+            out = x_float * cdf
+            out = torch.ops.poptorch.internal_cast(out, "FLOAT16")
+            return out

@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     # W&B
     if config.wandb:
-        wandb.init(project="CLIP", settings=wandb.Settings(console='off'))
+        wandb.init(project="CLIP", name=config.wandb_run_name, settings=wandb.Settings(console='off'))
         wandb.config.update(vars(config))
 
     # Execution parameters
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     # Wrap the training model
     train_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
-
+    
     # Compile model
     log.logger.info("---------- Compilation Started ---------")
     start_compile = time.perf_counter()
@@ -103,8 +103,8 @@ if __name__ == "__main__":
             if step > 0 or epoch > 0:
                 total_compute_time += step_length
 
-            log.logger.info("Epoch: {:.2f}/{} Step: {}/{} Lr: {:.6f} Loss: {:.3f} Throughput: {:.2f} samples/sec"
-                            .format(epoch, epochs, current_step, training_steps, scheduler.get_last_lr()[0], losses, step_throughput))
+            log.logger.info("Epoch: {:.2f}/{} Step: {}/{} Lr: {:.6f} loss: {:.3f} throughput: {:.2f} samples/sec"
+                            .format(epoch, epochs, current_step, training_steps, scheduler.get_last_lr()[0], losses.mean(), step_throughput))
             if config.wandb:
                 wandb.log({"LR": scheduler.get_last_lr()[0],
                            "Throughput": step_throughput,
@@ -128,5 +128,5 @@ if __name__ == "__main__":
     log.logger.info(f"training_steps: {training_steps}")
     num_samples = config.samples_per_step * (training_steps-1)
     log.logger.info(f"Training time: {total_compute_time:.3f} secs")
-    log.logger.info("Throughput: {:5f} samples/sec.".format(num_samples / total_compute_time))
+    log.logger.info("throughput: {:5f} samples/sec.".format(num_samples / total_compute_time))
     log.logger.info("---------------------------------------")
