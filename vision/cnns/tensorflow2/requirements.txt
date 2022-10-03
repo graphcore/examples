@@ -11,4 +11,4 @@ autopep8==1.6.0
 opencv-python==4.5.5.64
 mpi4py==3.1.3
 tensorflow-serving-api==2.6.3
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@9c21c9d1513a9e48772f26a9b16f2adb8ae6a29c#egg=examples-utils
