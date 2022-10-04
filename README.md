@@ -235,7 +235,7 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
     *  Vision : MAE (PyTorch), G16 EfficientNet (PyTorch)
     *  NLP : GPTJ (PopXL), GPT3-2.7B (PopXL)
     *  Multimodal : Frozen in time (PyTorchs), ruDalle(Preview) (PopXL)
-* Depreacated all TensorFlow 1 applications
+* Deprecated all TensorFlow 1 applications. Support will be removed in the next release 
 </details>
 
 <details>
