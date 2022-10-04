@@ -10,7 +10,7 @@ To see what's new and easily filter applications by domain and framework, please
 
 For more detailed benchmark information, please visit our [Performance Results page](https://www.graphcore.ai/performance-results).
 
-> The code presented here requires using Poplar SDK 2.6.x
+> The code presented here requires using Poplar SDK 3.0.x
 
 Please install and enable the Poplar SDK following the instructions in the [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html#pod-system-getting-started-guides) guide for your IPU system.
 
@@ -235,6 +235,7 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
     *  Vision : MAE (PyTorch), G16 EfficientNet (PyTorch)
     *  NLP : GPTJ (PopXL), GPT3-2.7B (PopXL)
     *  Multimodal : Frozen in time (PyTorchs), ruDalle(Preview) (PopXL)
+* Depreacated all TensorFlow 1 applications
 </details>
 
 <details>
