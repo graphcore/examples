@@ -10,7 +10,7 @@ To see what's new and easily filter applications by domain and framework, please
 
 For more detailed benchmark information, please visit our [Performance Results page](https://www.graphcore.ai/performance-results).
 
-> The code presented here requires using Poplar SDK 2.6.x
+> The code presented here requires using Poplar SDK 3.0.x
 
 Please install and enable the Poplar SDK following the instructions in the [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html#pod-system-getting-started-guides) guide for your IPU system.
 
@@ -67,7 +67,7 @@ If you require POD128/256 setup and configuration for our applications, please c
 | Group BERT | NLP | Training |[TensorFlow 1](nlp/bert/tensorflow1/README.md#GroupBERT_model) |
 | Packed BERT | NLP | Training |[PyTorch](nlp/bert/pytorch), [PopART](nlp/bert/popart) |
 | GPT2 | NLP | Training |[PyTorch](nlp/gpt2/pytorch) , [Hugging Face Optimum](https://huggingface.co/Graphcore/gpt2-medium-ipu) |
-| GPTJ | NLP | Training |[PopXL](nlp/gpt_j/popxl)|  
+| GPTJ | NLP | Training |[PopXL](nlp/gpt_j/popxl)|
 | GPT3-2.7B | NLP | Training |[PopXL](nlp/gpt3_2.7B/popxl) |
 | RoBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/roberta-large-ipu)|
 | DeBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/deberta-base-ipu)|
@@ -147,7 +147,7 @@ If you require POD128/256 setup and configuration for our applications, please c
 | Model | Domain | Type |Links |
 | ------- | ------- |------- | ------- |
 | MNIST RigL | Dynamic Sparsity | Training | [TensorFlow 1](sparsity/dynamic_sparsity/tensorflow1/mnist_rigl) |
-| Autoregressive Language Modelling | Dynamic Sparsity | Training | [TensorFlow 1](sparsity/dynamic_sparsity/tensorflow1/language_modelling) 
+| Autoregressive Language Modelling | Dynamic Sparsity | Training | [TensorFlow 1](sparsity/dynamic_sparsity/tensorflow1/language_modelling)
 | Block-Sparse library  | Sparsity | Training & Inference | [PopART](sparsity/block_sparse/popart) , [TensorFlow 1](sparsity/block_sparse/tensorflow1)|
 
 
@@ -178,7 +178,7 @@ The following applications have been archived. More information can be provided 
 | Minigo | Reinforcement Learning | Training | TensorFlow 1|
 
 
-<br> 
+<br>
 
 ## Developer Resources
 - [Documentation](https://docs.graphcore.ai/en/latest/): Explore our software documentation, user guides, and technical notes
@@ -202,7 +202,7 @@ For more information on using the examples-utils benchmarking module, please ref
 ## PopVision™ Tools
 Visualise your code's inner workings with a user-friendly, graphical interface to optimise your machine learning models.
 
-[Download](https://www.graphcore.ai/developer/popvision-tools) PopVision to analyse IPU performance and utilisation. 
+[Download](https://www.graphcore.ai/developer/popvision-tools) PopVision to analyse IPU performance and utilisation.
 
 <br>
 
@@ -229,17 +229,18 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 
 <details>
 <summary>Sep 2022</summary>
-<br> 
+<br>
 
 *  Added those models below to reference models
     *  Vision : MAE (PyTorch), G16 EfficientNet (PyTorch)
     *  NLP : GPTJ (PopXL), GPT3-2.7B (PopXL)
     *  Multimodal : Frozen in time (PyTorchs), ruDalle(Preview) (PopXL)
+*  Deprecating all TensorFlow 1 applications. Support will be removed in the next release.
 </details>
 
 <details>
 <summary>Aug 2022</summary>
-<br> 
+<br>
 
 * Change the folder name of models
     * NLP : from gpt to gpt2
@@ -248,10 +249,10 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 </details>
 <details>
 <summary>July 2022</summary>
-<br> 
+<br>
 
 *  Major reorganisation of all the apps so that they are arranged as: problem domain / model / framework.
-*  Problem domains: Vision, NLP, Speech, GNN, Sparsity, AI for Simultation, Recomender systems, Reinforcement learning, Probability, Multimodal, and Miscellaneous. 
+*  Problem domains: Vision, NLP, Speech, GNN, Sparsity, AI for Simultation, Recomender systems, Reinforcement learning, Probability, Multimodal, and Miscellaneous.
 *  Added those models below to reference models
     *  Vision : Swin (PyTorch) , ViT (Hugging Face Optimum)
     *  NLP : GPT2 Small/Medium/Large (PyTorch), BERT-Base/Large (PopXL), BERT-Base(PaddlePaddle), BERT-Base/Large(Hugging Face Optimum), GPT2 Small/Medium (Hugging Face Optimum), RoBERTa Base/Large(Hugging Face Optimum), DeBERTa(Hugging Face Optimum), HuBERT(Hugging Face Optimum), BART(Hugging Face Optimum), T5 small(Hugging Face Optimum)

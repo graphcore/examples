@@ -362,7 +362,7 @@ For ease of use, the entire instruction is implemented in the default configurat
 
 Following the training and validation runs, `export_for_serving.py` script can be used to export a model to SavedModel format, which can be subsequently deployed to TensorFlow Serving instances and thus made available for inference. The model should be defined using the same options or configuration file that have been provided to `train.py` for training.
 The following command line creates a SavedModel containing Resnet50 with weights initialized from `checkpoint.h5` file:
-    `python3 scripts/export_for_serving.py --config resnet50_16ipus_8k_bn_pipeline  --export-dir="./resnet50_for_serving/001" --micro-batch-size=1  --checkpoint-file=checkpoint.h5 --keep-pipeline-model=False --iterations=128`
+    `python3 scripts/export_for_serving.py --config resnet50_16ipus_8k_bn_pipeline  --export-dir="./resnet50_for_serving/001" --micro-batch-size=1  --checkpoint-file=checkpoint.h5 --pipeline-serving-model=False --iterations=128`
 
 Please keep in mind that the exported SavedModel can't be used to load the model back into a TensorFlow script, as it only contains the IPU runtime op and an opaque executable and no model state.
 
