@@ -47,6 +47,6 @@
     "lr_warmup_start" : 4e-3,
     "learning_rate": 8e-3,
     "weight_decay": 1e-2,
-    "input_files": ["data/jan2020_three_seq_per_pack_with_duplications_v2/*"],
+    "input_files": ["data/packed_sequence_128/duplication_*"],
     "engine_cache": "__cache_mlperf_bert_tiny"
 }
