@@ -13,5 +13,5 @@ wandb==0.12.8
 pytest==6.2.5
 pytest-pythonpath==0.7.4
 
-git+ssh://git@github.com/graphcore/popxl-addons-internal.git@6da586a0c27e2f5c2280b481d88f349f8e04b627#egg=popxl-addons
+git+ssh://git@github.com/graphcore/popxl-addons.git@6da586a0c27e2f5c2280b481d88f349f8e04b627#egg=popxl-addons
 protobuf==3.20.*; python_version > '3.6'

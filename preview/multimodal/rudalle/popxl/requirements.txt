@@ -11,4 +11,4 @@ bs4
 pytest
 pytest-pythonpath
 
-git+ssh://git@github.com/graphcore/popxl-addons-internal.git@6da586a0c27e2f5c2280b481d88f349f8e04b627#egg=popxl-addons
+git+ssh://git@github.com/graphcore/popxl-addons.git@6da586a0c27e2f5c2280b481d88f349f8e04b627#egg=popxl-addons
