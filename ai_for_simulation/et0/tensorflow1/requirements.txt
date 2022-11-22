@@ -1,4 +1,4 @@
-pillow==8.4.0
+pillow==9.3.0
 scipy==1.5.4
 libtiff==0.4.2
 pytest==6.2.5
