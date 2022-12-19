@@ -1,5 +1,5 @@
 --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-numpy==1.19.5
+numpy==1.22.0
 torch==1.13.0+cpu
 scipy==1.5.4
 torchvision==0.14.0+cpu
