@@ -7,8 +7,12 @@ train_options: &train_options
   output:
     - [samples/sec, "throughput"]
 
+config_options: &config_options
+  requirements_path: requirements.txt
+  pre_run_commands: [make]
+
 pytorch_gpt2_small_train_gen_pod16:
-  <<: *train_options
+  <<: [*train_options, *config_options]
   description: |
     GPT2 Small training for 16 IPUs with generated data.
   cmd: >-
@@ -36,7 +40,7 @@ pytorch_gpt2_small_train_gen_pod16:
       --epochs 1
 
 pytorch_gpt2_small_train_gen_pod64:
-  <<: *train_options
+  <<: [*train_options, *config_options]
   description: |
     GPT2 Small training for 64 IPUs with generated data.
   cmd: >-
@@ -64,7 +68,7 @@ pytorch_gpt2_small_train_gen_pod64:
       --epochs 1
 
 pytorch_gpt2_medium_train_gen_pod16:
-  <<: *train_options
+  <<: [*train_options, *config_options]
   description: |
     GPT2 Medium training for 16 IPUs with generated data.
   cmd: >-
@@ -92,7 +96,7 @@ pytorch_gpt2_medium_train_gen_pod16:
       --epochs 1
 
 pytorch_gpt2_medium_train_gen_pod64:
-  <<: *train_options
+  <<: [*train_options, *config_options]
   description: |
     GPT2 Medium training for 64 IPUs with generated data.
   cmd: >-
@@ -120,7 +124,7 @@ pytorch_gpt2_medium_train_gen_pod64:
       --epochs 1
 
 pytorch_gpt2_large_sl512_train_gen_pod16:
-  <<: *train_options
+  <<: [*train_options, *config_options]
   description: |
     GPT2 Large(length=512) training for 16 IPUs with generated data.
   cmd: >-
@@ -148,7 +152,7 @@ pytorch_gpt2_large_sl512_train_gen_pod16:
       --epochs 1
 
 pytorch_gpt2_large_sl512_train_gen_pod64:
-  <<: *train_options
+  <<: [*train_options, *config_options]
   description: |
     GPT2 Large(length=512) training for 64 IPUs with generated data.
   cmd: >-
@@ -176,7 +180,7 @@ pytorch_gpt2_large_sl512_train_gen_pod64:
       --epochs 1
 
 pytorch_gpt2_large_train_gen_pod16:
-  <<: *train_options
+  <<: [*train_options, *config_options]
   description: |
     GPT2 Large(length=1024) training for 16 IPUs with generated data.
   cmd: >-
@@ -216,7 +220,7 @@ inference_options: &inference_options
     - [latency(ms), "latency"]
 
 pytorch_gpt2_small_infer_gen_pod16:
-  <<: *inference_options
+  <<: [*inference_options, *config_options]
   description: |
     GPT2 small inference for 16 IPUs with generated data.
   cmd: >-
@@ -237,7 +241,7 @@ pytorch_gpt2_small_infer_gen_pod16:
       --replicated-tensor-sharding False
 
 pytorch_gpt2_medium_infer_gen_pod16:
-  <<: *inference_options
+  <<: [*inference_options, *config_options]
   description: |
     GPT2 medium inference for 16 IPUs with generated data.
   cmd: >-
@@ -258,7 +262,7 @@ pytorch_gpt2_medium_infer_gen_pod16:
       --replicated-tensor-sharding False
 
 pytorch_gpt2_large_infer_gen_pod16:
-  <<: *inference_options
+  <<: [*inference_options, *config_options]
   description: |
     GPT2 large inference for 16 IPUs with generated data.
   cmd: >-
@@ -279,7 +283,7 @@ pytorch_gpt2_large_infer_gen_pod16:
       --replicated-tensor-sharding False
 
 pytorch_gpt2_xlarge_infer_gen_pod16:
-  <<: *inference_options
+  <<: [*inference_options, *config_options]
   description: |
     GPT2 XLarge inference for 16 IPUs with generated data.
   cmd: >-

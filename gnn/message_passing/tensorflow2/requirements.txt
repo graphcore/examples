@@ -7,5 +7,8 @@ pytest-mock==3.6.1
 pytest-pythonpath==0.7.4
 pytest-xdist==2.5.0
 regex==2022.4.24
+# Workaround for OGB issue on Python3.9
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==1.13.0+cu116; python_version >= '3.9'
 wandb==0.12.8
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@8f57bfda96af84e3c931837bed052a657328d264#egg=examples-utils

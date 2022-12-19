@@ -21,14 +21,10 @@ class CustomWandbCallback(tf.keras.callbacks.Callback):
 
         # validate wandb args
         wandb_params_keys = set(args['wandb_params'].keys())
-        possible_keys = {'entity', 'project_name', 'run_name', 'tags'}
+        possible_keys = {'run_name', 'tags'}
         unexpected_keys = wandb_params_keys - possible_keys
         if len(unexpected_keys) > 0:
             raise ValueError(f'wandb params contains unexpected fields: {unexpected_keys}')
-
-        entity = args['wandb_params'].get('entity', 'sw-apps')
-
-        project = args['wandb_params'].get('project_name', 'TF2-classification')
 
         if 'model_name' not in args.keys():
             raise MissingArgumentException('Argument \'model_name\' is missing for W&B.')
@@ -39,7 +35,7 @@ class CustomWandbCallback(tf.keras.callbacks.Callback):
 
         tags = args['wandb_params'].get('tags', [])
 
-        wandb.init(entity=entity, project=project, name=name, config=args, tags=tags)
+        wandb.init(project='tf2-resnet50', name=name, config=args, tags=tags)
 
     def on_train_begin(self, logs=None):
         wandb.run.summary['graph'] = wandb.Graph.from_keras(self.model)

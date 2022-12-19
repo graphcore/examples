@@ -9,6 +9,7 @@ import weight_avg
 import sys
 import import_helper
 import utils
+import os
 
 
 def generate_random_seed(distributed=False):
@@ -34,7 +35,8 @@ def parse_arguments():
     parser.add_argument('--momentum', type=float, default=0.0, help="Momentum factor")
     parser.add_argument('--rmsprop-decay', type=float, default=0.99, help="RMSprop smoothing constant")
     parser.add_argument('--epoch', type=int, default=10, help="Number of training epochs")
-    parser.add_argument('--checkpoint-path', type=str, default="", help="Checkpoint path(if it is not defined, no checkpoint is created")
+    parser.add_argument('--checkpoint-input-dir', type=str, default="", help="The dir/path to load pre-existing checkpoints from to initialise a model. If not specified, no checkpoints will be used.")
+    parser.add_argument('--checkpoint-output-dir', type=str, default="", help="The dir/path to save checkpoints to during training. If not specified, no checkpoints will be saved.")
     parser.add_argument('--validation-mode', choices=['none', 'during', 'after'], default="after", help='The model validation mode. none=no validation; during=validate after every epoch; after=validate after the training')
     parser.add_argument('--wandb', action='store_true', help="Add Weights & Biases logging")
     parser.add_argument('--wandb-weight-histogram', action='store_true', help="Log the weight histogram with Weights & Biases")
@@ -102,9 +104,9 @@ def parse_arguments():
         logging.error(f'--available-memory-proportion number of elements should be either 1 or equal to the number of pipeline stages: {num_stages}')
         sys.exit(1)
 
-    if args.weight_avg_strategy != 'none' and args.checkpoint_path == '':
-        logging.error('Please provide a --checkpoint-path folder to apply weight averaging to.')
-        sys.exit(1)
+    if args.weight_avg_strategy != 'none' and args.checkpoint_input_dir == '':
+        args.checkpoint_input_dir = os.path.dirname(os.path.realpath(__file__))
+        logging.warning(f"The checkpoint input path for weight averaging is not specified, so it is set to be {args.checkpoint_input_dir}.")
 
     if args.micro_batch_size == 1 and args.norm_type == "batch":
         logging.warning("BatchNorm with micro batch size of 1 may cause instability during inference.")

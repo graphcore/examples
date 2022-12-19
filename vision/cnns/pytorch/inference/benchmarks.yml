@@ -4,6 +4,8 @@ common_options: &common_options
     - [batchsize, 'batchsize']
     - [samples/sec, 'throughput']
     - [latency(ms), 'latency']
+  env:
+    POPDIST_RUN_DISABLE_SYNC: '1'
 
 regex_options: &regex_options
   data:
@@ -19,9 +21,17 @@ synth_options: &synth_options
   output:
     - [samples/sec, 'throughput']
     - [batchsize, 'batchsize']
+  env:
+    POPDIST_RUN_DISABLE_SYNC: '1'
+
+
+config_options: &config_options
+  requirements_path: requirements.txt
+  required_apt_packages_path: required_apt_packages.txt 
+  pre_run_commands: [make install, make install-turbojpeg]
 
 pytorch_resnet50_infer_synth_pod4:
-  <<: *synth_options
+  <<: [*synth_options, *config_options]
   description: |
     Resnet50 micro-batch-sizes 1 to 80 inference on 4 IPUs using synthetic data
     created on the IPU
@@ -36,10 +46,10 @@ pytorch_resnet50_infer_synth_pod4:
       --config resnet50
       --data synthetic
       --micro-batch-size {batchsize}
-      --iterations 20
+      --iterations 100
 
 pytorch_resnet50_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     Resnet50 micro-batch-sizes 1 to 80 inference on 4 IPUs using data generated on the
     host
@@ -55,11 +65,11 @@ pytorch_resnet50_infer_gen_pod4:
       --config resnet50
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 20
+      --iterations 100
       --num-io-tiles 64
 
 pytorch_resnet50_minlatency_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     Resnet50 micro-batch-sizes 1,2,4 inference on 4 IPUs using data generated on the
     host with minimum latency
@@ -77,12 +87,14 @@ pytorch_resnet50_minlatency_infer_gen_pod4:
       --config resnet50
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 20
+      --iterations 200
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
+    POPDIST_RUN_DISABLE_SYNC: '1'
+
 
 pytorch_resnext101_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     PyTorch Resnext101 micro-batch-sizes 1 to 16 inference on 4 IPUs using data
     generated on the host.
@@ -104,11 +116,11 @@ pytorch_resnext101_infer_gen_pod4:
       --half-partial
       --eight-bit-io
       --normalization-location ipu
-      --iterations 20
+      --iterations 200
       --num-io-tiles 32
 
 pytorch_resnext101_minlatency_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     PyTorch Resnext101 micro-batch-sizes 1 to 4 inference on 4 IPUs using data
     generated on the host with minimum latency.
@@ -132,12 +144,14 @@ pytorch_resnext101_minlatency_infer_gen_pod4:
       --half-partial
       --eight-bit-io
       --normalization-location ipu
-      --iterations 20
+      --iterations 200
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
+    POPDIST_RUN_DISABLE_SYNC: '1'
+
 
 pytorch_efficientnet_b0_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-B0 micro-batch-sizes 1 to 48 inference on 4 IPUs
     using data generated on the host
@@ -158,7 +172,7 @@ pytorch_efficientnet_b0_infer_gen_pod4:
       --dataloader-worker 16
 
 pytorch_efficientnet_b0_minlatency_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-B0 micro-batch-sizes 1 to 4 inference on 4 IPUs
     using data generated on the host, configured for min latency
@@ -179,10 +193,12 @@ pytorch_efficientnet_b0_minlatency_infer_gen_pod4:
       --iterations 200
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
+    POPDIST_RUN_DISABLE_SYNC: '1'
+
 
 
 pytorch_efficientnet_b0_gn_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-B0-G16-GN micro-batch-sizes 1 to 100 inference on 4 IPUs
     using data generated on the host
@@ -202,7 +218,7 @@ pytorch_efficientnet_b0_gn_infer_gen_pod4:
       --num-io-tiles 64
 
 pytorch_resnext101_minlatency_gn_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-B0-G16-GN micro-batch-sizes 1 to 4 inference on 4 IPUs
     using data generated on the host, configured for min latency
@@ -223,9 +239,11 @@ pytorch_resnext101_minlatency_gn_infer_gen_pod4:
       --iterations 200
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
+    POPDIST_RUN_DISABLE_SYNC: '1'
+
 
 pytorch_efficientnet_b4_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-B4 micro-batch-sizes 1 to 10 inference on 4 IPUs
     using data generated on the host
@@ -245,7 +263,7 @@ pytorch_efficientnet_b4_infer_gen_pod4:
       --num-io-tiles 32
 
 pytorch_efficientnet_b4_minlatency_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-B4 micro-batch-sizes 1 to 4 inference on 4 IPUs
     using data generated on the host, configured for min latency
@@ -266,9 +284,11 @@ pytorch_efficientnet_b4_minlatency_infer_gen_pod4:
       --iterations 200
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
+    POPDIST_RUN_DISABLE_SYNC: '1'
+
 
 pytorch_efficientnet_b4_gn_infer_gen_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-B4-G16-GN micro-batch-sizes 1 to 21 inference on 4 IPUs
     using data generated on the host
@@ -288,7 +308,7 @@ pytorch_efficientnet_b4_gn_infer_gen_pod4:
       --num-io-tiles 32
 
 pytorch_resnet50_tritonserver_infer_real_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     Resnet50 in its default configuration (read from configs.yml) 
     which is hosted by Triton server.
@@ -303,7 +323,7 @@ pytorch_resnet50_tritonserver_infer_real_pod4:
       ../tests_serial/tritonserver/
 
 pytorch_efficientnet_b0_tritonserver_infer_real_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-b0 in its default configuration (read from configs.yml) 
     which is hosted by Triton server.
@@ -318,7 +338,7 @@ pytorch_efficientnet_b0_tritonserver_infer_real_pod4:
       ../tests_serial/tritonserver/
 
 pytorch_efficientnet_b4_tritonserver_infer_real_pod4:
-  <<: [*common_options, *regex_options]
+  <<: [*common_options, *regex_options, *config_options]
   description: |
     EfficientNet-b4 in its default configuration (read from configs.yml) 
     which is hosted by Triton server.

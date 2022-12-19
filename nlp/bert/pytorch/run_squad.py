@@ -27,12 +27,13 @@ from datasets import load_dataset, load_metric
 from squad_data import PadCollate, prepare_train_features, prepare_validation_features, postprocess_qa_predictions
 from utils import logger, get_sdk_version
 from args import parse_bert_args
+from checkpointing import resolve_checkpoint_input_dir
 
 
 def main():
     config = transformers.BertConfig(**(vars(parse_bert_args(config_file="configs_squad.yml"))))
-    if not config.pretrained_checkpoint:
-        logger("[warning] --pretrained-checkpoint was not specified; training with uninitialized BERT...")
+    if not config.checkpoint_input_dir:
+        logger("[warning] checkpoint-input-dir was not specified; training with uninitialized BERT...")
     # Warnings for configs where embeddings may not fit
     if config.embedding_serialization_factor == 1:
         if config.replication_factor == 1:
@@ -85,8 +86,9 @@ def main():
         wandb.config.update(wandb_config)
 
     # Create the model
-    if config.pretrained_checkpoint:
-        model_ipu = PipelinedBertForQuestionAnswering.from_pretrained(config.pretrained_checkpoint, config=config).parallelize().half()
+    if config.checkpoint_input_dir:
+        config.checkpoint_input_dir = resolve_checkpoint_input_dir(config.checkpoint_input_dir)
+        model_ipu = PipelinedBertForQuestionAnswering.from_pretrained(config.checkpoint_input_dir, config=config).parallelize().half()
     else:
         model_ipu = PipelinedBertForQuestionAnswering(config).parallelize().half()
 
@@ -159,7 +161,7 @@ def main():
         # Configure to a smaller 2 IPU pipeline
         config.ipus_per_replica = 2
         config.layers_per_ipu = [config.num_hidden_layers // 2, config.num_hidden_layers - config.num_hidden_layers // 2]
-        config.matmul_proportion = [0.3] * 2
+        config.matmul_proportion = [0.25] * 2
 
         samples_per_step = config.device_iterations * config.micro_batch_size * \
             config.gradient_accumulation * config.replication_factor

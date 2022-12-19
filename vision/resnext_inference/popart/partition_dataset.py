@@ -5,10 +5,12 @@ import math
 import shutil
 import argparse
 
+# Make one data directory per process, and copy the entire dataset into it.
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--data-dir", type=str, required=True)
-parser.add_argument("--partitions", type=int, default=8)
-parser.add_argument("--output", type=str, required=True, default="datasets/")
+parser.add_argument("--data-dir", help="Location of dataset to copy", type=str, required=True)
+parser.add_argument("--partitions", help="Number of copies of data to make", type=int, default=8)
+parser.add_argument("--output", help="Location of copies of dataset", type=str, required=True, default="datasets/")
 parser.add_argument("--verbose", action="store_true")
 opts = parser.parse_args()
 
@@ -17,7 +19,6 @@ image_filenames = [os.path.join(opts.data_dir, f) for f in
 image_filenames = [f for f in image_filenames if f.lower().endswith(('.jpg', '.jpeg'))]
 
 num_files = len(image_filenames)
-files_per_partition = math.floor(num_files/opts.partitions)
 
 os.makedirs(opts.output, exist_ok=True)
 
@@ -27,10 +28,11 @@ def copy(src, dst):
         shutil.copy(src, dst)
 
 for i in range(opts.partitions):
+    # The torchvision.datasets.ImageFolder class expects the images to be in a directory with nested subdirectory
     partition_dir = os.path.join(opts.output, str(i), "pytorch_subdir")
     print(f"Partitioned {partition_dir}")
     os.makedirs(partition_dir, exist_ok=True)
-    for f in image_filenames[i*files_per_partition:(i+1)*files_per_partition]:
+    for f in image_filenames:
         dst = os.path.join(partition_dir, os.path.basename(f))
         if opts.verbose:
             print(dst)

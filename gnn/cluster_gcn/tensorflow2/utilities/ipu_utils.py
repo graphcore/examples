@@ -7,8 +7,7 @@ import numpy as np
 import popdist.tensorflow
 import tensorflow as tf
 from tensorflow.python import ipu
-from tensorflow.python.ipu import horovod
-from tensorflow.python.ipu.horovod.popdist_strategy import PopDistStrategy
+from tensorflow.python.ipu.distributed.popdist_strategy import PopDistStrategy
 
 
 def create_ipu_strategy(num_ipus_per_replica,
@@ -80,7 +79,6 @@ def create_ipu_strategy(num_ipus_per_replica,
             logging.error(f'Replication factor given to poprun (=={popdist.getNumTotalReplicas()}) '
                           f'does not match the config (=={num_replicas}).')
         logging.info(f'Total number of instances {popdist.getNumInstances()}')
-        logging.info(f'Local number of instances {horovod.local_size()}')
 
         popdist.tensorflow.set_ipu_config(ipu_config, ipus_per_replica=num_ipus_per_replica, configure_device=True)
     else:

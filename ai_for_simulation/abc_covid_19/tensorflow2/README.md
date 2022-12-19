@@ -1,78 +1,77 @@
-# Probabilistic COVID-19 modelling with Approximate Bayesian Computation (ABC)
+# Approximate Bayesian Computation (ABC) 
+Approximate Bayesian Computation for probabilistic COVID-19 modelling, optimised for Graphcore's IPU.
 
-## Overview
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| TensorFlow2 | Simulation | ABC | CSSEGIS COVID-19 | Object detection | ✅ | ✅ | ['Accelerating Simulation-based Inference with Emerging AI Hardware'](https://ieeexplore.ieee.org/document/9325369) |
 
-This is a representative implementation 
-of Approximate Bayesian Computation (ABC)
-for Simulation-based Inference (SBI).
-A detailed explanation is provided in the background section and in
-"Accelerating Simulation-based Inference with Emerging AI Hardware",
-S Kulkarni, A Tsyplikhin, MM Krell, and CA Moritz, 
-IEEE International Conference on Rebooting Computing (ICRC), 2020.
-In its core, the algorithm determines simulation parameters that best
-describe the observed data from COVID-19 infections 
-to enable statistical inference.
 
-## Dataset
+## Instructions summary
 
-The data is provided in the script `covid_data.py`.
-It was extracted from the 
-[JHU CSSE COVID-19 Data](https://github.com/CSSEGISandData/COVID-19).
-It contains the COVID-19 numbers (detected active cases, 
-recovered cases, and detected cases that lead to death) 
-after the first day with 100 known infections.
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-See also: 
-Dong E, Du H, Gardner L. An interactive web-based dashboard
-to track COVID-19 in real time. Lancet Inf Dis. 20(5):533-534.
-doi: 10.1016/S1473-3099(20)30120-1
+2. Install the system and Python requirements (see Environment setup)
 
-## File Structure
+3. Download the CSSEGIS covid-19 dataset (See Dataset setup)
 
-| File                         | Description                                |
-| ---------------------------- | ------------------------------------------ |
-| `README.md`                  | How to run the model                       |
-| `ABC_IPU.py`                 | Main algorithm script to run IPU model     |
-| `argparser.py`               | Document and read command line parameters  |
-| `covid_data.py`              | Provide already downloaded COVID-19 data   |
-| `requirements.txt`           | Required Python 3 packages                 |
-| `test_ABC.py`                | Test script. Run using `python -m pytest`  |
 
-## Quick start guide
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
 
-### 1) Download the Poplar SDK
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
 
-Install the Poplar SDK following the instructions in the 
-Getting Started guide for your IPU system 
-which can be found here: 
-https://docs.graphcore.ai/projects/ipu-pod-getting-started/en/latest/installation.html.
-Make sure to source the `enable.sh` script for Poplar as well as the drivers.
-
-### 2) Package installation
-
-Make sure that the virtualenv package is installed for Python 3.
-
-### 3) Prepare the TensorFlow environment
-
-Activate a Python3 virtual environment with the `tensorflow`
-wheel version 2.4 included in the SDK as follows:
-
-```
-python3 -m venv venv
-source venv/bin/activate
-pip install <path to tensorflow_2.4.whl>
-pip install -r requirements.txt
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-### 4) Execution
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
 
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+```bash
+cd <poplar sdk root dir>
+pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
+pip3 install ipu_tensorflow_addons-2.X.X...any.whl
+```
+For the CPU architecture you are running on
+
+4. Build the custom ops:
+```bash
+cd static_ops && make
+```
+
+
+## Dataset setup
+Download the dataset from [the source](https://github.com/CSSEGISandData/COVID-19), or use the script provided:
+```bash
+python3 covid_data.py
+```
+
+
+## Run the example
 To execute the application, you can run for example
 
-```
-python ABC_IPU.py --enqueue-chunk-size 10000 --tolerance 5e5 --n-samples-target 100 --n-samples-per-batch 400000 --country US --samples-filepath US_5e5_100.txt --replication-factor 4
+```bash
+python3 ABC_IPU.py --enqueue-chunk-size 10000 --tolerance 5e5 --n-samples-target 100 --n-samples-per-batch 400000 --country US --samples-filepath US_5e5_100.txt --replication-factor 4
 ```
 
-All command line options and defaults are explained in `argparser.py`.
 
 ## Background
 We are looking at data from Italy in the Johns Hopkins University dataset

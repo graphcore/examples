@@ -60,9 +60,6 @@ def training(config: BertConfig, session: TaskSession, dataset: Dataset):
                         .astype(h2d.dtype.as_numpy())\
                         .reshape(session.ir.num_host_transfers, config.execution.data_parallel, *h2d.shape)
 
-                seeds = popxl.create_seeds(config.model.seed, step, batches_per_step=session.ir.num_host_transfers, replicas=config.execution.data_parallel)
-                data_map[session.inputs[len(data_map)]] = seeds
-
                 # # Add learning rate inputs
                 # # TODO: Allow accepting of smaller sized inputs.
                 data_map[session.inputs[len(data_map)]] = np.full((session.ir.num_host_transfers, config.execution.data_parallel, 1), lr_schedule[step]).astype(np.float32)

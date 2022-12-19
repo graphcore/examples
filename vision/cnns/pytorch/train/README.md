@@ -129,7 +129,9 @@ The program has a few command line options:
 
 `--warmup-epoch`                Number of learning rate warmup epochs
 
-`--checkpoint-path`             The checkpoint folder. In the given folder a checkpoint is created after every epoch
+`--checkpoint-input-path`       The path/dir that checkpoint(s) are read from for validation/weight averaging (during/after training)
+
+`--checkpoint-output-path`      The dir that checkpoints are saved to during training
 
 `--optimizer`                   Define the optimizer: `sgd`, `sgd_combined`, `adamw`, `rmsprop`, `rmsprop_tf`
 
@@ -224,19 +226,19 @@ python3 train.py --config <config name> --auto-loss-scaling
 A given checkpoint file can be used to restore the training and continue from there, with the following command:
 
 ```console
-       python3 restore.py --checkpoint-path <File path>
+       python3 restore.py --checkpoint-input-path <File path>
 ```
 
 Validation is also possible with the following command:
 
 ```console
-       python3 validate.py --checkpoint-path <path>
+       python3 validate.py --checkpoint-input-path <path>
 ```
 
 Weight average is available with the following command:
 
 ```console
-       python3 weight_avg.py --checkpoint-path <path>
+       python3 weight_avg.py --checkpoint-input-path <path>
 ```
 
 If the provided path is a file: The validation accuracy is calculated for the given file.
@@ -256,13 +258,13 @@ The following scripts support the previously defined arguments too.
 ResNet50 IPU-POD16 reference
 
 ```
-./rn50_pod16.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet>
+./rn50_pod16.sh --checkpoint-output-path <path> --checkpoint-input-path <path> --imagenet-data-path <path-to/imagenet>
 ```
 
 ResNet50 IPU-POD64 reference
 
 ```
-./rn50_pod64.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet>
+./rn50_pod64.sh --checkpoint-output-path <path> --checkpoint-input-path <path> --imagenet-data-path <path-to/imagenet>
 ```
 
 In case the script is unable to select the right partition or VIPU server, you can set them by running the following lines.
@@ -274,5 +276,5 @@ export PARTITION=<name of the selected partition>
 
 EfficientNet-B4 (Group Norm, Group Conv) IPU-POD16 reference
 ```
-./efficientnet_b4_pod16.sh --checkpoint-path <path> --imagenet-data-path <path-to/imagenet>
+./efficientnet_b4_pod16.sh --checkpoint-output-path <path> --checkpoint-input-path <path> --imagenet-data-path <path-to/imagenet>
 ```

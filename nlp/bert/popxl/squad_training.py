@@ -26,6 +26,8 @@ from popxl_addons.remote import (
     load_remote_graph,
     store_remote_graph,
 )
+from popxl_addons.named_replica_grouping import NamedReplicaGrouping, \
+    get_ild_replica_grouping
 
 from config import BertConfig, CONFIG_DIR
 from utils.setup import bert_config_setup
@@ -36,10 +38,27 @@ from modelling.squad import BertSquadLossAndGrad
 __all__ = ["squad_training_phased"]
 
 OptimGraphs = Dict[str, GraphWithNamedArgs]
+RTS_THRESHOLD = 1024
 
 
 def requires_weight_decay(t: popxl.Tensor):
     return not any(map(lambda exclude: exclude in t.name, ["norm", "bias"]))
+
+
+def get_rts_groups(facts: NamedVariableFactories) -> NamedReplicaGrouping:
+    ir = popxl.gcg().ir
+
+    rts_groups = {}
+    for k, f in facts.to_dict().items():
+        size = np.prod(f.shape)
+        rg = f.replica_grouping
+        # Limit RTS to within an ILD
+        rg = get_ild_replica_grouping(rg)
+        if size % rg.group_size == 0 and size >= RTS_THRESHOLD:
+            rts_groups[k] = rg
+        else:
+            rts_groups[k] = ir.replica_grouping(group_size=1)
+    return NamedReplicaGrouping.from_dict(rts_groups)
 
 
 class Graphs:
@@ -53,14 +72,16 @@ class Graphs:
         required_grads = () if isinstance(
             layer, BertEmbeddings) else (self.fwd.graph.inputs[0],)
         grad_args, self.grad = addons.autodiff_with_accumulation(
-            self.fwd, self.fwd.args.tensors, required_grads)
+            self.fwd, self.fwd.args.tensors, grads_required=required_grads)
 
         optim_args = {}
         self.optim: OptimGraphs = {}
+        fwd_rts_groups = get_rts_groups(fwd_args)
+        shard_over = fwd_rts_groups.to_dict()
         for name, var in self.fwd.args.to_dict().items():
             optim_args[name], self.optim[name] = optimizer.create_graph(
-                replica_sharded_spec(var),
-                replica_sharded_spec(var),
+                replica_sharded_spec(var, shard_over[name]),
+                replica_sharded_spec(var, shard_over[name]),
                 lr=popxl.TensorSpec((), popxl.float32),
                 weight_decay=config.training.optimizer.weight_decay if requires_weight_decay(
                     var) else 0.0,
@@ -69,15 +90,21 @@ class Graphs:
                 eps=(1e-6 * config.execution.loss_scaling),
                 bias_correction=False)
 
+        optim_args = NamedVariableFactories.from_dict(optim_args)
         # Variables required
         self.args = NamedVariableFactories(
             fwd=fwd_args,
-            optim=NamedVariableFactories.from_dict(optim_args))
+            optim=optim_args)
         self.grad_args = grad_args
 
         # Create remote buffers for fwd vars and optimiser state.
         entries = config.model.layers if isinstance(layer, BertLayer) else 1
-        self.buffers = named_variable_buffers(self.args, entries)
+        rts_group = NamedReplicaGrouping(
+            fwd=fwd_rts_groups, optim=get_rts_groups(optim_args))
+        shard_over = {k: rg.group_size for k,
+                      rg in rts_group.to_dict().items()}
+        self.buffers = named_variable_buffers(
+            self.args, entries, shard_over_dict=shard_over)
 
         # Create Graphs for loading/gathering/storing/reducing
         self._fwd_load, self._fwd_load_names = load_remote_graph(
@@ -92,7 +119,7 @@ class Graphs:
         grad_accums = self.grad.args.copy()
         grad_accums.pop("mean_accum_counter")
         self._grad_reduce, self._grad_reduce_names = reduce_replica_sharded_graph(
-            grad_accums, 'mean')
+            grad_accums, 'mean', shard_groups=get_rts_groups(self.grad_args))
 
     @classmethod
     def empty(cls):
@@ -120,10 +147,11 @@ def create_squad_graph(config: BertConfig, optimizer: addons.Module, *args, **kw
 
     optim_args: Dict[str, NamedVariableFactories] = {}
     optim_graphs: OptimGraphs = {}
+    shard_over = get_rts_groups(args.fwd).to_dict()
     for name, var in graph.args.fwd.to_dict().items():
         optim_args[name], optim_graphs[name] = optimizer.create_graph(
-            replica_sharded_spec(var),
-            replica_sharded_spec(var),
+            replica_sharded_spec(var, shard_over[name]),
+            replica_sharded_spec(var, shard_over[name]),
             lr=popxl.constant(1e-3),  # TODO: Replace with TensorSpec
             weight_decay=config.training.optimizer.weight_decay if requires_weight_decay(
                 var) else 0.0,
@@ -141,7 +169,10 @@ def create_squad_graph(config: BertConfig, optimizer: addons.Module, *args, **kw
     squad.args = args
     squad.grad_args = grad_args
     # Create remote buffers for fwd vars and optimiser state.
-    squad.buffers = named_variable_buffers(args)
+    rts_group = get_rts_groups(args)
+    shard_over = {k: rg.group_size for k,
+                  rg in rts_group.to_dict().items()}
+    squad.buffers = named_variable_buffers(args, shard_over_dict=shard_over)
     squad._fwd_load, squad._fwd_load_names = load_remote_graph(
         squad.buffers.fwd)
     squad._optim_load, squad._optim_load_names = load_remote_graph(
@@ -149,10 +180,10 @@ def create_squad_graph(config: BertConfig, optimizer: addons.Module, *args, **kw
     squad._optim_store = store_remote_graph(squad.buffers)
     squad._fwd_all_gather, squad._fwd_all_gather_names = all_gather_replica_sharded_graph(
         NamedTensors.pack(squad._fwd_load_names, squad._fwd_load.graph.outputs))
-    grad_accums = graph.args.grad.copy()
+    grad_accums = grad_args.copy()
     grad_accums.pop("mean_accum_counter")
     squad._grad_reduce, squad._grad_reduce_names = reduce_replica_sharded_graph(
-        grad_accums, 'mean')
+        grad_accums, 'mean', shard_groups=get_rts_groups(grad_accums))
 
     return squad
 
@@ -243,7 +274,8 @@ def squad_batch_serialise(config: BertConfig,
             squad.fwd.graph.inputs[1]: inputs.labels
         },
         store_streams={squad.fwd.graph.outputs[0]: outputs.loss},
-        store_buffers={squad.fwd.graph.outputs[1]: (dx_buffer, config.model.layers)},
+        store_buffers={squad.fwd.graph.outputs[1]: (
+            dx_buffer, config.model.layers)},
         rows=1,
         io_mode='io')
     squad.fwd = bs_squad.graph
@@ -271,20 +303,22 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
             token_type=(input_shape, popxl.uint32),
             mask=(input_shape, config.model.dtype),
             labels=((config.execution.micro_batch_size, 2), popxl.uint32),
-            seed=((2,), popxl.uint32),
             lr=((), popxl.float32)
         )
         outputs = addons.OutputStreams(
             loss=((), config.model.dtype)
         )
 
+        # ---- Initialise Random Seed ----
+        seed_v, seed = addons.seed_variable(config.model.seed)
+
         # ----- Build compute graphs -----
         optimizer = AdamOptimizerStep(cache=True)
 
         embeddings = Graphs(
-            config, BertEmbeddings(config), optimizer, inputs.words.spec, inputs.token_type.spec, seed=inputs.seed.spec)
+            config, BertEmbeddings(config), optimizer, inputs.words.spec, inputs.token_type.spec, seed=seed.spec)
         layer = Graphs(
-            config, BertLayer(config), optimizer, embeddings.fwd.graph.outputs[0].spec, inputs.mask.spec, seed=inputs.seed.spec)
+            config, BertLayer(config), optimizer, embeddings.fwd.graph.outputs[0].spec, inputs.mask.spec, seed=seed.spec)
 
         squad = create_squad_graph(
             config,
@@ -300,13 +334,18 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
 
         # Batch Serialisation
         #   Buffers
-        x_buffer = batch_serial_buffer(embeddings.fwd.graph.outputs[0], steps=config.gradient_accumulation, rows=config.model.layers+1)
-        dx_buffer = batch_serial_buffer(embeddings.grad.graph.inputs[0], steps=config.gradient_accumulation, rows=config.model.layers+1)
-        mask_buffer = batch_serial_buffer(layer.fwd.graph.inputs[1], steps=config.gradient_accumulation)
+        x_buffer = batch_serial_buffer(
+            embeddings.fwd.graph.outputs[0], steps=config.gradient_accumulation, rows=config.model.layers+1)
+        dx_buffer = batch_serial_buffer(
+            embeddings.grad.graph.inputs[0], steps=config.gradient_accumulation, rows=config.model.layers+1)
+        mask_buffer = batch_serial_buffer(
+            layer.fwd.graph.inputs[1], steps=config.gradient_accumulation)
         #   Graphs
-        embeddings_batch_serialise(config, embeddings, inputs, x_buffer, dx_buffer)
+        embeddings_batch_serialise(
+            config, embeddings, inputs, x_buffer, dx_buffer)
         layer_batch_serialise(config, layer, x_buffer, dx_buffer, mask_buffer)
-        squad_batch_serialise(config, squad, inputs, outputs, x_buffer, dx_buffer)
+        squad_batch_serialise(config, squad, inputs,
+                              outputs, x_buffer, dx_buffer)
 
         # Available Memory Proportion
         addons.set_available_memory_proportion_by_ipu(
@@ -314,7 +353,7 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
 
         # ----- Create Variables -----
 
-        variables = NamedTensors()
+        variables = NamedTensors(random_seed=seed_v)
         variables.insert("embeddings", embeddings.args.init_remote(
             embeddings.buffers, 0, "embeddings"))
         variables.insert("squad", squad.args.init_remote(
@@ -328,9 +367,9 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
 
         with popxl.in_sequence():
             # Load current learning rate
-            with popxl.transforms.merge_exchange(), popxl.in_sequence(False):
-                seed = ops.host_load(inputs.seed)
-                lr = ops.host_load(inputs.lr)
+            lr = ops.host_load(inputs.lr)
+            # Increment random seed
+            seed += 1
 
             @popxl.io_tiles()
             def fill_buffer_from_host(i: popxl.Tensor, stream: popxl.HostToDeviceStream, buffer: popxl.RemoteBuffer):
@@ -399,7 +438,8 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
                 return n - 1
 
             i = popxl.constant(config.model.layers - 1)
-            bwd_graph = ir.create_graph(single_bert_layer_grad_optimizer_phase, i, lr)
+            bwd_graph = ir.create_graph(
+                single_bert_layer_grad_optimizer_phase, i, lr)
             ops.repeat(bwd_graph, config.model.layers, i, lr)
 
             def embedding_grad_optimizer_phase():
@@ -414,7 +454,8 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
                 embeddings.grad.bind(bwd_vars).call(0)
                 # Optimizer
                 reduced_grads = embeddings.grad_reduce(grads)
-                optimizer_step(embeddings.optim, embeddings_vars, reduced_grads, lr)
+                optimizer_step(embeddings.optim,
+                               embeddings_vars, reduced_grads, lr)
                 # Store
                 embeddings.optim_store(embeddings_vars, 0)
 
@@ -429,16 +470,17 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
         squad=variables.squad.fwd,
     )
 
-    logging.info(f"popxl IR construction duration: {(time.time() - t) / 60:.2f} mins")
+    logging.info(
+        f"popxl IR construction duration: {(time.time() - t) / 60:.2f} mins")
 
     ir.num_host_transfers = config.execution.device_iterations * \
         config.gradient_accumulation
     session = TaskSession(
-        inputs,
-        outputs,
-        fwd_vars,
-        ir,
-        "ipu_hw"
+        inputs=inputs,
+        outputs=outputs,
+        state=fwd_vars,
+        ir=ir,
+        device_desc="ipu_hw"
     )
     return session
 
@@ -452,7 +494,8 @@ def main():
     session = squad_training_phased(config)
 
     inputs = {
-        stream: np.ones(session._full_input_shape(stream.shape), stream.dtype.as_numpy())
+        stream: np.ones(session._full_input_shape(
+            stream.shape), stream.dtype.as_numpy())
         for stream in session.expected_inputs()}
 
     with session:
@@ -466,7 +509,8 @@ def main():
             durations.append(time.time() - start)
     duration = np.mean(durations)
 
-    samples_per_step = config.execution.device_iterations * config.training.global_batch_size
+    samples_per_step = config.execution.device_iterations * \
+        config.training.global_batch_size
     result_str = \
         f"Duration: {duration} s " \
         f"throughput: {samples_per_step/duration:6.1f} samples/sec "

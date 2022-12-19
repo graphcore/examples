@@ -16,7 +16,7 @@ This benchmark uses the COCO dataset (COCOval2014) which can be downloaded from 
 
 ## Running the model
 
-This application runs resnext101_32d.onnx for inference over 8 IPUs. Each IPU runs a single PopART inference session, and receives one portion of the total dataset.
+This application runs resnext101_32d.onnx for inference over 4 IPUs. Each IPU runs a single PopART inference session as a separate Python subprocess. In order to provide enough data to run the model inference for multiple host-to-device iterations, we have set this demo up so that each inference session processes the entire dataset. Each of these iterations fills the host buffers with `device-iterations`-many batches, which are pulled onto the IPU batch by batch. In a realistic bulk inference workload, you would instead partition the dataset between inference sessions.
 
 The following files are provided for running the ResNeXt benchmark. 
 
@@ -25,7 +25,7 @@ The following files are provided for running the ResNeXt benchmark.
 | `data.py`                     | Define a dataset class. Instances are iterated over to feed the model                                                             |
 | `dataloader.py`               | Prepare and load the data into host buffer                                                             |
 | `get_model.py`                | Download the pre-trained ResNeXt model                       |
-| `partition_dataset.py`        | Partition the COCO dataset into 8 directories for the 8 IPUs |
+| `setup_dataset.py`        | Copy the COCO dataset into distinct copies per inference process |
 | `requirements.txt`            | Python requirements                                          |
 | `resnext101.py`               | ResNeXt model definition                                     |
 | `resnext_inference_launch.py` | Launch multiple inference sessions as child processes                                              |
@@ -84,25 +84,24 @@ NOTE: If this script is run, the `Prepare the dataset` and `Prepare the model` s
 
 #### Prepare the dataset
 
-Assuming you are running on 8 IPUs, the COCO dataset should be partitioned into 8 distinct directories so each one can be read and streamed onto an IPU by a different process. To set the dataset partition up, make a directory to contain the data subsets, and then run `partition_dataset.py` as follows:
+Assuming you are running on 4 IPUs, we will make 4 copies of the COCO dataset so each one can be read and streamed onto an IPU by a different process. To do this, run `setup_dataset.py` as follows:
 
 ```
-(popart) $ mkdir datasets
-(popart) $ python partition_dataset.py --data-dir /localdata/datasets/coco/val2014 --partitions 8 --output datasets
+(popart) $ python setup_dataset.py --data-dir /path/to/coco/val2014 --copies 4 --output datasets
 ```
 
-Where `data-dir` is the location of the COCO dataset.
+Where `data-dir` is the location of the COCO dataset and `output` is the location where copies are to be written.
 
 #### Prepare the model
 
-This application can run over multiple IPUs. It does this by creating multiple PopART `inference Session`s, each of which uses one ONNX model and processes a fraction of the total batch of data. The size of the data that is used by one model is called the `micro batch size`. The total batch size used will therefore be `micro-batch-size * num-ipus`.
+This application can run over multiple IPUs. It does this by creating multiple PopART `inference Session`s, each of which uses one ONNX model. The size of the data that is used by one model is called the `micro batch size`. The total batch size used will therefore be `micro-batch-size * num-ipus`.
 
 **1) Download the model**
 
 To download the pretrained ResNext101 model from Cadene’s pretrained models repository (https://github.com/Cadene/pretrained-models.pytorch#resnext), convert it to ONNX format, and create a copy with chosen micro batch size (in this example a micro batch size of 6), run:
 
 ```
-(popart) $ python get_model.py --micro-batch-size 6
+(popart) $ python get_model.py --micro-batch-size 64
 ```
 
 This will add the configured model to the directory `models/resnext101_32x4d/`.
@@ -113,7 +112,7 @@ Now you have set up the data and created the model you can run the model on the 
 
 
 ```
-(popart) $ python resnext_inference_launch.py --batch_size 48 --num_ipus 8
+(popart) $ python resnext_inference_launch.py --batch_size 256 --num_ipus 4
 ```
 
 Logging data, including throughput, is written per subprocess in `logs/` and aggregated over all subprocesses in stdout. Inference results are fetched but not written to file. This can be changed in 'resnext101.py', where outputs are saved as `results`.
@@ -136,30 +135,30 @@ flags:
 
 resnext_inference_launch.py:
   --batch_size: Overall size of batch (across all devices).
-    (default: '48')
-    (an integer)
-  --device_iterations: Number of batches to fetch on the host ready for streaming onto the device, reducing host IO
-    (default: '1500')
+    (default: '256')
     (an integer)
   --data_dir: Parent directory containing subdirectory dataset(s). The number of sub directories should equal num_ipus
     (default: 'datasets/')
-  --iterations: Number of iterations to run if using synthetic data. Each iteration uses one `device_iterations` x `batch_size` x `H` x `W` x `C` sized input tensor.
+  --device_iterations: Number of batches to fetch on the host ready for streaming onto the device, reducing host IO
+    (default: '200')
+    (an integer)
+  --[no]hide_output: If set to true the subprocess that the model is run with will hide output.
+    (default: 'true')
+  --iterations: Number of iterations to run if using synthetic data.
     (default: '1')
     (an integer)
+  --log_path: If set, the logs will be saved to this specfic path, instead of logs/
   --model_name: model name. Used to locate ONNX protobuf in models/
     (default: 'resnext101_32x4d')
+  --model_path: If set, the model will be read from this specfic path, instead of models/
   --num_ipus: Number of IPUs to be used. One IPU runs one compute process and processes a fraction of the batch of samples.
-    (default: '8')
-    (an integer)
-  --num_workers: Number of threads per dataloader. There is one dataloader per IPU.
     (default: '4')
     (an integer)
-  --[no]synthetic: Use synthetic data created on the IPU.
+  --num_workers: Number of threads per dataloader. There is one dataloader per IPU.
+    (default: '2')
+    (an integer)
+  --[no]report_hw_cycle_count: Report the number of cycles a 'run' takes.
     (default: 'false')
-  --model-path: Directory containing the saved model required to run the model.
-    (default: 'models/')
-  --log-path: The directory where the logs will be saved.
-    (default: 'logs/')
-  --hide-output: If set the stdout of the subprocess that runs the model will be hidden.
+  --[no]synthetic: Use synthetic data created on the IPU.
     (default: 'false')
 ```

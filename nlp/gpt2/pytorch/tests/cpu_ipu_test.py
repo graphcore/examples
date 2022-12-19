@@ -133,4 +133,4 @@ def test_ipu_cpu_match():
         with torch.no_grad():
             print(f"CPU Loss: {cpu_loss}, IPU Loss: {ipu_loss}")
             # Check the losses are approximately equal
-            assert np.allclose(cpu_loss.numpy(), ipu_loss.numpy(), rtol=1e-3)
+            assert np.allclose(cpu_loss.numpy(), ipu_loss.numpy(), rtol=1e-2)

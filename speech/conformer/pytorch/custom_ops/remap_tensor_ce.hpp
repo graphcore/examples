@@ -21,6 +21,7 @@
 #include <popart/names.hpp>
 #include <popart/popx/opx.hpp>
 #include <popart/popx/devicex.hpp>
+#include <popart/popx/popopx.hpp>
 
 using namespace popart;
 using namespace popart::popx;
@@ -134,7 +135,7 @@ class RemapCEBaseOpx : public PopOpx {
 
 public:
   RemapCEBaseOpx(Op *, Devicex *);
-  InputCreatorType getInputCreatorType(InIndex) const override;
+  InputCreatorType getInputCreatorType(InIndex index) const override;
   snap::Tensor
       unwindTensorLayout(snap::Tensor, InIndex, OutIndex) const override;
   view::RegMap unwindRegion(InIndex, OutIndex) const override;

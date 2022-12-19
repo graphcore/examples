@@ -1,64 +1,99 @@
-# Graphcore IPU EfficientDet Inference Benchmark
+# EfficientDet
+Efficient Object Detection, based on the [AutoML EfficientDet code](https://github.com/google/automl/tree/master/efficientdet), optimised for Graphcore's IPU.
 
-## Setup
-
-This example shows an implementation of EfficientDet in TensorFlow 2 Keras for the IPU.
-It was originally based on the [AutoML EfficientDet code](https://github.com/google/automl/tree/master/efficientdet),
- and some files are reproduced here verbatim, or with minor changes.
-
-More details about how to use Keras on IPU can be found in the [Keras on the IPU tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/tensorflow2/keras).
-
-The model is based on the paper ['EfficientDet: Scalable and Efficient Object Detection'](https://arxiv.org/abs/1911.09070) by Mingxing Tan, Ruoming Pang, Quoc V. Le (2020).
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| TensorFlow2 | Vision | EfficientDet | N/A | Object detection | ❌ | ✅ | | ['EfficientDet: Scalable and Efficient Object Detection'](https://arxiv.org/abs/1911.09070) |
 
 ![EfficientDet](docs/efficientdet-model.jpg)
-
 Image reproduced from the above paper.
 
-## Folder structure
 
-- `ipu_inference.py`: Throughput-focused inference benchmark script, which can also output predictions to disk.
-- `ipu_embedded_runtime.py`: Low-latency benchmark script using the embedded application runtime.
-- `ipu_nms.py`: A wrapper for the NMS custom operator with results pre- and post- processing.
-- `ipu_automl_io.py`: A collection of pre- and post-processing functions modified from the AutoML model.
-- `ipu_utils/*`: A collection of utility functions and classes used in the above applications.
-- `ipu_configs/*`: YAML configs which define the different model optimisation parameters for throughput and latency.
-- `NMS`: Directory containing code for the Non-Maximum Supression (NMS) IPU custom op, which should be built before running the application. This depends on boost json serializer.
-- `Makefile`: Use this to make the NMS op.
-- `tests` Directory containing PyTest tests for the application.
-- `hparams_config.py`: Model configuration parameters taken from the AutoML EfficientDet repository (some minor changes for IPU).
-- `dataloader.py`: Data preparation functions from the AutoML EfficientDet repository. Required by `ipu_automl_io.py`
-- `nms_np.py`: Numpy implementation of NMS, taken from  the AutoML EfficientDet repository.
-- `utils.py`: Helper functions, taken from  the AutoML EfficientDet repository.
-- `backbone`: The EfficientNet backbone from the AutoML EfficientDet repository (some minor changes for IPU).
-- `tf2`: Files from the AutoML EfficientDet repository containing the model definition (some minor changes for IPU).
-- `object_detection`: Helper functions from the AutoML EfficientDet repository, used for post-processing model outputs (unchanged).
-- `visualize`: Helper functions from the AutoML EfficientDet repository, used for visualising bounding boxes (unchanged).
-- `README.md`: This file.
+## Instructions summary
 
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-## Setup
+2. Install the system and Python requirements (see Environment setup)
 
-### 1. Install the Poplar SDK
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
 
-Download and install the Poplar SDK following the [Getting Started guide for your IPU system](https://docs.graphcore.ai/projects/ipu-pod-getting-started/en/latest/index.html).
-Source the `enable.sh` script to install Poplar.
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
 
-### 2. Setup a Virtual Environment
-
-Create a virtual environment and install the appropriate Graphcore TensorFlow wheel from inside the SDK directory:
-
-```shell
-$ python3 -m venv effdet_venv
-$ source effdet_venv/bin/activate
-$ python3 -m pip install -r requirements.txt
-$ python3 -m pip install <path to the tensorflow-2 wheel from the Poplar SDK>
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-To support Non-Maximal Suppression on IPU, we have implemented a custom TensorFlow operator. This needs to be build before running your application with the default configuration:
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
 
-```shell
-$ make
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
 ```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+```bash
+cd <poplar sdk root dir>
+pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
+pip3 install ipu_tensorflow_addons-2.X.X...any.whl
+```
+For the CPU architecture you are running on
+
+4. Install the Keras wheel:
+```bash
+pip3 install --force-reinstall --no-deps keras-2.X.X...any.whl
+```
+For further information on Keras on the IPU, see the [documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/keras/keras.html#keras-with-ipus) and the [tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/tensorflow2/keras).
+
+5. Navigate to this example's root directory
+
+6. Install the Python requirements:
+```bash
+pip3 install -r requirements.txt
+```
+
+7. Build the custom ops:
+```bash
+make
+```
+
+
+## Dataset setup
+There are no datasets required for running this inference example, any images can be used. 
+
+
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
+
+For example:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
+
+## Custom inference and other features
 
 ### Downloading weights and AutoML test image.
 
@@ -73,7 +108,7 @@ Our implementation, by default, expects the checkpoint to be in a directory call
 
 To download the model checkpoints, you can use the following snippet:
 
-```shell
+```bash
 for i in $(seq 0 ${MAX_MODEL_SIZE}); do
     MODEL_NAME=efficientdet-d${i}
     wget https://storage.googleapis.com/cloud-tpu-checkpoints/efficientdet/coco/${MODEL_NAME}.tar.gz -O tmp/${MODEL_NAME}.tar.gz
@@ -83,27 +118,11 @@ done
 
 The test image used below, and in the original [Google Brain AutoML](https://github.com/google/automl/tree/master/efficientdet) repository, can be downloaded using `wget`:
 
-```shell
+```bash
 $ wget https://user-images.githubusercontent.com/11736571/77320690-099af300-6d37-11ea-9d86-24f14dc2d540.png -O tmp/img.png
 ```
 
-## Running and benchmarking
-
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
-```
-
-Or to run a specific benchmark in the `benchmarks.yml` file provided:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
-```
-
-For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
-
-## EfficientDet for high throughput inference
+### High-throughput inference
 
 In the simplest case, simply call the `ipu_inference.py` script, with the name of the model you'd like to run:
 
@@ -122,7 +141,7 @@ For descriptions of the various possible arguments, please see `ipu_utils.py` or
 $ python ipu_inference.py --help
 ```
 
-## EfficientDet for low latency inference
+### Low-latency inference
 
 Using standard TensorFlow calls provides a simple programming interface run the model; however there are setup and tear-down costs that can increase latency in real-world applications.
 
@@ -141,7 +160,7 @@ The `ipu_embedded_inference.py` script supports most of the arguments that can b
 
 The embedded application runtime is currently supported in TF1, so to use the Keras model from AutoML we use TF2 in compatibility mode.
 
-## Input datasets
+### Input datasets
 There are several types of input dataset that have be configured for this application, which can be chosen using the `--dataset-type` flag.
 
 In the following section `benchmark_repeats` refers to the number of times the input data are repeated to build up a large enough dataset for representative benchmarking.
@@ -157,13 +176,13 @@ For all dataset types, except for `generated`, the input path is specified using
 $ python ipu_inference.py --model-name efficientdet-d0 --dataset-type single-image --image-path tmp/img.png
 ```
 
-## Saving outputs to a file
+### Saving outputs to a file
 
 To save the bounding boxes and class annotations to a file, use the `--output-predicitions` flag, along with the `--output-dir` argument, which will create a directory in which to store the annotated images.
 
 ![EfficientDet](docs/efficientdet-d4_1024_output_b0_img0.jpg)
 
-## Post-processing
+### Post-processing
 
 It is standard practice to run Non-Maximum Suppression (NMS) on the detections that come out of the model, as there are likely to be many overlapping bounding box candidates for the same class. The output tensors here reflect the 5 scales of the feature maps, the number of classes and the number of box candidate regions. These output tensors are relatively large; in the case of D0: 
 
@@ -216,7 +235,7 @@ By default, no post-processing will be performed, and the benchmark will just in
 $ python ipu_inference.py --model-name efficientdet-d0 --onchip-nms false --benchmark-host-postprocessing
 ```
 
-## LICENSE
+## License
 
 This example is licensed under the Apache License 2.0 - see the LICENSE file in this directory.
 

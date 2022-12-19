@@ -4,7 +4,6 @@ import time
 import logging
 
 import wandb
-from torch.utils.data import DataLoader
 import numpy as np
 from functools import partial
 from transformers import AutoTokenizer
@@ -19,11 +18,13 @@ from data.hf_data_utils import group_texts
 from data.mnli_data import form_text, tokenizes_text, concat_and_transpose
 from popxl_addons import TaskSession
 from config import GPTJConfig, CONFIG_DIR
-from utils.setup import wandb_init, gptj_config_setup
+from utils.setup import wandb_init, gptj_fine_tuning_setup
+from modelling.hf_mapping import hf_mapping_lm_tp
+
 from finetuning_mnli import finetuning_mnli
 from modelling.embedding import GPTJEmbeddingsTP
 from modelling.gptj_lm import GPTJLMHeadLossAndGradTP
-from data.data_utils import WorkerInit, collate_fn
+from data.data_utils import WorkerInit, DistributedSampler, StatefulDataLoader
 from utils.utils import tensor_parallel_input, warmup_schedule
 
 
@@ -36,7 +37,7 @@ def generate_synthetic_data(config: GPTJConfig):
 
 
 def overfit(config: GPTJConfig, session: TaskSession):
-    replicas = session.ir.replication_factor
+    replicas = session.ir.instance_replication_factor
     n_shards = config.execution.tensor_parallel
     samples_per_step = config.execution.device_iterations * config.training.global_batch_size
 
@@ -60,13 +61,16 @@ def overfit(config: GPTJConfig, session: TaskSession):
                               batch_size=1000,
                               num_proc=1,
                               load_from_cache_file=True, desc='Packing sequences')
-        train_dl = DataLoader(dataset,
+                                      
+        sampler = DistributedSampler(dataset)
+        train_dl = StatefulDataLoader(dataset,
                               batch_size=samples_per_step,
                               drop_last=True,
                               num_workers=1,  # TODO 64
                               worker_init_fn=WorkerInit(config.model.seed),
                               persistent_workers=True,
-                              collate_fn=concat_and_transpose)
+                              collate_fn=concat_and_transpose,
+                              sampler=sampler)
 
     lr_schedule = warmup_schedule(config.training.steps, 1e-7, config.training.optimizer.learning_rate.maximum,
                                   config.training.optimizer.learning_rate.warmup_proportion)
@@ -91,12 +95,7 @@ def overfit(config: GPTJConfig, session: TaskSession):
                 labels = to_numpy(data['labels'],
                                   session.inputs.labels.dtype, copy=False).reshape(
                     -1, *session.inputs.labels.shape)
-                seeds = popxl.create_seeds(config.model.seed, step,
-                                           samples_per_step)
-                lr = np.full((session.ir.num_host_transfers,
-                              config.execution.data_parallel * n_shards, 1),
-                             lr_schedule[step]).astype('float32').squeeze()
-
+                lr =  np.full((session.ir.num_host_transfers, replicas, 1),lr_schedule[step]).astype('float32').squeeze()
                 data_map[session.inputs.words] = tensor_parallel_input(
                     words, n_shards, replicas,
                     partial(GPTJEmbeddingsTP.offset_input,
@@ -105,9 +104,6 @@ def overfit(config: GPTJConfig, session: TaskSession):
                     labels, n_shards, replicas,
                     partial(GPTJLMHeadLossAndGradTP.offset_input,
                             config=config))
-                # Seed (different per DP and identical per TP replica)
-                data_map[session.inputs.seed] = tensor_parallel_input(
-                    seeds, n_shards, replicas)
                 # Add learning rate inputs
                 data_map[session.inputs.lr] = lr
 
@@ -141,18 +137,29 @@ def overfit(config: GPTJConfig, session: TaskSession):
 
 def main():
     # Configuration
-    config, *_ = gptj_config_setup(CONFIG_DIR / "finetuning_mnli.yml", "release", "gptj_6B_2048_pod64",
-                                   wandb_setup=True, hf_model_setup=False)
+    config, args, pretrained = gptj_fine_tuning_setup(
+        CONFIG_DIR / "finetuning_mnli.yml", "release", "gptj_6B_1024_pod64")
+
     config.training.steps = 100
     config.training.optimizer.learning_rate.maximum = 0.0001
     config.training.optimizer.learning_rate.warmup_proportion = 0.2
 
     # Create the training session
-    session = finetuning_mnli(config)
+    if config.checkpoint.load or pretrained:
+        session = finetuning_mnli(config)
+    else:
+        # initialise weights from scratch
+        session = finetuning_mnli(config, no_init=False)
 
-    # Load checkpoint
+    # Load checkpoint/ HF weights
     if config.checkpoint.load is not None:
         session.load_checkpoint(config.checkpoint.load)
+    elif pretrained:
+        with timer('Loading HF pretrained model to IPU'):
+            session.write_variables_data(
+                hf_mapping_lm_tp(config, session, pretrained))
+    else:
+        logging.info("Weights initialised from scratch.")
 
     # Overfit
     overfit(config, session)

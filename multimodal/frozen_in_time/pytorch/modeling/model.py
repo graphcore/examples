@@ -30,8 +30,8 @@ def sim_matrix_original(a, b, eps=1e-6):
 
 def sim_matrix(a, b):
     # Normalized features
-    a = a / a.norm(dim=-1, keepdim=True)
-    b = b / b.norm(dim=-1, keepdim=True)
+    a = (a / a.norm(dim=-1, keepdim=True)).type(torch.float32)
+    b = (b / b.norm(dim=-1, keepdim=True)).type(torch.float32)
     sim_mt = a @ b.t()
     return sim_mt
 

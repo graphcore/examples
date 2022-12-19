@@ -43,7 +43,7 @@ class BertSquadLossAndGrad(addons.Module):
     def build(self, x: popxl.Tensor, labels: popxl.Tensor) -> Tuple[popxl.Tensor, popxl.Tensor]:
         args, graph = BertSquadHead(self.config).create_graph(x)
         dargs, dgraph = addons.transforms.autodiff_with_accumulation(
-            graph, graph.args.tensors, [graph.graph.inputs[0]])
+            graph, graph.args.tensors, grads_required=[graph.graph.inputs[0]])
 
         fwd_info = graph.bind(self.add_variable_inputs("fwd", args)).call_with_info(x)
         x = fwd_info.parent_output(0)

@@ -23,8 +23,12 @@ pretrain_options: &pretrain_options
       - [samples/sec, "throughput"]
       - [loss, "loss"]
 
+config_options: &config_options
+   requirements_path: requirements.txt
+   required_apt_packages_path: required_apt_packages.txt
+
 pytorch_bert_base_pretrain_real_pod16:
-   <<: *pretrain_options
+   <<: [*pretrain_options, *config_options]
    description: |
       BERT-Base pretraining benchmark on real data. Phase 1 and phase 2.
    parameters:
@@ -37,7 +41,7 @@ pytorch_bert_base_pretrain_real_pod16:
          --disable-progress-bar
 
 pytorch_bert_large_pretrain_real_pod16:
-   <<: *pretrain_options
+   <<: [*pretrain_options, *config_options]
    description: |
       BERT-Large pretraining benchmark on real data. Phase 1 and phase 2.
    parameters:
@@ -50,7 +54,7 @@ pytorch_bert_large_pretrain_real_pod16:
          --disable-progress-bar
 
 pytorch_bert_large_packed_pretrain_real_pod16:
-   <<: *pretrain_options
+   <<: [*pretrain_options, *config_options]
    description: |
       BERT Large pretraining phase 1 and 2 with real data on 16 IPUs
       for performance testing.
@@ -65,7 +69,7 @@ pytorch_bert_large_packed_pretrain_real_pod16:
          --packed-data
 
 pytorch_bert_large_packed_pretrain_real_pod64:
-   <<: *pretrain_options
+   <<: [*pretrain_options, *config_options]
    description: |
       BERT Large pretraining phase 1 and 2 with real data on 16 IPUs
       for performance testing.
@@ -80,7 +84,7 @@ pytorch_bert_large_packed_pretrain_real_pod64:
          --packed-data
 
 pytorch_bert_large_sl128_pretrain_real_pod64_conv:
-   <<: *pretrain_options
+   <<: [*pretrain_options, *config_options]
    description: |
       BERT Large pretraining phase 1 with real data on 64 IPUs
       for convergence testing.
@@ -94,9 +98,9 @@ pytorch_bert_large_sl128_pretrain_real_pod64_conv:
          --reset-partition=no
          --sync-type=ST_POD_NATIVE_DEFAULT
          --vipu-server-timeout 300
-         --vipu-server-host $VIPU_CLI_API_HOST
+         --vipu-server-host $IPUOF_VIPU_API_HOST
          --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-         --vipu-cluster=$CLUSTER
+         --vipu-cluster=$VIPU_CLUSTER_ID
          --ipus-per-replica 4
          --mpi-global-args="
          --mca oob_tcp_if_include $TCP_IF_INCLUDE
@@ -110,16 +114,16 @@ pytorch_bert_large_sl128_pretrain_real_pod64_conv:
          -x POPLAR_LOG_LEVEL=WARN
          -x DATASETS_DIR
          -x POPLAR_ENGINE_OPTIONS
-         -x POPLAR_TARGET_OPTIONS"           
+         -x POPLAR_TARGET_OPTIONS"
       python3 run_pretraining.py
          --config pretrain_large_128_POD64
          --input-file $DATASETS_DIR/wikipedia/128/*.tfrecord
          --disable-progress-bar
-         --checkpoint-output-dir "checkpoint/phase1"
+         --checkpoint-output-dir checkpoint/phase1
          --wandb
 
 pytorch_bert_large_sl512_pretrain_real_pod64_conv:
-   <<: *pretrain_options
+   <<: [*pretrain_options, *config_options]
    description: |
       BERT Large pretraining phase 2 with real data on 64 IPUs
       for convergence testing.
@@ -133,9 +137,9 @@ pytorch_bert_large_sl512_pretrain_real_pod64_conv:
          --reset-partition=no
          --sync-type=ST_POD_NATIVE_DEFAULT
          --vipu-server-timeout 300
-         --vipu-server-host $VIPU_CLI_API_HOST
+         --vipu-server-host $IPUOF_VIPU_API_HOST
          --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-         --vipu-cluster=$CLUSTER
+         --vipu-cluster=$VIPU_CLUSTER_ID
          --ipus-per-replica 4
          --mpi-global-args="
          --mca oob_tcp_if_include $TCP_IF_INCLUDE
@@ -149,17 +153,17 @@ pytorch_bert_large_sl512_pretrain_real_pod64_conv:
          -x POPLAR_LOG_LEVEL=WARN
          -x DATASETS_DIR
          -x POPLAR_ENGINE_OPTIONS
-         -x POPLAR_TARGET_OPTIONS"      
+         -x POPLAR_TARGET_OPTIONS"
       python3 run_pretraining.py
          --config pretrain_large_512_POD64
          --input-file $DATASETS_DIR/wikipedia/512/*.tfrecord
          --disable-progress-bar
-         --checkpoint-output-dir "checkpoint/phase2"
-         --pretrained-checkpoint "checkpoint/phase1"
+         --checkpoint-output-dir checkpoint/phase2
+         --checkpoint-input-dir checkpoint/phase1
          --wandb
 
 pytorch_bert_large_packed_sl128_pretrain_real_pod64_conv:
-   <<: *pretrain_options
+   <<: [*pretrain_options, *config_options]
    description: |
       BERT Large pretraining phase 1 with real data on 64 IPUs
       for convergence testing.
@@ -168,12 +172,12 @@ pytorch_bert_large_packed_sl128_pretrain_real_pod64_conv:
          --config pretrain_large_128_POD64
          --input-files $DATASETS_DIR/wikipedia/psc_128/*.tfrecord
          --disable-progress-bar
-         --checkpoint-output-dir "checkpoint/phase1"
+         --checkpoint-output-dir checkpoint/phase1
          --wandb
          --packed-data
 
 pytorch_bert_large_packed_sl512_pretrain_real_pod64_conv:
-  <<: *pretrain_options
+  <<: [*pretrain_options, *config_options]
   description: |
     BERT Large pretraining phase 2 (SL 512) with real data on 64 IPUs
     for convergence testing.
@@ -182,47 +186,10 @@ pytorch_bert_large_packed_sl512_pretrain_real_pod64_conv:
         --config pretrain_large_512_POD64
         --input-file $DATASETS_DIR/wikipedia/psc_512/*.tfrecord
         --disable-progress-bar
-        --checkpoint-output-dir "checkpoint/phase2"
-        --pretrained-checkpoint "checkpoint/phase1"
+        --checkpoint-output-dir checkpoint/phase2
+        --checkpoint-input-dir checkpoint/phase1
         --wandb
         --packed-data
-
-pytorch_bert_large_packed_sl128_pretrain_real_pod256_conv:
-  <<: *pretrain_options
-  description: |
-    BERT Large pretraining phase 1 with real data on 256 IPUs
-    for convergence testing.
-  cmd: >-
-    python3 run_pretraining.py
-      --config pretrain_large_128_POD64
-      --input-files $DATASETS_DIR/wikipedia/psc_128/*.tfrecord
-      --disable-progress-bar
-      --checkpoint-output-dir "checkpoint/phase1"
-      --wandb
-      --packed-data
-      --replication_factor 64
-      --gradient_accumulation 128
-      --matmul_proportion [0.14, 0.19, 0.19, 0.19]
-      --loss_scaling 32768.0
-
-pytorch_bert_large_packed_sl512_pretrain_real_pod256_conv:
-  <<: *pretrain_options
-  description: |
-    BERT Large pretraining phase 2 (SL 512) with real data on 256 IPUs
-    for convergence testing.
-  cmd: >-
-    python3 run_pretraining.py
-      --config pretrain_large_512_POD64
-      --input-file $DATASETS_DIR/wikipedia/psc_512/*.tfrecord
-      --disable-progress-bar
-      --checkpoint-output-dir "checkpoint/phase2"
-      --pretrained-checkpoint "checkpoint/phase1"
-      --wandb
-      --packed-data
-      --replication_factor 64
-      --gradient_accumulation 128
-      --matmul_proportion [0.14, 0.19, 0.19, 0.19]
-      --loss_scaling 32768.0
 
 # --- SQuAD ---
 squad_options: &squad_options
@@ -237,7 +204,7 @@ squad_options: &squad_options
       - [loss, "loss"]
 
 pytorch_bert_squad_large_pretrain_real_pod16:
-   <<: *squad_options
+   <<: [*squad_options, *config_options]
    description: |
       BERT Large SQuAD benchmark on real data.
    parameters:
@@ -249,7 +216,7 @@ pytorch_bert_squad_large_pretrain_real_pod16:
          --num-epochs 1
 
 pytorch_bert_squad_large_finetune_real_pod16_conv:
-   <<: *squad_options
+   <<: [*squad_options, *config_options]
    description: |
       BERT Large SQuAD benchmark on real data.
    cmd: >-
@@ -262,9 +229,9 @@ pytorch_bert_squad_large_finetune_real_pod16_conv:
          --reset-partition=no
          --sync-type=ST_POD_NATIVE_DEFAULT
          --vipu-server-timeout 300
-         --vipu-server-host $VIPU_CLI_API_HOST
+         --vipu-server-host $IPUOF_VIPU_API_HOST
          --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-         --vipu-cluster=$CLUSTER
+         --vipu-cluster=$VIPU_CLUSTER_ID
          --ipus-per-replica 8
          --mpi-global-args="
          --mca oob_tcp_if_include $TCP_IF_INCLUDE
@@ -278,14 +245,15 @@ pytorch_bert_squad_large_finetune_real_pod16_conv:
          -x POPLAR_LOG_LEVEL=WARN
          -x DATASETS_DIR
          -x POPLAR_ENGINE_OPTIONS
-         -x POPLAR_TARGET_OPTIONS"      
+         -x POPLAR_TARGET_OPTIONS"
       python3 run_squad.py
          --squad-do-validation True
          --config squad_large_384
-         --pretrained-checkpoint "checkpoint/phase2"
+         --checkpoint-input-dir checkpoint/phase2
          --wandb
 
 pytorch_bert_squad_large_infer_gen_pod16:
+  <<: *config_options
   description: |
     BERT Large SQuAD in inference.
   data:
@@ -300,6 +268,7 @@ pytorch_bert_squad_large_infer_gen_pod16:
       --dataset generated
 
 pytorch_bert_squad_large_tritonserver_infer_gen_pod16:
+  <<: *config_options
   description: |
     BERT Large SQuAD in inference hosted by Triton server.
   data:
@@ -314,7 +283,7 @@ pytorch_bert_squad_large_tritonserver_infer_gen_pod16:
     request_type: SYNC,ASYNC
     parallel_processes: 1,4,8
   cmd: >-
-    python3 run_benchmark_with_triton_server.py 
+    python3 run_benchmark_with_triton_server.py
       -s
       -k test_single_model[bert-squad_large_384-RequestType.{request_type}-{parallel_processes}]
       --benchmark_only=true

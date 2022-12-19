@@ -13,7 +13,8 @@ import logging
 from configuration.terminal_argparse import str_to_bool
 from precision import Precision
 import popdist
-from tensorflow.python.ipu import horovod as hvd
+from tensorflow.python.ipu import distributed
+from tensorflow.python.distribute import reduce_util
 
 
 def add_arguments(parser):
@@ -50,7 +51,7 @@ def estimate_ds_throughput(ds, ds_size: int, epochs: int, micro_batch_size: int,
     throughputs = throughputs[skip_epochs:]
     mean_throughput = np.mean(throughputs)
     if num_instances > 1:
-        mean_throughput = hvd.allreduce(mean_throughput, hvd.Sum)
+        mean_throughput = distributed.allreduce(mean_throughput, reduce_util.ReduceOp.SUM)
     return mean_throughput
 
 
@@ -73,7 +74,7 @@ if __name__ == '__main__':
     num_instances = popdist.getNumInstances()
 
     if num_instances > 1:
-        hvd.init()
+        popdist.init()
 
     if args.synthetic_data == 'ipu':
         logging.warn(

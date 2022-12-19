@@ -8,7 +8,7 @@ import numpy as np
 import popdist
 import popdist.tensorflow
 import tensorflow as tf
-from tensorflow.python.ipu import horovod as hvd
+from tensorflow.python.ipu import distributed
 from tensorflow.python.ipu.utils import reset_ipu_seed
 
 
@@ -23,8 +23,8 @@ def set_host_seed(seed: typing.Optional[int],
 
         if popdist.isPopdistEnvSet():
             random_int = seed or random.randint(0, 2**32 - 1)
-            logging.info(f'Using horovod to seed all instances with the same number: {random_int}.')
-            seed = int(hvd.broadcast(tf.convert_to_tensor(value=random_int, dtype=tf.int32), 0))
+            logging.info(f'Broadcasting seed to initialize all instances with the same number: {random_int}.')
+            seed = int(distributed.broadcast(tf.convert_to_tensor(value=random_int, dtype=tf.int32), 0))
 
 
     if seed is not None:

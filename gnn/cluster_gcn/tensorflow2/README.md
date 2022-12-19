@@ -1,52 +1,81 @@
 # Cluster GCN model
+Cluster graph convolutional networks for node classification, using cluster sampling, optimised for Graphcore's IPU.
 
 Run our Cluster GCN training on arXiv dataset on Paperspace.
 <br>
 [![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://console.paperspace.com/github/gradient-ai/Graphcore-Tensorflow2?machine=Free-IPU-POD16&container=graphcore%2Ftensorflow-jupyter%3A2-amd-2.6.0-ubuntu-20.04-20220804&file=%2Fget-started%2Frun_cluster_gcn_notebook.ipynb)
 
-## Table of contents
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| TensorFlow2 | GNNs | CGCN | PPI, arXiv, Reddit, Products, MAG, MAG240M | Node classification | ✅ | ❌ | [Cluster-GCN: An Efficient Algorithm for Training Deep and Large Graph Convolutional Networks](https://arxiv.org/pdf/1905.07953.pdf) |
 
-1. [Introduction](#intro)
-2. [Prepare environment](#environment)
-3. [Datasets](#datasets)
-    1. [PPI](#ppi) 
-    2. [Reddit](#reddit)
-    3. [arXiv](#arxiv)
-    4. [Products](#products)
-    5. [MAG](#mag)
-    6. [MAG240M](#mag240m)
-4. [Training and validation](#training_validation)
-5. [Distributed training](#distributed_training)
 
-## Introduction <a name='intro' ></a>
+## Instructions summary
 
-This repository contains a TensorFlow 2 implementation of the Cluster-GCN algorithm, presented in
-[Cluster-GCN: An Efficient Algorithm for Training Deep and Large Graph Convolutional Networks](https://arxiv.org/pdf/1905.07953.pdf),
-running on the Graphcore IPU. The model is a Graph Convolutional Network (GCN) that performs node
-classification tasks with cluster sampling approach to enable large-scale training.
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-## Prepare environment <a name='environment' ></a>
+2. Install the system and Python requirements (see Environment setup)
 
-Create a virtual environment and install the appropriate Graphcore TensorFlow 2 wheels from inside
-the SDK directory:
+3. Download the MolHIV dataset (See Dataset setup)
 
-```shell
-virtualenv --python python3.6 .gcn_venv
-source .gcn_venv/bin/activate
-pip install -r requirements.txt
-pip install <path to the TensorFlow-2 wheel from the Poplar SDK>
-pip install --force-reinstall --no-deps <path to the Keras wheel from the Poplar SDK>
-pip install <path to the ipu_tensorflow_addons wheel for TensorFlow 2 from the Poplar SDK>
+
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
+
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-This application uses [METIS](https://doi.org/10.1137/S1064827595287997) to cluster the graph. To install METIS on an Ubuntu system run the following:
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
 
-```shell
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+```bash
+cd <poplar sdk root dir>
+pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
+pip3 install ipu_tensorflow_addons-2.X.X...any.whl
+```
+For the CPU architecture you are running on
+
+4. Install the Keras wheel:
+```bash
+pip3 install --force-reinstall --no-deps keras-2.X.X...any.whl
+```
+For further information on Keras on the IPU, see the [documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/keras/keras.html#keras-with-ipus) and the [tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/tensorflow2/keras).
+
+5. Navigate to this example's root directory
+
+6. Install the Python requirements:
+```bash
+pip3 install -r requirements.txt
+```
+
+7. Install [METIS](https://doi.org/10.1137/S1064827595287997):
+```bash
 sudo apt-get install libmetis-dev=5.1.0.dfsg-5
 ```
 
 
-## Datasets <a name='datasets' ></a>
+## Dataset setup
 
 This implementation of Cluster-GCN running on the Graphcore IPUs supports the following graph datasets
 for node prediction. Each of these datasets have a corresponding configuration file that works well, otherwise
@@ -131,59 +160,21 @@ For example, the following configuration will load the data from or download to 
 }
 ```
 
+
 ## Running and benchmarking
 
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
 
-```python
+For example:
+
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
 Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
-
-## Run training and validation <a name='training_validation' ></a>
-
-```shell
-python run_cluster_gcn.py CONFIG_FILE --data-path [PATH_TO_DATA]
-```
-
-We provide multiple example config files in the `./configs` directory, including `train_ppi.json`, `train_arxiv.json`, 
-`train_reddit.json`, etc. 
-
-For detailed information about the parameters that can be used in the config files, 
-we suggest looking at the code and comments in `./utilities/options.py`. 
-Depending on the chosen configuration, the program trains and validates Cluster-GCN model on the selected dataset
-using METIS for clustering. 
-
-Some parameters can be modified via the config file or by using the command line arguments. 
-In the case the same parameter is passed in both the config file and as an argument in the 
-command line, the value of the latter takes preference and is the one used.
-
-## Distributed training <a name='distributed_training' ></a>
-
-To launch a single host multi-instance run, simply do:
-
-```shell
-poprun \
-    --vipu-partition=VIPU_PARTITION_NAME \
-    --mpi-global-args="--tag-output" \
-    --num-replicas=NUM_REPLICAS \
-    --num-instances=NUM_INSTANCES \
-    --executable-cache-path=CACHE_PATH \
-python \
-    run_cluster_gcn.py CONFIG_FILE \
-    --data-path DATA_PATH \
-    --training.replicas NUM_REPLICAS \
-    --training.epochs-per-execution EPOCHS_PER_EXECUTION
-```
-
-Note that the `NUM_INSTANCES` should be divisible by `NUM_REPLICAS`
-and it is recommended to use `EPOCHS_PER_EXECUTION` equal to the `NUM_INSTANCES` 
-for best balance between accuracy and performance.
-

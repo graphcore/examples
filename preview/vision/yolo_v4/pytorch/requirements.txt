@@ -1,4 +1,4 @@
---find-links https://download.pytorch.org/whl/torch_stable.html
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 fvcore==0.1.5.post20210727
 matplotlib==3.3.4
 numpy==1.19.5
@@ -8,9 +8,9 @@ pytest-pythonpath==0.7.4
 requests==2.27.1
 ruamel.yaml==0.17.21
 scipy==1.5.4
-torchvision==0.11.1+cpu
+torchvision==0.14.0+cpu
 protobuf==3.19.4
 wandb==0.12.1
 yacs==0.1.8
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils
 torchinfo==1.5.4

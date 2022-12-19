@@ -275,7 +275,7 @@ def parse_args(arg_list: Optional[List[Text]] = None) -> argparse.Namespace:
                        type=float,
                        default=0.6,
                        help="Set the amount of memory available to the convolution planner. Higher values are faster at the expense of memory.")
-    group.add_argument("--ipu-connection-type", choices=("always", "never", "on_demand"), default=ConnectionTypeAction.to_type("always"),
+    group.add_argument("--ipu-connection-type", choices=("always", "never", "on_demand"), default=ConnectionTypeAction.to_type("on_demand"),
                        action=ConnectionTypeAction,
                        help="When to request a connection to IPUs. Always (default) will connect to an IPU during compilation. on_demand will "
                             "wait until after compilation. Never will not request an IPU connection")

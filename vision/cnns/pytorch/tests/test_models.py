@@ -82,18 +82,19 @@ class TestRecomputation:
 @pytest.mark.parametrize("bias", [True, False])
 def test_convpadding_3ch_vs_4ch_forward(precision, bias):
     torch.manual_seed(0)
+    sample_input = torch.rand(4, 3, 32, 32)
     conv_3ch = torch.nn.Conv2d(3, 32, (3, 3), bias=bias)
     if precision == "half":
         conv_3ch.half()
     conv_4ch = models.implementations.optimisation.PaddedConv(conv_3ch)
-    sample_input = torch.rand(4, 3, 32, 32)
     if precision == "half":
-        sample_input.half()
+        sample_input = sample_input.half()
         conv_4ch.half()
-    ipu_conv_3ch = poptorch.inferenceModel(conv_3ch, poptorch.Options())
     ipu_conv_4ch = poptorch.inferenceModel(conv_4ch, poptorch.Options())
-    result3 = ipu_conv_3ch(sample_input)
+    ipu_conv_3ch = poptorch.inferenceModel(conv_3ch, poptorch.Options())
     result4 = ipu_conv_4ch(sample_input)
+    result3 = ipu_conv_3ch(sample_input)
+
     assert torch.allclose(result3, result4, rtol=1e-03, atol=1e-04)
 
 

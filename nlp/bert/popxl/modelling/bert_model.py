@@ -57,7 +57,7 @@ class BertPretrainingLossAndGrad(addons.Module):
                                                         word_embedding_t=word_embedding_t,
                                                         masked_positions=masked_positions)
         accums = list(graph.args.tensors) + [graph.graph.inputs[1]]  # layer norm weights + tied weight
-        dargs, dgraph = addons.transforms.autodiff_with_accumulation(graph, accums, [graph.graph.inputs[0]])
+        dargs, dgraph = addons.transforms.autodiff_with_accumulation(graph, accums, grads_required=[graph.graph.inputs[0]])
 
         fwd_info = graph.bind(self.fwd.add_variable_inputs("mlm", args)).call_with_info(
             x, word_embedding_t, masked_positions)
@@ -77,7 +77,7 @@ class BertPretrainingLossAndGrad(addons.Module):
 
     def nsp(self, x: popxl.Tensor, labels: popxl.Tensor):
         args, graph = BertNSP(self.config).create_graph(x)
-        dargs, dgraph = addons.transforms.autodiff_with_accumulation(graph, graph.args.tensors, [graph.graph.inputs[0]])
+        dargs, dgraph = addons.transforms.autodiff_with_accumulation(graph, graph.args.tensors, grads_required=[graph.graph.inputs[0]])
 
         fwd_info = graph.bind(self.fwd.add_variable_inputs("nsp", args)).call_with_info(x)
         x = fwd_info.parent_output(0)

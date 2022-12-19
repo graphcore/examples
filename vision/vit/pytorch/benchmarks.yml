@@ -13,6 +13,9 @@ common_options: &common_options
   env:
     PYTORCH_EXE_DIR: "./pt_cache/"
 
+config_options: &config_options
+  requirements_path: requirements.txt
+
 validation_options: &validation_options
   description: |
     VIT validation for 4 IPUs.
@@ -31,7 +34,7 @@ multihost_options: &multihost_options
     The env variables needed are:
       HOSTS - Comma separated list of hosts, usually something like:
         `10.1.3.101,10.1.3.10x...`
-      VIPU_CLI_API_HOST - IP of host where VIPU server is running. Usually
+      IPUOF_VIPU_API_HOST - IP of host where VIPU server is running. Usually
         `10.1.3.101`.
       PARTITION - Name of partition to use, can be found via
         `vipu list partitions`. Note that the `--update-partitions` poprun
@@ -41,7 +44,7 @@ multihost_options: &multihost_options
         on which all hosts are. Usually `enp65s0f0np0` or `10.1.3.0/24`.
 
 pytorch_vit_finetune_gen_pod16:
-  <<: [*common_options, *finetune_options]
+  <<: [*common_options, *finetune_options, *config_options]
   description: |
     ViT training for 16 IPUs using generated data
   cmd: >-
@@ -53,7 +56,7 @@ pytorch_vit_finetune_gen_pod16:
       --executable-cache-dir PYTORCH_EXE_DIR
 
 pytorch_vit_pretrain_gen_pod16:
-  <<: [*common_options, *pretrain_options]
+  <<: [*common_options, *pretrain_options, *config_options]
   cmd: >-
     python3 pretrain.py
       --config b16_in1k_pretrain
@@ -64,7 +67,7 @@ pytorch_vit_pretrain_gen_pod16:
       --epochs 1
 
 pytorch_vit_lamb_pretrain_gen_pod16:
-  <<: [*common_options, *pretrain_options]
+  <<: [*common_options, *pretrain_options, *config_options]
   cmd: >-
     python3 pretrain.py
       --config b16_in1k_pretrain_lamb
@@ -75,19 +78,19 @@ pytorch_vit_lamb_pretrain_gen_pod16:
       --epochs 1
 
 pytorch_vit_lamb_pretrain_gen_pod64:
-  <<: [*common_options, *multihost_options]
+  <<: [*common_options, *multihost_options, *config_options]
   cmd: >-
     poprun
       --vv
       --host $HOSTS
       --ipus-per-replica=4
-      --num-ilds=8
+      --num-ilds=1
       --num-replicas=16
       --num-instances=8
       --reset-partition=no
-      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-server-host=$IPUOF_VIPU_API_HOST
       --vipu-server-timeout=3600
-      --vipu-partition=$PARTITION
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
       --executable-cache-path PYTORCH_EXE_DIR
       --mpi-global-args="
         --mca oob_tcp_if_include $TCP_IF_INCLUDE
@@ -110,24 +113,26 @@ pytorch_vit_lamb_pretrain_gen_pod64:
       --gradient-accumulation 512
       --epochs 1
       --dataloader-workers 32
+      --enable-rts false
+
 
 pytorch_vit_lamb_pretrain_real_pod64_conv:
-  <<: [*common_options, *multihost_options]
+  <<: [*common_options, *multihost_options, *config_options]
   cmd: >-
     poprun
       --vv
       --host $HOSTS
       --ipus-per-replica=4
-      --num-ilds=8
+      --num-ilds=1
       --num-replicas=16
       --num-instances=8
       --update-partition=yes
       --remove-partition=yes
       --reset-partition=no
-      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-server-host=$IPUOF_VIPU_API_HOST
       --vipu-server-timeout=3600
-      --vipu-partition=$PARTITION
-      --vipu-cluster=$CLUSTER
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster=$VIPU_CLUSTER_ID
       --executable-cache-path PYTORCH_EXE_DIR
       --mpi-global-args="
         --mca oob_tcp_if_include $TCP_IF_INCLUDE
@@ -148,13 +153,14 @@ pytorch_vit_lamb_pretrain_real_pod64_conv:
       --byteio true
       --gradient-accumulation 512
       --dataloader-workers 32
+      --enable-rts false
       --mixup true
       --wandb true
       --wandb-project-name torch-vit
       --wandb-run-name pytorch_vit_lamb_pretrain_real_pod64_conv
 
 pytorch_vit_pretrain_validation_real_pod4:
-  <<: *validation_options
+  <<: [*validation_options, *config_options]
   cmd: >-
     poprun
       --vv
@@ -186,7 +192,7 @@ pytorch_vit_pretrain_validation_real_pod4:
     PYTORCH_EXE_DIR: "./pt_cache/"
 
 pytorch_vit_finetune_real_pod16_conv:
-  <<: [*common_options, *finetune_options]
+  <<: [*common_options, *finetune_options, *config_options]
   cmd: >-
     poprun
       --vv
@@ -209,7 +215,7 @@ pytorch_vit_finetune_real_pod16_conv:
       --wandb-run-name pytorch_vit_finetune_real_pod16_conv
 
 pytorch_vit_finetune_validation_real_pod4:
-  <<: *validation_options
+  <<: [*validation_options, *config_options]
   cmd: >-
     poprun
       --vv

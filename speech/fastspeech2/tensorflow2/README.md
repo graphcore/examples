@@ -35,6 +35,8 @@ virtualenv --python python3 fs2_venv
 source fs2_venv/bin/activate
 pip install -r requirements.txt
 pip install <path to the tensorflow-2 wheel from the Poplar SDK>
+pip install --force-reinstall --no-deps <path to the Keras wheel from the Poplar SDK>
+pip install <path to the ipu_tensorflow_addons wheel for TensorFlow 2 from the Poplar SDK>
 ```
 
 #### 3) Compile the custom op

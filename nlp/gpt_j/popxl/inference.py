@@ -8,14 +8,13 @@ import numpy as np
 import popdist
 
 import popxl
-from popxl import TensorSpec, ops
+from popxl import ops
 from math import ceil
 
 import popxl_addons as addons
 from popxl_addons.named_tensors import NamedTensors
 from popxl_addons.patterns import apply_pre_alias_patterns
-from popxl_addons.remote import (named_variable_buffers, load_remote_graph,
-                                 NamedRemoteBuffers)
+from popxl_addons.remote import (named_variable_buffers, load_remote_graph)
 from popxl_addons.utils import timer
 from popxl_addons.task_session import TaskSession
 
@@ -71,12 +70,10 @@ def inference(config: GPTJConfig) -> TaskSession:
             # ----- Create Variables -----
 
             # Create RemoteBuffers for each variable
-            named_variable_buffers_no_rts = partial(named_variable_buffers,
-                                                    sharded_threshold=float('inf'))
-            embeddings_buffers = named_variable_buffers_no_rts(embeddings_facts)
-            layer_buffers = named_variable_buffers_no_rts(
+            embeddings_buffers = named_variable_buffers(embeddings_facts)
+            layer_buffers = named_variable_buffers(
                 layer_facts, entries=config.model.layers)
-            lm_buffers = named_variable_buffers_no_rts(lm_facts)
+            lm_buffers = named_variable_buffers(lm_facts)
 
             variables = NamedTensors()
             transformer = NamedTensors()
@@ -139,8 +136,11 @@ def inference(config: GPTJConfig) -> TaskSession:
 
     ir.num_host_transfers = config.execution.device_iterations
 
-    session = TaskSession(input_streams, output_streams, variables, ir,
-                          "ipu_hw")
+    session = TaskSession(inputs=input_streams,
+                          outputs=output_streams,
+                          state=NamedTensors(fwd=variables),
+                          ir=ir,
+                          device_desc="ipu_hw")
     return session
 
 

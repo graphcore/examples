@@ -1,109 +1,262 @@
-# BERT training on IPUs using PopXL
+# BERT (PopXL)
+Bidirectional Encoder Representations from Transformers for NLP pre-training and fine-tuning tasks (SQuAD) using the PopXL library, optimised for Graphcore's IPU.
 
-This README describes how to run BERT models for NLP pretraining and fine-tuning tasks (SQuAD) on Graphcore IPUs using the PopXL library.
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| PopXL | NLP | BERT | WIKI-103 | Next sentence prediction, Question/Answering | ✅  | ✅ | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) | 
 
-This application shows how to run larger models on IPU. The techniques to do this mean that performance is lower than for models that fit in IPU memory. Large model training or fine-tuning requires a big Pod installation. The minimum to run fine-tuning with this model is a Pod16. PopXL is an experimental framework and may be subject to change in future releases.
 
-## Table of contents
+## Instructions summary
 
-1. [File structure](#file_structure)
-2. [Quick start guide](#quick_start)
-    1. [Prepare environment](#prep_env)
-    2. [Pretraining with BERT on IPU](#pretrain_IPU)
-    3. [Fine-tuning and inference with BERT for SQuAD on IPU](#squad)
-    4. [View the pretraining results in Weights & Biases](#wandb)
-3. [Configure your BERT runs](#configs)
-4. [Prepare datasets](#datasets)
-5. [Scale BERT on IPU](#scale_BERT)
-    1. [Phased execution](#pe)
-    2. [Data parallel](#dp)
-6. [Avoid recompilation: caching executables](#cache)
-7. [Profile your applications](#profiling)
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-## File structure <a name="file_structure"></a>
+2. Install the system and Python requirements (see Environment setup)
 
-|    Directory       |       Description                                                   |
-|--------------------|---------------------------------------------------------------------|
-| `config/`          | Contains configuration options for running BERT.<br/> - `config.py`: Definition of configuration options for BERT.<br/> - `pretraining.yml` provides available parameter settings for three different sizes of BERT: large, base and tiny, and how to execute them for pretraining on IPU.<br/> - `squad_inference.yml` provides available parameter settings for the three different BERT sizes and how to execute them for SQuAD inference.<br/> - `squad_training.yml` provides parameter settings for three different BERT sizes and how to execute them for SQuAD fine-tuning.|
-| `data/`            | Scripts for data preprocessing for pretraining and fine-tuning SQuAD, respectively, in `pretraining_data.py` and `squad_data.py`. |
-| `modelling/`       | Implements layers in the BERT model and the models for different tasks for inference and training.<br/> - `embedding.py`, `attention.py`, and `feed_forward.py` present the implementations of embedding layers, self-attention, and  feed-forward networks respectively. <br/> - `mlm.py` and `nsp.py` present the implementation of the masked language model (MLM) task layer and the next sentence prediction (NSP) task layer respectively.<br/> - `bert_model.py` presents the implementation of a transformer layer as in `BertLayer` and MLM + NSP task head layer as in `BertPretrainingLossAndGrad`. <br/> - `squad.py` applies the BERT model for SQuAD.                    |
-| `tests/`           | Includes integration tests and unit tests.|
-| `utils/`           | Helper functions to set up BERT configs and parse arguments.  |
+3. Download the WIKI-103 dataset (See Dataset setup)
 
-## Quick start guide <a name="quick_start"></a>
 
-### Prepare environment <a name="prep_env"></a>
-
-**1) Download the Poplar SDK**
-
-Download and install the Poplar SDK following the [Getting Started guide](https://docs.graphcore.ai/en/latest/getting-started.html) for your IPU system. Source the `enable.sh` scripts for both Poplar and PopART. See more details in
-[SDK installation](https://docs.graphcore.ai/projects/ipu-pod-getting-started/en/latest/installation.html#sdk-installation), for example.
-
-**2) Configure Python virtual environment**
-
-Create a virtual environment, install the required packages, and add PopXL addons in `PYTHONPATH`:
-
-```shell
-$ virtualenv --python python3.6 .bert_venv
-$ source .bert_venv/bin/activate
-$ pip install -r requirements.txt
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
 ```
+
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
+```
+
+4. Download and install PopXL add-ons:
+```bash
+
+```
+PopXL is an experimental framework and may be subject to change in future releases.
+
+4. Navigate to this example's root directory
+
+5. Install the Python requirements:
+```bash
+make install
+```
+
+
+## Dataset setup
+The dataset used for pretraining is WIKI-103. It can be generated from a RAW dump of Wikipedia following a five step process.
+
+Disk space required: 143GB - Sequence length 128 (Variable), 203GB - Sequence length 512 (Variable)
+
+```bash
+.
+├── wiki_000.index
+├── wiki_000.tfrecord
+    .
+    .
+    .
+├── wiki_xxx.index
+└── wiki_xxx.tfrecord
+
+0 directories, XXXX files
+```
+
+### 1. Download
+
+Use the `wikipedia_download.sh` script to download the latest Wikipedia dump, about 20GB in size.
+
+```bash
+./data/wikipedia_download.sh <chosen-path-for-dump-file>
+```
+
+Dumps are available from <https://dumps.wikimedia.org/> (and mirrors) and are licensed under CC BY-SA 3.0 and GNU Free Documentation Licenses.
+
+### 2. Extraction
+
+In order to create the pre-training data we need to extract the Wikipedia dump and put it in this form:
+
+```text
+<doc id = article1>
+Title of article 1
+
+Body of article 1
+
+</doc>
+
+<doc id = article2>
+Title of article 2
+
+Body of article 2
+</doc>
+```
+
+and so on.
+
+One of the tools that can be used to do so is WikiExtractor, <https://github.com/attardi/wikiextractor>.
+Install the WikiExtractor package with:
+```bash
+pip3 install wikiextractor
+```
+
+In order not to encounter a `UnicodeEncodeError` at this step, you may want to run these two commands first:
+
+```bash
+export PYTHONIOENCODING=utf-8
+export LC_ALL=C.UTF-8
+```
+
+You can then use the the `wikipedia_extract.sh` script to use WikiExtractor to extract the data dump.
+
+```bash
+./data/wikipedia_extract.sh <chosen-path-for-dump-file>/wikidump.xml <chosen-folder-for-extracted-files>
+```
+
+The result should be a folder containing directories named `AA`, `AB`, ...
+Note that the number of directories depends on the parameters of the `wikipedia_extract.sh` script, and is not to be confused with alphabetical ordering of the wikipedia articles.
+In other words you should probably not expect all of `AC`, `AD`, ... `ZX`, `ZY`, `ZZ` to be created by the script.
+
+### 3. Pre-processing
+
+Install nltk package with:
+```bash
+pip3 install nltk
+```
+
+Use the `wikipedia_preprocess.py` script to preprocess the extracted files.
+
+```bash
+python3 ./data/wikipedia_preprocess.py --input-file-path <chosen-folder-for-extracted-files> --output-file-path <chosen-folder-for-preprocessed-files>
+```
+
+### 4. Tokenization
+
+The script `create_pretraining_data.py` can accept a glob of input files to tokenize.
+However, attempting to process them all at once may result in the process being killed by the OS for consuming too much memory.
+It is therefore preferable to convert the files in groups. This is handled by the `./data/wikipedia_tokenize.py` script.
+At the same time, it is worth bearing in mind that `create_pretraining_data.py` shuffles the training instances across the loaded group of files, so a larger group would result in better shuffling of the samples seen by BERT during pre-training.
+
+The tokenization depends on `tensorflow` which can be installed by:
+
+```bash
+pip3 install tensorflow
+```
+
+sequence length 128
+
+```bash
+python3 ./data/wikipedia_tokenize.py <chosen-folder-for-preprocessed-files> <chosen-folder-for-dataset-files> --sequence-length 128 --mask-tokens 20
+```
+
+sequence length 512
+
+```bash
+python3 ./data/wikipedia_tokenize.py <chosen-folder-for-preprocessed-files> <chosen-folder-for-dataset-files> --sequence-length 512 --mask-tokens 76
+```
+
+### 5. Indexing
+
+In order to use the multi-threaded `dataloader`, `tfrecord` index files need to be generated.
+First install the `tfrecord` Python package into your Python environment:
+
+```bash
+pip3 install tfrecord
+```
+
+Then go to the directory containing the pre-processed Wikipedia files and run:
+
+```bash
+for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .tfrecord`.index; done
+```
+
+
 ## Running and benchmarking
 
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
 
-```python
+For example:
+
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
 Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
+
+## Custom training/inference and other features
+
 ### Pretraining with BERT on IPU <a name="pretrain_IPU"></a>
 
 You can run pretraining for BERT base with the settings defined in `pretraining.yml` by using the script below. You need to provide the data files with `--input_files`.
 
-```shell
+```bash
 $ python3 run_pretraining.py --input_files {path to your wikipedia data}/*.tfrecord
 ```
 
 The default model size in demo pretraining is BERT base. You can change it to the BERT large with the command below.
 
-```shell
+```bash
 $ python3 run_pretraining.py --config large --input_files {path to your wikipedia data}/*.tfrecord
 ```
 
 You can run the scripts for benchmarking with generated data by executing the non-run scripts directly. All the scripts benchmark scripts are for BERT large by default. For instance, the following command will run benchmark for BERT large pretraining. You can change it by adding `--config`. For instance, the command below runs benchmarking for BERT base pretraining.
 
-```shell
-$ python3 pretraining.py --config base
+```bash
+python3 pretraining.py --config base
 ```
 
 ### Fine-tuning and inference with BERT for SQuAD on IPU <a name="squad"></a>
 
 You can run fine-tuning on SQuAD for BERT large with the settings defined in `squad_training.yml` by using the command below. It will first load a pretrained checkpoint from Hugging Face.
 
-```shell
-$ python3 run_squad_training.py
+```bash
+python3 run_squad_training.py
 ```
 
 You can also run inference on the trained SQuAD model with the settings defined in `squad_inference.yml` by using the command below.
 
-```shell
-$ python3 run_squad_inference.py
+```bash
+python3 run_squad_inference.py
 ```
 
 This outputs the context and questions for the BERT question-and-answer model, as well as the comparison of inference results from PopXL and Hugging Face.
 
 You can benchmark the fine-tuning and inference by executing the non-run scripts directly. All the scripts benchmark scripts are BERT large by default. You can change the model size by using `--config`. For instance, the script below will give benchmark results for fine-tuning on SQuAD with BERT base.
 
-```shell
-$ python3 squad_training.py --config base
+```bash
+python3 squad_training.py --config base
 ```
 
 ### View the pretraining results in Weights & Biases <a name="wandb"></a>
@@ -112,7 +265,7 @@ This project supports Weights & Biases, a platform to keep track of machine lear
 
 The training runs are logged in wandb under project `popxl-bert`. Each run has loss, learning rate and throughput logged. The version for `addons` and PopXL are also logged together with the configuration settings.
 
-## Configure your BERT runs <a name="configs"></a>
+### Configure your BERT runs <a name="configs"></a>
 
 You can find configuration options for BERT in class `BertConfig` in the file `config/config.py`. It contains configurations for these aspects:
 
@@ -162,13 +315,7 @@ You can find configuration options for BERT in class `BertConfig` in the file `c
 
     You can set the path to load and save checkpoints, respectively, with `load` and `save`.
 
-## Prepare datasets <a name="datasets"></a>
-
-We prepare the dataset for the pretraining task in `/data/pretraining_data.py` from TFRecord files. Note that we don't actually generate the datasets, just load/preprocess/postprocess them. To generate the datasets you should follow the [BERT in PyTorch](https://github.com/graphcore/examples/tree/master/nlp/bert/pytorch/) instructions.
-
-The SQuAD dataset for the fine-tuning task is handled in `/data/squad_data.py`. This dataset will automatically be downloaded from Hugging Face.
-
-## Scale BERT on IPU <a name="scale"></a>
+### Scale BERT on IPU <a name="scale"></a>
 
 Here we introduce some techniques we used to scale up the BERT model on IPUs in terms of memory consumption and training speed.
 
@@ -180,7 +327,7 @@ In the BERT application, we demonstrate this concept on a full sized model. Reco
 
 Recall that we need to build an [IR in PopXL](https://docs.pages.gitlab.sourcevertex.net/docs/docs/PopART/popxl-user-guide/2.5.0/concepts.html#irs). In its main graph, we first define the input and output data streams. Then we build the computation graphs. As phased execution involves loading and offloading each partition in sequence, much use is made of remote buffers and RTS in the graph construction.
 
-#### Constructing computation graphs for each phase
+### Constructing computation graphs for each phase
 
 First of all, we build the training graphs for each phase, represented in the class `Graphs`. A phase can include one layer or consecutive layers. The execution of a phase can be for the forward graph, gradient graph, optimizer graph or a combination of them. We need to build the graphs used in each phase before we define the phases in [Build the main computation graph](#main).
 
@@ -213,11 +360,11 @@ We created the following graphs for these:
     * Its gradient graph is combined with the forward graph by using `BertPretrainingLossAndGrad`. The calculation of gradients happens just after the forward graph calculation in the same phase. Hence, the `fwd` graph includes both the graph for the forward pass and the calculation of its gradients.
     * Tied embedding is used. The linear layer in MLM task head reuses the inputs' embedding weights. As shown in the diagram below, in the forward pass the MLM weights are loaded from the embedding layer weights buffer `embedding.buffers.fwd.word.weight`. In the backward pass, the gradient of the tied embedding weights is stored in a separate remote buffer `tied_weight_grad_buffer`.
 
-    ![Tied embedding](imgs/tied_embedding.png)
+        ![Tied embedding](imgs/tied_embedding.png)
 
 For SQuAD fine-tuning, the graphs for the SQuAD task head is created in `create_squad_graph`. Its gradient graph is combined with the forward graph from `BertSquadLossAndGrad`. No tied embedding is used.
 
-#### Apply transformations on graphs
+### Apply transformations on graphs
 
 We then apply transformations to the graphs built:
 
@@ -231,7 +378,7 @@ For batch serialisation, we also need to create remote buffers to load the input
 
 For instance, in `x_buffer`, row 0 stores the output of the embedding layer in forward pass. The output of each BERT encoder layer is stored from row 1 to `config.model.layers+1`. Note that the rows in the two buffers are filled up in the opposite directions.
 
-#### Build the main computation graph <a name="main"></a>
+### Build the main computation graph <a name="main"></a>
 
 Once we initialize the required variables, we can build the main computation graph within the context of `popxl.in_sequence()`.
 
@@ -248,18 +395,18 @@ Once we initialize the required variables, we can build the main computation gra
 - Forward BERT encoder layers phases: load BERT encoder layers in a loop by using `ops.repeat`. This calls the graph once for each BERT encoder layer, in sequential order.
 
 ```python
-            def single_bert_layer_fwd_phase(n: popxl.Tensor, seed: popxl.Tensor):
-                # Load Encoder layers
-                layer_vars = layer.fwd_load(n)
-                layer_vars = layer.fwd_all_gather(layer_vars)
-                # Forward
-                seed, layer_seed = ops.split_random_seed(seed)
-                layer.fwd.bind(layer_vars).call(n, layer_seed)
-                return n + 1, seed
+def single_bert_layer_fwd_phase(n: popxl.Tensor, seed: popxl.Tensor):
+    # Load Encoder layers
+    layer_vars = layer.fwd_load(n)
+    layer_vars = layer.fwd_all_gather(layer_vars)
+    # Forward
+    seed, layer_seed = ops.split_random_seed(seed)
+    layer.fwd.bind(layer_vars).call(n, layer_seed)
+    return n + 1, seed
 
-            i = popxl.constant(0, name="layer_index")
-            bwd_graph = ir.create_graph(single_bert_layer_fwd_phase, i, seed)
-            ops.repeat(bwd_graph, config.model.layers, i, seed)
+i = popxl.constant(0, name="layer_index")
+bwd_graph = ir.create_graph(single_bert_layer_fwd_phase, i, seed)
+ops.repeat(bwd_graph, config.model.layers, i, seed)
 ```
 
 - Forward and backward task head phase, `task_head_fwd_grad_phase`. The forward and backward graphs are combined in the same phase.
@@ -274,26 +421,26 @@ Note that gradient clipping is used in pretraining but not in SQuAD fine-tuning.
 - Backward BERT encoder layers phase: repeatedly call the encoder layer's backward graph for `config.model.layers` times. Each calculation graph in `single_bert_layer_grad_phase`, calculates the gradients and the global norm. The graphs are called in the reverse order of the forward pass.
 
 ```python
-            def single_bert_layer_grad_phase(n: popxl.Tensor, grad_norm: popxl.TensorByRef):
-                # Load layer
-                layer_vars = layer.fwd_load(n)
-                layer_vars = layer.fwd_all_gather(layer_vars)
-                # Gradient
-                grads = layer.grad_args.init_zero()
-                bwd_vars = grads.copy()
-                bwd_vars.update(layer_vars)
-                layer.grad.bind(bwd_vars).call(n)
-                # Data parallel reduce
-                reduced_grads = layer.grad_reduce(grads)
-                # Global Norm calculation
-                global_norm_reduce(config, grad_norm, reduced_grads)
-                # Store gradient
-                layer.grad_store(reduced_grads, n)
-                return n - 1
+def single_bert_layer_grad_phase(n: popxl.Tensor, grad_norm: popxl.TensorByRef):
+    # Load layer
+    layer_vars = layer.fwd_load(n)
+    layer_vars = layer.fwd_all_gather(layer_vars)
+    # Gradient
+    grads = layer.grad_args.init_zero()
+    bwd_vars = grads.copy()
+    bwd_vars.update(layer_vars)
+    layer.grad.bind(bwd_vars).call(n)
+    # Data parallel reduce
+    reduced_grads = layer.grad_reduce(grads)
+    # Global Norm calculation
+    global_norm_reduce(config, grad_norm, reduced_grads)
+    # Store gradient
+    layer.grad_store(reduced_grads, n)
+    return n - 1
 
-            i = popxl.constant(config.model.layers - 1, name="layer_index")
-            bwd_graph = ir.create_graph(single_bert_layer_grad_phase, i, grad_norm)
-            ops.repeat(bwd_graph, config.model.layers, i, grad_norm)
+i = popxl.constant(config.model.layers - 1, name="layer_index")
+bwd_graph = ir.create_graph(single_bert_layer_grad_phase, i, grad_norm)
+ops.repeat(bwd_graph, config.model.layers, i, grad_norm)
 ```
 
 - Backward embedding phase in `embedding_grad_optimizer_phase`:
@@ -308,22 +455,21 @@ Note that gradient clipping is used in pretraining but not in SQuAD fine-tuning.
 - Apply optimizer step to BERT layers by repeating the `layer_optim`.
 
 ```python
-            # Optimizer Step for Layers
-            def layer_optim(n: popxl.Tensor, lr: popxl.Tensor, grad_norm: popxl.Tensor):
-                layer_vars = layer.optim_load(n)
-                optimizer_step(layer.optim, layer_vars, lr, grad_norm)
-                layer.optim_store(layer_vars, n)
-                return n + 1
+# Optimizer Step for Layers
+def layer_optim(n: popxl.Tensor, lr: popxl.Tensor, grad_norm: popxl.Tensor):
+    layer_vars = layer.optim_load(n)
+    optimizer_step(layer.optim, layer_vars, lr, grad_norm)
+    layer.optim_store(layer_vars, n)
+    return n + 1
 
-            i = popxl.constant(0, name="layer_index")
-            optim_graph = ir.create_graph(layer_optim, i, lr, grad_norm)
-            ops.repeat(optim_graph, config.model.layers, i, lr, grad_norm)
-
+i = popxl.constant(0, name="layer_index")
+optim_graph = ir.create_graph(layer_optim, i, lr, grad_norm)
+ops.repeat(optim_graph, config.model.layers, i, lr, grad_norm)
 ```
 
 - Apply optimizer step to task head layer.
 
-#### Execution of the session
+### Execution of the session
 
 The main graph is repeated `config.execution.device_iterations` times. A training session is then created and returned in the `pretraining_phased` method. It is run in the `main()` method.
 
@@ -331,35 +477,6 @@ The main graph is repeated `config.execution.device_iterations` times. A trainin
 
 Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallelism with PopXL addons in [MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
 
-## Avoid recompilation: caching executables <a name="cache"></a>
-
+### Avoid recompilation: caching executables <a name="cache"></a>
 When running the application, it is possible to save and load executables in a cache store. This allows the reuse of a saved executable instead of re-compiling the model when re-running identical model configurations. To enable saving and loading from the cache store, use `POPART_CACHE_DIR <relative/path/to/cache/store>` when running the application.
 
-## Running and benchmarking
-
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
-```
-
-Or to run a specific benchmark in the `benchmarks.yml` file provided:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
-```
-
-For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
-
-
-## Profile your applications <a name="profiling"></a>
-
-You can generate the profiling files and visualize them in [PopVision](https://docs.graphcore.ai/projects/graph-analyser-userguide/). For instance, the profiling files for phased execution in the pretraining benchmark can be generated by using the following command:
-
-```shell
-$ POPLAR_ENGINE_OPTIONS='{"autoReport.all":"true","autoReport.directory":"pretrain_pe","profiler.replicaToProfile":"0"}' python3 pretraining.py
-```
-
-In the execution tab, you can find the execution trace of each phase. Below is a screenshot of the execution of one step of training.
-
-![One training step execution trace.](imgs/bert_large_execution.png)

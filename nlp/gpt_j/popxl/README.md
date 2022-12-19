@@ -1,8 +1,80 @@
-# GPT-J finetuning on IPUs using PopXL
+# GPT-J
+GPT-J for NLP pre-training and text generation, optimised for Graphcore's IPU.
 
-This README describes how to run GPT-J model on Graphcore IPUs using PopXL library.
+| Framework | domain | Model | Datasets | Tasks| Training| Inference |
+|-------------|-|------|-------|-------|-------|---|
+| opXL | NLP | GPT-J | MNLI | Next sentence prediction, Question/Answering | ✅  | ✅ |
 
-This application shows how to run larger models on IPU. The techniques to do this mean that performance is lower than for models that fit in IPU memory. Large model training or fine-tuning requires a big Pod installation. The minimum to run fine-tuning with this model is a Pod64. PopXL is an experimental framework and may be subject to change in future releases.
+
+# Instructions summary
+
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
+
+2. Install the system and Python requirements (see Environment setup)
+
+
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+```
+
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
+```
+
+4. Download and install PopXL add-ons:
+```bash
+
+```
+PopXL is an experimental framework and may be subject to change in future releases.
+
+4. Navigate to this example's root directory
+
+5. Install the Python requirements:
+```bash
+make install
+```
+
+
+## Dataset setup
+This dataset is downloaded automatically when requireed by the example itself, there is no requirement to download it manually.
+
+
+## Custom training/inference and other features
+
+### Mnli finetuning <a name="finetuning"></a>
 
 We present a fine-tuning example of GPT-J on [mnli dataset](https://huggingface.co/datasets/glue).
 Mnli dataset consists of pairs of sentences, a *premise* and a *hypothesis*.
@@ -11,81 +83,21 @@ The task is to predict the relation between the premise and the hypothesis, whic
 - `contradiction`: hypothesis contradicts the premise,
 - `neutral`: hypothesis and premise are unrelated.
 
-The first section [Quick start guide](#quick_start) explains how to setup the environment, run finetuning and validation,
-do benchmarking for training and inference and customise your runs.
-
-In the [second section](#scale_GPTJ) we describe the techniques used to scale up the model on the IPU:
-- Phased execution
-- Tensor model parallelism
-- Data parallelism
-- Replicated tensor sharding
-- Code loading
-- Attention serialisation
-
-The default config `gptj_6B_1024_pod64` balances these techniques to achieve optimal performance on a POD64.
-
-Finally, in the [last section](#code_details) we provide a brief description of selected code sections which may be helpful in understanding the code.
-
-# Table of contents
-1. [Quick start guide](#quick_start)
-    1. [Prepare environment](#prep_env)
-    2. [File structure](#file_structure)
-    3. [Mnli finetuning](#finetuning)
-    4. [Mnli validation](#validation)
-    5. [Benchmarking](#benchmarking)
-    6. [View the pre-training results in Weights & Biases](#wandb)
-    7. [Configure your GPT-J runs](#configs)
-2. [Scale GPT-J on IPU](#scale)
-    1. [Combining data parallelism, tensor prallelism and RTS](#tp_dp)
-    2. [Phased Execution and Batch serialisation](#pe)
-    3. [Code loading](#code_loading)
-    4. [RTS on activations](#activations_rts)
-    5. [Summary of execution scheme](#execution)
-3. [Finetuning code details](#code_details)
-
-# Quick start guide <a name="quick_start"></a>
-# Prepare environment <a name="prep_env"></a>
-**1) Download the Poplar SDK**
-
-Download and install the Poplar SDK following the Getting Started guide for your IPU system. Source the `enable.sh` scripts for both Poplar and PopART, see more details in
-[SDK installation](https://docs.graphcore.ai/projects/ipu-pod-getting-started/en/latest/installation.html#sdk-installation).
-
-**2) Configure Python virtual environment**
-
-Create a virtual environment and install the required packages:
-```shell
-virtualenv --python python3.6 venv
-source venv/bin/activate
-pip3 install - r requirements.txt
-```
-# File structure <a name="file_structure"></a>
-
-| File | Description |
-|--------------------------- | --------------------------------------------------------------------- |
-| `config/` | Contains configuration options for fine-tuning and inference. |
-| `data/` | Data preprocessing and postprocessing for fine-tuning and validation. |
-| `modelling/` | Implements layers in GPT-J model <br/> -`embedding.py`, `attention.py`, `feed_forward.py`, `decoder.py` present the implementations of embedding layer, self-attention, feed forward and decoder block layers respectively. <br/> -`gptj_lm.py` present the implementation of the language model head. <br/> -`hf_mapping.py` provides utilities functions to get a dictionary between the model variables and hugging face weights. <br/> |
-| `tests/` | Integration tests. |
-| `utils/` | Helper functions to set up GPT-J configs, parse arguments and run text generation inference on the host. |
-| `inference.py`| Contains the execution scheme for inference. If executed directly, use generated data to do inference benchmarking. |
-| `finetuning_mnli.py` | Contains the execution scheme for training. If executed directly, use generated data to do finetuning benchmarking. |
-| `run_inference.py` | Using fine-tuned weights [Graphcore/gptj-mnli](https://huggingface.co/Graphcore/gptj-mnli), compares the output of an HF model run on cpu and `popxl` model run on IPUs. Inputs are taken from the  `mnli` `validation_mismatched` datasets (a single batch is used). |
-|`run_mnli_validation.py`| Run GPT-J inference on IPU using `mnli` `validation_mismatched` dataset and compute validation accuracy.
 
 The default model size for fine-tuning is GPT-J 6B on POD64 (named `gptj_6B_1024_pod64`). You can
 change it to other configurations that are available in the configuration file `config/finetuning.yml` using the `- -config` CLI parameter:
-```shell
+```bash
 python3 run_finetuning_mnli.py - -config gptj_6B_1024_pod64
 ```
 
 When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable this, use the environment variable `POPXL_CACHE_DIR=<PATH/TO/CACHE>` when running the application:
-```shell
+```bash
 POPXL_CACHE_DIR=<PATH/TO/CACHE> python3 run_finetuning_mnli.py
 ```
-# Mnli finetuning <a name="finetuning"></a>
+
 We finetune the model as a Causal Language Model (CLM): given a sequence of tokens, the task is to predict the next token.
 Hence, we preprocess the `mnli` training dataset by forming input prompts with the format
-```shell
+```bash
 mnli hypothesis: {hypothesis} premise: {premise} target: {class_label} <|endoftext|>
 ```
 For example:
@@ -100,12 +112,12 @@ Prompt sentences are tokenized and packed together to form 1024 token sequences,
 Since the model is trained to predict the next token, labels are simply the input sequence shifted by one token.
 Given the training format, no extra care is needed to account for different sequences: the model does not need to know which sentence a token belongs to.
 
-# Mnli validation <a name="validation"></a>
+### Mnli validation <a name="validation"></a>
 Generative inference is performed using a `greedy` heuristic: the next token is chosen based on the highest logits. No beam search or top-k/top-p techniques are
 employed.
 We run validation on Hugging Face `mnli` `validation_mismatched` and we measure accuracy using the corresponding metric.
 The validation dataset is preprocessed to obtain input sentences in the prompt format
-```shell
+```bash
 mnli hypothesis: {hypothesis} premise: {premise} target:
 ```
 and target labels (one between `entailment`, `contradiction` and `neutral`).
@@ -120,36 +132,36 @@ Since next token logits are located at the last non-padded token, we need to pro
 Finally, we retrieve literal labels detokenizing the predictions and we compute the accuracy comparing the result with the expected one.
 
 To run validation using a finetuned model, run
-```shell
+```bash
 python3 run_mnli_validation.py --load {path_to_finetuned_checkpoint}
 ```
 This script runs validation on the full dataset, producing the resulting accuracy.
 
 If you just want to have a look at the outputs of a fine-tuned model, you can use the `run_inference.py` script instead:
-```shell
+```bash
 python3 run_inference.py
 ```
 Weights are taken from our Hugging Face checkpoint [Graphcore/gptj-mnli](https://huggingface.co/Graphcore/gptj-mnli).
 The script runs inference on a single batch of the `mnli` `validation_mismatched` dataset and compares the output with the one produced by an HF model with the same weights.
 To control the number of sentences, use the `micro_batch_size` parameter (default is 16):
-```shell
+```bash
 python3 run_inference.py --micro_batch_size 4
 ```
 
-# Benchmarking <a name="benchmarking"></a>
+### Benchmarking <a name="benchmarking"></a>
 You can run execution scripts `inference.py` `finetuning_mnli.py` directly for benchmarking.
 In that case, generated data will be used.
 For instance, the command below runs the benchmarking for GPT-J mnli finetuning.
-```shell
+```bash
 python3 finetuning_mnli.py
 ```
 
-# View the pre-training results in Weights & Biases <a name="wandb"></a>
+### View the pre-training results in Weights & Biases <a name="wandb"></a>
 This project supports Weights & Biases, a platform to keep track of machine learning experiments. A client for Weights & Biases will be installed by default and can be used during training by passing the `--wandb` flag. You will need to manually log in (see the quickstart guide [here](https://docs.wandb.ai/quickstart)) and configure the project name with `--wandb-name`.) For more information please see https: // www.wandb.com/.
 
 The trainings in demo are logged in wandb under project `popxl-gptj`. Each run has loss, learning rate and throughput logged. The version for `addons` and PopXL are also logged together with the configuration settings.
 
-# Configure your GPT-J runs <a name="configs"></a>
+### Configure your GPT-J runs <a name="configs"></a>
 
 You can find configuration options for GPT-J in class `GPTJConfig` in the file `config/config.py`. It contains configurations for these aspects:
 
@@ -198,23 +210,23 @@ Note that the `gradient_accumulation` size is automatically computed from the `g
 * Checkpoint
 
     You can set the path to load and save checkpoints respectively by `load` and `save`.
-    ```shell
+    ```bash
     python3 run_finetuning_mnli.py --save {path to your checkpoint file}
     ```
 
-    ```shell
+    ```bash
     python3 run_finetuning_mnli.py --load {path to your checkpoint file}
     ```
 
-    ```shell
+    ```bash
     python3 run_mnli_validation.py --load {path_to_finetuned_checkpoint}
     ```
 
 
-# Scale GPT-J on IPU <a name="scale"></a>
+### Scale GPT-J on IPU <a name="scale"></a>
 Here we introduce some techniques that were required to scale up the GPT-J model for the required capacity and throughput.
 
-# Combining data parallelism, tensor parallelism and RTS <a name="tp_dp"></a>
+### Combining data parallelism, tensor parallelism and RTS <a name="tp_dp"></a>
 The model is executed using multiple IPUs to implement data parallelism and tensor parallelism via replication.
 
 **Data parallelism** means that the same program(which can span over multiple devices) is duplicated on different sets of devices, and each copy is feeded with different data. At each optimization step, the gradients are mean-reduced so that the weight update and model state are the same across all replicas. You can find more details about it in the [data parallelism tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
@@ -310,19 +322,19 @@ Therefore, the replica group of a variable defines the largest replica group for
 ![Different rts groups in tensor parallel + data parallel scenario](imgs/tp_dp_rts.png)
 <figcaption><em><b> Fig 6: </b> The replica group of a variable defines the largest set of devices for replicated tensor sharding. Therefore, variables that are identical on all devices (non tp-sharded) can be sharded on all replicas. Instead, tp-sharded variables are different along the tensor parallel axis and can be sharded only in the dp-group.</em></figcaption>
 
-# Phased Execution and Batch serialisation <a name="pe"></a>
+### Phased Execution and Batch serialisation <a name="pe"></a>
 If a model requires greater memory than the available on-chip memory, we can partition it into a series of smaller graphs and execute them in series on the IPU, using remote memory to store variables and input/output tensors between calls (activations).
 This is called phased execution. We recommend going through the tutorial [Phased Execution in MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/6_phased_execution).
 In the GPT-J application we demonstrate this concept on a full sized model.
 As explained in the tutorial, **batch serialisation** is required to get the best performance from phased execution. It rearranges the gradient accumulation loop so that variables stored in remote memory are loaded just one time before the loop, while inputs are loaded inside the loop.
 Hence, we apply the batch serialisation transform to our phases graphs.
 
-# Code loading <a name="code_loading"></a>
+### Code loading <a name="code_loading"></a>
 By default, the code for each phase is always live on the IPU.
 The code for each phase can instead be saved in remote memory and loaded to the IPU only when the phase needs to be executed.
 Enable the `code_load` flag in the configs to use this optimisation.
 
-# RTS on activations  <a name="activations_rts"></a>
+### RTS on activations  <a name="activations_rts"></a>
 When using phased execution, intermediate outputs (activations) need to be passed between phases.
 With batch serialisation, each phase is executed N times and activations are saved in a remote buffer that stores the N outputs.
 Since we are using replication to implement tensor parallelism, we can exploit the extra IPUs to shard activations, so that each replica just holds a slice of the tensor.
@@ -330,7 +342,7 @@ This saves remote memory and makes remote transfer faster, since less data has t
 After each remote load, sharded activations need to be gathered: this communication happens via IPU links.
 As explained in the [RTS](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/5_remote_variables_and_rts#replicated-tensor-sharding) tutorial, using RTS
 is a way of increasing the effective bandwidth because it performs part of the data transfer via IPU links, which have better bandwidth.
-# Summary of execution scheme <a name="execution"></a>
+### Summary of execution scheme <a name="execution"></a>
 
 Below is a diagram demonstrating how each layer is executed during the forward, backward and optimiser steps.
 
@@ -344,7 +356,7 @@ The backward layer executes both forward and backward because recomputation is u
 The optimiser layer operates directly on the RTS sharded gradient accumulators, optimiser state and variables.
 </em></figcaption>
 
-# Attention serialisation <a name="attention_serialisation"></a>
+#### Attention serialisation <a name="attention_serialisation"></a>
 Computations in the transformers' attention layers are sequence-length dependent.
 Recall that three linear projections Q, K, V are applied to obtain query, key and value vectors respectively.
 - Q[batch, num_heads, seq_length, hidden_size]
@@ -388,9 +400,9 @@ In this way, memory is saved because only the accumulated result needs to be ali
 
 You can look at the `create_decoder_block_graph` function in `finetuning_mnli.py` and to the attention layer in `modelling/attention.py` to understand how this is implemented in practice.
 
-# Finetuning code details <a name="code_details"></a>
+### Finetuning code details <a name="code_details"></a>
 
-# Constructing computational graphs for each phase
+#### Constructing computational graphs for each phase
 
 First of all, we build the training graphs for each phase, represented in the class `Graphs`. A phase can include one layer or consecutive layers. The execution of a phase can be for the forward graph, gradient graph, optimizer graph or a combination of them. We need to build the graphs used in each phase before we define the phases in [Build the main computational graph](#main).
 
@@ -416,7 +428,7 @@ We created these graphs:
     * Unlike in gpt, gpt-j does not use of tied embedding.
 
 
-# Apply transformations on graphs
+#### Apply transformations on graphs
 
 We then apply transformations to the graphs built:
 * **recomputation**: to reduce memory consumption in backward pass for embedding gradients and decoder gradients. You can transform the gradient graphs by using `popxl_addons.recompute_graph` method.

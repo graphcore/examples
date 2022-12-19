@@ -1,108 +1,141 @@
-# Pytorch CLIP on IPU  
+# CLIP
+CLIP (ViT-B/32) based on the models provided by the [openai-CLIP](https://github.com/openai/CLIP) models, optimised for Graphcore's IPU.
 
-Implementation of CLIP (`ViT-B/32`) model in PyTorch for the IPU. This example is based on the models provided by the [`openai-CLIP`](https://github.com/openai/CLIP). The CLIP (`ViT-B/32`) model is based on the original paper [Learning Transferable Visual Models From Natural Language Supervision](https://arxiv.org/abs/2103.00020)
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|-------|
+| Pytorch | Vision | CLIP | Conceptual Captions (cc3m), Imagenet LSVRC 2012, CIFAR-100 | Image recognition | ✅  | ❌ | [Learning Transferable Visual Models From Natural Language Supervision](https://arxiv.org/abs/2103.00020) |
 
-## Setup Environment  
 
-First, install the Poplar SDK following the instructions in the [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for your IPU system. Make sure to source the `enable.sh` scripts for poplar and popART.
+## Instructions summary
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-Then, create a virtual environment and install the required packages.
+2. Install the system and Python requirements (see Environment setup)
 
-```console
-virtualenv venv -p python3.6
-source venv/bin/activate
-pip install -r requirements.txt
+3. Download the ImageNet LSVRC 2012 dataset (See Dataset setup)
 
-# from sdk package
-pip install <path to the poptorch wheel from the Poplar SDK>
-```  
 
-## Quick start with generated dataset  
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
 
-Setup your environment as explained above and run the example with generated data.  
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
 
-```console
-python train.py \
-    --config CLIP_ViT-B-32_cc3m \
-    --host_generate_data True
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-## Download Vocabulary  
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
 
-Download the vocabulary for word segmentation into the dataset directory from [`the official repository`](https://github.com/openai/CLIP/blob/main/clip/bpe_simple_vocab_16e6.txt.gz) and then move it into datasets directory.  
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
 
-```console
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
+```
+
+4. Navigate to this example's root directory
+
+5. Install the Python requirements:
+```bash
+pip3 install -r requirements.txt
+```
+
+## Dataset setup
+### Conceptual Captions (cc3m)
+Download the conceptual captions dataset in three steps with the scripts provided:
+1. Download `Train_GCC-training.tsv` from the [Conceptual Captions source](https://ai.google.com/research/ConceptualCaptions/download)
+
+2. Use the provided script to download the main dataset:
+```bash
+mkdir data
+mv Train_GCC-training.tsv data/
+mkdir -p data/cc3m/images
+python3 datasets/download.py --url_file data/Train_GCC-training.tsv --save_path data/cc3m
+```
+
+3. Download the word segmentation vocabulary from the  [official CLIP repository](https://github.com/openai/CLIP/blob/main/clip/bpe_simple_vocab_16e6.txt.gz) and move it into the data directory:
+
+```bash
 mv bpe_simple_vocab_16e6.txt.gz datasets/
 ```
 
-## Download Dataset  
+Disk space required: 84G
 
-The script `datasets/download.py` will collect the Conceptual Captions images. First, download `Train_GCC-training.tsv` from [`Conceptual Captional URLs`](https://ai.google.com/research/ConceptualCaptions/download) and then move it into the data directory. Finally, run the script from our repository to grab the images:  
+```bash
+.
+├── images
+└── img_cap.csv
 
-```console
-mkdir data
-mv Train_GCC-training.tsv data
-mkdir -p data/cc3m/images
-python datasets/download.py \
-    --url_file data/Train_GCC-training.tsv \
-    --save_path data/cc3m
-```  
+1 directory, 1 file
+```
 
-The trainset of cc3m has about 2.8 M image-text pairs.
+### ImageNet LSVRC 2012 (Optional)
+Download the ImageNet LSVRC 2012 dataset from [the source](http://image-net.org/download) or [via kaggle](https://www.kaggle.com/c/imagenet-object-localization-challenge/data)
+
+Disk space required: 144GB
+
+```bash
+.
+├── bounding_boxes
+├── imagenet_2012_bounding_boxes.csv
+├── train
+└── validation
+
+3 directories, 1 file
+```
+
+And then pre-process the dataset using the scripts provided:
+```bash
+python3 datasets/preprocess.py
+```
+
 
 ## Running and benchmarking
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
 
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+For example:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
 Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
-## Run the application
 
-After setting up your environment as explained above, you can run CLIP (with ViT-B/32) on cc3m dataset.
+## Custom training/inference and other features
 
-Train CLIP (with ViT-B/32) on cc3m dataset:
-```console
-python train.py --config CLIP_ViT-B-32_cc3m
-```  
-
-## Configurations
-
-You can find the available configurations in the `configs.yml` file.
-You can use `--help` to check the available options.
-
-```console
-python train.py --help
-```  
-
-## Run the unit test  
-
-```console
-pytest
-```  
-
-## Run the tests  
-
-Before performing zeroshot evaluation on ImageNet, you need to download the validation set of [`ImageNet1k dataset`](http://www.image-net.org). And then move it into the data directory. Finally, run the script from our repository to filter the non-existing images and build the map file for image-label:  
-
-```console
-python datasets/preprocess.py
-```
-
-Note: CIFAR100 dataset will download automatically when performing zeroshot evaluation on CIFAR100.
-
+### Zero-shot evaluation  
 After training CLIP on cc3m dataset, you can apply zeroshot classification prediction on the validation set of ImageNet1k and CIFAR100 dataset to valify the performance of trained model. You can choose to use a checkpoint saved from the IPU by setting the `is_ipu_ckpt` to `True` or the official checkpoint by setting it to `False`. Zeroshot evaluation is performed on the validation set of ImageNet1k by default. If you want to perform zeroshot evaluation on CIFAR100, please set `zeroshot_dataset` to CIFAR100.
 
-```console
+```bash
 # Do zeroshot evaluation on ImageNet
 python zero_shot.py \
     --config CLIP_ViT-B-32_cc3m \

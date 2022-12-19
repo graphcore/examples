@@ -8,12 +8,13 @@ from copy import deepcopy
 from datetime import datetime
 from time import time
 
+import horovod.tensorflow as hvd
 import popdist
 import popdist.tensorflow
 import tensorflow as tf
 from tensorflow.python import ipu
-from tensorflow.python.ipu import horovod as hvd
-from tensorflow.python.ipu.horovod.popdist_strategy import PopDistStrategy
+from tensorflow.python.ipu import distributed
+from tensorflow.python.ipu.distributed.popdist_strategy import PopDistStrategy
 from tensorflow.python.ipu.ops import pipelining_ops
 
 import precision
@@ -148,6 +149,7 @@ if __name__ == '__main__':
                 optimizer_name=hparams.optimizer,
                 optimizer_params=hparams.optimizer_params,
                 loss_scaling=hparams.loss_scaling,
+                auto_loss_scaling=hparams.auto_loss_scaling,
                 l2_regularization=hparams.l2_regularization,
                 batch_config=batch_config,
                 lr_scheduler=lr_scheduler,
@@ -214,18 +216,18 @@ if __name__ == '__main__':
             logging.info(f'steps_per_execution = {micro_batches_per_execution // batch_config.num_replicas}')
             logging.info(f'num_epochs {hparams.num_epochs}')
 
-            if hparams.checkpoint_dir is None:
+            if hparams.checkpoint_output_dir is None:
                 if hparams.distributed_training:
-                    time_now = hvd.broadcast(tf.convert_to_tensor(value=time(), dtype=tf.float32), 0)
+                    time_now = distributed.broadcast(tf.convert_to_tensor(value=time(), dtype=tf.float32), 0).numpy()
                 else:
                     time_now = time()
                 date_now = datetime.fromtimestamp(time_now).strftime("%d_%m_%Y_%H:%M:%S.%f")[:-3]
-                hparams.checkpoint_dir = os.path.join('/tmp', 'checkpoints_' + date_now)
+                hparams.checkpoint_output_dir = os.path.join('/tmp', 'checkpoints_' + date_now)
 
             ckpt_period = micro_batches_per_ckpt // batch_config.num_replicas
             if hparams.distributed_training:
                 if hparams.ckpt_all_instances:
-                    hparams.checkpoint_dir = os.path.join(hparams.checkpoint_dir, f'rank{hvd.rank()}')
+                    hparams.checkpoint_output_dir = os.path.join(hparams.checkpoint_output_dir, f'rank{hvd.rank()}')
                 elif hvd.local_rank() != 0:
                     ckpt_period = 0
 
@@ -239,7 +241,7 @@ if __name__ == '__main__':
                 hyperparams=hparams,
                 checkpoint_period=ckpt_period,
                 checkpoint_phase=hparams.first_ckpt_epoch * micro_batches_per_epoch // batch_config.num_replicas,
-                checkpoint_dir=hparams.checkpoint_dir,
+                checkpoint_dir=hparams.checkpoint_output_dir,
                 log_period=micro_batches_per_log // batch_config.num_replicas,
                 images_per_execution=micro_batches_per_execution * batch_config.micro_batch_size,
                 micro_batches_per_epoch=micro_batches_per_epoch // batch_config.num_replicas,
@@ -354,7 +356,7 @@ if __name__ == '__main__':
             validation_callbacks = CallbackFactory.get_callbacks(
                 model=validation_model,
                 hyperparams=hparams,
-                checkpoint_dir=hparams.checkpoint_dir,
+                checkpoint_dir=hparams.checkpoint_input_dir,
                 log_period=validation_micro_batches_per_epoch // validation_batch_config.num_replicas,
                 images_per_execution=validation_micro_batches_per_epoch * validation_batch_config.micro_batch_size,
                 micro_batches_per_epoch=validation_micro_batches_per_epoch * hparams.ckpts_per_epoch / validation_batch_config.num_replicas,
@@ -415,10 +417,10 @@ if __name__ == '__main__':
 
         with ipu_strategy.scope():
             ckpt_list = []
-            if hparams.checkpoint_dir is not None:
-                ckpt_list = glob.glob(os.path.join(hparams.checkpoint_dir, '*.h5'))
+            if hparams.checkpoint_input_dir is not None:
+                ckpt_list = glob.glob(os.path.join(hparams.checkpoint_input_dir, '*.h5'))
                 if len(ckpt_list) == 0:
-                    logging.warn(f'The directory {hparams.checkpoint_dir} doesn\'t contain checkpoint (*.h5) files')
+                    logging.warn(f'The directory {hparams.checkpoint_input_dir} doesn\'t contain checkpoint (*.h5) files')
             validation_callbacks = CallbackFactory.set_validation_only_callbacks(
                 callbacks=validation_callbacks,
                 ckpt_list=ckpt_list,
@@ -436,7 +438,7 @@ if __name__ == '__main__':
                         callbacks=validation_callbacks
                     )
                 if hparams.clean_dir:
-                    shutil.rmtree(hparams.checkpoint_dir)
+                    shutil.rmtree(hparams.checkpoint_output_dir)
 
             else:
                 if hparams.training:

@@ -11,9 +11,9 @@ working_path = os.path.dirname(__file__)
 class TestReadmeCommands(SubProcessChecker):
 
     def test_run_readme_example(self):
-        self.run_command("python3 get_model.py --micro-batch-size 6",
+        self.run_command("python3 get_model.py --micro-batch-size 64",
                          working_path,
                          "Converting model to batch size ")
-        self.run_command("python resnext_inference_launch.py --batch_size 48 --num_ipus 8 --synthetic",
+        self.run_command("python resnext_inference_launch.py --batch_size 256 --num_ipus 4 --synthetic",
                          working_path,
-                         r"All processes finished with exit codes: \[0, 0, 0, 0, 0, 0, 0, 0\]")
+                         r"All processes finished with exit codes: \[0, 0, 0, 0\]")

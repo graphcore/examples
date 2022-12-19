@@ -79,7 +79,7 @@ class AugmentationModel(torch.nn.Module):
         mask = (xs_mask * ys_mask.reshape((height, 1)))
 
         coeff = 1.0 - torch.mean(mask.to(torch.float32))
-        batch_cutmixed = torch.where(mask.to(torch.bool), self._permute(batch, 2), batch)
+        batch_cutmixed = torch.where(torch.broadcast_to(mask.to(torch.bool), batch.shape), self._permute(batch, 2), batch)
         return batch_cutmixed, coeff
 
 

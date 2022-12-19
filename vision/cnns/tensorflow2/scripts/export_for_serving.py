@@ -42,7 +42,7 @@ def get_parser():
                         help="Number of iterations for the model exported for TensorFlow Serving.")
     parser.add_argument('--pipeline-serving-model', type=terminal_argparse.str_to_bool, nargs="?", const=True, default=False,
                         help='Reuse the training pipeline splits for inference in the model exported for TensorFlow Serving')
-    parser.add_argument('--checkpoint-file', type=str, default=None,
+    parser.add_argument('--checkpoint-input-path', type=str, default=None,
                         help='Path to a checkpoint file that will be loaded before exporting model for TensorFlow Serving. '
                              'If not set, the model will use randomly initialized parameters.')
     parser.add_argument('--use-serving-api', action='store_true',
@@ -61,12 +61,12 @@ def validate_arguments(hparams):
         raise ValueError(f'--export-dir is set to "{hparams.export_dir}" which already exists, and is not empty. '
                          'Please choose a different export directory, or delete all the contents of the specified directory.')
 
-    if not hparams.checkpoint_file:
+    if not hparams.checkpoint_input_path:
         logging.warn('No checkpoint file provided, model\'s parameters will be initialized randomly.'
-                     'Set --checkpoint-file to load trained parameters.')
-    elif not os.path.exists(hparams.checkpoint_file):
+                     'Set --checkpoint-input-path to load trained parameters.')
+    elif not os.path.exists(hparams.checkpoint_input_path):
         raise ValueError(
-            f'--checkpoint-file is set to "{hparams.checkpoint_file}" which does not exists.')
+            f'--checkpoint-input-path is set to "{hparams.checkpoint_input_path}" which does not exists.')
 
     if (not len(hparams.pipeline_splits)) and hparams.pipeline_serving_model:
         logging.warn(
@@ -163,9 +163,9 @@ if __name__ == '__main__':
                                  ds.image_shape[1],
                                  ds.image_shape[2]))
 
-        if hparams.checkpoint_file:
-            logging.info(f'Loading checkpoint file {hparams.checkpoint_file}')
-            model.load_weights(hparams.checkpoint_file)
+        if hparams.checkpoint_input_path:
+            logging.info(f'Loading checkpoint file {hparams.checkpoint_input_path}')
+            model.load_weights(hparams.checkpoint_input_path)
         input_dtype = tf.uint8 if hparams.eight_bit_transfer else fp_precision.compute_precision
 
         if not hparams.use_serving_api:

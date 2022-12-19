@@ -1,0 +1,11 @@
+# Ignore locally downloaded datasets
+data*
+
+# Also any profiler output
+*.a
+*.cbor
+*.capnp
+*.pop
+
+#
+__pycache__*

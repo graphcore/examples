@@ -53,3 +53,4 @@ tf2_efficientdet_d0_low_latency_infer_gen_pod4:
       --model-name efficientdet-{modelname}
       --dataset-type generated
       --random-weights
+      --num-repeats 500

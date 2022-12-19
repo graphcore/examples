@@ -128,10 +128,10 @@ def validate_checkpoints(checkpoint_list, test_data=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run validation on a given checkpoint')
-    parser.add_argument('--checkpoint-path', help="Path of checkpoint file or folder", required=True)
+    parser.add_argument('--checkpoint-input-path', help="Path of checkpoint file or folder", required=True)
     args = parser.parse_args()
-    if os.path.isdir(args.checkpoint_path):
-        checkpoint_files = [os.path.join(args.checkpoint_path, file_name) for file_name in os.listdir(args.checkpoint_path) if file_name.endswith(".pt")]
+    if os.path.isdir(args.checkpoint_input_path):
+        checkpoint_files = [os.path.join(args.checkpoint_input_path, file_name) for file_name in os.listdir(args.checkpoint_input_path) if file_name.endswith(".pt")]
     else:
-        checkpoint_files = [args.checkpoint_path]
+        checkpoint_files = [args.checkpoint_input_path]
     validate_checkpoints(checkpoint_files)

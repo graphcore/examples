@@ -22,7 +22,7 @@ IPUS_PER_REPLICA=4
 # multi host run
 HOSTS=""
 PARTITION=""
-VIPU_SERVER_HOST=""
+IPUOF_VIPU_API_HOST=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -55,7 +55,7 @@ while [[ $# -gt 0 ]]; do
       shift; shift
       ;;
     --vipu-host)
-      VIPU_SERVER_HOST="$2"
+      IPUOF_VIPU_API_HOST="$2"
       shift; shift
       ;;
     --hosts)
@@ -107,7 +107,7 @@ TIMESTAMP="$(date +%Y-%m-%d_%H-%M-%S)"
 [ -z "$NUM_EPOCHS" ] && NUM_EPOCHS="" || NUM_EPOCHS="--num-epochs $NUM_EPOCHS"
 
 
-if [[ $PARTITION == "" ]] || [[ $VIPU_SERVER_HOST == "" ]] || [[ $HOSTS == "" ]]; then
+if [[ $PARTITION == "" ]] || [[ $IPUOF_VIPU_API_HOST == "" ]] || [[ $HOSTS == "" ]]; then
   MULTIHOST=false
   echo "Mutli-host run disabled because --partition, --vipu-host or --hosts wasnt specified."
 else
@@ -132,7 +132,7 @@ echo "ckpt_all_instances = $CKPT_ALL_INSTANCES"
 if [ $MULTIHOST = true ]; then
   echo "hosts = $HOSTS"
   echo "partition = $PARTITION"
-  echo "vipu_server_host = $VIPU_HOST"
+  echo "IPUOF_VIPU_API_HOST = $VIPU_HOST"
 fi
 echo ""
 
@@ -140,13 +140,13 @@ PROJECT_ROOT_PATH=$( cd -- "$( dirname "$( dirname -- "${BASH_SOURCE[0]}" )" )" 
 
 if [ $MULTIHOST = true ]; then
   # split string by comma
-  delimiter=","  
-  s=$HOSTS$delimiter  
+  delimiter=","
+  s=$HOSTS$delimiter
   host_array=()
   while [[ $s ]]
-    do  
+    do
     host_array+=( "${s%%"$delimiter"*}" )
-    s=${s#*"$delimiter"} 
+    s=${s#*"$delimiter"}
   done
 
   declare -p host_array
@@ -158,19 +158,19 @@ if [ $MULTIHOST = true ]; then
   echo "bash ../../../utils/distributed_training/config_pod.sh $PARTITION ${host_array[@]}"
   eval "bash ../../../utils/distributed_training/config_pod.sh $PARTITION ${host_array[@]}"
 
-  MULTIHOST_SETTINGS="-vv --host $HOSTS
+  MULTIHOST_SETTINGS="-vv --host $HOSTS \
       --mpi-global-args='--mca oob_tcp_if_include eno1 --mca btl_tcp_if_include eno1' \
-      --vipu-partition="$PARTITION" --update-partition=yes --reset-partition=no --vipu-server-host "$VIPU_SERVER_HOST" "
+      --vipu-partition="$PARTITION" --update-partition=yes --reset-partition=no --vipu-server-host "$IPUOF_VIPU_API_HOST" "
 fi
 
 PYTHON_BASE="python3 ${PROJECT_ROOT_PATH}/train.py --config $CONFIG --seed $SEED --on-demand False --wandb $WANDB"
-POPRUN_BASE="poprun $MULTIHOST_SETTINGS --num-instances $INSTANCES $TF_POPLAR_FLAGS --only-output-from-instance 0" 
+POPRUN_BASE="poprun $MULTIHOST_SETTINGS --num-instances $INSTANCES $TF_POPLAR_FLAGS --only-output-from-instance 0"
 
 # training
 if [ $POPRUN = true ]
 then export poprun_prefix="$POPRUN_BASE --num-replicas $NUM_REPLICAS --ipus-per-replica $IPUS_PER_REPLICA"
 else export poprun_prefix=""; fi
-export python_cmd="$PYTHON_BASE $NUM_EPOCHS --ckpt-all-instances $CKPT_ALL_INSTANCES --validation $VALIDATION --checkpoint-dir $CKPT_DIR --pipeline-validation-model"
+export python_cmd="$PYTHON_BASE $NUM_EPOCHS --ckpt-all-instances $CKPT_ALL_INSTANCES --validation $VALIDATION --checkpoint-output-dir $CKPT_DIR --checkpoint-input-dir $CKPT_DIR --pipeline-validation-model"
 echo "Running training:"
 echo $poprun_prefix $python_cmd
 eval $poprun_prefix $python_cmd

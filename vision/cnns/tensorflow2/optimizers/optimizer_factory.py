@@ -12,6 +12,7 @@ from normalization import batch_norm
 from tensorflow.keras.optimizers import RMSprop
 from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 import keras
+from keras.ipu.optimizers import ALSOptimizer
 
 from schedules.decorators import FP32StepLearningRateSchedule
 from optimizers.l2_regularizer import add_l2_regularization
@@ -20,7 +21,7 @@ from optimizers.loss_scale_optimizer import add_loss_scaling_to_optimizer
 
 sys.path.append(str(Path(__file__).absolute().parent.parent))
 from utilities import verify_params_present
-
+from keras.optimizer_v2 import gradient_descent
 AVAILABLE_OPTIMIZERS = ['sgd', 'lars', 'rmsprop']
 
 
@@ -46,6 +47,7 @@ class OptimizerFactory:
     def get_optimizer(optimizer_name: str,
                       optimizer_params: dict,
                       loss_scaling: Optional[float],
+                      auto_loss_scaling: Optional[bool],
                       l2_regularization: float,
                       batch_config: BatchConfig,
                       lr_scheduler: LearningRateSchedule,
@@ -79,17 +81,27 @@ class OptimizerFactory:
                 1 - ((2 ** optimizer_params['base_decay_exponent']) * batch_config.global_batch_size))
             del optimizer_params['base_decay_exponent']
 
-        if not distributed_training:
+        if auto_loss_scaling:
+            optimizer_class = gradient_descent.SGD
+            optimizer_params = {}
+
+        if not distributed_training and (not auto_loss_scaling or batch_config.gradient_accumulation_count > 1):
             def gradient_normalizer(grads_and_vars):
                 return [(grad / batch_config.num_replicas, var)
                         for grad, var in grads_and_vars]
             optimizer_params['gradient_transformers'] = [gradient_normalizer]
 
+        if distributed_training and auto_loss_scaling and not batch_config.gradient_accumulation_count > 1:
+            def gradient_multiplier(grads_and_vars):
+                return [(grad * batch_config.num_replicas, var)
+                        for grad, var in grads_and_vars]
+            optimizer_params['gradient_transformers'] = [gradient_multiplier]
+
         optimizer_params['learning_rate'] = lr_scheduler
         if l2_regularization:
             optimizer_class = add_l2_regularization(optimizer_class, l2_regularization)
 
-        if loss_scaling:
+        if loss_scaling and not auto_loss_scaling:
             optimizer_class = add_loss_scaling_to_optimizer(optimizer_class, loss_scaling * batch_config.num_replicas)
 
         if norm_layer_params['name'] == 'custom_batch_norm':
@@ -107,5 +119,8 @@ class OptimizerFactory:
             )
 
         optimizer = optimizer_class(**optimizer_params)
+        
+        if auto_loss_scaling:
+            optimizer = ALSOptimizer(optimizer)
 
         return optimizer

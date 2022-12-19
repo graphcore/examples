@@ -127,7 +127,7 @@ squad_large_384:
   attention_probs_dropout_prob: 0.15
   ipus_per_replica: 8
   layers_per_ipu: [2,3,3,3,3,3,3,4]
-  matmul_proportion: [0.08,0.28,0.32,0.32,0.36,0.38,0.4,0.32]
+  matmul_proportion: [0.08,0.25,0.32,0.32,0.36,0.38,0.4,0.32]
   optimizer_state_offchip: False
   enable_half_first_order_momentum: True
 

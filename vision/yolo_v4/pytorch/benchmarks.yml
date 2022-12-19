@@ -1,5 +1,10 @@
 ---
+config_options: &config_options
+  requirements_path: requirements.txt
+  pre_run_commands: [make]
+
 pytorch_yolov4_infer_real_pod4:
+  <<: *config_options
   description:
     PyTorch Yolov4 inference benchmark on 4 IPUs using coco val2017 dataset
   parameters:

@@ -152,13 +152,13 @@ class ConfigurePipelineTest(unittest.TestCase):
 
         def expected_model_1():
             model_input = keras.Input(shape=(32, 32, 3))
-            with ipu.keras.PipelineStage(0):
+            with keras.ipu.PipelineStage(0):
                 model_output = keras.layers.MaxPooling2D()(model_input)
                 model_output_1 = keras.layers.Conv2D(filters=32, kernel_size=3)(model_output)
-            with ipu.keras.PipelineStage(1):
+            with keras.ipu.PipelineStage(1):
                 model_output_2 = keras.layers.Conv2D(filters=32, kernel_size=3)(model_output)
                 model_output = keras.layers.Add()([model_output_1, model_output_2])
-            with ipu.keras.PipelineStage(2):
+            with keras.ipu.PipelineStage(2):
                 model_output = keras.layers.Flatten()(model_output)
             return keras.Model(model_input, model_output)
 

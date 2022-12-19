@@ -16,7 +16,28 @@ import os
 import glob
 import torch
 from utils import logger
+from pathlib import Path
 
+def resolve_checkpoint_input_dir(checkpoint_input_dir):
+    
+    # if the input directory contains the the step subdirectory 
+    # then the user wants to load the ckpt from a specific dir
+    if "step_" in Path(checkpoint_input_dir).name:
+        return checkpoint_input_dir
+    
+    # try to resolve the checkpoint with the highest step    
+    candidates = list(Path(checkpoint_input_dir).glob("step_*"))
+    
+    if len(candidates) > 0:
+        highest_step = sorted(
+            candidates, key=lambda x: x.name.split('_')[-1], reverse=True
+            )[0]
+        return str(highest_step)
+    else:
+        # let from_pretrained method handle the kind of input file the user 
+        # has provided
+        return checkpoint_input_dir
+    
 
 def checkpoints_exist(path):
     if os.path.exists(path):

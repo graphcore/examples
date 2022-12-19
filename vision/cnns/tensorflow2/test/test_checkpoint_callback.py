@@ -57,11 +57,9 @@ class TestCheckpointCallbacks(unittest.TestCase):
             # recompile the model for the validation
             model.compile(metrics=[tf.keras.metrics.MSE], steps_per_execution=num_steps)
             previous_accuracy = 1e10
-            for files in checkpoint_files:
+            for files in sorted(checkpoint_files):
                 model.load_weights(files)
                 metrics = model.evaluate(ds, steps=num_steps)
-                accuracy = metrics[1]
-                print(f'validation accuracy: {metrics[1]}')
                 accuracy = metrics[1]
                 assert(accuracy < previous_accuracy)
                 previous_accuracy = accuracy

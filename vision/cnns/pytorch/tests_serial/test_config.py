@@ -10,7 +10,7 @@ from utils import run_script
                                     "mobilenet-v3-large-pod16", "mobilenet-v3-small-pod4"])
 def test_train_config_compile(config):
     gc.collect()
-    out = run_script("train/train.py", f"--data generated --config {config} --compile-only --checkpoint-path temp_folder")
+    out = run_script("train/train.py", f"--data generated --config {config} --compile-only --checkpoint-input-dir temp_folder --checkpoint-output-dir temp_folder")
     assert not("ERROR" in out)
 
 

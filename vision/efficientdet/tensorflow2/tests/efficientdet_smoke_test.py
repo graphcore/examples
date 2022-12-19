@@ -14,7 +14,6 @@ class ThroughputTest(SubProcessChecker):
     def setUp(self):
         self.run_command("make", current_path, [])
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_d0_bs1(self):
@@ -22,7 +21,6 @@ class ThroughputTest(SubProcessChecker):
         self.run_command(
             "python ipu_inference.py --model-name efficientdet-d0 --micro-batch-size 1 --random-weights", current_path, ["Benchmark complete"])
 
-    @pytest.mark.category2
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_d0_throughput(self):
@@ -30,7 +28,6 @@ class ThroughputTest(SubProcessChecker):
         self.run_command(
             "python ipu_inference.py --model-name efficientdet-d0 --random-weights", current_path, ["Benchmark complete"])
 
-    @pytest.mark.category3
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_d4_throughput(self):
@@ -45,7 +42,6 @@ class LowLatencyTest(SubProcessChecker):
     def setUp(self):
         self.run_command("make", current_path, [])
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_d0_bs1(self):
@@ -53,7 +49,6 @@ class LowLatencyTest(SubProcessChecker):
         self.run_command(
             "python ipu_embedded_inference.py --model-name efficientdet-d0 --config efficientdet-low-latency", current_path, ["Benchmark complete"])
 
-    @pytest.mark.category1
     @pytest.mark.ipus(1)
     @pytest.mark.ipu_version("ipu2")
     def test_d4_bs1(self):

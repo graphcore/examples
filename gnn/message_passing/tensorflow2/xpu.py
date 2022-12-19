@@ -21,8 +21,6 @@ from tensorflow import gather
 if IS_IPU:
     from ipu_tensorflow_addons.keras.layers import (Dropout, LayerNormalization)
     from ipu_tensorflow_addons.keras.optimizers import AdamIpuOptimizer
-    from tensorflow.python.ipu.keras.optimizers.cross_replica_optimizer import \
-        CrossReplicaOptimizer
 
     from static_ops.static_ops import grouped_gather, grouped_scatter
 else:
@@ -75,6 +73,7 @@ def configure_and_get_strategy(num_replicas):
         config.compilation_poplar_options['opt.internalExchangeOptimisationTarget'] = FLAGS.optimization_target
         config.scheduling.algorithm = vars(ipu.config.SchedulingAlgorithm)[FLAGS.scheduling_algorithm]
         config.optimizations.maximum_cross_replica_sum_buffer_size = FLAGS.maximum_cross_replica_sum_buffer_size
+        config.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         ipu.utils.configure_ipu_system(config)
         strategy = ipu.ipu_strategy.IPUStrategy()
     else:

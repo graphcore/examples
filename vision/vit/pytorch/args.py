@@ -34,6 +34,7 @@ def str_to_bool(value):
 
 def init_popdist(args):
     hvd.init()
+    popdist.init()
     if popdist.getNumTotalReplicas() != args.replication_factor:
         print(f"The number of replicas is overridden by PopRun. "
               f"The new value is {popdist.getNumTotalReplicas()}.")

@@ -7,7 +7,7 @@ import logging
 import popdist.tensorflow
 import tensorflow as tf
 from tensorflow.python import ipu
-from tensorflow.python.ipu import horovod
+from tensorflow.python.ipu import distributed
 from tensorflow.python.ipu.gradient_accumulation import GradientAccumulationReductionMethod
 from transformers import BertConfig
 import wandb
@@ -40,8 +40,8 @@ def pretrain(config):
 
     # Set a name for this run, and be sure it is shared by all hosts when using distributed training.
     if distributed_training:
-        horovod.init()
-        time_now = horovod.broadcast(tf.convert_to_tensor(value=datetime.now().timestamp(), dtype=tf.float32), 0)
+        popdist.init()
+        time_now = float(distributed.broadcast(tf.convert_to_tensor(value=datetime.now().timestamp(), dtype=tf.float32), 0))
     else:
         time_now = datetime.now().timestamp()
     universal_run_name = config.config.stem if config.name is None else config.name
@@ -49,8 +49,8 @@ def pretrain(config):
     logging.info(f"Universal name for run: {universal_run_name}")
 
     if config.enable_wandb and popdist.getInstanceIndex() == 0:
-        wandb.init(entity="sw-apps",
-                   project="TF2-BERT",
+        wandb.init(entity=config.wandb_entity_name,
+                   project=config.wandb_project_name,
                    name=universal_run_name,
                    config=config,
                    tags=config.wandb_tags)

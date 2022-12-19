@@ -55,6 +55,6 @@
     "embedding_serialization_vocab_steps": 5,
     "available_memory_proportion": [0.14, 0.19, 0.19, 0.19],
     "pipeline": true,
-    "checkpoint_dir": "checkpoints/pretrain_large",
+    "checkpoint_output_dir": "checkpoints/pretrain_large",
     "no_validation": true
 }

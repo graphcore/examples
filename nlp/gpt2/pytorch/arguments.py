@@ -32,9 +32,9 @@ def set_args(args=None):
                         help='Select which model to train.')
     parser.add_argument('--max-len', default=128, type=int, required=False,
                         help='The max sequence length.')
-    parser.add_argument('--pretrained-checkpoint', default='', type=str, required=False,
+    parser.add_argument('--checkpoint-input-dir', default='', type=str, required=False,
                         help='Directory where checkpoints will be load from.')
-    parser.add_argument('--save-model-path', default=None, type=str, required=False,
+    parser.add_argument('--checkpoint-output-dir', default=None, type=str, required=False,
                         help='Directory where checkpoints will be saved to.')
     parser.add_argument('--custom-ops', type=str_to_bool, nargs='?', const=True, default=True,
                         help='Enable custom ops.')

@@ -55,9 +55,9 @@ class GPT2Wrapper(nn.Module):
     def __init__(self, args, model_config):
         super().__init__()
         self.args = args
-        if args.pretrained_checkpoint:  # load pretrained model checkpoint
+        if args.checkpoint_input_dir:  # load pretrained model checkpoint
             self.model = GPT2LMHeadModel.from_pretrained(
-                args.pretrained_checkpoint)
+                args.checkpoint_input_dir)
         else:  # init model
             self.config = model_config
             self.model = GPT2LMHeadModel(config=self.config)
@@ -227,7 +227,7 @@ if __name__ == "__main__":
         optimizer, args.lr_schedule, lr_warmup_steps, lr_decay_steps)
     if args.resume_training_from_checkpoint:
         training_state = torch.load(
-            Path(args.pretrained_checkpoint) / "training_state.pt")
+            Path(args.checkpoint_input_dir) / "training_state.pt")
         optimizer.load_state_dict(training_state["optimizer"])
         scheduler.load_state_dict(training_state["lr_scheduler"])
 
@@ -271,11 +271,11 @@ if __name__ == "__main__":
                            "Epoch": epoch + 1,
                            "Throughput": step_throughput})
 
-            if args.save_model_path:
+            if args.checkpoint_output_dir:
                 if not args.use_popdist or args.popdist_rank == 0:
                     if args.save_per_steps is not None and (total_step % args.save_per_steps == 0):
                         model_path = os.path.join(
-                            args.save_model_path, 'step_{}'.format(total_step))
+                            args.checkpoint_output_dir, 'step_{}'.format(total_step))
                         logger('saving current model to {}'.format(model_path))
                         os.makedirs(model_path, exist_ok=True)
                         model.model.save_pretrained(model_path)
@@ -291,11 +291,11 @@ if __name__ == "__main__":
             total_step += 1
             if total_step % steps_per_epoch == 0:
                 epoch += 1
-        if args.save_model_path:
+        if args.checkpoint_output_dir:
             if not args.use_popdist or args.popdist_rank == 0:
                 if (epoch % args.save_per_epochs) == 0:
                     model_path = os.path.join(
-                        args.save_model_path, 'epoch_{}'.format(epoch + 1))
+                        args.checkpoint_output_dir, 'epoch_{}'.format(epoch + 1))
                     logger('saving current model to {}'.format(model_path))
                     os.makedirs(model_path, exist_ok=True)
 

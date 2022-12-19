@@ -10,10 +10,8 @@ train_options: &train_options
 inference_options: &inference_options
   data:
     throughput:
-      skip: 2
       regexp: 'throughput: *(.*?) samples\/sec'
     latency:
-      skip: 2
       regexp: 'latency avg: *(.*?) ms'
   output:
     - [samples/sec, "throughput"]

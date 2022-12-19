@@ -1,0 +1,17 @@
+---
+common_options: &common_options
+  data:
+    throughput:
+      skip: 1
+      regexp: 'Throughput: *(.*?) samples\/s'
+  output:
+    - [samples/sec, 'throughput']
+
+config_options: &config_options
+  requirements_path: requirements.txt
+
+pytorch_tgn_train_real_1ipu:
+  <<: [*common_options, *config_options]
+  description: Pytorch TGN throughput benchmark using real data.
+  cmd: >-
+    python train.py

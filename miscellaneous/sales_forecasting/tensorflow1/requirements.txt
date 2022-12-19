@@ -1,3 +1,0 @@
-pytest==6.2.5
-pandas==1.1.4
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils

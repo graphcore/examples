@@ -1,5 +1,0 @@
-!configs
-!*.json
-wandb/
-tmp
-checkpoint

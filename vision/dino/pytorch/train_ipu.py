@@ -29,6 +29,7 @@ import torch.nn as nn
 import torchvision
 from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
+import wandb
 
 from core import utils
 from core import vision_transformer as vits
@@ -238,7 +239,9 @@ def get_args_parser():
         help='Number of data loading workers.')
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--checkpoint', type=str, default='checkpoint.pth')
-
+    parser.add_argument("--wandb", action="store_true", help="Enable Weights and Biases logging")
+    parser.add_argument("--wandb-run-name", type=str, default=None, help="Weights and Biases run name")
+    
     # IPU
     parser.add_argument('--pipeline', type=int, nargs='+',
                         help='set modules on multi ipus')
@@ -301,6 +304,12 @@ def get_args_parser():
         type=str,
         default='./ema/build/exp_avg_custom_op.so',
         help='custom ema, path of so')
+    parser.add_argument(
+        "--executable-cache-dir",
+        type=str,
+        default="./cachedir",
+        help = "Directory to cache compiled executables"
+    )
 
     # Load the yaml
     yaml_args = dict()
@@ -340,7 +349,8 @@ def train_dino(args):
         args.synthetic_data,
         precision=args.precision,
         output_mode=args.output_mode,
-        use_rts=args.rts)
+        use_rts=args.rts,
+        cachedir=args.executable_cache_dir)
 
     # ============ preparing data ... ============
     if args.synthetic_data:
@@ -565,7 +575,6 @@ def train_one_epoch(model,
 
         data_time.update(time.time() - end)
         current_step = it + epoch * steps_per_epoch
-
         if it % args.set_freq == 0:
             lr = lr_schedule[current_step]
             lr = max(lr, args.min_lr)
@@ -620,6 +629,20 @@ def train_one_epoch(model,
             fw.write(info)
             if it % args.print_freq == 0:
                 print(info)
+                if args.wandb and (not args.use_popdist or args.popdist_rank == 0):
+                    # if wandb has not been initialised
+                    if wandb.run is None:
+                        wandb.init(
+                           config=vars(args),
+                            project="torch-dino",
+                            name=args.wandb_run_name
+                        )
+                    wandb.log({
+                        "loss": losses.val,
+                        "batch_time": batch_time.val,
+                        "data_time": data_time.val,
+                        "throughput": throughput.val,
+                    })
     return center
 
 

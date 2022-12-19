@@ -44,7 +44,7 @@ resnet50-pod64:
 efficientnet-g16-gn-pod16-base: &efficientnet-g16-gn-16ipu-base
   data: imagenet
   seed: 0
-  precision: "16.32"
+  precision: "16.16"
   eight_bit_io: true
   normalization_location: ipu
   use_bbox_info: true
@@ -176,7 +176,7 @@ mobilenet-v3-small-pod4:
 mobilenet-v3-large: &mobilenet-v3-large
   <<: *mobilenet-v3-base
   model: mobilenet-v3-large
-  precision: "16.32"
+  precision: "16.16"
   pipeline_splits: [mb_block/2/seq/0, mb_block/7/seq/0, mb_block/11/seq/0]
   gradient_accumulation: 32
   replicas: 1

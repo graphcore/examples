@@ -62,9 +62,12 @@ def findServerBin():
     elif os.environ.get('TF_POPLAR_BASE') is not None:
         server_dir = os.path.abspath(os.path.join(
             os.environ["TF_POPLAR_BASE"], os.pardir))
+    elif os.environ.get('POPLAR_SDK_ENABLED') is not None:
+        server_dir = os.path.abspath(os.path.join(
+            os.environ["POPLAR_SDK_ENABLED"], os.pardir))
     else:
         sys.exit(
-            f"Unable to find SDK location because TF_POPLAR_BASE or POPLAR_SDK_PATH env is not set,"
+            f"Unable to find SDK location because TF_POPLAR_BASE, POPLAR_SDK_PATH or POPLAR_SDK_ENABLED env is not set,"
             " please use --serving-bin-path to point location of tensorflow server binary")
 
     for file in os.listdir(server_dir):
@@ -196,7 +199,7 @@ def inference_process(process_index, barrier, hparams, serving_address):
                 False, request, stub)
 
     # wait for other processes
-    barrier.wait(10)
+    barrier.wait(600)
 
     results = send_images(hparams.num_images,  dataset_iter, hparams.request_batch_size,
                           False, request, stub)
@@ -241,7 +244,7 @@ def main(hparams):
         proc.start()
         processes.append(proc)
     print("Wait for workers")
-    barrier.wait(10)
+    barrier.wait(600)
     start_all = time.time()
     print("Sending requests")
 

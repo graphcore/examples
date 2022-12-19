@@ -2,10 +2,12 @@
 numpy
 timm==0.5.4
 transformers==4.11.3
-torchvision==0.11.1
+torchvision==0.14.0+cpu; python_version > '3.6'
+torchvision==0.11.0+cpu; python_version <= '3.6'
+protobuf==3.19.4
 pytest==6.2.4
 pyyaml>=5.4.1
 horovod>=0.24.0
 simplejpeg>=1.6.4
 wandb==0.12.1
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils

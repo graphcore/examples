@@ -144,7 +144,7 @@ def test_ff_to_hf(test_config: GPTJConfig):
 
     inputs = {h2d: repeat(data, n_shards)
               for h2d, data in zip(inputs_host_stream, inputs_data)}
-    session = TaskSession(inputs, [fwd_d2h], ff_vars, ir, 'ipu_hw')
+    session = TaskSession(inputs, [fwd_d2h], ff_vars, ir=ir, device_desc='ipu_hw')
 
     with session:
         out = session.run(inputs)[fwd_d2h]

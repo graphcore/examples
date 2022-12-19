@@ -33,9 +33,9 @@ def configure_bert_model():
     pargs = ('--config', "squad_large_384", "--dataset", "generated")
     model.config = transformers.BertConfig(
         **(vars(parse_bert_args(args=pargs, config_file="configs_squad.yml"))))
-    if not model.config.pretrained_checkpoint:
+    if not model.config.checkpoint_input_dir:
         logger(
-            "[warning] --pretrained-checkpoint was not specified; training with uninitialized BERT...")
+            "[warning] --checkpoint-input-dir was not specified; training with uninitialized BERT...")
     # Warnings for configs where embeddings may not fit
     if model.config.embedding_serialization_factor == 1:
         if model.config.replication_factor == 1:
@@ -66,9 +66,9 @@ def configure_bert_model():
     )
 
     # Create the model
-    if model.config.pretrained_checkpoint:
+    if model.config.checkpoint_input_dir:
         model.model_ipu = PipelinedBertForQuestionAnswering.from_pretrained(
-            model.config.pretrained_checkpoint, config=model.config).parallelize().half()
+            model.config.checkpoint_input_dir, config=model.config).parallelize().half()
     else:
         model.model_ipu = PipelinedBertForQuestionAnswering(
             model.config).parallelize().half()

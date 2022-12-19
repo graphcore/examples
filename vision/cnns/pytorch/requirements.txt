@@ -1,11 +1,14 @@
---find-links https://download.pytorch.org/whl/torch_stable.html
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+torch==1.10.0+cpu; python_version=='3.6'
+torch==1.13.0+cpu; python_version>'3.6'
 cmake==3.22.4
 protobuf==3.19.4
 pytest==6.2.5
 pytest-forked==1.3.0
 pytest-pythonpath==0.7.3
 pytest-xdist==2.1.0
-torchvision==0.11.1+cpu
+torchvision==0.14.0+cpu; python_version > '3.6'
+torchvision==0.11.0+cpu; python_version <= '3.6'
 timm==0.5.4
 wandb==0.12.8
 pyyaml==5.4.1
@@ -13,4 +16,4 @@ checksumdir==1.2.0
 horovod==0.24.3
 tritonclient[grpc]==2.16.0
 git+https://github.com/lilohuang/PyTurboJPEG.git@8706665787c7290397859075ae2f0bf35afeb41a
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils

@@ -3,14 +3,15 @@
 import unittest
 import subprocess
 import os
+import re
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.python import ipu
 import popdist
 import popdist.tensorflow
-from tensorflow.python.ipu import horovod as hvd
-from tensorflow.python.ipu.horovod import popdist_strategy
+from tensorflow.python.ipu import distributed
+from tensorflow.python.ipu.distributed import popdist_strategy
 
 import sys
 from pathlib import Path
@@ -53,11 +54,11 @@ class PopDistStrategyEquivalenceToIPUStrategy(unittest.TestCase):
             completed = subprocess.run(args=cmd,
                                        cwd=working_path,
                                        shell=False, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, check=True)
+                                       stderr=subprocess.PIPE, check=True)
             decoded_output = str(completed.stdout, 'utf-8')
             if not test_reduction:
-                output_last_line = decoded_output.splitlines()[-1]
-                return float(output_last_line.split(':')[-1] if '<stdout>' in output_last_line else output_last_line)
+                matches = re.findall(r'weight = \d*\.\d*', decoded_output)[0]
+                return float(matches.split(' = ')[-1])
             else:
                 d = self.extract_logging_data_from_output(decoded_output)
                 return d['average_loss'], d['average_accuracy']
@@ -73,7 +74,6 @@ class PopDistStrategyEquivalenceToIPUStrategy(unittest.TestCase):
         # parse to get the loss
         last_logging_callback_line = [
             line for line in output.splitlines() if 'INFO:logging_callback' in line][-1]
-        import re
         matches = re.findall(r'(\[[^\[\]]+\])', last_logging_callback_line)
         import json
         d = str(json.loads(matches[-1].replace("'", '"')))
@@ -175,7 +175,6 @@ if __name__ == '__main__':
         if popdist_on:
             cfg = popdist.tensorflow.set_ipu_config(
                 cfg, ipus_per_replica=popdist.getNumIpusPerReplica(), configure_device=True)
-            hvd.init()
             popdist.init()
         else:
             cfg.auto_select_ipus = num_global_replicas
@@ -268,7 +267,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
 
-    print(ipu_prog(num_replicas=args.num_replicas,
+    weight = ipu_prog(num_replicas=args.num_replicas,
                    gradient_accumulation=args.gradient_accumulation_count,
                    accelerator_side_reduction=args.accelerator_side_reduction,
-                   weight_updates=args.weight_updates))
+                   weight_updates=args.weight_updates)
+    print(f"weight = {weight}")

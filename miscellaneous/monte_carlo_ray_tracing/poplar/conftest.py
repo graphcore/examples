@@ -24,8 +24,7 @@ def cmake_build(scope="session"):
         # Get the light repo if doesn't exist already
         light_dir = root_dir / Path("light")
         if not light_dir.exists():
-            run(['git', 'clone', 'https://github.com/mpups/light.git'], cwd=root_dir)
-            run(['git', 'checkout', '589b32f'], cwd=light_dir)
+            run(['git', 'clone', '-b', 'ipu_example', 'https://github.com/mpups/light.git'], cwd=root_dir)
         build_dir.mkdir(exist_ok=True)
         run(['cmake', '..', '-GNinja'], cwd=build_dir)
         run(['ninja', '-j8'], cwd=build_dir)

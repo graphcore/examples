@@ -51,7 +51,8 @@ def squad_inference_phased(config: BertConfig) -> TaskSession:
 
         embeddings_args, embeddings_graph = BertEmbeddings(
             config).create_graph(input_streams[0].spec, input_streams[1].spec)
-        layer_args, layer_graph = BertLayer(config).create_graph(*embeddings_graph.graph.outputs, input_streams[2].spec)
+        layer_args, layer_graph = BertLayer(config).create_graph(
+            *embeddings_graph.graph.outputs, input_streams[2].spec)
         squad_args, squad_graph = BertSquadHead(
             config).create_graph(*embeddings_graph.graph.outputs)
 
@@ -98,16 +99,17 @@ def squad_inference_phased(config: BertConfig) -> TaskSession:
             ops.host_store(output_streams[0], out.reshape_(
                 output_streams[0].shape))
 
-    logging.info(f"popxl IR construction duration: {(time.time() - t) / 60:.2f} mins")
+    logging.info(
+        f"popxl IR construction duration: {(time.time() - t) / 60:.2f} mins")
 
     ir.num_host_transfers = config.execution.device_iterations
 
     session = TaskSession(
-        input_streams,
-        output_streams,
-        variables,
-        ir,
-        "ipu_hw")
+        inputs=input_streams,
+        outputs=output_streams,
+        state=variables,
+        ir=ir,
+        device_desc="ipu_hw")
     return session
 
 
@@ -120,7 +122,8 @@ def main():
     session = squad_inference_phased(config)
 
     inputs = {
-        stream: np.ones(session._full_input_shape(stream.shape), stream.dtype.as_numpy())
+        stream: np.ones(session._full_input_shape(
+            stream.shape), stream.dtype.as_numpy())
         for stream in session.expected_inputs()}
 
     with session:

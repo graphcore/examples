@@ -1,16 +1,20 @@
---find-links https://download.pytorch.org/whl/torch_stable.html
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 numpy==1.19.5
 axial_positional_embedding==0.2.1
 einops==0.4.1
-youtokentome==1.0.6
+git+https://github.com/VKCOM/YouTokenToMe@a2614d3e66cefd8d0fa73b23bc951feb98830090 ; python_version > '3.8'
+youtokentome==1.0.6; python_version <= '3.8'
 ftfy==6.0.3
 regex==2022.4.24
 omegaconf==2.1.2
+pytorch-lightning==1.7.7; python_version >= '3.7'
+pytorch-lightning==1.5.10; python_version == '3.6'
 taming-transformers-rom1504==0.0.6
 protobuf==3.19.4
 wandb==0.12.8
 pytest==6.2.5
 pytest-pythonpath==0.7.4
-torchvision==0.11.1+cpu
+torchvision==0.14.0+cpu; python_version > '3.6'
+torchvision==0.11.0+cpu; python_version <= '3.6'
 horovod==0.24.3
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils

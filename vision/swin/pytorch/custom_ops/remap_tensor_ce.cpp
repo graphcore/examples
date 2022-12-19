@@ -12,9 +12,7 @@
 // limitations under the License.
 #include "remap_tensor_ce.hpp"
 #include "TileMappingCommon.hpp"
-#include <snap/Graph.hpp>
-#include <snap/Program.hpp>
-#include <snap/Tensor.hpp>
+#include <poplar/Graph.hpp>
 #include <popart/popx/opxmanager.hpp>
 #include <poputil/exceptions.hpp>
 #include <poputil/VertexTemplates.hpp>
@@ -26,9 +24,9 @@
 #include <popart/region.hpp>
 #include <functional>
 
-static snap::Tensor add_graph_prog(snap::Graph&              graph, 
-                                   snap::program::Sequence&  prog,
-                                   snap::Tensor const&       input,
+static poplar::Tensor add_graph_prog(poplar::Graph&              graph,
+                                   poplar::program::Sequence&  prog,
+                                   poplar::Tensor const&       input,
                                    int64_t                   grain_size,
                                    bool                      clone_layout,
                                    bool                      after_matmul,
@@ -37,8 +35,8 @@ static snap::Tensor add_graph_prog(snap::Graph&              graph,
 {
   std::string  str_mark = true == isBwd ? "Grad" : "";
   std::string  strOp = std::string("/remapCE") + str_mark;
-  snap::Tensor src   = input;
-  snap::Tensor out;
+  poplar::Tensor src   = input;
+  poplar::Tensor out;
   if(false == clone_layout)
   {
     out = graph.addVariable(src.elementType(), src.shape(), debug_str + strOp + std::string("_out"));
@@ -54,8 +52,8 @@ static snap::Tensor add_graph_prog(snap::Graph&              graph,
       }
       size_t  x_dim_size   = src.dim(input_rank - 1);
       size_t  y_dim_size   = src.numElements() / x_dim_size;
-      auto    src_reshape  = src.reshape({ 
-                                         y_dim_size, 
+      auto    src_reshape  = src.reshape({
+                                         y_dim_size,
                                          x_dim_size
                                         });
       int regroup_size = 1;
@@ -68,8 +66,7 @@ static snap::Tensor add_graph_prog(snap::Graph&              graph,
       }
 
       if(regroup_size > 1){
-        poplar::Tensor&  src_reshape_poplar = src_reshape.getPoplarTensor();
-        const auto       inGrouping = poputil::detectDimGroupings(graph.getPoplarGraph(), src_reshape_poplar);  
+        const auto inGrouping = poputil::detectDimGroupings(graph, src_reshape);
         if(!inGrouping.empty()){
           if((inGrouping[0].first == 1) &&
              ((0 == (inGrouping[0].second % regroup_size)) ||
@@ -77,16 +74,15 @@ static snap::Tensor add_graph_prog(snap::Graph&              graph,
               (8 == inGrouping[0].second))){
             regroup_res = true;
           }else{
-            auto             input_tilemapping = graph.getPoplarGraph().getTileMapping(src_reshape.getPoplarTensor());
-            poplar::Tensor   regroup    = popops::rearrange::regroupIfBeneficial(graph.getPoplarGraph(), 
-                                                                                src_reshape.getPoplarTensor(), 
-                                                                                regroup_size, 
-                                                                                prog.getPoplarSequence(), 
+            auto             input_tilemapping = graph.getTileMapping(src_reshape);
+            poplar::Tensor   regroup    = popops::rearrange::regroupIfBeneficial(graph,
+                                                                                src_reshape,
+                                                                                regroup_size,
+                                                                                prog,
                                                                                 { debug_str + std::string("/regroupCE_out") });
-            auto              regroup_tilemapping = graph.getPoplarGraph().getTileMapping(regroup);
+            auto              regroup_tilemapping = graph.getTileMapping(regroup);
             if(input_tilemapping != regroup_tilemapping){
-              regroup = regroup.reshape(src.shape());
-              src     = snap::Tensor(regroup, graph);
+              src = regroup.reshape(src.shape());
               regroup_res = true;
             }
           }
@@ -104,34 +100,34 @@ static snap::Tensor add_graph_prog(snap::Graph&              graph,
         }else{
           throw poplar::poplar_error("current tensor's last dim size is not 4x/8x/16x");
         }
-        src_reshape = src.reshape({ 
-                                    y_dim_size, 
+        src_reshape = src.reshape({
+                                    y_dim_size,
                                     x_dim_size / grain_size_after_matmul,
-                                    grain_size_after_matmul 
+                                    grain_size_after_matmul
                                   });
         src_reshape = src_reshape.dimShuffle( { 1, 0, 2 } );
-        auto  matmul_out_remap = graph.addVariable(src.elementType(), 
-                                                    { 
-                                                      x_dim_size / grain_size_after_matmul, 
-                                                      y_dim_size, 
-                                                      grain_size_after_matmul 
-                                                    }, 
+        auto  matmul_out_remap = graph.addVariable(src.elementType(),
+                                                    {
+                                                      x_dim_size / grain_size_after_matmul,
+                                                      y_dim_size,
+                                                      grain_size_after_matmul
+                                                    },
                                                     debug_str + std::string("/matmul_out_remap"));
-        SplitChannelInfo splitInfo    = splitChannelByGroup((x_dim_size / grain_size_after_matmul) * y_dim_size,  
+        SplitChannelInfo splitInfo    = splitChannelByGroup((x_dim_size / grain_size_after_matmul) * y_dim_size,
                                                             1, numTiles, tilesPerIPU);
-        auto  matmulOutRemapReshape = matmul_out_remap.getPoplarTensor().reshape({ (x_dim_size / grain_size_after_matmul) * y_dim_size, 
-                                                                                  (size_t)grain_size_after_matmul });
+        auto  matmulOutRemapReshape = matmul_out_remap.reshape({ (x_dim_size / grain_size_after_matmul) * y_dim_size,
+                                                                 (size_t)grain_size_after_matmul });
         std::vector<size_t> const& tileStart  = std::get<0>(splitInfo);
         std::vector<size_t> const& tileCount  = std::get<1>(splitInfo);
         for (unsigned i = 0; i < numTiles; ++i)
         {
           if(0 == tileCount[i])
             continue;
-          
+
           poplar::Tensor curOut = matmulOutRemapReshape.slice(tileStart[i], tileStart[i] + tileCount[i], 0).flatten();
-          graph.getPoplarGraph().setTileMapping(curOut, i);
+          graph.setTileMapping(curOut, i);
         }
-        prog.add(snap::program::Copy(src_reshape, matmul_out_remap));
+        prog.add(poplar::program::Copy(src_reshape, matmul_out_remap));
         matmul_out_remap = matmul_out_remap.dimShuffle( { 1, 0, 2 } );
         matmul_out_remap = matmul_out_remap.reshape( {y_dim_size, x_dim_size} );
         matmul_out_remap = matmul_out_remap.reshape(src.shape());
@@ -140,32 +136,32 @@ static snap::Tensor add_graph_prog(snap::Graph&              graph,
     }
     if(channelCnt*grain_size == out.numElements()){
       SplitChannelInfo splitInfo    = splitChannelByGroup(channelCnt,  1, numTiles, tilesPerIPU);
-      auto  outReshape = out.getPoplarTensor().reshape({ channelCnt, (size_t)grain_size });
+      auto  outReshape = out.reshape({ channelCnt, (size_t)grain_size });
       std::vector<size_t> const& tileStart  = std::get<0>(splitInfo);
       std::vector<size_t> const& tileCount  = std::get<1>(splitInfo);
       for (unsigned i = 0; i < numTiles; ++i)
       {
         if(0 == tileCount[i])
           continue;
-        
+
         poplar::Tensor curOut = outReshape.slice(tileStart[i], tileStart[i] + tileCount[i], 0).flatten();
-        graph.getPoplarGraph().setTileMapping(curOut, i);
+        graph.setTileMapping(curOut, i);
       }
     }
     else{
-      poputil::mapTensorLinearly(graph.getPoplarGraph(), out.getPoplarTensor(), 1, grain_size);
+      poputil::mapTensorLinearly(graph, out, 1, grain_size);
     }
   }
   else{
     out = graph.clone(src, debug_str + strOp + std::string("/_clone_out"));
   }
-    
-  prog.add(snap::program::Copy(src, out));
+
+  prog.add(poplar::program::Copy(src, out));
   return out;
 }
 
-RemapCEOp::RemapCEOp(OperatorIdentifier const& opid, 
-                     Op::Settings const&       settings_, 
+RemapCEOp::RemapCEOp(OperatorIdentifier const& opid,
+                     Op::Settings const&       settings_,
                      int64_t                   fwd_grain_size,
                      int64_t                   bwd_grain_size,
                      bool                      fwd_clone_layout,
@@ -284,12 +280,12 @@ static OpCreator<RemapCEOp> RemapOpCECreator(
        int64_t                   fwd_after_matmul = attr.getAttribute<Attributes::Int>("fwd_after_matmul");
        int64_t                   bwd_after_matmul = attr.getAttribute<Attributes::Int>("bwd_after_matmul");
        std::string               debug_str        = attr.getAttribute<Attributes::String>("debug_str", "remap");
-      return std::unique_ptr<Op>(new RemapCEOp(opid, 
-                                               settings_, 
-                                               fwd_grain_size, 
-                                               bwd_grain_size, 
-                                               fwd_clone_layout, 
-                                               bwd_clone_layout, 
+      return std::unique_ptr<Op>(new RemapCEOp(opid,
+                                               settings_,
+                                               fwd_grain_size,
+                                               bwd_grain_size,
+                                               fwd_clone_layout,
+                                               bwd_clone_layout,
                                                fwd_after_matmul,
                                                bwd_after_matmul,
                                                debug_str));
@@ -298,7 +294,7 @@ static OpCreator<RemapCEOp> RemapOpCECreator(
 
 
 RemapCEBaseOpx::RemapCEBaseOpx(Op *op, Devicex *devicex)
-    : PopOpx(op, devicex) {}
+    : Opx(op, devicex) {}
 
 InputCreatorType RemapCEBaseOpx::getInputCreatorType(InIndex) const {
   RemapCEOp& remapOp = getOp<RemapCEOp>();
@@ -308,7 +304,7 @@ InputCreatorType RemapCEBaseOpx::getInputCreatorType(InIndex) const {
   return InputCreatorType::Deadend;
 }
 
-snap::Tensor RemapCEBaseOpx::unwindTensorLayout(snap::Tensor tensor,
+poplar::Tensor RemapCEBaseOpx::unwindTensorLayout(poplar::Tensor tensor,
                                                 InIndex,
                                                 OutIndex) const {
   return tensor;
@@ -323,18 +319,18 @@ RemapCEOutplaceOpx::RemapCEOutplaceOpx(Op *op, Devicex *devicex) : RemapCEBaseOp
   verifyOp<RemapCEOp>(op, CustomOperators::remapCEId);
 }
 
-void RemapCEOutplaceOpx::grow(snap::program::Sequence& prog) const {
+void RemapCEOutplaceOpx::grow(poplar::program::Sequence& prog) const {
   auto               input_tensor = getInTensor(0);
   RemapCEOp&         remap_op     = getOp<RemapCEOp>();
   int64_t            grain_size   = remap_op.getFwdGrainSize();
   bool               clone_layout = remap_op.isFwdCloneLayout();
   bool               after_matmul = (0 != remap_op.isFwdAfterMatmul() ? true : false);
   std::string const& debug_str    = remap_op.getDebugStr();
-  auto               out_tensor   = add_graph_prog(graph(), 
-                                                   prog, 
-                                                   input_tensor, 
-                                                   grain_size, 
-                                                   clone_layout, 
+  auto               out_tensor   = add_graph_prog(graph(),
+                                                   prog,
+                                                   input_tensor,
+                                                   grain_size,
+                                                   clone_layout,
                                                    after_matmul,
                                                    false,
                                                    debug_str);
@@ -346,7 +342,7 @@ RemapCEInplaceOpx::RemapCEInplaceOpx(Op *op, Devicex *devx)
   verifyOp<RemapCEInplaceOp>(op, CustomOperators::remapCEInplaceId);
 }
 
-void RemapCEInplaceOpx::grow(snap::program::Sequence &prog) const {
+void RemapCEInplaceOpx::grow(poplar::program::Sequence &prog) const {
   auto input_tensor = getInTensor(0);
   RemapCEOp& remapOp = getOp<RemapCEOp>();
   setOutTensor(0, input_tensor);
@@ -364,7 +360,7 @@ std::unique_ptr<Op> RemapCEGradOp::clone() const {
   return std::make_unique<RemapCEGradOp>(*this);
 }
 
-void RemapCEGradOpx::grow(snap::program::Sequence &prog) const {
+void RemapCEGradOpx::grow(poplar::program::Sequence &prog) const {
 
   auto                grad_out_tensor = getInTensor(0);
   RemapCEGradOp&      grad_op         = getOp<RemapCEGradOp>();

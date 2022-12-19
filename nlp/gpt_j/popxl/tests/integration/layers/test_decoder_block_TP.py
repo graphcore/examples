@@ -154,7 +154,7 @@ def test_decoder_to_hf(test_config: GPTJConfig):
 
     inputs = {h2d: repeat(data, n_shards)
               for h2d, data in zip(inputs_host_steam, inputs_data)}
-    session = TaskSession(inputs, [fwd_d2h], vars, ir, 'ipu_hw')
+    session = TaskSession(inputs, [fwd_d2h], vars, ir=ir, device_desc='ipu_hw')
 
     with session:
         out = session.run(inputs)[fwd_d2h]

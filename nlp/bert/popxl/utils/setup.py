@@ -5,6 +5,7 @@ import atexit
 import logging
 import os
 import random
+import sys
 import tempfile
 from argparse import ArgumentParser
 from pathlib import Path
@@ -44,8 +45,12 @@ def bert_config_setup(
     config, args = parse_args_with_presets(BertConfig, config_file, presets_key, default, argparse_args, CLI_args)
     config: BertConfig   # type: ignore
 
+    logger_args = {}
+    if sys.version_info[:2] >= (3, 8):
+        logger_args['force'] = True
+
     logging.basicConfig(level=args.log_level, format='%(asctime)s %(levelname)s: %(message)s',
-                        datefmt="%Y-%m-%d %H:%M:%S")
+                        datefmt="%Y-%m-%d %H:%M:%S", **logger_args)
     logging.info(f"Staring. Process id: {os.getpid()}")
     logging.info(f"Config: {config}")
 

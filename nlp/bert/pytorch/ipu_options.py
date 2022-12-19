@@ -27,9 +27,6 @@ def get_options(config):
     https://docs.graphcore.ai/en/latest/
     """
 
-    if not config.compile_only and poptorch.ipuHardwareVersion() != 2:
-        raise RuntimeError("This version of BERT requires an IPU Mk2 system to run.")
-
     # Load custom ops
     if config.custom_ops is True:
         logging.info("Building (if necessary) and loading residual_add_inplace_pattern.")

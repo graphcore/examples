@@ -30,7 +30,7 @@
             ["enc_out", "pool", "heads"]
         ],
         "pipeline_device_mapping": [0, 1, 2, 3, 0],
-        "matmul_available_memory_proportion_per_pipeline_stage": [0.15, 0.19, 0.25, 0.25],
+        "matmul_available_memory_proportion_per_pipeline_stage": [0.10, 0.19, 0.20, 0.25],
         "replicated_tensor_sharding": false
     },
     "optimizer_opts": {

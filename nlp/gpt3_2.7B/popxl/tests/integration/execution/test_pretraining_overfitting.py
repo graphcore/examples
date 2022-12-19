@@ -31,20 +31,24 @@ def overfit(config: GPTConfig, session: TaskSession):
     rf = session.ir.instance_replication_factor
     n_shards = config.execution.tensor_parallel
     samples_per_step = config.execution.device_iterations * config.training.global_batch_size
-
-    dataset = load_dataset(config.data.input_files)
-    train_dl = DataLoader(dataset,
-                          batch_size=1,
-                          drop_last=True,
-                          num_workers=16,
-                          worker_init_fn=WorkerInit(config.model.seed),
-                          persistent_workers=True,
-                          collate_fn=collate_fn)
+    if len(config.data.input_files) > 0:
+        logging.info("Load data from ", config.data.input_files)
+        dataset = load_dataset(config.data.input_files)
+        train_dl = DataLoader(dataset,
+                            batch_size=1,
+                            drop_last=True,
+                            num_workers=16,
+                            worker_init_fn=WorkerInit(config.model.seed),
+                            persistent_workers=True,
+                            collate_fn=collate_fn)
+        data = next(iter(train_dl))
+    else:
+        logging.info("Generate dummy data")
+        data = generate_synthetic_data(config)
 
     lr_schedule = linear_schedule(config.training.steps, 1e-7, config.training.optimizer.learning_rate.maximum,
                                   config.training.optimizer.learning_rate.warmup_proportion)
     step = 0
-    data = next(iter(train_dl))
     for k in data.keys():
         data[k] = np.repeat(data[k], samples_per_step, 0)
     # Attach to device
@@ -108,7 +112,6 @@ def main():
     config.training.steps = 100
     config.training.optimizer.learning_rate.maximum = 0.0001
     config.training.optimizer.learning_rate.warmup_proportion = 0.2
-
     # Setup weights and biases
     wandb_init(config, tags=['overfit'], disable=args.wandb == 'False')
 

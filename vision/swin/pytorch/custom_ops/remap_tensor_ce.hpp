@@ -128,13 +128,13 @@ public:
   view::Regions aliases(InIndex in, OutIndex) const final { return uses(in); }
 };
 
-class RemapCEBaseOpx : public PopOpx {
+class RemapCEBaseOpx : public Opx {
 
 public:
   RemapCEBaseOpx(Op *, Devicex *);
   InputCreatorType getInputCreatorType(InIndex) const override;
-  snap::Tensor
-      unwindTensorLayout(snap::Tensor, InIndex, OutIndex) const override;
+  poplar::Tensor
+      unwindTensorLayout(poplar::Tensor, InIndex, OutIndex) const override;
   view::RegMap unwindRegion(InIndex, OutIndex) const override;
 };
 
@@ -142,14 +142,14 @@ class RemapCEOutplaceOpx : public RemapCEBaseOpx {
 
 public:
   RemapCEOutplaceOpx(Op *, Devicex *);
-  void grow(snap::program::Sequence &prog) const final;
+  void grow(poplar::program::Sequence &prog) const final;
 };
 
 class RemapCEInplaceOpx : public RemapCEBaseOpx {
 
 public:
   RemapCEInplaceOpx(Op *, Devicex *);
-  void grow(snap::program::Sequence &prog) const final;
+  void grow(poplar::program::Sequence &prog) const final;
 };
 
 class RemapCEGradOp : public Op {
@@ -201,14 +201,14 @@ private:
 };
 
 
-class RemapCEGradOpx : public PopOpx {
+class RemapCEGradOpx : public Opx {
 public:
   RemapCEGradOpx(popart::Op *op, popart::popx::Devicex *devicex)
-      : popart::popx::PopOpx(op, devicex) {
+      : popart::popx::Opx(op, devicex) {
     verifyOp<RemapCEGradOp>(op, CustomGradOperators::remapCEGradId);
   }
 
-  void grow(snap::program::Sequence &prog) const final;
+  void grow(poplar::program::Sequence &prog) const final;
 };
 
 #endif

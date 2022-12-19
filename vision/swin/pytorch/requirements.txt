@@ -1,5 +1,8 @@
---find-links https://download.pytorch.org/whl/torch_stable.html
-torchvision==0.11.1+cpu
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+torch==1.10.0+cpu; python_version=='3.6'
+torch==1.13.0+cpu; python_version>'3.6'
+torchvision==0.14.0+cpu; python_version > '3.6'
+torchvision==0.11.0+cpu; python_version <= '3.6'
 timm==0.4.5
 tlt==0.1.0
 protobuf==3.19.4
@@ -11,4 +14,4 @@ horovod==0.24.3
 simplejpeg==1.6.4
 pytest==6.2.5
 pytest-pythonpath==0.7.4
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils

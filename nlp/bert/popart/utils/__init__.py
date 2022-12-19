@@ -53,7 +53,7 @@ def str_to_bool(value):
 def parser_from_NamedTuple(parser, ntuple, args={}):
     for key in ntuple._fields:
         string = "--" + key.replace("_", "-")
-        t = ntuple._field_types[key]
+        t = ntuple.__annotations__[key]
         default = ntuple._field_defaults.get(key, None)
         kwargs = dict(
             string=string,
@@ -293,10 +293,8 @@ def parse_bert_args(args_string=None):
 
     group = parser.add_argument_group("Initialisation Config", "Flags for initialising the weights")
     group = group.add_mutually_exclusive_group()
-    group.add_argument("--tf-checkpoint", type=str,
-                       help="Path to TensorFlow Checkpoint to initialise the model.")
-    group.add_argument("--onnx-checkpoint", type=str,
-                       help="Path to .onnx file created by this application to initialise the model.")
+    group.add_argument("--checkpoint-input-dir", type=str,
+                       help="Path to .onnx checkpoint files created by this application to initialise the weights of the model.")
     group.add_argument("--wandb-checkpoint", type=str,
                        help="Weights and Biases model artifact path. Should contain a model.onnx file to load.")
 
@@ -398,7 +396,7 @@ def parse_bert_args(args_string=None):
                        help="Number of steps between each save of the model. Also saves at the end of training")
     group.add_argument("--no-model-save", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Don't save the model. Useful for testing.")
-    group.add_argument("--checkpoint-dir", type=str, default="ckpts",
+    group.add_argument("--checkpoint-output-dir", type=str, default="ckpts",
                        help="Path to directory to save model checkpoints.")
     group.add_argument("--save-initializers-externally", type=str_to_bool, nargs="?", const=True, default=False,
                        help="Save weight and optimizer state initializers external to the model.onnx file.")
@@ -467,9 +465,9 @@ def parse_bert_args(args_string=None):
         args.low_latency_inference = True
 
     # Append datetime string to checkpoints path and create the subdirectory
-    args.checkpoint_dir = os.path.join(args.checkpoint_dir,
+    args.checkpoint_output_dir = os.path.join(args.checkpoint_output_dir,
                                        datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S"))
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
+    os.makedirs(args.checkpoint_output_dir, exist_ok=True)
 
     if args.compile_only:
         # Set device to offline (and mk2)
@@ -552,12 +550,11 @@ def clean_exclusive_presets(parser, preset, remaining_argv):
 def get_validation_args(args):
     validation_kwargs = dict(
         inference=True,
-        tf_checkpoint=None,
         gradient_accumulation_factor=1,
         use_popdist=False
     )
     if not args.no_training:
-        validation_kwargs["onnx_checkpoint"] = os.path.join(args.checkpoint_dir, "model.onnx")
+        validation_kwargs["checkpoint_input_dir"] = os.path.join(args.checkpoint_input_dir, "model.onnx")
     if args.validation_config is not None:
         validation_kwargs.update(**args.validation_config)
     if args.engine_cache:
@@ -586,7 +583,12 @@ def set_popdist_args(args):
 
     args.popdist_size = popdist.getNumTotalReplicas() // popdist.getNumLocalReplicas()
     args.popdist_rank = popdist.getReplicaIndexOffset() // popdist.getNumLocalReplicas()
-    args.checkpoint_dir = args.checkpoint_dir + "_rank_" + str(args.popdist_rank)
+
+    # Rename checkpoint paths if using popdist
+    if args.checkpoint_output_dir is not None and "_rank_" not in args.checkpoint_output_dir:
+        args.checkpoint_output_dir = args.checkpoint_output_dir + "_rank_" + str(args.popdist_rank)
+    if args.checkpoint_input_dir is not None and "_rank_" not in args.checkpoint_input_dir:
+        args.checkpoint_input_dir = args.checkpoint_input_dir + "_rank_" + str(args.popdist_rank)
 
     from mpi4py import MPI
     setup_comm(MPI.COMM_WORLD)

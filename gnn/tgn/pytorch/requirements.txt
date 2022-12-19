@@ -1,0 +1,8 @@
+numpy
+torch-geometric==2.0.3
+torch-scatter
+torch-sparse==0.6.13
+tqdm==4.60.0
+pytest==6.2.5
+matplotlib
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils

@@ -106,7 +106,7 @@ def run_model(opts):
 
             mels_before, mels_after, duration_outputs, f0_outputs, energy_outputs = predictions
         logger.info(
-            f"Averaged Metrics:\nthroughput: {int(np.mean(tputs[1:])):d} samples/sec\tlatency avg: {np.mean(latencies[1:]):.2f} ms")
+            f"Averaged Metrics:\nthroughput: {int(np.mean(tputs[2:])):d} samples/sec\tlatency avg: {np.mean(latencies[2:]):.2f} ms")
 
 
 if __name__ == "__main__":

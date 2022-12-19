@@ -35,9 +35,9 @@
     "embedding_serialization_vocab_steps": 4,
     "available_memory_proportion": [0.20],
     "pipeline": true,
-    "checkpoint_dir": "checkpoints/packed_pretrain_tiny",
+    "checkpoint_output_dir": "checkpoints/packed_pretrain_tiny",
     "no_validation": true,
-    "optimizer_state_offchip": false, 
+    "optimizer_state_offchip": false,
     "gradient_reduction_type": "Mean",
     "optimizer": "LAMB_NO_BIAS",
     "beta1": 0.88,
@@ -47,6 +47,6 @@
     "lr_warmup_start" : 4e-3,
     "learning_rate": 8e-3,
     "weight_decay": 1e-2,
-    "input_files": ["data/packed_sequence_128/duplication_*"],
+    "input_files": ["data/packed_sequence_512/duplication_*"],
     "engine_cache": "__cache_mlperf_bert_tiny"
 }

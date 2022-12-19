@@ -1,98 +1,132 @@
-# Model "Frozen️ in Time" implement in IPU
+# Frozen in time
+Frozen in time, a joint Video and image retriever for end-end retrieval, based on the [original project](https://www.robots.ox.ac.uk/~vgg/research/frozen-in-time/), optimised for Graphcore's IPU.
 A Joint Video and Image Encoder for End-to-End Retrieval
-----
-[project page](https://www.robots.ox.ac.uk/~vgg/research/frozen-in-time/) | [paper](https://arxiv.org/abs/2104.00650) | [dataset](https://github.com/m-bain/webvid) |  [demo](http://meru.robots.ox.ac.uk/frozen-in-time/)
-![alt text](arch.jpg)
-Repository containing the code, models, data for end-to-end retrieval. WebVid data can be found [here](https://m-bain.github.io/webvid-dataset/)
 
-----
-## Installation instructions
+![Model architecture](arch.jpg)
 
-1. Prepare the PopTorch environment. Install the Poplar SDK following the
-   Getting Started(https://docs.graphcore.ai/en/latest/getting-started.html)guide for your IPU system. Make sure to source the
-   `enable.sh` scripts for Poplar and PopART and activate a Python virtualenv with PopTorch installed.
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|-------|
+| Pytorch | Vision | Frozen in time |  | WebVid, MSR-VTT | ✅  | ❌ | [Frozen in Time: A Joint Video and Image Encoder for End-to-End Retrieval](https://arxiv.org/abs/2104.00650) |
 
-2. Install the apt dependencies for Ubuntu 18.04 (requires admin privileges):
 
-```console
+WebVid data can be found [here](https://m-bain.github.io/webvid-dataset/)
+
+
+## Instructions summary
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
+
+2. Install the system and Python requirements (see Environment setup)
+
+3. Download the WebVid and MSR-VTT dataset (See Dataset setup)
+
+
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
+
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
+```
+
+4. Navigate to this example's root directory
+
+5. Install the apt requirements:
+```bash
 sudo apt install $(< required_apt_packages.txt)
 ```
 
-3. install the required python packages:
-```console
-pip install -r requirements.txt
+5. Install the Python requirements:
+```bash
+pip3 install -r requirements.txt
 ```
 
 
-## Prepare Datasets (evalution dataset: MSR-VTT, training dataset: WebVid-2M)
+## Dataset setup
 
-1. Download MSR-VTT `wget https://www.robots.ox.ac.uk/~maxbain/frozen-in-time/data/MSRVTT.zip -P data; unzip data/MSRVTT.zip -d data`
+### WebVid
+Download the dataset from [the source](http://www.robots.ox.ac.uk/~maxbain/webvid/results_2M_train.csv), as well as the [validation set.](http://www.robots.ox.ac.uk/~maxbain/webvid/results_2M_val.csv)
 
-2. Download WebVid-2M (see https://github.com/m-bain/webvid), the downloading script 'download.py' included in this repo.
-   a. Download 2.5M subset `wget http://www.robots.ox.ac.uk/~maxbain/webvid/results_2M_train.csv -P data/WebVid/release; wget http://www.robots.ox.ac.uk/~maxbain/webvid/results_2M_val.csv -P data/WebVid/release`
-   b. Download videos
-   ```console
-   python3 datasets/download.py --csv_path data/WebVid/release/results_2M_train.csv --part 0
-   python3 datasets/download.py --csv_path data/WebVid/release/results_2M_val.csv --part 0
-   ```  
-   c. Clean videos
-   ```console
-   mkdir data/WebVid/metadata
-   python3 datasets/clean_videos.py --csv_path data/WebVid/release/results_2M_train.csv --video_path data/WebVid/videos/ --clean_csv_path data/WebVid/metadata/results_2M_training.csv
-   python3 datasets/clean_videos.py --csv_path data/WebVid/release/results_2M_val.csv --video_path data/WebVid/videos/ --clean_csv_path data/WebVid/metadata/results_2M_inference.csv
-   ``` 
-
-
-## Run the application
-
-After setting up your environment as explained above, you can run frozen-in-time(base_patch32_224) pretraining on WebVid-2M dataset.
-
-Step1. Train Frozen-in-time on WebVid-2M dataset with 1-frame and 80 epochs:
-```console
-python3 run.py --config_name configs/webvid2m-8ipu-1f.json
-```  
-Step2. Set `"load_checkpoint":"From Step1 best ckeckpoint"`in the following config file. Then train frozen-in-time(base_patch32_224) on WebVid-2M dataset with 2-frame and 10 epochs:
-```console
-python3 run.py --config_name configs/webvid2m-8ipu-2f.json
-```  
-Step3. Set `"load_checkpoint":"From Step2 best ckeckpoint"`in the following config file. Then train frozen-in-time(base_patch32_224) on WebVid-2M dataset with 4-frame and 10 epochs:
-```console
-python3 run.py --config_name configs/webvid2m-8ipu-4f.json
-``` 
-
-## Benchmarking
-
-To reproduce the benchmarks, please follow the setup instructions in this README to setup the environment, and then from this dir, use the `examples_utils` module to run one or more benchmarks. For example:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml
+Download the videos:
+```bash
+python3 datasets/download.py --csv_path <path_to_train_csv> --part 0
+python3 datasets/download.py --csv_path <path_to_val_csv> --part 0
 ```
 
-or to run a specific benchmark in the `benchmarks.yml` file provided:
-```
-python3 -m examples_utils benchmark --spec benchmarks.yml --benchmark <benchmark_name>
+Clean the videos:
+```bash
+mkdir data/WebVid/metadata
+python3 datasets/clean_videos.py --csv_path <path_to_train_csv> --video_path data/WebVid/videos/ --clean_csv_path <path_to_clean_train_csv>
+python3 datasets/clean_videos.py --csv_path <path_to_val_csv> --video_path data/WebVid/videos/ --clean_csv_path <path_to_clean_val_csv>
 ```
 
-For more information on how to use the examples_utils benchmark functionality, please see the <a>benchmarking readme<a href=<https://github.com/graphcore/examples-utils/tree/master/examples_utils/benchmarks>
+Disk space required:
 
-## Profiling
+```bash
 
-Profiling can be done easily via the `examples_utils` module, simply by adding the `--profile` argument when using the `benchmark` submodule (see the <strong>Benchmarking</strong> section above for further details on use). For example:
 ```
-python3 -m examples_utils benchmark --spec benchmarks.yml --profile
-```
-Will create folders containing popvision profiles in this applications root directory (where the benchmark has to be run from), each folder ending with "_profile". 
 
-The `--profile` argument works by allowing the `examples_utils` module to update the `POPLAR_ENGINE_OPTIONS` environment variable in the environment the benchmark is being run in, by setting:
-```
-POPLAR_ENGINE_OPTIONS = {
-    "autoReport.all": "true",
-    "autoReport.directory": <current_working_directory>,
-    "autoReport.outputSerializedGraph": "false",
-}
-```
-Which can also be done manually by exporting this variable in the benchmarking environment, if custom options are needed for this variable.
+### MSR-VTT
+Download the dataset from the source
 
-## Licensing
+Disk space required:
+
+```bash
+
+```
+
+
+## Running and benchmarking
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
+
+For example:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
+
+## License
 
 This application is licensed under MIT license.
 Please see the LICENSE file at the top-level of this repository.

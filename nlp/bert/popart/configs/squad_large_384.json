@@ -41,7 +41,7 @@
     "shuffle": true,
     "available_memory_proportion": [0.1,0.3,0.32,0.34,0.36,0.38,0.4,0.32],
     "pipeline": true,
-    "checkpoint_dir": "ckpts/squad_large",
+    "checkpoint_output_dir": "ckpts/squad_large",
     "engine_cache": "engine_cache",
     "validation_config": {
         "device_iterations": 10,

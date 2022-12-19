@@ -18,32 +18,36 @@ common_options: &common_options
     }'
     PYTORCH_EXE_DIR: "/tmp/pt_cache/"
   description: |
-    Dino training with real data.
+    Dino training with real data
+
+config_options: &config_options
+  requirements_path: requirements.txt
+  pre_run_commands: [sh make_ema.sh]
 
 pytorch_dino_finetune_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   cmd: >-
-    python script/linear_train.py 
-      --arch vit_base     
-      --n_last_blocks 1    
-      --data_path $DATASETS_DIR/imagenet-raw-dataset         
-      --pretrained_weights checkpoint_dino_vit_base/checkpoint.pth 
-      --replica 8          
-      --ga 64              
-      --batch_size 4       
+    python3 script/linear_train.py
+      --arch vit_base
+      --n_last_blocks 1
+      --data_path $DATASETS_DIR/imagenet-raw-dataset
+      --pretrained_weights checkpoint_dino_vit_base/checkpoint.pth
+      --replica 8
+      --ga 64
+      --batch_size 4
       --output vit_linear
 
 pytorch_dino_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   cmd: >-
-    python train_ipu.py
+    python3 train_ipu.py
       --config vit_base_pod16
       --data_path $DATASETS_DIR/imagenet-raw-dataset/train
       --epochs 2
       --warmup_epochs 0
 
 pytorch_dino_train_real_pod64_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   cmd: >-
     poprun
       -vv
@@ -52,10 +56,9 @@ pytorch_dino_train_real_pod64_conv:
       --num-replicas=8
       --ipus-per-replica=8
       --remove-partition=no
-      --vipu-server-host=$VIPU_CLI_API_HOST
-      --vipu-partition=$PARTITION
+      --vipu-server-host=$IPUOF_VIPU_API_HOST
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
       --vipu-server-timeout=3600
-      --executable-cache-path=$PYTORCH_EXE_DIR
       --mpi-global-args="
         --mca oob_tcp_if_include $TCP_IF_INCLUDE
         --mca btl_tcp_if_include $TCP_IF_INCLUDE"
@@ -69,44 +72,14 @@ pytorch_dino_train_real_pod64_conv:
         -x POPLAR_LOG_LEVEL=WARN
         -x POPLAR_SDK_ENABLED
         -x POPLAR_ENGINE_OPTIONS"
-    python train_ipu.py
+    python3 train_ipu.py
       --config vit_base_pod64
       --data_path $DATASETS_DIR/imagenet-raw-dataset/train
       --ga 200
       --batch_size 2
       --rebatched_worker_size 400
+      --executable-cache-dir $PYTORCH_EXE_DIR
+      --wandb
+      --wandb-run-name pytorch_dino_train_real_pod64_conv
 
-pytorch_dino_train_real_pod256_conv:
-  <<: *common_options
-  cmd: >-
-    poprun
-      -vv
-      --host $HOSTS
-      --num-instances=32
-      --num-replicas=32
-      --ipus-per-replica=8
-      --num-ilds 4
-      --remove-partition=no
-      --vipu-server-host=$VIPU_CLI_API_HOST
-      --vipu-partition=$PARTITION
-      --vipu-server-timeout=3600
-      --executable-cache-path=$PYTORCH_EXE_DIR
-      --mpi-global-args="
-        --mca oob_tcp_if_include $TCP_IF_INCLUDE
-        --mca btl_tcp_if_include $TCP_IF_INCLUDE"
-      --mpi-local-args="
-        -x OPAL_PREFIX
-        -x LD_LIBRARY_PATH
-        -x PATH
-        -x PYTHONPATH
-        -x CPATH
-        -x IPUOF_VIPU_API_TIMEOUT=3600
-        -x POPLAR_LOG_LEVEL=WARN
-        -x POPLAR_SDK_ENABLED
-        -x POPLAR_ENGINE_OPTIONS"
-    python train_ipu.py
-      --config vit_base_pod64
-      --data_path $DATASETS_DIR/imagenet-raw-dataset/train
-      --ga 50
-      --batch_size 2
-      --rebatched_worker_size 400
+

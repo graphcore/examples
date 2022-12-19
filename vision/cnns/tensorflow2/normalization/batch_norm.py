@@ -179,7 +179,7 @@ def add_bn_moving_vars_updates_to_optimizer(optimizer_class, model, batch_config
             else:
                 return var.assign(
                     value=var * bn_m + grad*(1-bn_m),
-                    use_locking=self._use_locking)
+                    use_locking=self._use_locking).op
 
         def _transform_gradients(self, grads_and_vars):
 

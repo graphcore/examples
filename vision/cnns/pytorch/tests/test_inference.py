@@ -110,7 +110,7 @@ def test_pretrained_prediction(precision, model_name):
 
 @pytest.mark.ipus(1)
 def test_pretrained_batchnorm_fp16():
-    fake_data = torch.ones(1, 64, 10, 10)
+    fake_data = torch.ones(1, 64, 10, 10, dtype=torch.half)
     model = torchvision.models.resnet18(pretrained=True).bn1   # Get a batchnorm layer from a real world model.
     cpu_mean = model.running_mean
     cpu_var = model.running_var
@@ -118,11 +118,8 @@ def test_pretrained_batchnorm_fp16():
     opts = poptorch.Options()
     opts.anchorTensor('running_mean', 'running_mean')
     opts.anchorTensor('running_var', 'running_var')
-    if opts.Jit.trace_model:
-        opts.Precision.runningStatisticsAlwaysFloat(True)
-    else:
-        model.running_mean = model.running_mean.to(torch.float)
-        model.running_var = model.running_var.to(torch.float)
+    model.running_mean = model.running_mean.to(torch.float)
+    model.running_var = model.running_var.to(torch.float)
 
     poptorch_model = poptorch.inferenceModel(model, opts)
     output = poptorch_model(fake_data)   # Compile the model.

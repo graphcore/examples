@@ -1,21 +1,19 @@
 # Copyright (c) 2019 Graphcore Ltd. All rights reserved.
-
 import numpy as np
 import popart
-import sys
 import time
 from torchvision import datasets, transforms
 import dataloader
 import onnx
+import torch
 from absl import app, flags
 from data import DataSet
 
-
 def load_dataset(tensors):
     transform = transforms.Compose(
-        [
-            transforms.CenterCrop(224),
+            [transforms.CenterCrop(224),
             transforms.ToTensor(),
+            transforms.ConvertImageDtype(torch.float16),
             transforms.Normalize(
                 mean=[0.485, 0.456, 0.406],
                 std=[0.229, 0.224, 0.225]),
@@ -30,15 +28,16 @@ def load_dataset(tensors):
         dataset,
         batch_size=FLAGS.micro_batch_size*FLAGS.device_iterations,
         tensor_type=tensor_type,
-        shuffle=True, num_workers=FLAGS.num_workers,
+        shuffle=False,
+        num_workers=FLAGS.num_workers,
+        
         drop_last=True)  # In the case there is not sufficient data in last batch drop it
 
     return DataSet(
         tensors,
         FLAGS.micro_batch_size,
         FLAGS.device_iterations,
-        loader,
-        np.float16)
+        loader)
 
 
 def graph_builder():
@@ -123,10 +122,9 @@ def main(argv):
         userOptions=options)
 
     print("Compiling...")
-    start = time.time()
+    startCompilation = time.time()
     session.prepareDevice()
-    compilation_duration = time.time() - start
-    print("Time to compile: {:.3f} seconds\n".format(compilation_duration))
+    print(f"Time to compile: {time.time() - startCompilation}")
 
     # Create buffers to receive results from the execution
     anchors = session.initAnchorArrays()
@@ -148,7 +146,6 @@ def main(argv):
             print("Hardware cycle count per 'run':", session.getCycleCount())
 
     print("Executing...")
-    average_batches_per_sec = 0
 
     # Run
     start = time.time()
@@ -189,14 +186,14 @@ def main(argv):
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("micro_batch_size", 6, "Batch size per device")
-flags.DEFINE_integer("batch_size", 48, "Overall size of batch (across all devices).")
+flags.DEFINE_integer("micro_batch_size", 64, "Batch size per device")
+flags.DEFINE_integer("batch_size", 256, "Overall size of batch (across all devices).")
 flags.DEFINE_integer(
     "num_ipus", 8, "Number of IPUs to be used. One IPU runs one compute process.")
 flags.DEFINE_string("data_sub_dir", "datasets/",
                     "Child directory containing one subdirectory dataset")
-flags.DEFINE_integer("num_workers", 6, "Number of threads per dataloader")
-flags.DEFINE_integer("device_iterations", 1400,
+flags.DEFINE_integer("num_workers", 2, "Number of threads per dataloader")
+flags.DEFINE_integer("device_iterations", 200,
                      "Number of batches of images to fetch on the host ready for streaming onto the device, reducing host IO")
 flags.DEFINE_string("data_dir", "datasets/",
                     "Parent directory containing subdirectory dataset(s). Number of subdirs should equal num_ipus")
@@ -232,7 +229,7 @@ flags.DEFINE_bool(
     )
 )
 flags.DEFINE_bool(
-    "half_partials", False,
+    "half_partials", True,
     (
         "If set, the model will use half-precision (fp16) partials"
         " in the convolution and MatMul operations."

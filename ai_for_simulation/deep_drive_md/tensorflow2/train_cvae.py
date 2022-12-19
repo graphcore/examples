@@ -30,6 +30,7 @@ if __name__ == '__main__':
     # Configure the IPU system
     config = ipu.config.IPUConfig()
     config.auto_select_ipus = 1
+    config.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     config.configure_ipu_system()
     # Create an IPU distribution strategy
     strategy = ipu.ipu_strategy.IPUStrategy()

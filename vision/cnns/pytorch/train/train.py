@@ -85,7 +85,34 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
             update_lr(lr_scheduler, optimizer, training_model, state, args)
 
         # End of the epoch.
-        persist_checkpoint(training_model, optimizer, state, running_mean_loss, running_mean_acc, args)
+        if not args.checkpoint_output_dir == "":
+            model_state = models.get_model_state_dict(training_model)
+            optimizer_state = optimizer.state_dict()
+            
+            if args.use_popdist:
+                popdist.execute_on_instances(
+                    {0},
+                    persist_checkpoint,
+                    model_state,
+                    optimizer_state,
+                    args.model,
+                    args.checkpoint_output_dir,
+                    state,
+                    running_mean_loss,
+                    running_mean_acc,
+                    args,
+                )
+            else:
+                persist_checkpoint(
+                    model_state,
+                    optimizer_state,
+                    args.model,
+                    args.checkpoint_output_dir,
+                    state,
+                    running_mean_loss,
+                    running_mean_acc,
+                    args,
+                )
 
 
 def get_augmented_samples(args, input_data, random_generator):
@@ -226,22 +253,24 @@ def update_lr(lr_scheduler, optimizer, training_model, state, args):
             logging.info(f"Learning rate is changed to {state.new_lr}")
 
 
-def persist_checkpoint(training_model, optimizer, state, running_mean_loss, running_mean_acc, args):
-    # Save the weights in the first process only.
-    if not args.checkpoint_path == "" and (not args.use_popdist or args.popdist_local_rank == 0):
-        if not os.path.exists(args.checkpoint_path):
-            os.makedirs(args.checkpoint_path)
-        save_path = os.path.join(args.checkpoint_path, f"{args.model}_{args.data}_{state.epoch}.pt")
-        save_data = {
-            'epoch': state.epoch,
-            'model_state_dict': models.get_model_state_dict(training_model),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': running_mean_loss,
-            'train_accuracy': running_mean_acc,
-            'args': args,
-        }
-        torch.save(save_data, save_path)
+def persist_checkpoint(model_state, optimizer_state, model_name, checkpoint_output_path, state, running_mean_loss, running_mean_acc, args):
 
+    # Save the weights in the first process only.
+    if not os.path.exists(checkpoint_output_path):
+        os.makedirs(checkpoint_output_path)
+
+    save_path = os.path.join(checkpoint_output_path, f"{model_name}_{args.data}_{state.epoch}.pt")
+    save_data = {
+        'epoch': state.epoch,
+        'model_state_dict': model_state,
+        'optimizer_state_dict': optimizer_state,
+        'loss': running_mean_loss,
+        'train_accuracy': running_mean_acc,
+        'args': args,
+    }
+    torch.save(save_data, save_path)
+
+    print(f"Checkpoint saved to: {save_path}")
 
 def create_training_opts(args):
     ipus_per_replica = len(args.pipeline_splits) + 1
@@ -311,15 +340,12 @@ def get_validation_function(args, model):
 
     if args.validation_mode == "none":
         return None
-    if args.use_popdist and args.popdist_rank != 0:
-        # Run validation in a single process.
-        return None
 
     if args.mixup_enabled or args.cutmix_enabled:
         assert isinstance(model, augmentations.AugmentationModel)
         model = model.model
 
-    opts = create_validation_opts(args, use_popdist=False)
+    opts = create_validation_opts(args, use_popdist=args.use_popdist)
     test_data = datasets.get_data(args, opts, train=False, async_dataloader=True, return_remaining=True)
     inference_model = poptorch.inferenceModel(model, opts)
 
@@ -368,7 +394,7 @@ def fine_tune(args):
     model_fine_tune = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled, with_loss=True, inference_mode=False)
 
     if not args.use_popdist or args.popdist_rank == 0:
-        avg_checkpoint_file = os.path.join(args.checkpoint_path, f"{args.model}_{args.data}_{args.epoch}_averaged.pt")
+        avg_checkpoint_file = os.path.join(args.checkpoint_input_dir, f"{args.model}_{args.data}_{args.epoch}_averaged.pt")
         avg_checkpoint = torch.load(avg_checkpoint_file)
         models.load_model_state_dict(model_fine_tune, avg_checkpoint['model_state_dict'])
 
@@ -426,23 +452,27 @@ if __name__ == '__main__':
 
     if args.weight_avg_strategy != 'none' and (not args.use_popdist or args.popdist_rank == 0):
         average_fn = weight_avg.create_average_fn(args)
-        weight_avg.average_model_weights(args.checkpoint_path, average_fn, args.weight_avg_N)
+        weight_avg.average_model_weights(args.checkpoint_input_dir, args.checkpoint_output_dir, average_fn, args.weight_avg_N)
 
     if args.half_res_training:
         training_model.destroy()
         model, training_model = fine_tune(args)
 
-    if args.validation_mode == "after" and (not args.use_popdist or args.popdist_rank == 0):
+    if args.validation_mode == "after":
         training_model.destroy()
-        if args.checkpoint_path == "":
+        if args.checkpoint_input_dir == "":
             validation_function = get_validation_function(args, model)
             val_accuracy = validation_function.func()
-            log_data = {
-                "validation_epoch": args.epoch + args.fine_tune_epoch,
-                "validation_iteration": (args.epoch + args.fine_tune_epoch) * validation_function.validation_iterations_per_epoch,
-                "validation_accuracy": val_accuracy,
-            }
-            utils.Logger.log_validate_results(log_data)
+            if not args.use_popdist or args.popdist_rank == 0:
+                log_data = {
+                    "validation_epoch": args.epoch + args.fine_tune_epoch,
+                    "validation_iteration": (args.epoch + args.fine_tune_epoch) * validation_function.validation_iterations_per_epoch,
+                    "validation_accuracy": val_accuracy,
+                }
+                utils.Logger.log_validate_results(log_data)
         else:
-            checkpoint_files = [os.path.join(args.checkpoint_path, file_name) for file_name in os.listdir(args.checkpoint_path) if file_name.endswith(".pt")]
-            validate_checkpoints(checkpoint_files)
+            checkpoint_files = [os.path.join(args.checkpoint_input_dir, file_name) for file_name in os.listdir(args.checkpoint_input_dir) if file_name.endswith(".pt")]
+            if args.use_popdist:
+                popdist.execute_on_instances({0}, validate_checkpoints, checkpoint_files)
+            else:
+                validate_checkpoints(checkpoint_files)

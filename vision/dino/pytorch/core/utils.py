@@ -58,6 +58,7 @@ class Precision(Enum):
 
 def init_popdist(args):
     if popdist.isPopdistEnvSet():
+        popdist.init()
         hvd.init()
         args.use_popdist = True
         if popdist.getNumTotalReplicas() != args.replica:

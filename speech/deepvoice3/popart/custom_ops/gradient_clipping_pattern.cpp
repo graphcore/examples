@@ -1,3 +1,4 @@
+// cppimport
 // Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 
 #include <popart/graph.hpp>

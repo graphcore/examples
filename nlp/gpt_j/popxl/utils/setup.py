@@ -22,7 +22,8 @@ from popxl_addons.utils import timer
 
 from config import GPTJConfig
 from utils.simple_parsing_tools import parse_args_with_presets
-
+import popdist
+import sys
 
 def gptj_config_setup(
         config_file: Union[str, Path],
@@ -84,7 +85,8 @@ def gptj_config_setup(
     random.seed(config.model.seed)
 
     if wandb_setup:
-        wandb_init(config, tags=['PE', 'TP'], disable=args.wandb == 'False')
+        if popdist.getInstanceIndex()==0:
+            wandb_init(config, tags=['PE', 'TP'], disable=args.wandb == 'False')
 
     logging_setup(args, config)
 
@@ -131,7 +133,8 @@ def logging_setup(args, config):
     """Setup logging"""
     logging.basicConfig(level=args.log_level,
                         format='%(asctime)s %(levelname)s: %(message)s',
-                        datefmt="%Y-%m-%d %H:%M:%S")
+                        datefmt="%Y-%m-%d %H:%M:%S",
+                        stream=sys.stdout)
     logging.info(f"Staring. Process id: {os.getpid()}")
     logging.info(f"Config: {config}")
 
@@ -158,7 +161,6 @@ def wandb_init(config: GPTJConfig,
                tags: Optional[List[str]] = None,
                disable: bool = False):
     """Setup weights and biases"""
-
     # Save config with addons and popxl version
     config_dict = config.to_dict()
     config_dict['gradient_accumulation'] = config.gradient_accumulation
@@ -167,7 +169,7 @@ def wandb_init(config: GPTJConfig,
     config_dict['popxl_version'] = popart.versionString()
 
     mode = "disabled" if disable else "online"
-
+    
     wandb.init(project="popxl-gptj", tags=tags, config=config_dict, mode=mode)
 
     # Upload config yml

@@ -27,7 +27,7 @@ if [[ -n "$PATH_TO_COCO_DATASET" ]]; then
     echo "Installing required python packages"
     pip3 install -r requirements.txt
 
-    echo "Creating datasets and partitioning coco dataset in directory $PATH_TO_PARTITIONED_DATASET"
+    echo "Making copies of Coco dataset in directory $PATH_TO_PARTITIONED_DATASET"
     echo "Coco dataset: $PATH_TO_COCO_DATASET"
     for i in {1,2,8}
     do
@@ -37,13 +37,13 @@ if [[ -n "$PATH_TO_COCO_DATASET" ]]; then
         fi
         mkdir -p "$DATASET_PART_PATH"
 
-        python3 partition_dataset.py --data-dir "$PATH_TO_COCO_DATASET" \
-                                     --partitions "$i" \
+        python3 setup_dataset.py --data-dir "$PATH_TO_COCO_DATASET" \
+                                     --copies "$i" \
                                      --output "$PATH_TO_PARTITIONED_DATASET/dataset$i"
     done
 
     echo "Getting pretrained model"
-    for i in {1,2,3,4,5,6,8,10,12}
+    for i in {16, 32, 64}
     do
         python3 get_model.py --micro-batch-size "$i" $MODEL_PATH_ARGS
     done

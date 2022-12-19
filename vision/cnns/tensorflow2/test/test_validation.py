@@ -28,7 +28,8 @@ class Simple(SubProcessChecker):
         output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--ckpts-per-epoch', '1',
-                           '--checkpoint-dir', checkpoint_dir,
+                           '--checkpoint-output-dir', checkpoint_dir,
+                           '--checkpoint-input-dir', checkpoint_dir,
                            '--training', 'False')
 
         self.assertIn('loss:', output)
@@ -57,7 +58,8 @@ class Checkpoint(SubProcessChecker):
         output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--ckpts-per-epoch', '1',
-                           '--checkpoint-dir', checkpoint_dir,
+                           '--checkpoint-output-dir', checkpoint_dir,
+                           '--checkpoint-input-dir', checkpoint_dir,
                            '--clean-dir', 'False')
         self.assertIn('loss:', output)
         self.assertIn('validation_accuracy:', output)
@@ -66,7 +68,8 @@ class Checkpoint(SubProcessChecker):
         output = run_train(self, '--weight-updates-per-epoch', '1',
                            '--dataset-path', '/localdata/datasets/',
                            '--ckpts-per-epoch', '1',
-                           '--checkpoint-dir', checkpoint_dir,
+                           '--checkpoint-output-dir', checkpoint_dir,
+                           '--checkpoint-input-dir', checkpoint_dir,
                            '--training', 'False')
         self.assertIn('loss:', output)
         self.assertIn('validation_accuracy:', output)

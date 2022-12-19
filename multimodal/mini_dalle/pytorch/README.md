@@ -1,97 +1,155 @@
-Pytorch mini DALL-E training example
----
+# Mini DALL-E
+Mini DALL-E for text-to-image generation, based on the models provided by the [`CompVis`](https://github.com/CompVis/taming-transformers) library and the [lucidrains repo](https://github.com/lucidrains/DALLE-pytorch)
 
-Implementation of mini DALL-E model in PyTorch for IPU. This example is based on the models provided by the [`CompVis`](https://github.com/CompVis/taming-transformers) library and from [lucidrains](https://github.com/lucidrains/DALLE-pytorch). The mini DALL-E model is based on the original paper [Zero-Shot Text-to-Image Generation](https://arxiv.org/abs/2102.12092).
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|-------|
+| Pytorch | Multimodal | Mini DALL-E | | Text-to-image generation | ✅  | ✅ | [Zero-Shot Text-to-Image Generation](https://arxiv.org/abs/2102.12092) |
 
-## Environment Setup
 
-First, Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` scripts for poplar and popART.
+## Instructions summary
 
-Then, create a virtual environment, install the required packages and build the custom ops.
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-```console
-virtualenv venv -p python3.6
-source venv/bin/activate
-pip install -r requirements.txt
+2. Install the system and Python requirements (see Environment setup)
+
+3. Download the ImageNet LSVRC 2012 dataset (See Dataset setup)
+
+
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
+
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-## Configurations
-
-To see the available configurations see the `configs.yml` file.
-To see the available options available to use in the command line interface use `--help` argument.
-
-```console
-python train.py --help
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-## Datasets
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
 
-Download the datasets from MS COCO website and unzip the downloaded files:
 
-```console
-mkdir -p ./data/COCO
-wget http://images.cocodataset.org/zips/train2017.zip -P ./data/COCO
-wget http://images.cocodataset.org/annotations/annotations_trainval2017.zip -P ./data/COCO
-cd ./data/COCO
-unzip ./data/COCO/train2017.zip
-unzip ./data/COCO/annotations_trainval2017.zip
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
 ```
 
-The MS COCO 2017 training set contains about 118K image-text pairs. It is approximately 19GB for the training set. The annotations in this dataset along with this website belong to the COCO Consortium and are [https://creativecommons.org/licenses/by/4.0/legalcode](licensed under a Creative Commons Attribution 4.0 License). The COCO Consortium does not own the copyright of the images. Use of the images must abide by the [https://www.flickr.com/creativecommons/](Flickr Terms of Use). The users of the images accept full responsibility for the use of the dataset, including but not limited to the use of any copies of copyrighted images that they may create from the dataset. Full terms and conditions and more information are available on the [https://cocodataset.org/#termsofuse](Terms of Use)
+2. Navigate to the Poplar SDK root directory
 
-After download the dataset, we extract captions to txt file from captions\_train2017.json, in the meantime fix some format errors in captions:
-
-```console
-python process_captions.py
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
 ```
 
-The captions files are generated in ./data/COCO/train2017\_captions.
+4. Navigate to this example's root directory
+
+5. Install the Python requirements:
+```bash
+pip3 install -r requirements.txt
+```
+
 
 ## Running and benchmarking
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
 
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+For example:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
 Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
-## Run the application
 
-Setup your environment as explained above. You can run mini DALL-E training on MS COCO 2017 datasets.
+## Dataset setup
 
-For training on M2000:
-```console
-python train.py --config L16
+### COCO 2017
+Download the COCO 2017 dataset from [the source](http://images.cocodataset.org/zips/) or [via kaggle](https://www.kaggle.com/datasets/awsaf49/coco-2017-dataset), or via the script we provide:
+```bash
+bash utils/download_coco_dataset.sh
 ```
 
-For training on POD16:
-```console
-python train.py --config L16_POD16
+Additionally, also download  and unzip the labels:
+```bash
+curl -L https://github.com/ultralytics/yolov5/releases/download/v1.0/coco2017labels.zip -o coco2017labels.zip && unzip -q coco2017labels.zip -d '<dataset path>' && rm coco2017labels.zip
 ```
 
-For training on POD64:
-```console
-python train.py --config L16_POD64
+Disk space required: 26G
+
+```
+.
+├── LICENSE
+├── README.txt
+├── annotations
+├── images
+├── labels
+├── test-dev2017.txt
+├── train2017.cache
+├── train2017.txt
+├── val2017.cache
+└── val2017.txt
+
+3 directories, 7 files
 ```
 
-Afterwards run text-image generation, for example:
-```console
+The annotations in this dataset along with this website belong to the COCO Consortium and are [https://creativecommons.org/licenses/by/4.0/legalcode](licensed under a Creative Commons Attribution 4.0 License). The COCO Consortium does not own the copyright of the images. Use of the images must abide by the [https://www.flickr.com/creativecommons/](Flickr Terms of Use). The users of the images accept full responsibility for the use of the dataset, including but not limited to the use of any copies of copyrighted images that they may create from the dataset. Full terms and conditions and more information are available on the [https://cocodataset.org/#termsofuse](Terms of Use)
+
+Then some preprocessing is required:
+```bash
+python process_captions.py
+```
+
+The captions files are generated in ./data/COCO/train2017\_captions.
+
+
+## Running and benchmarking
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
+
+For example:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
+
+## Custom training/inference and other features
+
+### Text-to-image generation
+To run text-image generation after training, with a checkpoint file (dalle_779.pt here):
+```bash
 python generate.py --dalle_path ./output/ckpt/dalle_799.pt --text "A plate of food has potatoes and fruit." --outputs_dir ./output --bpe_path models/bpe/bpe_yttm_vocab.txt
 ```
 
-## Run the unit test
-
-```console
-pytest tests/cpu_ipu_test.py
-```
+for example.
 
 ## Licensing
 This application is licensed under MIT license.

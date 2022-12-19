@@ -38,6 +38,7 @@ def init_popdist(args):
         args.gradient_accumulation_count * args.replica
     args.local_batch_size = args.global_batch_size
     if popdist.isPopdistEnvSet():
+        popdist.init()
         hvd.init()
         args.use_popdist = True
         if popdist.getNumTotalReplicas() != args.replica:

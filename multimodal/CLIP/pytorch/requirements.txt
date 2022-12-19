@@ -1,8 +1,11 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 numpy==1.19.5
 pandas==1.1.5
 wandb==0.12.8
 transformers==4.10.0
 ftfy==6.0.3
-torchvision==0.11.1
+torchvision==0.14.0+cpu; python_version > '3.6'
+torchvision==0.11.0+cpu; python_version <= '3.6'
 pytest==6.2.5
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+protobuf==3.19.4
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils

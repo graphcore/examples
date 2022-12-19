@@ -185,7 +185,7 @@ def compile_model(poptorch_model,  config):
 
 class TestSWIN(unittest.TestCase):
 
-    @pytest.mark.ipus(2)
+    @pytest.mark.ipus(8)
     def test_swin_model(self):
         cmd = "make"
         ret = subprocess.check_call(cmd, shell=True, cwd=swin_root_path)
@@ -193,7 +193,7 @@ class TestSWIN(unittest.TestCase):
         ctypes.cdll.LoadLibrary(os.path.join(swin_root_path, 'custom_ops.so'))
         args, config = parse_option()
         config.defrost()
-        config.IPU.NUM_LOCALREPLICA = 2
+        config.IPU.NUM_LOCALREPLICA = 1
         config.IPU.GRADIENT_ACCUMULATION_STEPS = 16
         config.freeze()
         seed = config.SEED

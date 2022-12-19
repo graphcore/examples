@@ -1,8 +1,0 @@
-pillow==8.4.0
-scipy==1.5.4
-libtiff==0.4.2
-pytest==6.2.5
-pytest-cov==3.0.0
-pytest-forked==1.4.0
-pytest-pythonpath==0.7.4
-pytest-xdist==2.5.0

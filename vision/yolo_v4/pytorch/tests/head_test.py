@@ -12,7 +12,7 @@ class TestYolov4Head:
     """Tests inference of Yolov4 head."""
     anchors = AnchorBoxes(widths=torch.tensor(np.array([4, 5, 6]), requires_grad=False),
                           heights=torch.tensor(np.array([6, 7, 8]), requires_grad=False))
-    input_tensor = torch.Tensor(np.random.randn(1, 32, 13, 13))
+    input_tensor = torch.Tensor(np.random.randn(1, 32, 13, 13).astype(np.float16)).half()
 
     @pytest.mark.ipus(1)
     def test_inference(self):

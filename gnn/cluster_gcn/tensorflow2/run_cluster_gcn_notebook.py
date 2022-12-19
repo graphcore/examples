@@ -59,6 +59,7 @@ from datetime import datetime
 import json
 import logging
 from pprint import pformat
+import os
 
 import numpy as np
 import popdist.tensorflow
@@ -183,7 +184,7 @@ logging.info(f"Universal name for run: {universal_run_name}")
 
 We are now ready to load the dataset. We only have to introduce the path to the dataset. This path will be used to look for available preprocessed data and cached clustering results.
 """
-config.data_path = "/localdata/paperspace/graph_datasets/"
+config.data_path = os.getenv("DATASET_DIR", "/localdata/paperspace/graph_datasets/") 
 
 """
 """
@@ -420,6 +421,7 @@ with strategy_training_scope:
         num_nodes_processed_per_execution=batch_config_training.num_nodes_processed_per_execution,
         real_over_padded_ratio=batch_config_training.real_over_padded_ratio,
         total_num_epochs=batch_config_training.scaled_num_epochs,
+        loss=loss,
         checkpoint_path=config.save_ckpt_path.joinpath(universal_run_name),
         config=config.dict(),
         executions_per_log=config.executions_per_log,

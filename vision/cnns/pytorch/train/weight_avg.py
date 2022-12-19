@@ -23,8 +23,8 @@ def load_model(checkpoint_file, model = None):
     return model
 
 
-def average_model_weights(checkpoint_path, average_fn, checkpoint_N):
-    checkpoint_files = [os.path.join(checkpoint_path, file_name) for file_name in os.listdir(checkpoint_path) if file_name.endswith(".pt")]
+def average_model_weights(checkpoint_input_path, checkpoint_output_path, average_fn, checkpoint_N):
+    checkpoint_files = [os.path.join(checkpoint_input_path, file_name) for file_name in os.listdir(checkpoint_input_path) if file_name.endswith(".pt")]
 
     def ckpt_key(ckpt):
         return int(ckpt.split('_')[-1].split('.')[0])
@@ -49,7 +49,7 @@ def average_model_weights(checkpoint_path, average_fn, checkpoint_N):
     last_checkpoint = torch.load(checkpoint_files[-1])
     args = last_checkpoint['args']
     filename = f'{args.model}_{args.data}_{last_checkpoint["epoch"]}_averaged.pt'
-    save_path = os.path.join(checkpoint_path, filename)
+    save_path = os.path.join(checkpoint_output_path, filename)
 
     if args.precision[-3:] == ".16":
         model.half()
@@ -83,10 +83,11 @@ def add_parser_arguments(parser):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--checkpoint-path', type=str, required=True)
+    parser.add_argument('--checkpoint-input-path', type=str, required=True)
+    parser.add_argument('--checkpoint-output-path', type=str, required=True)
     add_parser_arguments(parser)
     args = parser.parse_args()
 
     if args.weight_avg_strategy != 'none':
         average_fn = create_average_fn(args)
-        averaged_model = average_model_weights(args.checkpoint_path, average_fn, args.weight_avg_N)
+        averaged_model = average_model_weights(args.checkpoint_input_path, args.checkpoint_input_path, average_fn, args.weight_avg_N)

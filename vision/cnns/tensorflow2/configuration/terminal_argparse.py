@@ -4,6 +4,7 @@ import argparse
 import logging
 from pathlib import Path
 
+import horovod.tensorflow as hvd
 import popdist
 import popdist.tensorflow
 import yaml
@@ -13,7 +14,7 @@ from precision import Precision
 from datasets.dataset_factory import AVAILABLE_DATASETS
 from optimizers.optimizer_factory import AVAILABLE_OPTIMIZERS
 from schedules.scheduler_factory import AVAILABLE_SCHEDULERS
-from tensorflow.python.ipu import horovod as hvd
+from tensorflow.python.ipu import distributed
 from tensorflow.python.ipu.config import (SchedulingAlgorithm,
                                           StochasticRoundingBehaviour)
 from tensorflow.python.ipu.ops.pipelining_ops import PipelineSchedule
@@ -47,8 +48,10 @@ def add_arguments(parser):
                         help='Checkpointing frequency, per epoch')
     parser.add_argument('--first-ckpt-epoch', type=float, default=0.,
                         help='First checkpoint, in epochs')
-    parser.add_argument('--checkpoint-dir', type=str, default=None,
-                        help='Path to checkpoints, if no argument is provided, directory /tmp/checkpoints_current_time/ will be used')
+    parser.add_argument('--checkpoint-input-dir', type=str, default=None,
+                        help='Path to load checkpoints from, if no argument is provided, directory /tmp/checkpoints_current_time/ will be used')
+    parser.add_argument('--checkpoint-output-dir', type=str, default=None,
+                        help='Path to save checkpoints to, if no argument is provided, directory /tmp/checkpoints_current_time/ will be used')
     parser.add_argument('--ckpt-all-instances', type=str_to_bool, nargs='?', const=True, default=False,
                         help='Allow all instances to create a checkpoint. By default only local instance 0 does checkpointing.')
     parser.add_argument('--clean-dir', type=str_to_bool, nargs='?', const=True, default=True,
@@ -100,6 +103,9 @@ def add_arguments(parser):
     parser.add_argument('--loss-scaling', type=float, default=0.,
                         help='The value of static loss scaling. When equal to 0, loss scaling is disabled. '
                              'The loss scale is adjusted based on the replication factor, due to risk of loss underflow.')
+    parser.add_argument('--auto-loss-scaling', type=str_to_bool, nargs="?", const=True, default=False,
+                        help='Enable automatic loss scaling for half precision training. '
+                             'Note that this is an experimental feature and it is not guaranteed to work on all configurations.')
     parser.add_argument('--weight-decay', type=float, default=0,
                         help='The value of weight decay used by the optimizer.')
     parser.add_argument('--l2-regularization', type=float, default=0.,
@@ -178,9 +184,8 @@ def add_arguments(parser):
                         help='TTT measurement as in MLPerf.')
     parser.add_argument('--wandb', type=str_to_bool, nargs="?", const=True, default=False,
                         help='Enable/disable logging to Weights & Biases')
-    parser.add_argument('--wandb-params', type=yaml.safe_load, default='{}',
-                        help='Parameters to configure Weights & Biases. Available options include "project_name" and "run_name", '
-                        'passed a dictionary --wandb-params \'{"entity": <str>, "project_name": <str>, "run_name": <str>, "tags": [<str>, ...]}\'.')
+    parser.add_argument("--wandb-run-name", type=str, default=None, help="Weights & Biases run name")
+    parser.add_argument("--wandb-tags", type=str, nargs="+", default=None, help="Weights & Biases tags")
     parser.add_argument('--validation', type=str_to_bool, nargs="?", const=True, default=True,
                         help='Enable/disable validation')
     parser.add_argument('--validation-micro-batch-size', type=int, default=None,
@@ -236,6 +241,13 @@ def handle_cmdline_arguments(parser=None):
     parser = add_arguments(parser)
     hparams = parser.parse_args()
     hparams = parse_yaml_config(hparams, parser)
+    
+    # prepare wandb params
+    hparams.wandb_params = {}
+    if hparams.wandb_run_name is not None:
+        hparams.wandb_params["run_name"] = hparams.wandb_run_name
+    if hparams.wandb_tags is not None:
+        hparams.wandb_params["tags"] = hparams.wandb_tags
 
     hparams.validation_micro_batch_size = hparams.validation_micro_batch_size or hparams.micro_batch_size
 
@@ -390,6 +402,33 @@ def handle_cmdline_arguments(parser=None):
         logging.warning('In order to enforce a deterministic run shuffling must be disabled. '
                         'Overwritting --shuffle with False.')
         hparams.shuffle = False
+
+    if hparams.auto_loss_scaling:
+        if hparams.optimizer != 'sgd':
+            raise ValueError('Only SGD optimizer is supported when enabling automatic loss scaling. '
+                            f'Please change your specified {hparams.optimizer} optimizer.')
+
+        if hparams.optimizer_params['momentum'] != 0:
+            raise ValueError('No optimizer momentum is supported when enabling automatic loss scaling. '
+                            f'Please change your specified momentum to 0.')
+
+        not_allowed_optimizer_params_with_als = ['eeta', 'epsilon', 'weight_decay']
+        if bool(set(hparams.optimizer_params.keys()) & set(not_allowed_optimizer_params_with_als)):
+            raise ValueError('No optimizer parameters are supported when enabling automatic loss scaling. '
+                            f'Please do not specify values for {list(set(hparams.optimizer_params.keys()) & set(not_allowed_optimizer_params_with_als))}')
+
+        if hparams.lr_schedule != 'const':
+            raise ValueError('Only constant learning rate schedule is supported when enabling automatic loss scaling. '
+                            f'Please change your specified {hparams.lr_schedule} learning rate schedule.')
+
+        not_allowed_lr_schedule_params_with_als = ['epochs_to_total_decay', 'end_learning_rate_ratio', 'power']
+        if bool(set(hparams.lr_schedule_params.keys()) & set(not_allowed_lr_schedule_params_with_als)):
+            raise ValueError('Only initial_learning_rate can be specified for the learning rate schedule when enabling automatic loss scaling. '
+                            f'Please do not specify values for {list(set(hparams.lr_schedule_params.keys()) & set(not_allowed_lr_schedule_params_with_als))}')
+
+        if hparams.lr_warmup_params is not None:
+            raise ValueError('No learning rate warmup is supported when enabling automatic loss scaling. '
+                            f'Please do not specify values for {hparams.lr_warmup_params}')
 
     logging.info(f'hyperparams = {hparams}')
     return hparams

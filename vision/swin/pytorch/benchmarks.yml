@@ -11,8 +11,12 @@ common_options: &common_options
     - [samples/sec, 'throughput']
     - [loss, 'loss']
 
+config_options: &config_options
+  requirements_path: requirements.txt
+  pre_run_commands: [make clean, make all] 
+
 pytorch_swin_tiny_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: Pytorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
@@ -22,7 +26,7 @@ pytorch_swin_tiny_train_real_pod16:
       --training-steps 10
 
 pytorch_swin_base_384_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: Pytorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
@@ -32,7 +36,7 @@ pytorch_swin_base_384_train_real_pod16:
       --training-steps 10
 
 pytorch_swin_base_linear_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: Pytorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
@@ -42,7 +46,7 @@ pytorch_swin_base_linear_train_real_pod16:
       --training-steps 10
 
 pytorch_swin_large_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: Pytorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py

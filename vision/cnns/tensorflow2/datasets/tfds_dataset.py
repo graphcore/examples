@@ -2,11 +2,11 @@
 import os
 from typing import Optional
 
+import horovod.tensorflow as hvd
 import popdist
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from mpi4py import MPI
-from tensorflow.python.ipu import horovod as hvd
 
 from . import abstract_dataset
 

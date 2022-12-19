@@ -3,6 +3,7 @@
 import time
 from datetime import datetime
 import os
+import sys
 from absl import app, flags
 import subprocess
 import re
@@ -36,7 +37,7 @@ def launch_resnext_subprocess(i, f):
     ] + args
     print(f"\n\nRunning subprocess {i}: \t ")
     print(" ".join(command))
-    kwargs = {"stdout": f, "stderr": f} if FLAGS.hide_output else {}
+    kwargs = {"stdout": f, "stderr": sys.stderr} if FLAGS.hide_output else {} 
     return subprocess.Popen(
         command,
         universal_newlines=True,
@@ -45,19 +46,19 @@ def launch_resnext_subprocess(i, f):
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("batch_size", 48, "Overall size of batch (across all devices).")
+flags.DEFINE_integer("batch_size", 256, "Overall size of batch (across all devices).")
 flags.DEFINE_integer(
-    "num_ipus", 8, "Number of IPUs to be used. One IPU runs one compute process and processes a fraction of the batch of samples.")
+    "num_ipus", 4, "Number of IPUs to be used. One IPU runs one compute process and processes a fraction of the batch of samples.")
 flags.DEFINE_string("data_dir", "datasets/",
                     "Parent directory containing subdirectory dataset(s). The number of sub directories should equal num_ipus")
-flags.DEFINE_integer("num_workers", 4, "Number of threads per dataloader. There is one dataloader per IPU.")
-flags.DEFINE_integer("device_iterations", 1500,
+flags.DEFINE_integer("num_workers", 2, "Number of threads per dataloader. There is one dataloader per IPU.")
+flags.DEFINE_integer("device_iterations", 200,
                      "Number of batches to fetch on the host ready for streaming onto the device, reducing host IO")
 flags.DEFINE_string("model_name", "resnext101_32x4d",
                     "model name. Used to locate ONNX protobuf in models/")
 flags.DEFINE_bool("synthetic", False, "Use synthetic data created on the IPU.")
 flags.DEFINE_integer(
-    "iterations", 1, "Number of iterations to run if using synthetic data. Each iteration uses one `device_iterations` x `batch_size` x `H` x `W` x `C` sized input tensor.")
+    "iterations", 1, "Number of iterations to run if using synthetic data.")
 flags.DEFINE_bool(
     "report_hw_cycle_count",
     False,
@@ -91,7 +92,7 @@ def main(argv):
     log_str = f"""
             Number of subprocesses created: {FLAGS.num_ipus}
             Per subprocess:
-            \t Batch size: {FLAGS.batch_size}
+            \t Batch size: {FLAGS.batch_size/ FLAGS.num_ipus}
             \t Number of batches prepared by the host at a time: {FLAGS.device_iterations}
         """
     print(log_str)

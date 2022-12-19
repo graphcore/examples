@@ -51,7 +51,7 @@ def get_args():
                         help='0: transformers.tokenizer, 1: Megatron.tokenizer')
     parser.add_argument('--overlapping-eval', type=int, default=32,
                         help='Sliding window for overlapping evaluation.')
-    parser.add_argument('--pretrained-checkpoint', default='',
+    parser.add_argument('--checkpoint-input-dir', default='',
                         type=str, required=True, help='pretrained checkpoint to load')
     parser.add_argument('--seq-length', default=128, type=int,
                         required=False, help='max length of input sequence')

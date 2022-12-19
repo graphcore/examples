@@ -297,3 +297,7 @@ resnet50_infer_bs32:
   <<: *resnet50_infer_bs1
   micro-batch-size: 32
   global-batch-size: 32
+
+resnet50_infer_test:
+  <<: *resnet50_infer_bs1
+  <<: *cifar10

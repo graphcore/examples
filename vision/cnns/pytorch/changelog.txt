@@ -1,0 +1,17 @@
+###  Changelog
+
+#### September 2022
+* add troubleshooting for Triton server tests
+
+#### June 2022
+* Enable automatic loss scaling option
+* Merge collectives
+
+#### May 2022
+* Removed TFRecord and Webdataset support
+* Use fused crop and decode jpeg
+
+#### September 2021
+* Single IPU ResNet50 with batchnorm. Model is recomputed.
+* Webdataset improvements: Caching the dataset in the memory. Option for determining the image quality.
+* EfficientNet model changed to PyTorch Image Models implementation.

@@ -42,6 +42,7 @@ def dict_arg(arg):
 
 
 def init_popdist(args):
+    popdist.init()
     hvd.init()
     args.use_popdist = True
     if popdist.getNumTotalReplicas() != args.replication_factor:
@@ -166,7 +167,7 @@ def parse_bert_args(args=None, config_file="configs_pretraining.yml"):
                         help="Option to checkpoint model after every n training steps.")
     parser.add_argument("--resume-training-from-checkpoint", type=str_to_bool, nargs="?", const=True, default=False,
                         help="Restore both the model checkpoint and training state in order to resume a training run.")
-    parser.add_argument("--pretrained-checkpoint", type=str, default="", help="Checkpoint to be retrieved for further training. This can\
+    parser.add_argument("--checkpoint-input-dir", type=str, default="", help="Checkpoint to be retrieved for further training. This can\
                               be either an absolute or relative path to the checkpoint directory or the name of a model on HuggingFace model hub.")
 
     # This is here only for the help message

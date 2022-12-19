@@ -5,9 +5,8 @@ import numpy as np
 
 class DataSet:
     def __init__(self, tensors, batch_size, device_iterations,
-                 loader, dtype=np.float16):
+                 loader):
         self.tensors = tensors
-        self.dtype = dtype
         self.loader = loader
         self.num_examples = len(loader) * batch_size * device_iterations
         self.batch_size = batch_size

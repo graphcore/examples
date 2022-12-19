@@ -1,23 +1,91 @@
-# Graph Neural Network
+# Spektral
+GNN for molecular heat capacity prediction using the [Spektral](https://github.com/danielegrattarola/spektral) library, optimised for Graphcore's IPU.
 
-This example uses the [Spektral](https://github.com/danielegrattarola/spektral) GNN library to predict the heat capacity of various molecules in the [QM9 dataset](http://quantum-machine.org/datasets/).
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| TensorFlow2 | GNNs | Spektral | QM9 |  | ✅ | ❌ | [Edge Conditioned Convolutional Networks](https://arxiv.org/abs/1704.02901) |
 
-In particular this example shows [Edge Conditioned Convolutional Networks](https://arxiv.org/abs/1704.02901) but any dataset or network from the Spektral library should work the same.
 
-## Usage
+## Instructions summary
 
-Install the Poplar SDK following the the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` script for poplar.  
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-1. Update pip: `python3 -m pip install -U pip`
-2. Install the Graphcore TensorFlow wheel: `pip3 install tensorflow-2*`
-3. Install the Spektral GNN library requirements: `pip3 install -r requirements.txt`
-4. Run the example: `python3 qm9_ipu.py`
+2. Install the system and Python requirements (see Environment setup)
 
-The above script will download the [QM9 dataset](http://quantum-machine.org/datasets/) automatically which is just about 40MB in size.
+3. Download the MolHIV dataset (See Dataset setup)
+
+
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
+
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+```bash
+cd <poplar sdk root dir>
+pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
+pip3 install ipu_tensorflow_addons-2.X.X...any.whl
+```
+For the CPU architecture you are running on
+
+4. Build the custom ops:
+```bash
+cd static_ops && make
+```
+
+
+## Dataset setup
+### QM9
+Download from the [QM9 dataset source](https://www.kaggle.com/datasets/zaharch/quantum-machine-9-aka-qm9), or let the scripts download the dataset automatically when needed.
+
+Disk space required: 283MB
+
+```bash
+.
+├── dsgdb9nsd_000001.xyz
+    .
+    .
+    .
+└── dsgdb9nsd_133885.xyz
+
+133885 files
+```
 
 Dataset references:
 * L. C. Blum, J.-L. Reymond, [970 Million Druglike Small Molecules for Virtual Screening in the Chemical Universe Database GDB-13](https://pubs.acs.org/doi/10.1021/ja902302h), J. Am. Chem. Soc., 131:8732, 2009
 * M. Rupp, A. Tkatchenko, K.-R. Müller, O. A. von Lilienfeld: [Fast and Accurate Modeling of Molecular Atomization Energies with Machine Learning](https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.108.058301), Physical Review Letters, 108(5):058301, 2012
+
+
+## Usage
+Run the example:
+```bash
+python3 qm9_ipu.py
+```
+
 
 ## License
 

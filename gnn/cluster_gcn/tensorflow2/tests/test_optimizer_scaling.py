@@ -26,10 +26,10 @@ def get_pipelined_model(grad_accum):
     input_layer = tf.keras.Input(shape=1)
     kernel_initializer = tf.keras.initializers.Constant(1)
 
-    with ipu.keras.PipelineStage(0):
+    with tf.keras.ipu.PipelineStage(0):
         x = tf.keras.layers.Dense(
             1, use_bias=False, kernel_initializer=kernel_initializer)(input_layer)
-    with ipu.keras.PipelineStage(1):
+    with tf.keras.ipu.PipelineStage(1):
         y = tf.keras.layers.Dense(
             1, use_bias=False, kernel_initializer=kernel_initializer)(x)
     model = tf.keras.Model(input_layer, y)

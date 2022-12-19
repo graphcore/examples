@@ -14,7 +14,6 @@ class UNetTest(SubProcessChecker):
         self.run_command("make", current_path, [])
 
     """Test training command line executions."""
-    @pytest.mark.category3
     @pytest.mark.ipus(4)
     def test_train(self):
         """Test the training on 4 IPUs"""
@@ -23,7 +22,6 @@ class UNetTest(SubProcessChecker):
 
 
     """Test inference command line executions."""
-    @pytest.mark.category2
     @pytest.mark.ipus(4)
     def test_infer(self):
         """Test the inference on 4 IPUs"""

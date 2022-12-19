@@ -1,6 +1,7 @@
 # Copyright (c) 2021 Graphcore Ltd. All rights reserved.
 import argparse
 import numpy as np
+import onnx
 import popart
 import json
 import yaml
@@ -10,6 +11,10 @@ import sys
 import logging_util
 import popdist
 import popdist.popart
+
+from mpi4py import MPI
+
+comm = MPI.COMM_WORLD
 
 # set up logging
 logger = logging_util.get_basic_logger(__name__)
@@ -244,12 +249,7 @@ def create_session_anchors(proto, loss, device, dataFlow,
             userOptions=options
         )
     if training:
-        if use_popdist:
-            hvd = try_import_horovod()
-            session = hvd.DistributedTrainingSession(
-                **session_kwargs, enableEngineCaching=False)
-        else:
-            session = popart.TrainingSession(**session_kwargs)
+        session = popart.TrainingSession(**session_kwargs)
     else:
         session = popart.InferenceSession(**session_kwargs)
     try:
@@ -257,36 +257,46 @@ def create_session_anchors(proto, loss, device, dataFlow,
         session.prepareDevice()
         logger.info("{0} graph preparation complete.".format(
             session_type.capitalize(),))
-    except popart.OutOfMemoryException as e:
+    except popart.OutOfMemoryException:
         logger.warn("Caught OutOfMemoryException during prepareDevice")
         raise
 
     if training and use_popdist:
         # make sure to broadcast weights when using popdist/poprun
-        hvd.broadcast_weights(session)
+        comm.Barrier()
+        broadcast_weights(proto)
 
     # Create buffers to receive results from the execution
     anchors = session.initAnchorArrays()
 
     return session, anchors
 
+def weight_dict_from_onnx(proto):
+    model = onnx.load_model_from_string(proto)
+    weights = {}
+    for weight in model.graph.initializer:
+        if weight.data_type == onnx.TensorProto.FLOAT16:
+            int_data = np.asarray(weight.int32_data, np.int32)
+            np_weight = int_data.view(dtype=np.float16).reshape(weight.dims)
+        else:
+            np_weight = numpy_helper.to_array(weight)
 
-def try_import_horovod():
-    try:
-        import horovod.popart as hvd
-        hvd.init()
-    except ImportError:
-        raise ImportError("Could not find the PopART horovod extension. "
-                          "Please install the horovod .whl provided in the Poplar SDK.")
-    return hvd
+        weights[weight.name] = np_weight
+    return weights
 
+def broadcast_weights(proto):
+    if comm.Get_rank() == 0:
+        initialisers = weight_dict_from_onnx(proto)
+    else:
+        initialisers = None
+    initialisers = comm.bcast(initialisers, root=0)
 
 def set_popdist_args(args):
     if not popdist.isPopdistEnvSet():
         logger.info("No PopRun detected. Using single instance training")
     else:
         logger.info("PopRun is detected")
-
+        popdist.init()
         args.use_popdist = True
         num_total_replicas = popdist.getNumTotalReplicas()
         args.local_replication_factor = popdist.getNumLocalReplicas()

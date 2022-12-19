@@ -281,7 +281,7 @@ class DALLE(nn.Module):
         # make sure padding in text tokens get unique padding token id
 
         text_range = torch.arange(self.text_seq_len, device=image.device) + (self.num_text_tokens - self.text_seq_len)
-        text = torch.where(text == 0, text_range, text)
+        text = torch.where(text == 0, torch.broadcast_to(text_range, text.shape), text)
 
         # add <bos>
 

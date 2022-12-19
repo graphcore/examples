@@ -2,13 +2,11 @@
 import glob
 import torch
 import popdist
-import multiprocessing
 import numpy as np
-import torch.nn.utils.rnn as rnn_utils
-from torch.utils.data import Dataset, IterableDataset
-from tfrecord.reader import tfrecord_loader
-
-TFRECORD_KEYS = ['input_ids']  # Torch Model Keys
+from torch.utils.data import Dataset, DistributedSampler, DataLoader, RandomSampler
+from typing import Iterator, Optional, Sized, Dict
+import math
+import os 
 
 
 def expand_glob_files(files):
@@ -20,118 +18,199 @@ def expand_glob_files(files):
         result += expanded
     return result
 
-
-class TFRecordPretrainingDataset(IterableDataset):
-    """
-    Preprocessed GPT2 pretraining dataset read from TFRecord files.
-    This Dataset is compatible with multiprocessing. Each Dataloader worker
-    will only read a shard of each TFRecord file, which will speed up the Dataloader
-    and ensure no worker loads the same data as another worker. You are strongly
-    advised to use a large number (e.g. 64) of dataloader workers because firstly,
-    more workers could support high throughput, and secondly, more workers could
-    give us more stochasticity and thus better convergence.
-    Parameters
-    ----------
-    files: List of TFRecord files containing the preprocessed pretraining data
-    shuffle: Shuffle the data?
-    """
-
-    def __init__(self, input_files, shuffle=True):
-        self.files = expand_glob_files(input_files)
-        self.shuffle = shuffle
-        self.reset()
-
-    def reset(self):
-        self.file_index = 0
-        self.reader = iter([])
-
-    def samples_per_file(self, filename):
-        index_filename = filename.replace(".tfrecord", ".index")
-        count = sum(1 for _ in open(index_filename))
-        return count
-
-    def __len__(self):
-        if getattr(self, "_len", None) is None:
-            pool = multiprocessing.Pool(
-                min(multiprocessing.cpu_count(), len(self.files)))
-            num_samples = pool.map(self.samples_per_file, self.files)
-            pool.close()
-            pool.join()
-            self._len = sum(num_samples)
-        return self._len
-
-    def __iter__(self):
-        worker_info = torch.utils.data.get_worker_info()
-        if worker_info is not None:
-            if popdist.isPopdistEnvSet():
-                self.worker_id = worker_info.id + worker_info.num_workers * popdist.getInstanceIndex(
-                )
-                self.shard = worker_info.id + worker_info.num_workers * popdist.getInstanceIndex(
-                ), worker_info.num_workers * popdist.getNumInstances()
-            else:
-                self.worker_id = worker_info.id
-                self.shard = worker_info.id, worker_info.num_workers
-        else:
-            self.shard = None
-        self.reset()
-        if self.shuffle:
-            np.random.shuffle(self.files)
-        return self
-
-    def __next__(self):
-        try:
-            datum = next(self.reader)
-        except StopIteration:
-            if self.file_index >= len(self.files):
-                raise StopIteration
-            self.reader = tfrecord_loader(
-                self.files[self.file_index],
-                self.files[self.file_index].replace(".tfrecord", ".index"),
-                list(TFRECORD_KEYS), self.shard)
-            self.file_index += 1
-            datum = next(self.reader)
-        input_ids = torch.tensor(datum[TFRECORD_KEYS[0]], dtype=torch.long)
-        return input_ids
-
-
-class MyDataset(Dataset):
-    def __init__(self, input_list, max_len):
-        self.input_list = input_list
-        self.max_len = max_len
-
-    def __getitem__(self, index):
-        input_ids = self.input_list[index]
-        if len(input_ids) > self.max_len:
-            input_ids = input_ids[:self.max_len]
-        input_ids = torch.tensor(input_ids, dtype=torch.long)
-        return input_ids
-
-    def __len__(self):
-        return len(self.input_list)
-
-
-def load_dataset(input_files):
-    """
-    load train and valid dataset
-    """
-    dataset = TFRecordPretrainingDataset(input_files, shuffle=True)
-    return dataset
-
-
-def collate_fn(batch):
-    input_ids = rnn_utils.pad_sequence(batch,
-                                       batch_first=True,
-                                       padding_value=0)
-    labels = rnn_utils.pad_sequence(batch,
-                                    batch_first=True,
-                                    padding_value=-100)
-    data = {'input_ids': input_ids[:, :-1], 'labels': labels[:, 1:]}
-    return data
-
-
 class WorkerInit:
     def __init__(self, seed):
         self.seed = seed
 
     def __call__(self, worker_id):
         np.random.seed((self.seed + worker_id) % np.iinfo(np.uint32).max)
+
+class DistributedSampler(torch.utils.data.DistributedSampler):
+    def __init__(self, dataset: Dataset, num_instances: Optional[int] = None,
+                 rank: Optional[int] = 0, shuffle: bool = True,
+                 seed: int = 0, drop_last: bool = False, start_index: int = 0, epoch: int = 0) -> None:
+        """
+        Basically a torch DistributedSampler https://pytorch.org/docs/stable/_modules/torch/utils/data/distributed.html#DistributedSampler
+        working with popdist, and with a state so that training can be resumed.
+        """
+        if num_instances is None:
+            if not popdist.isPopdistEnvSet():
+                raise RuntimeError("Requires popdist to be available")
+            num_instances = popdist.getNumInstances()
+        if rank is None:
+            if not popdist.isPopdistEnvSet():
+                raise RuntimeError("Requires popdist to be available")
+            rank = popdist.getInstanceIndex()
+        if rank >= num_instances or rank < 0:
+            raise ValueError(
+                "Invalid rank {}, rank should be in the interval"
+                " [0, {}]".format(rank, num_instances - 1))
+
+        self.dataset = dataset
+        self.num_replicas = num_instances
+        self.rank = rank
+        self.epoch = epoch
+        self.drop_last = drop_last
+        self.seed = seed
+        self.start_index = start_index
+        # If the dataset length is evenly divisible by # of replicas, then there
+        # is no need to drop any data, since the dataset will be split equally.
+        if self.drop_last and len(self.dataset) % self.num_replicas != 0:  # type: ignore[arg-type]
+            # Split to nearest available length that is evenly divisible.
+            # This is to ensure each rank receives the same amount of data when
+            # using this Sampler.
+            self.num_samples = math.ceil(
+                (len(self.dataset) - self.num_replicas) / self.num_replicas  # type: ignore[arg-type]
+            )
+        else:
+            self.num_samples = math.ceil(len(self.dataset) / self.num_replicas) # type: ignore[arg-type]
+        self.total_size = self.num_samples * self.num_replicas
+        self.shuffle = shuffle
+
+    def __iter__(self) -> Iterator:
+        if self.shuffle:
+            # deterministically shuffle based on epoch and seed
+            g = torch.Generator()
+            g.manual_seed(self.seed + self.epoch)
+            indices = torch.randperm(len(self.dataset), generator=g).tolist()  # type: ignore[arg-type]
+        else:
+            indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
+
+        if not self.drop_last:
+            # add extra samples to make it evenly divisible
+            padding_size = self.total_size - len(indices)
+            if padding_size <= len(indices):
+                indices += indices[:padding_size]
+            else:
+                indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
+        else:
+            # remove tail of data to make it evenly divisible.
+            indices = indices[:self.total_size]
+        assert len(indices) == self.total_size
+
+        # subsample
+        indices = indices[self.rank:self.total_size:self.num_replicas]
+        indices = indices[self.start_index:]
+        assert len(indices) == self.num_samples-self.start_index 
+
+        return iter(indices)
+
+    def get_state(self) -> Dict:
+        return {
+            "start_index": self.start_index,
+            "seed": self.seed,
+            "epoch": self.epoch
+        }
+
+    def set_state(self, state: Dict) -> None:
+        self.start_index = state[ "start_index"]
+        self.seed = state["seed"]
+        # equivalent to calling set_epoch
+        self.epoch = state["epoch"]
+
+
+class StatefulRandomSampler(torch.utils.data.RandomSampler):
+    r"""Samples elements randomly.
+    Args:
+        data_source (Dataset): dataset to sample from
+        start_index (int): index to start sampling from
+        seed (int): seed for random number generator
+        epoch (int): number of epochs. The generator is setup to draw samples deterministically based on
+                     seed and epoch.
+    """
+    def __init__(self, data_source: Sized, start_index: int = 0, seed: int = 0, epoch: int = 0) -> None:
+        self.data_source = data_source
+        self.seed = seed
+        self.start_index = start_index
+        self.epoch = epoch
+
+    @property
+    def num_samples(self) -> int:
+        return len(self.data_source)
+
+    def __iter__(self) -> Iterator[int]:
+        generator = torch.Generator()
+        generator.manual_seed(self.seed + self.epoch)
+        yield from torch.randperm(self.num_samples, generator=generator).tolist()[self.start_index:]
+
+    def get_state(self) -> Dict:
+        return {
+            "start_index": self.start_index,
+            "seed": self.seed,
+            "epoch": self.epoch
+        }
+
+    def set_state(self, state : Dict) -> None:
+        self.start_index = state[ "start_index"]
+        self.seed = state["seed"]
+        self.epoch = state["epoch"]
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
+class StatefulDataLoader(DataLoader):
+    r"""DataLoader which keeps track of its own state and can be saved and resumed.
+    Combines a dataset and a random sampler, and provides an iterable over
+    the given dataset.
+    
+    The random sampler is created automatically. If popdist is available, a
+    DistributedSampler is used.
+    Otherwise, a StatefulRandomSampler.
+    The dataloader automatically keeps track of the epochs so it's not
+    necessary to set the epoch manually on the sampler.
+
+    To deal with multiprocessing correctly, the index to resume the dataloader from
+    has to be taken from the dataloader iterator, not from the random sampler.
+
+    See :class:`~torch.utils.data.DataLoader` for init arguments.
+    Don't use sampler and generator Args
+    """
+    
+    def __init__(self, dataset, seed:int = 47, start_index: int = 0, epoch: int = 0, *args, **kwargs):
+        if popdist.isPopdistEnvSet():
+            sampler = DistributedSampler(dataset, shuffle=True, seed = seed, start_index = start_index, epoch = epoch)
+        else:
+            sampler = StatefulRandomSampler(dataset, seed = seed, start_index = start_index, epoch = epoch)
+
+        DataLoader.__init__(self,
+                            dataset=dataset,
+                            sampler=sampler,
+                            *args,
+                            **kwargs)
+        self.epochs = 0
+    @property
+    def last_index(self):
+        if self._iterator:
+            return self.sampler.start_index + self._iterator._num_yielded * self.batch_size
+        else:
+            return self.sampler.start_index
+
+    def __iter__(self) -> '_BaseDataLoaderIter':
+        # in the base dataloader implementation single process iterator
+        # are recreated every time to avoid resetting its state
+        # But we need to keep the state so we unify the behaviours
+        if self._iterator is None:
+            self._iterator = self._get_iterator()
+        else:
+            # happens on new epoch
+            self.sampler.start_index = 0
+            self.epochs +=1
+            self.sampler.set_epoch(self.epochs)
+            self._iterator._reset(self)
+        return self._iterator
+
+    def get_state(self) -> Dict:
+        state = self.sampler.get_state()
+        state['start_index'] = self.last_index
+        return state
+
+    def set_state(self, state: Dict) -> None:
+        self.epochs = state["epoch"]
+        self.sampler.set_state(state)
+
+    def save(self, filename: str) -> None:
+        torch.save(self.get_state(), filename)
+
+    def resume(self, filename: str) -> None:
+        state = torch.load(filename)
+        self.set_state(state)

@@ -13,8 +13,9 @@
 # limitations under the License.
 
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, Dropout, MaxPooling2D, Input
-from tensorflow.python.ipu import keras as ipu_keras
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Input
+from ipu_tensorflow_addons.keras.layers import Dropout as IPUDropout
+
 from model_utils import crop, double_conv_layer, up_conv
 
 
@@ -23,7 +24,7 @@ def encoder(x, filters, crop_sizes, args):
     for i, filter in enumerate(filters):
         conv = double_conv_layer(filter, x, args.dtype, f"encoder_block_{i}")
         if i > 3:
-            conv = ipu_keras.layers.Dropout(
+            conv = IPUDropout(
                 args.drop_rate, name=f"encoder_block_{i}_IPU_dropout")(conv)
         else:
             # Crop the activation to concatenate later

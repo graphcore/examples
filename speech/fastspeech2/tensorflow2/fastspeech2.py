@@ -45,6 +45,7 @@ import six
 import tensorflow as tf
 from tensorflow.python import ipu
 from tensorflow import keras
+from ipu_tensorflow_addons.keras.layers import Dropout as IPUDropout
 from ipu_tensorflow_addons.keras.layers import LayerNormalization as IPULayerNormalization
 
 
@@ -443,7 +444,7 @@ class SelfAttention(tf.keras.layers.Layer):
             dtype=self.config.dtype
         )
 
-        self.dropout = ipu.keras.layers.Dropout(
+        self.dropout = IPUDropout(
             config.attention_probs_dropout_prob, dtype=config.dtype)
 
     def transpose_for_scores(self, x, batch_size):
@@ -518,7 +519,7 @@ class SelfAttentionOutput(tf.keras.layers.Layer):
         self.LayerNorm = IPULayerNormalization(
             epsilon=config.layer_norm_eps, name="LayerNorm", dtype=config.dtype
         )
-        self.dropout = ipu.keras.layers.Dropout(
+        self.dropout = IPUDropout(
             config.hidden_dropout_prob, dtype=config.dtype)
 
     def call(self, inputs, training=False):
@@ -612,7 +613,7 @@ class IntermediateOutput(tf.keras.layers.Layer):
         self.LayerNorm = IPULayerNormalization(
             epsilon=config.layer_norm_eps, name="LayerNorm", dtype=config.dtype
         )
-        self.dropout = ipu.keras.layers.Dropout(
+        self.dropout = IPUDropout(
             config.hidden_dropout_prob, dtype=config.dtype)
 
     def call(self, inputs, training=False):
@@ -759,7 +760,7 @@ class TacotronPostnet(tf.keras.layers.Layer):
                 name="batch_norm_._{}".format(i), epsilon=config.layer_norm_eps, dtype=config.dtype
             )
             self.conv_batch_norm.append((conv, batch_norm))
-        self.dropout = ipu.keras.layers.Dropout(
+        self.dropout = IPUDropout(
             rate=config.postnet_dropout_rate, dtype=config.dtype, name="dropout"
         )
         self.activation = [tf.nn.tanh] * \
@@ -793,7 +794,7 @@ class PostnetBlock(tf.keras.layers.Layer):
         self.batch_norm = tf.keras.layers.LayerNormalization(
             axis=-1, name="batch_norm", epsilon=config.layer_norm_eps, dtype=config.dtype
         )
-        self.dropout = ipu.keras.layers.Dropout(
+        self.dropout = IPUDropout(
             rate=config.postnet_dropout_rate, dtype=config.dtype, name="dropout"
         )
         self.activation = activation
@@ -831,7 +832,7 @@ class VariantPredictor(tf.keras.layers.Layer):
                 layer_norm = IPULayerNormalization(
                     epsilon=config.layer_norm_eps, name="LayerNorm_._{}".format(i), dtype=config.dtype
                 )
-                dropout = ipu.keras.layers.Dropout(
+                dropout = IPUDropout(
                     config.variant_predictor_dropout_rate, dtype=config.dtype)
 
                 self.conv_layers.append(
@@ -1020,9 +1021,9 @@ def build_model(opts, training=True):
         name="energy_embeddings",
         dtype=config.dtype)(energy_embedding)
     # apply dropout both training/inference
-    f0_embedding = ipu.keras.layers.Dropout(
+    f0_embedding = IPUDropout(
         config.variant_predictor_dropout_rate, name="f0_dropout")(f0_embedding, training=training)
-    energy_embedding = ipu.keras.layers.Dropout(
+    energy_embedding = IPUDropout(
         config.variant_predictor_dropout_rate, name="energy_dropout")(energy_embedding, training=training)
     # sum features
     last_encoder_hidden_states = keras.layers.Add(name="sum_feature")(
@@ -1087,7 +1088,7 @@ def build_pipeline_model(opts, training=True):
     batch_size = int(opts["batch_size"])
 
     # construct model
-    with ipu.keras.PipelineStage(0):
+    with keras.ipu.PipelineStage(0):
         # Input layer
         input_ids = keras.Input(
             shape=(config.max_seq_length,),
@@ -1155,9 +1156,9 @@ def build_pipeline_model(opts, training=True):
             name="energy_embeddings",
             dtype=config.dtype)(energy_embedding)
         # apply dropout both training/inference
-        f0_embedding = ipu.keras.layers.Dropout(
+        f0_embedding = IPUDropout(
             config.variant_predictor_dropout_rate)(f0_embedding, training=training)
-        energy_embedding = ipu.keras.layers.Dropout(
+        energy_embedding = IPUDropout(
             config.variant_predictor_dropout_rate)(energy_embedding, training=training)
 
         # sum features
@@ -1190,7 +1191,7 @@ def build_pipeline_model(opts, training=True):
             training=training,
             is_compatible_encoder=True)
 
-    with ipu.keras.PipelineStage(1):
+    with keras.ipu.PipelineStage(1):
         last_decoder_hidden_states = build_n_decoder_block(
             config=config.decoder_self_attention_params,
             inputs=[first_decoder_output,
@@ -1277,9 +1278,9 @@ def build_inference_model(opts):
         name="energy_embeddings",
         dtype=config.dtype)(energy_expand)
     # apply dropout both training/inference
-    f0_embedding = ipu.keras.layers.Dropout(
+    f0_embedding = IPUDropout(
         config.variant_predictor_dropout_rate, name="f0_dropout")(f0_embedding)
-    energy_embedding = ipu.keras.layers.Dropout(
+    energy_embedding = IPUDropout(
         config.variant_predictor_dropout_rate, name="energy_dropout")(energy_embedding)
 
     # sum features

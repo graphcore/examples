@@ -1,8 +1,9 @@
---find-links https://download.pytorch.org/whl/torch_stable.html
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 numpy==1.19.5
 scipy==1.5.4
 tensorboard==1.15.0
-torch==1.10.0+cpu
+torch==1.10.0+cpu; python_version=='3.6'
+torch==1.13.0+cpu; python_version>'3.6'
 nltk==3.6.5
 future==0.17.1
 onnx==1.11.0
@@ -16,5 +17,5 @@ pyyaml==5.4.1
 wandb==0.12.8
 filelock==3.0.12
 numba==0.53.1
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils
 mpi4py==3.1.3

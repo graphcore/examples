@@ -26,6 +26,7 @@ from feat_proc_cpp_async import AsyncDataProcessor
 import transducer_validation
 from transducer_decoder import TransducerGreedyDecoder
 import test_transducer
+import popdist
 
 
 # set up logging
@@ -392,12 +393,17 @@ if __name__ == '__main__':
     training_session.weightsFromHost()
 
     # Saving initialized model to checkpoint
-    if instance_idx == 0:
-        checkpoint_utils.prepare_for_checkpointing(conf)
-        ckpt_dir = os.path.join(conf.model_dir, 'checkpoint_initial')
-        logger.info('Saving initialized model to {}'.format(ckpt_dir))
-        checkpoint_utils.create_model_checkpt(builder, ckpt_dir, training_session, weight_names, ema_weight_names,
-                                              training_runtime_conf.precision, conf.enable_ema_weights)
+    checkpoint_utils.prepare_for_checkpointing(conf)
+    ckpt_dir = os.path.join(conf.model_dir, 'checkpoint_initial')
+    logger.info('Saving initialized model to {}'.format(ckpt_dir))
+    if training_runtime_conf.use_popdist:
+        popdist.execute_on_instances({0}, checkpoint_utils.create_model_checkpt, builder, ckpt_dir,
+                                          training_session, weight_names, ema_weight_names,
+                                          training_runtime_conf.precision, conf.enable_ema_weights)
+    else:
+        checkpoint_utils.create_model_checkpt(builder, ckpt_dir, training_session, weight_names,
+                                              ema_weight_names, training_runtime_conf.precision,
+                                              conf.enable_ema_weights)
 
     rnnt_loss_data = deque(maxlen=steps_per_epoch)
 
@@ -464,14 +470,19 @@ if __name__ == '__main__':
 
             ckpt_dir = os.path.join(
                 conf.model_dir, 'checkpoint_{}'.format(epoch + 1))
-            if instance_idx == 0:
-                logger.info('Saving model after epoch {} to {}'.format(
+            logger.info('Saving model after epoch {} to {}'.format(
                     epoch + 1, ckpt_dir))
-                checkpoint_utils.create_model_checkpt(builder, ckpt_dir, training_session, weight_names, ema_weight_names,
-                                                      training_runtime_conf.precision, conf.enable_ema_weights)
+            if training_runtime_conf.use_popdist:
+                popdist.execute_on_instances({0}, checkpoint_utils.create_model_checkpt, builder, ckpt_dir,
+                                                  training_session, weight_names, ema_weight_names,
+                                                  training_runtime_conf.precision, conf.enable_ema_weights)
 
                 # Proactively remove stale checkpoint ready file for the next epoch,
                 # so another instance won't use it
+                popdist.execute_on_instances({0}, checkpoint_utils.remove_checkpoint_ready_file, conf, epoch + 2)
+            else:
+                checkpoint_utils.create_model_checkpt(builder, ckpt_dir, training_session, weight_names, ema_weight_names,
+                                                      training_runtime_conf.precision, conf.enable_ema_weights)
                 checkpoint_utils.remove_checkpoint_ready_file(conf, epoch + 2)
 
             wer = None

@@ -1,56 +1,134 @@
+# GPT-3 2.7B
+GPT-3 2.7B for NLP pre-training and text generation, optimised for Graphcore's IPU.
+
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| PopXL | NLP | GPT-3 | Wikipedia | Next sentence prediction, Question/Answering | ✅  | ✅ | [Language Models are Few-Shot Learners](https://arxiv.org/pdf/2005.14165.pdf) | 
 
 
-# GPT training on IPUs using PopXL
+# Instructions summary
 
-This README describes how to run GPT models for NLP pre-training on Graphcore IPUs using the PopXL library. A combination of phased execution, tensor model parallelism, data parallelism, remote tensor sharding and code loading are utilised to train the models.
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-This application shows how to run larger models on IPU. The techniques to do this mean that performance is lower than for models that fit in IPU memory. Large model training or fine-tuning requires a big Pod installation. The minimum to run fine-tuning with this model is a Pod64. PopXL is an experimental framework and may be subject to change in future releases.
+2. Install the system and Python requirements (see Environment setup)
 
-**Note:** It has been tested to show that the training loss decreases as expected, so is “trainable” but it has not been trained from beginning to end and we do not provide a training dataset or a fully trained checkpoint alongside the model. Because the model has only been tested as trainable, it is possible that it contains a bug that we have not identified or has convergence problems, but we are not aware of any such difficulties.
+3. Download the WIKI-103 dataset (See Dataset setup)
 
-# Table of contents
-1. [File structure](#file_structure)
-2. [Quick start guide](#quick_start)
-    1. [Prepare environment](#prep_env)
-    2. [Pre-training with GPT on IPU](#pretrain_IPU)
-    3. [View the pre-training results in Weights & Biases](#wandb)
-3. [Configure your GPT runs](#configs)
-4. [Prepare datasets](#datasets)
-5. [Scale GPT on IPU](#scale_GPT)
-    1. [Phased execution and RTS](#pe)
-    2. [Data parallel](#dp)
-    3. [Tensor model parallel](#tp)
-6. [Pre-training code details](#code_details)
-7. [Layer execution diagrams](#execution)
 
-## File structure <a name="file_structure"></a>
-
-|    File                   |       Description                                                   |
-|---------------------------|---------------------------------------------------------------------|
-| `config/`                 | Contains configuration options for pre-training GPT.|
-| `data/`            | Data preprocessing for pre-training |
-| `modelling/`       | Implements layers in GPT model and the models for different tasks for inference and training.<br/> -`embedding.py`, `attention.py`, and `feed_forward.py` present the implementations of embedding layer, self-attention, and  feed forward networks respectively. <br/> -`gpt_lm.py` present the implementation of the language model heads.<br/>                    |
-| `tests/`           | Includes integration tests and unit tests.|
-| `utils/`  | Helper functions to set up GPT configs and parse arguments.  |
-
-## Quick start guide <a name="quick_start"></a>
-
-### Prepare environment <a name="prep_env"></a>
-**1) Download the Poplar SDK**
-
-Download and install the Poplar SDK following the Getting Started guide for your IPU system. Source the `enable.sh` scripts for both Poplar and PopART, see more details in
-[SDK installation](https://docs.graphcore.ai/projects/ipu-pod-getting-started/en/latest/installation.html#sdk-installation).
-
-**2) Configure Python virtual environment**
-
-Create a virtual environment, install the required packages, and add PopXL addons in PYTHONPATH:
-```shell
-virtualenv --python python3.6 venv
-source venv/bin/activate
-pip install -r requirements.txt
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
 ```
 
-### Pre-training with GPT on IPU <a name="pretrain_IPU"></a>
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
+```
+
+4. Download and install PopXL add-ons:
+```bash
+
+```
+PopXL is an experimental framework and may be subject to change in future releases.
+
+4. Navigate to this example's root directory
+
+5. Install the Python requirements:
+```bash
+make install
+```
+
+## Dataset setup
+To obtain the data used for pre-training follow the below instructions.
+
+Disk space required: 143GB - Sequence length 128 (Variable), 203GB - Sequence length 512 (Variable)
+
+```bash
+.
+├── wiki_000.index
+├── wiki_000.tfrecord
+    .
+    .
+    .
+├── wiki_xxx.index
+└── wiki_xxx.tfrecord
+
+0 directories, XXXX files
+```
+
+### 1. Raw data
+
+Download the latest raw wikipedia dump using:
+```bash
+bash wikipedia_download.sh wikipedia_raw
+```
+
+Extract the data into another format:
+```bash
+pip3 install wikiextractor
+export PYTHONIOENCODING=utf-8
+export LC_ALL=C.UTF-8
+bash wikipedia_extract.sh wikipedia_raw/wikidump.xml wikipedia_extracted
+```
+
+### 2. Preprocessing
+
+Preprocess the data:
+```bash
+mkdir wikipedia_preprocessed
+python3 wikipedia_preprocess.py --input-file-path wikipedia_extracted --output-file-path wikipedia_preprocessed
+```
+
+### 3. Generate TFRecords
+
+To generate TFRecords from the preprocessed data
+```bash
+pip install tensorflow==1.15.0
+mkdir wikipedia_tf
+python3 write_into_tfrecord.py --input-file-path wikipedia_preprocessed/wikicorpus_en_one_article_per_line.pkl --output-file-path wikipedia_tf --seq-length 129 --stride 129
+```
+
+Then you need to generate the indices for the TFRecords
+```bash
+cd wikipedia_tf
+for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .tfrecord`.index; done
+``` 
+
+
+## Custom training/inference and other features
+
+### Pre-training with GPT on IPU
 You can run pre-training for GPT with settings defined in `pretraining.yml` by using the script below. You need to provide the data files to `--input_files`.
 ```shell
 python3 demo/pretraining.py --input_files {path to your wikipedia data}/*.tfrecord
@@ -68,12 +146,12 @@ python3 pretraining.py
 
 When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable saving/loading from the cache store, use the environment variable `POPXL_CACHE_DIR=<PATH/TO/CACHE>` when running the application.
 
-### View the pre-training results in Weights & Biases <a name="wandb"></a>
+### View the pre-training results in Weights & Biases
 This project supports Weights & Biases, a platform to keep track of machine learning experiments. A client for Weights&Biases will be installed by default and can be used during training by passing the `--wandb` flag. You will need to manually log in (see the quickstart guide [here](https://docs.wandb.ai/quickstart)) and configure the project name with `--wandb-name`.) For more information please see https://www.wandb.com/.
 
 The trainings in demo are logged in wandb under project `popxl-gpt`. Each run has loss, learning rate and throughput logged. The version for `addons` and PopXL are also logged together with the configuration settings.
 
-## Configure your GPT runs <a name="configs"></a>
+### Configure your GPT runs <a name="configs"></a>
 
 You can find configuration options for GPT in class `GPTConfig` in the file `config/config.py`. It contains configurations for these aspects:
 
@@ -126,9 +204,6 @@ Note that the `gradient_accumulation` size is automatically computed from the `g
 
     You can set the path to load and save checkpoints respectively by `load` and `save`.
 
-## Prepare datasets <a name="datasets"></a>
-Instruction on how to obtain and prepare the dataset can be found in the [data folder README](data)
-
 ## Scale GPT on IPU <a name="scale"></a>
 Here we introduce some techniques that were required to scale up the GPT model for the required capacity and throughput.
 
@@ -143,9 +218,9 @@ Tensor-parallel training involves breaking the layers into shards, which are eac
 ### Data Parallel <a name="dp"></a>
 Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallel in PopXL addons in [MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
 
-## Pre-training code details <a name="code_details"></a>
+### Pre-training code details <a name="code_details"></a>
 
-### Constructing computational graphs for each phase
+#### Constructing computational graphs for each phase
 
 First of all, we build the training graphs for each phase, represented in the class `Graphs`. A phase can include one layer or consecutive layers. The execution of a phase can be for the forward graph, gradient graph, optimizer graph or a combination of them. We need to build the graphs used in each phase before we define the phases in [Build the main computational graph](#main).
 
@@ -170,7 +245,6 @@ We created these graphs:
     * Its gradient graph is combined with the forward graph by using `GPTPretrainingLossAndGrad`. The calculation of gradients happens just after the forward graph calculation in the same phase. Hence, the `fwd` graph includes both the graph for forward pass and the calculation of its gradients.
     * Tied embedding is used. The linear layer in LM task head reuses the inputs embedding weights. As shown in the diagram below, in the forward pass the LM weights are loaded from the embedding layer weights buffer `embedding.buffers.fwd.word.weight`. In the backward pass, the gradient of the tied embedding weights is stored in a separate remote buffer `tied_weight_grad_buffer`.
 
-
 #### Apply transformations on graphs
 
 We then apply transformations to the graphs built:
@@ -184,7 +258,7 @@ For batch serialisation, we also need to create remote buffers to load the input
 
 For instance, in `x_buffer`, row 0 stores the output of the embedding layer in forward pass. The output of each GPT decoder layer is stored from row 1 to `config.model.layers+1`. Note that the rows in the two buffers are filled up in the opposite directions.
 
-## Execution of layers  <a name="execution"></a>
+### Execution of layers  <a name="execution"></a>
 
 Below are diagrams demonstrating how each layer is executed during the forward, backward and optimiser steps.
 

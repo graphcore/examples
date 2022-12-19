@@ -27,30 +27,37 @@ common_options_inference: &common_options_inference
   output:
     - [samples/sec, 'throughput']
 
+config_options: &config_options
+  requirements_path: requirements.txt
+
 tf2_resnet50_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description:
     Resnet50 8k batch size, 16.16 precision, 4 replicas, 4 pipeline stages
   cmd: >-
     python3 train.py
-        --config resnet50_16ipus_8k_bn_pipeline
+        --config resnet50_mlperf_pod16_bs20
         --num-epochs 5
-        --logs-per-epoch 10
+        --logs-per-epoch 29
         --dataset-path $DATASETS_DIR/imagenet-data
         --validation false
 
 tf2_resnet50_train_real_pod16_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description:
     Resnet50 8k batch size, 16.16 precision, 4 replicas, 4 pipeline stages
   cmd: >-
     python3 train.py
-        --config resnet50_16ipus_8k_bn_pipeline
+        --config resnet50_mlperf_pod16_bs20
         --logs-per-epoch 10
         --dataset-path $DATASETS_DIR/imagenet-data
+        --checkpoint-output-dir ./checkpoints
+        --checkpoint-input-dir ./checkpoints
+        --wandb
+        --wandb-run-name tf2_resnet50_train_real_pod16_conv
 
 tf2_resnet50_serving_throughput:
-  <<: *common_options_inference
+  <<: [*common_options_inference, *config_options]
   description:
     Resnet50 serving throughput, batch size 1, 8, 16
   parameters:
@@ -65,6 +72,7 @@ tf2_resnet50_serving_throughput:
         --num-threads 16
 
 tf2_resnet50_serving_latency:
+  <<: *config_options
   data:
     latency:
         regexp: 'latency avg: *(.*?) ms'

@@ -53,8 +53,8 @@ class Logger:
                 logging.info("W&B logging in offline mode")
 
         # Determine saving folder
-        if hasattr(args, "checkpoint_path") and not args.checkpoint_path == "":
-            cls.logdirname = args.checkpoint_path
+        if hasattr(args, "checkpoint_output_dir") and not args.checkpoint_output_dir == "":
+            cls.logdirname = args.checkpoint_output_dir
         elif profile_path is not None:
             cls.logdirname = profile_path
         else:

@@ -23,7 +23,7 @@ CLIP_ViT-B-32_cc3m: &CLIP_ViT-B-32_cc3m
   ipu_generate_data: False
   image_path: "./data/cc3m/images"
   captions_path: "./data/cc3m/img_cap.csv"
-  batch_size: 53
+  batch_size: 46
   checkpoint_file: ""
   checkpoint_dir: "output/ckpt"
 

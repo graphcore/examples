@@ -23,7 +23,7 @@ class TestPopDist:
             "poprun",
             f"--num-instances=2 --num-replicas=2 {executable} train/train.py --data cifar10 --model resnet18 --epoch 2 "
             "--precision 16.16 --optimizer sgd_combined --lr 0.1 --micro-batch-size 2 --gradient-accumulation 16 --enable-stochastic-rounding --validation-mode after --dataloader-worker 4 "
-            "--norm-type group --norm-num-groups 32 --checkpoint-path restore_test_path_test_validation_distributed",
+            "--norm-type group --norm-num-groups 32 --checkpoint-output-dir restore_test_path_test_validation_distributed --checkpoint-input-dir restore_test_path_test_validation_distributed",
             python=False,
         )
         train_acc = get_train_accuracy(out)
@@ -33,7 +33,7 @@ class TestPopDist:
         # Check the validation accuracy from a single instance
         out = run_script(
             "train/validate.py",
-            "--checkpoint-path restore_test_path_test_validation_distributed/resnet18_cifar10_2.pt",
+            "--checkpoint-input-path restore_test_path_test_validation_distributed/resnet18_cifar10_2.pt",
         )
         restored_test_acc = get_test_accuracy(out)
         assert (

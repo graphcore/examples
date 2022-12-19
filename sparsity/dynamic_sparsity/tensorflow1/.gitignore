@@ -1,6 +1,0 @@
-.ipu_sparse_ops.pytest.build.lockfile
-.ipu_sparse_ops.gpt2.download.lockfile
-*.o
-checkpoints
-ipu_sparse_ops/tests/test_matmul_serialization
-wandb/

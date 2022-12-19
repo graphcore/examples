@@ -52,9 +52,9 @@ class GPT2Wrapper(nn.Module):
     def __init__(self, args, model_config):
         super().__init__()
         self.args = args
-        if args.pretrained_checkpoint:  # load pretrained model checkpoint
+        if args.checkpoint_input_dir:  # load pretrained model checkpoint
             self.model = GPT2LMHeadModel.from_pretrained(
-                args.pretrained_checkpoint)
+                args.checkpoint_input_dir)
         else:  # init model
             self.config = model_config
             self.model = GPT2LMHeadModel(config=self.config)
@@ -159,7 +159,7 @@ if __name__ == "__main__":
 
     if args.resume_training_from_checkpoint:
         training_state = torch.load(
-            Path(args.pretrained_checkpoint) / "training_state.pt")
+            Path(args.checkpoint_input_dir) / "training_state.pt")
 
     # Inference loop
     logger("--------------------- Inference Started --------------------")

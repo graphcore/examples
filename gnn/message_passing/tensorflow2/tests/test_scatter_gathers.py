@@ -12,6 +12,7 @@ from layers import _batched_segment_mean, _gather, _scatter
 def test_scatter_gather():
     config = ipu.config.IPUConfig()
     config.auto_select_ipus = 1
+    config.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
     ipu.utils.configure_ipu_system(config)
 
     n_tests = 10
@@ -49,6 +50,7 @@ def test_scatter_gather():
 def test_graphwise_means():
     config = ipu.config.IPUConfig()
     config.auto_select_ipus = 1
+    config.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
     ipu.utils.configure_ipu_system(config)
 
     n_nodes = 16

@@ -7,8 +7,8 @@ from tensorflow.python import ipu
 
 class StochasticRounding(unittest.TestCase):
 
-    def run_ipu_prog(self, stochastic_rounding: bool):
-        tf.keras.mixed_precision.set_global_policy('float16')
+    def run_ipu_prog(self, stochastic_rounding: bool, dtype: str):
+        tf.keras.mixed_precision.set_global_policy(dtype)
 
         weight_value = 1000.0
         num_iterations = 250
@@ -29,7 +29,10 @@ class StochasticRounding(unittest.TestCase):
 
         @tf.function
         def ipu_fn():
-            gradient = tf.constant([[gradient_value]], dtype=tf.float16)
+            if dtype == 'float16':
+                gradient = tf.constant([[gradient_value]], dtype=tf.float16)
+            else:
+                gradient = tf.constant([[gradient_value]], dtype=tf.float32)
             for _ in range(num_iterations):
                 optimizer.apply_gradients(zip([gradient], model.trainable_variables))
 
@@ -39,7 +42,7 @@ class StochasticRounding(unittest.TestCase):
         cfg.device_connection.enable_remote_buffers = True
         cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
-        ipu.utils.reset_ipu_seed(42)
+        ipu.utils.reset_ipu_seed(1)
 
         strategy.run(ipu_fn)
 
@@ -47,12 +50,12 @@ class StochasticRounding(unittest.TestCase):
 
     def test_stochastic_rounding_enabled(self):
 
-        weight_value_after_prog, weight_value_before_prog = self.run_ipu_prog(stochastic_rounding=True)
+        weight_value_after_prog, weight_value_before_prog = self.run_ipu_prog(stochastic_rounding=True, dtype='float32')
 
         self.assertNotEqual(weight_value_after_prog, weight_value_before_prog)
 
     def test_stochastic_rounding_disabled(self):
 
-        weight_value_after_prog, weight_value_before_prog = self.run_ipu_prog(stochastic_rounding=False)
+        weight_value_after_prog, weight_value_before_prog = self.run_ipu_prog(stochastic_rounding=False, dtype='float16')
 
         self.assertEqual(weight_value_after_prog, weight_value_before_prog)

@@ -157,6 +157,8 @@ class Checkpoint(Config):
     steps: int = 0
     """Save a checkpoint every X steps. Disable with 0."""
 
+    to_keep: int = 4
+    """Maximum number of checkpoints to keep"""
 
 @dataclass
 class GPTJConfig(Config):

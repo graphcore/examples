@@ -1,101 +1,135 @@
-PyTorch CNN reference application on IPUs
----
+# CNNs (Pytorch)
+Deep CNN residual learning models for image recognition and classification, optimised for Graphcore's IPU.
 
-## Overview
+| Framework | domain | Model | Datasets | Tasks| Training| Inference |
+|-------------|-|------|-------|-------|-------|---|
+| Pytorch | Vision | CNNs | ImageNet LSVRC 2012 | Image recognition, Image classification | ✅  | ✅ |
 
-Run CNN inference or training on Graphcore IPUs using PyTorch.
-Look in the subfolders inference, datasets and train to learn how to use these scripts.
 
-The following models are supported:
-1. ResNet50 (`--model resnet50`)
-2. EfficientNet-B0, B4 (`--model efficientnet-b0`)
+## Instructions summary
 
-To see the list of available models use `--help`
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-### Folder structure
+2. Install the system and Python requirements (see Environment setup)
 
-* `inference` Reference application to run inference.
-* `train` Reference application to run training.
-* `models` Models definition shared between inference and training.
-* `utils` Contains common code such as logging.
-* `data` Contains the downloaded datasets.
-* `datasets` Contains the dataset handling code, shared between inference and training.
-* `tests` Contains the unit tests
-* `tests_serial` Contains the popdist unit tests. Runs serially.
-* `README.md` This file.
-* `requirements.txt` Required Python packages.
-* `conftest.py` Test helper functions.
-* `required_apt_packages.txt` Required system packages.
-* `MAKEFILE` Commands to install dependencies
+3. Download the ImageNet LSVRC 2012 dataset (See Dataset setup)
 
-### Installation instructions
 
-1. Prepare the PopTorch environment. Install the Poplar SDK following the
-   Getting Started guide for your IPU system. Make sure to source the
-   `enable.sh` scripts for Poplar and PopART and activate a Python virtualenv with PopTorch installed.
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
 
-2. Install the apt dependencies for Ubuntu 18.04 (requires admin privileges):
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
 
-```console
-sudo apt install $(< required_apt_packages.txt)
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-3. (Optional) Install turbojpeg. This step is required for the optimal performance. TurboJPEG helps to eliminate host side bottlenecks due to improved jpeg decode performance.
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
 
-```console
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
+```
+
+4. Navigate to this example's root directory
+
+5. Install the Python requirements and pillow-SIMD:
+```bash
+make install
+```
+
+6. Install turbojpeg:
+```bash
 make install-turbojpeg
 ```
 
-4. Install the pip dependencies and download sample images for inference. These installations are handled by running the provided makefile:
 
-   ```console
-   make install
-   ```
+## Dataset setup
 
-The MakeFile includes seven options:
+### ImageNet LSVRC 2012
+Download the ImageNet LSVRC 2012 dataset from [the source](http://image-net.org/download) or [via kaggle](https://www.kaggle.com/c/imagenet-object-localization-challenge/data)
 
-1. `make get-data` which downloads a set of sample images for inference (data/get_data.sh)
-2. `make install` which installs dependencies/requirements
-3. `make test` which runs pytest for this example with 10 parallel threads
-4. `make get-turbojpeg` which downloads the turbojpeg and patch with crop-decode extension
-5. `make build-turbojpeg` which build the turbojpeg dependency
-6. `make all` calls `install`, `get_data` and `install-turbojpeg`
-7. `make install-turbojpeg` calls `get-turbojpeg` and `build-turbojpeg`
 
-The commands executed by make install are:
+Disk space required: 144GB
 
-```console
-	pip install -r requirements.txt
-	pip uninstall pillow -y
-	CC="cc -mavx2" pip install --no-cache-dir -U --force-reinstall pillow-simd
+```bash
+.
+├── bounding_boxes
+├── imagenet_2012_bounding_boxes.csv
+├── train
+└── validation
+
+3 directories, 1 file
 ```
 
-Note: pretrained models are used for inference. The weights are downloaded from the following places:
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
+
+For example:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
+
+## Custom training/inference and other features
+
+### Inference from pre-trained weights
+Pretrained models are used for inference. The weights are downloaded from the following places:
 * The official PyTorch model storage
 * [PyTorch Image Models](https://github.com/rwightman/pytorch-image-models) package's model storage
 
+### Troubleshooting
 
-### Running the tests
+If Triton server tests fails with such an error:
 
-After following installation instructions run:
-
-```console
-pytest
+```bash
+[model_runtime:cpp] [error] Error in model_runtime/source/Executable.cpp:38:Failed to deserialize XXX : Error reading executable - package hash (YYY) differs from poplar hash (ZZZ)
 ```
 
-## Troubleshooting
+This mean that models were generated and saved with different version of SDK and needs to be recreated. Please remove `tests_serial/tritonserver/test_environment_ready.lock` and rerun tests.
 
-If Triton server tests fails with such error:
+```bash
+Failed: Failed to download and/or compile Triton Server!
+```
 
-* ```[model_runtime:cpp] [error] Error in model_runtime/source/Executable.cpp:38:Failed to deserialize XXX : Error reading executable - package hash (YYY) differs from poplar hash (ZZZ)```
+Most probably some system packages are missing, ensure that all packages listed in `required_apt_packages.txt` are installed. Also refer to Triton Server build log file. After fixing error remove `../../../utils/triton_server/triton_environment_is_prepared.lock` and rerun tests.
 
-	This mean that models were generated and saved with different version of SDK and needs to be recreated. Please remove `tests_serial/tritonserver/test_environment_ready.lock` and rerun tests.
-
-* ```Failed: Failed to download and/or compile Triton Server!```
-
-	Most probably some system packages are missing, ensure that all packages listed in `required_apt_packages.txt` are installed. Also refer to Triton Server build log file. After fixing error remove `../../../utils/triton_server/triton_environment_is_prepared.lock` and rerun tests.
-
-### License
+## License
 
 ModelZoo.pytorch is licensed under MIT License:
 [https://github.com/PistonY/ModelZoo.pytorch/blob/master/LICENSE](https://github.com/rwightman/pytorch-image-models/blob/v0.4.12/LICENSE)
@@ -110,22 +144,3 @@ Libjpeg-turbo is licensed under BSD-style open-source licenses:
 [https://github.com/libjpeg-turbo/libjpeg-turbo/blob/2.1.0/LICENSE.md](https://github.com/libjpeg-turbo/libjpeg-turbo/blob/2.1.0/LICENSE.md)
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS", AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-###  Changelog
-
-#### September 2022
-* add troubleshooting for Triton server tests
-
-#### June 2022
-* Enable automatic loss scaling option
-* Merge collectives
-
-#### May 2022
-* Removed TFRecord and Webdataset support
-* Use fused crop and decode jpeg
-
-#### September 2021
-* Single IPU ResNet50 with batchnorm. Model is recomputed.
-* Webdataset improvements: Caching the dataset in the memory. Option for determining the image quality.
-* EfficientNet model changed to PyTorch Image Models implementation.
-

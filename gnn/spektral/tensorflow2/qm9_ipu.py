@@ -33,6 +33,7 @@ gradient_accumulation_steps_per_replica, epochs = (1, 2) if args.profile else (6
 ################################################################################
 cfg = IPUConfig()
 cfg.auto_select_ipus = args.num_ipus
+cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
 cfg.configure_ipu_system()
 
 # Mixed precision support

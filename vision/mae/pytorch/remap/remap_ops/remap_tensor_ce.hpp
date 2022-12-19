@@ -19,6 +19,7 @@
 #include <popart/names.hpp>
 #include <popart/popx/opx.hpp>
 #include <popart/popx/devicex.hpp>
+#include <popart/popx/popopx.hpp>
 
 using namespace popart;
 using namespace popart::popx;

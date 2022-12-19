@@ -2,8 +2,7 @@
 import logging
 import time
 import numpy as np
-from typing import Dict, List, Union, Optional
-from functools import partial
+from typing import Dict, List, Union
 
 import popdist
 import popxl
@@ -16,8 +15,7 @@ from popxl_addons.utils import timer
 
 from popxl_addons.graph import GraphWithNamedArgs
 from popxl_addons.variable_factory import NamedVariableFactories
-from popxl_addons.named_replica_grouping import NamedReplicaGrouping, fill_none_group, is_cross_instance, \
-    get_instance_replica_grouping
+from popxl_addons.named_replica_grouping import NamedReplicaGrouping, get_ild_replica_grouping
 from popxl_addons.named_tensors import NamedTensors
 from popxl_addons.transforms.repeat_graph import repeat_graph
 from popxl_addons.transforms.batch_serialisation import batch_serialise_fwd_and_grad, batch_serial_buffer, \
@@ -43,36 +41,23 @@ use_io_tiles = False
 
 
 def get_activ_shard_group(a: popxl.Tensor, shard_group: popxl.ReplicaGrouping):
+    return shard_group if a.nelms >= RTS_ACTIVATIONS_THRESHOLD else popxl.gcg().ir.replica_grouping(group_size=1)
+
+
+def get_rts_groups(facts: NamedVariableFactories) -> NamedReplicaGrouping:
     ir = popxl.gcg().ir
-    return shard_group if a.nelms >= RTS_ACTIVATIONS_THRESHOLD else ir.replica_grouping(group_size=1)
 
-
-def get_rts_groups(facts: NamedVariableFactories,
-                   rts_group_if_none: Optional[popxl.ReplicaGrouping] = None) -> NamedReplicaGrouping:
-    if rts_group_if_none:
-        if is_cross_instance(rts_group_if_none):
-            raise ValueError(
-                "rts group should span across a single instance. Use get_instance_replica_grouping")
-
-    ir = popxl.gcg().ir
-    none_value = rts_group_if_none or ir.replica_grouping(group_size=ir.instance_replication_factor,
-                                                          stride=1)  # defaults to all replicas in a single instance
-
-    def fill_none_and_get_instance(rg: popxl.ReplicaGrouping):
-        rg = rg or none_value
-        rg = get_instance_replica_grouping(rg)
-        return rg
-
-    rts_groups = facts.replica_groupings.map(fill_none_and_get_instance)
-    return rts_groups
-
-
-def get_variable_groups(facts: NamedVariableFactories,
-                        var_group_if_none: Optional[popxl.ReplicaGrouping] = None) -> NamedReplicaGrouping:
-    default_for_none = var_group_if_none or popxl.gcg(
-    ).ir.replica_grouping()  # defaults to all replicas
-    func_to_apply = partial(fill_none_group, none_value=default_for_none)
-    return facts.replica_groupings.map(func_to_apply)
+    rts_groups = {}
+    for k, f in facts.to_dict().items():
+        size = np.prod(f.shape)
+        rg = f.replica_grouping
+        # Limit RTS to within an ILD
+        rg = get_ild_replica_grouping(rg)
+        if size % rg.group_size == 0 and size >= RTS_THRESHOLD:
+            rts_groups[k] = rg
+        else:
+            rts_groups[k] = ir.replica_grouping(group_size=1)
+    return NamedReplicaGrouping.from_dict(rts_groups)
 
 
 def requires_weight_decay(t: popxl.Tensor):
@@ -80,17 +65,18 @@ def requires_weight_decay(t: popxl.Tensor):
 
 
 def optimizer_graphs(config: GPTJConfig, optimizer: addons.Module, variables: NamedTensors,
-                     replica_groups: NamedReplicaGrouping):
+                     replica_groups: NamedReplicaGrouping,
+                     shard_groups: NamedReplicaGrouping):
     optim_facts = {}
     optim_graphs = {}
     replica_groups = replica_groups.to_dict()
+    shard_groups = shard_groups.to_dict()
     for name, var in variables.to_dict().items():
-        # currently assumes grads have the same replica group as their var. Can change this if needed.
+        # Currently assumes grads have the same replica group as their var
+        input_spec = replica_sharded_spec(var, shard_over=shard_groups[name])
         optim_facts[name], optim_graphs[name] = optimizer.create_graph(
-            replica_sharded_spec(var, threshold=RTS_THRESHOLD,
-                                 replica_grouping=replica_groups[name]),
-            replica_sharded_spec(var, threshold=RTS_THRESHOLD,
-                                 replica_grouping=replica_groups[name]),
+            input_spec,
+            input_spec,
             lr=popxl.TensorSpec((), popxl.float32),
             replica_grouping=replica_groups[name],
             weight_decay=config.training.optimizer.weight_decay if requires_weight_decay(
@@ -152,7 +138,6 @@ def create_embeddings_graph(config: GPTJConfig, optimizer: addons.Module, *args,
         config).create_graph(*args, **kwargs)
 
     # where the variables are equal. If a variable has None as rg, it is assumed equal on all replicas.
-    fwd_var_groups = get_variable_groups(fwd_facts)
     dp_group = popxl.gcg().ir.replica_grouping(stride=config.execution.tensor_parallel,
                                                group_size=config.execution.data_parallel)
 
@@ -160,13 +145,14 @@ def create_embeddings_graph(config: GPTJConfig, optimizer: addons.Module, *args,
     required_grads = ()
     grad_facts, embeddings.bwd = addons.autodiff_with_accumulation(embeddings.fwd,
                                                                    embeddings.fwd.args.tensors,
-                                                                   required_grads,
-                                                                   replica_groupings=fwd_var_groups)
+                                                                   grads_required=required_grads,
+                                                                   replica_groupings=fwd_facts.replica_groupings)
 
     optim_facts, embeddings.optim = optimizer_graphs(config,
                                                      optimizer,
                                                      embeddings.fwd.args,
-                                                     replica_groups=fwd_var_groups)
+                                                     replica_groups=fwd_facts.replica_groupings,
+                                                     shard_groups=get_rts_groups(fwd_facts))
     # Variables required
     embeddings.facts = NamedVariableFactories(fwd=fwd_facts, optim=optim_facts)
     embeddings.grad_facts = grad_facts
@@ -177,7 +163,6 @@ def create_embeddings_graph(config: GPTJConfig, optimizer: addons.Module, *args,
     shard_over = {k: rg.group_size for k,
                   rg in rts_fwd_optim_groups.to_dict().items()}
     embeddings.buffers = named_variable_buffers(embeddings.facts,
-                                                sharded_threshold=RTS_THRESHOLD,
                                                 shard_over_dict=shard_over)
 
     # Create Graphs for loading/gathering/storing/reducing
@@ -198,7 +183,6 @@ def create_embeddings_graph(config: GPTJConfig, optimizer: addons.Module, *args,
     rts_bwd_group = NamedReplicaGrouping(accum=rts_fwd_optim_groups.fwd.copy())
     embeddings._grad_reduce, embeddings._grad_reduce_names = reduce_replica_sharded_graph(grad_accums,
                                                                                           'mean',
-                                                                                          threshold=RTS_THRESHOLD,
                                                                                           shard_groups=rts_bwd_group,
                                                                                           replica_group=dp_group,
                                                                                           use_io_tiles=use_io_tiles)
@@ -213,7 +197,6 @@ def create_decoder_block_graph(config: GPTJConfig, optimizer: addons.Module, *ar
         config).create_graph(*args, **kwargs)
     required_grads = (layer.fwd.graph.inputs[0], )
 
-    fwd_var_groups = get_variable_groups(fwd_facts)
     dp_group = popxl.gcg().ir.replica_grouping(stride=config.execution.tensor_parallel,
                                                group_size=config.execution.data_parallel)
 
@@ -230,14 +213,14 @@ def create_decoder_block_graph(config: GPTJConfig, optimizer: addons.Module, *ar
 
     grad_facts, layer.bwd = addons.autodiff_with_accumulation(layer.fwd,
                                                               layer.fwd.args.tensors,
-                                                              required_grads,
+                                                              grads_required=required_grads,
                                                               called_graphs_grad_info=called_graphs_grad_info,
-                                                              replica_groupings=fwd_var_groups)
+                                                              replica_groupings=fwd_facts.replica_groupings)
 
     popxl.transforms.decompose_sum(layer.bwd.graph)
 
     optim_args, layer.optim = optimizer_graphs(
-        config, optimizer, layer.fwd.args, replica_groups=fwd_var_groups)
+        config, optimizer, layer.fwd.args, replica_groups=fwd_facts.replica_groupings, shard_groups=get_rts_groups(fwd_facts))
 
     # Variables required
     layer.facts = NamedVariableFactories(fwd=fwd_facts, optim=optim_args)
@@ -249,12 +232,11 @@ def create_decoder_block_graph(config: GPTJConfig, optimizer: addons.Module, *ar
     buffer_facts.insert("bwd", grad_facts.copy())
     buffer_facts.bwd.pop("mean_accum_counter")
 
-    rts_fwd_bwd_group = get_rts_groups(buffer_facts)
+    rts_fwd_bwd_groups = get_rts_groups(buffer_facts)
     shard_over = {k: rg.group_size for k,
-                  rg in rts_fwd_bwd_group.to_dict().items()}
+                  rg in rts_fwd_bwd_groups.to_dict().items()}
     layer.buffers = named_variable_buffers(buffer_facts,
                                            entries,
-                                           sharded_threshold=RTS_THRESHOLD,
                                            shard_over_dict=shard_over)
 
     # Create Graphs for loading/gathering/storing/reducing
@@ -274,7 +256,7 @@ def create_decoder_block_graph(config: GPTJConfig, optimizer: addons.Module, *ar
     layer._fwd_all_gather, layer._fwd_all_gather_names = all_gather_replica_sharded_graph(
         NamedTensors.pack(layer._fwd_load_names,
                           layer._fwd_load.graph.outputs),
-        replica_groups=rts_fwd_bwd_group.fwd,
+        replica_groups=rts_fwd_bwd_groups.fwd,
         use_io_tiles=use_io_tiles)
 
     grad_accums = layer.bwd.args.copy()
@@ -282,8 +264,7 @@ def create_decoder_block_graph(config: GPTJConfig, optimizer: addons.Module, *ar
 
     layer._grad_reduce, layer._grad_reduce_names = reduce_replica_sharded_graph(grad_accums,
                                                                                 'mean',
-                                                                                threshold=RTS_THRESHOLD,
-                                                                                shard_groups=rts_fwd_bwd_group.bwd,
+                                                                                shard_groups=rts_fwd_bwd_groups.bwd,
                                                                                 replica_group=dp_group,
                                                                                 use_io_tiles=use_io_tiles)
 
@@ -298,13 +279,12 @@ def create_task_head_graph(config: GPTJConfig, optimizer: addons.Module, *args, 
     facts, graph = GPTJLMHeadLossAndGradTP(
         config).create_graph(*args, **kwargs)
 
-    fwd_bwd_var_groups = get_variable_groups(facts)
     dp_group = popxl.gcg().ir.replica_grouping(stride=config.execution.tensor_parallel,
                                                group_size=config.execution.data_parallel)
 
     optim_ts = graph.args.fwd.copy()
     optim_facts, optim_graphs = optimizer_graphs(
-        config, optimizer, optim_ts, replica_groups=fwd_bwd_var_groups.fwd)
+        config, optimizer, optim_ts, replica_groups=facts.fwd.replica_groupings, shard_groups=get_rts_groups(facts.fwd))
 
     facts.insert("optim", optim_facts)
     head.fwd = graph
@@ -320,7 +300,6 @@ def create_task_head_graph(config: GPTJConfig, optimizer: addons.Module, *args, 
     shard_over = {k: rg.group_size for k,
                   rg in rts_fwd_bwd_groups.to_dict().items()}
     head.buffers = named_variable_buffers(buffer_facts,
-                                          sharded_threshold=RTS_THRESHOLD,
                                           shard_over_dict=shard_over)
 
     # Create Graphs for loading/gathering/storing/reducing
@@ -343,7 +322,6 @@ def create_task_head_graph(config: GPTJConfig, optimizer: addons.Module, *args, 
 
     head._grad_reduce, head._grad_reduce_names = reduce_replica_sharded_graph(graph.args.bwd,
                                                                               'mean',
-                                                                              threshold=RTS_THRESHOLD,
                                                                               shard_groups=rts_fwd_bwd_groups.bwd,
                                                                               replica_group=dp_group,
                                                                               use_io_tiles=use_io_tiles)
@@ -373,8 +351,7 @@ def embeddings_batch_serialise(config: GPTJConfig, embeddings: Graphs, input_str
                                                 x_buffer, 0, x_shard_group)},
                                             seed_input=embeddings.fwd.graph.inputs[1],
                                             rows=1,
-                                            io_mode='io',
-                                            sharded_threshold=RTS_ACTIVATIONS_THRESHOLD)
+                                            io_mode='io')
     embeddings.fwd = fwd.graph
     embeddings.bwd = bwd.graph
 
@@ -405,8 +382,7 @@ def decoder_block_batch_serialise(config: GPTJConfig, layer: Graphs, x_buffer: p
                                             },
                                             seed_input=layer.fwd.graph.inputs[1],
                                             rows=config.model.layers,
-                                            io_mode='io',
-                                            sharded_threshold=RTS_ACTIVATIONS_THRESHOLD)
+                                            io_mode='io')
     layer.fwd = fwd.graph
     layer.bwd = bwd.graph
 
@@ -467,7 +443,7 @@ def global_norm_reduce(config: GPTJConfig, grad_norm: popxl.Tensor, grads: Named
             g, config.execution.loss_scaling))
 
 
-def finetuning_mnli(config: GPTJConfig) -> TaskSession:
+def finetuning_mnli(config: GPTJConfig, no_init: bool = True) -> TaskSession:
     replicas = config.execution.data_parallel * config.execution.tensor_parallel
     ir = popxl.Ir(
         replication="popdist" if popdist.isPopdistEnvSet() else replicas)
@@ -484,16 +460,18 @@ def finetuning_mnli(config: GPTJConfig) -> TaskSession:
         tp_group = ir.replica_grouping(
             stride=1, group_size=config.execution.tensor_parallel)
         with main:
-            # -----  Define input and output streams -----
+            # ----- Define input and output streams -----
             input_shape = (config.execution.micro_batch_size *
                            config.model.sequence_length, )
             input_streams = addons.InputStreams(words=(input_shape, popxl.int32),
                                                 labels=(input_shape,
                                                         popxl.int32),
-                                                seed=((2, ), popxl.uint32),
                                                 lr=((), popxl.float32))
             output_streams = addons.OutputStreams(
                 loss=((), config.model.dtype), grad_norm=((), popxl.float32))
+
+            # ---- Initialise Random Seed ----
+            seed_v, seed = addons.seed_variable(config.model.seed, tp_group)
 
             # ----- Build compute graphs -----
             optimizer = AdamOptimizerStep()
@@ -501,12 +479,12 @@ def finetuning_mnli(config: GPTJConfig) -> TaskSession:
             embeddings = create_embeddings_graph(config,
                                                  optimizer,
                                                  input_streams.words.spec,
-                                                 seed=input_streams.seed.spec)
+                                                 seed=seed.spec)
 
             decoder_block = create_decoder_block_graph(config,
                                                        optimizer,
                                                        embeddings.fwd.graph.outputs[0],
-                                                       seed=input_streams.seed.spec)
+                                                       seed=seed.spec)
 
             head = create_task_head_graph(config,
                                           optimizer,
@@ -524,12 +502,10 @@ def finetuning_mnli(config: GPTJConfig) -> TaskSession:
             x_buffer = batch_serial_buffer(embeddings.fwd.graph.outputs[0],
                                            steps=config.gradient_accumulation,
                                            rows=config.model.layers + 1,
-                                           sharded_threshold=RTS_ACTIVATIONS_THRESHOLD,
                                            shard_group=get_activ_shard_group(embeddings.fwd.graph.outputs[0], tp_group))
             dx_buffer = batch_serial_buffer(embeddings.bwd.graph.inputs[0],
                                             steps=config.gradient_accumulation,
                                             rows=config.model.layers + 1,
-                                            sharded_threshold=RTS_ACTIVATIONS_THRESHOLD,
                                             shard_group=get_activ_shard_group(embeddings.bwd.graph.inputs[0], tp_group))
 
             #   Graphs
@@ -545,11 +521,11 @@ def finetuning_mnli(config: GPTJConfig) -> TaskSession:
                 ir, config.execution.available_memory_proportion)
 
             # ----- Create Variables -----
-            variables = NamedTensors()
+            variables = NamedTensors(random_seed=seed_v)
             transformer = NamedTensors()
             variables.insert("transformer", transformer)
             for key in ('fwd', 'bwd', 'optim'):
-                empty = key == 'fwd'
+                empty = no_init and key == 'fwd'
                 if key in embeddings.facts.keys():
                     transformer.insert(f"embeddings.{key}",
                                        embeddings.facts[key].init_remote(
@@ -571,10 +547,12 @@ def finetuning_mnli(config: GPTJConfig) -> TaskSession:
             # ---- Execute ----
 
             with popxl.in_sequence():
+                # Increment random seed
+                seed += 1
                 # Load current learning rate
-                with popxl.transforms.merge_exchange(), popxl.in_sequence(False):
-                    seed = ops.host_load(input_streams.seed)
-                    lr = ops.host_load(input_streams.lr)
+                lr = ops.host_load(input_streams.lr)
+                # Increment random seed
+                seed += 1
 
                 def embedding_fwd_phase(seed):
                     # Load Embedding layer
@@ -616,7 +594,6 @@ def finetuning_mnli(config: GPTJConfig) -> TaskSession:
                     head.fwd.bind(head_vars).call(0)
                     # Data parallel reduce
                     reduced_grads = head.grad_reduce(head_vars.bwd)
-
                     # Global Norm calculation
                     grad_norm = ops.init(
                         (), popxl.float32, name='grad_norm', init_type='zero')
@@ -731,11 +708,26 @@ def finetuning_mnli(config: GPTJConfig) -> TaskSession:
             'lm_head': variables.lm_head.fwd,
         })
 
+        optim_vars = NamedTensors.from_dict({
+            'transformer.embeddings': variables.transformer.embeddings.optim,
+            'transformer.decoder': NamedTensors.from_dict({
+                i: variables.transformer.decoder[i].optim
+                for i in range(config.model.layers)
+            }),
+            'lm_head': variables.lm_head.optim,
+        })
+
+        state = NamedTensors(fwd=fwd_vars, optim=optim_vars)
+
     ir.num_host_transfers = config.execution.device_iterations * \
         config.gradient_accumulation
 
-    session = TaskSession(input_streams, output_streams,
-                          fwd_vars, ir, "ipu_hw")
+    session = TaskSession(inputs=input_streams,
+                          outputs=output_streams,
+                          state=state,
+                          max_checkpoints=config.checkpoint.to_keep,
+                          ir=ir,
+                          device_desc="ipu_hw")
 
     return session
 

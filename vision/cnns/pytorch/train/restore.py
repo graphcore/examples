@@ -13,9 +13,9 @@ import datasets
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Restoring training run from a given checkpoint')
-    parser.add_argument('--checkpoint-path', help="The path of the checkpoint file", required=True)
+    parser.add_argument('--checkpoint-input-path', help="The path of the checkpoint file to load", required=True)
     args = parser.parse_args()
-    checkpoint = torch.load(args.checkpoint_path)
+    checkpoint = torch.load(args.checkpoint_input_path)
     args = checkpoint['args']
     utils.Logger.setup_logging_folder(args)
 
@@ -39,6 +39,6 @@ if __name__ == '__main__':
     train(training_model, train_data, args, lr_scheduler, range(checkpoint["epoch"] + 1, args.epoch + 1), optimizer, training_validation_func)
 
     if args.validation_mode == "after":
-        checkpoint_folder = os.path.dirname(os.path.realpath(args.checkpoint_path))
+        checkpoint_folder = os.path.dirname(os.path.realpath(args.checkpoint_input_path))
         checkpoint_files = [os.path.join(checkpoint_folder, file_name) for file_name in os.listdir(checkpoint_folder) if file_name.endswith(".pt")]
         validate_checkpoints(checkpoint_files)

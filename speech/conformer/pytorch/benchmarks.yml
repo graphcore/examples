@@ -7,8 +7,12 @@ common_options: &common_options
   output:
     - [samples/sec, 'throughput']
 
+config_options: &config_options
+  requirements_path: requirements.txt
+  pre_run_commands: [make clean, make all]
+
 pytorch_wenet_conformer_globalbs_288_train_gen_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: Conformer public model fp16 precision, 1 replica runs on 4 IPUs
     replicate x4. Performance test.
   cmd: >-
@@ -23,7 +27,7 @@ pytorch_wenet_conformer_globalbs_288_train_gen_pod16:
       --train_iterator.batch_size=4
 
 pytorch_wenet_conformer_globalbs_288_train_real_pod16_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: Conformer public model fp16 precision, 1 replica runs on 4 IPUs
     replicate x4. Train to convergence.
   cmd: >-
@@ -44,6 +48,7 @@ pytorch_wenet_conformer_globalbs_288_train_real_pod16_conv:
 
 
 pytorch_wenet_conformer_globalbs_288_validation_real_pod4:
+  <<: *config_options
   description: Conformer public model fp16 precision, validation
   cmd: >-
     python3

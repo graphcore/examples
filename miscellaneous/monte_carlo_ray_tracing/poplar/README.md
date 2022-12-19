@@ -1,47 +1,66 @@
-# Graphcore
-
----
-## Monte Carlo Ray Tracing
+# Monte Carlo Ray Tracing
+A proof of concept monte carlo ray tracing using the [light](https://github.com/mpups/light) repository, based on [Smallpaint](https://users.cg.tuwien.ac.at/zsolnai/gfx/smallpaint/), optimised for Graphcore's IPU.
 
 ![Example output image](images/example.png)
 
-A proof of concept Monte Carlo ray tracing application.
+| Framework | domain | Model | Datasets | Tasks| Training| Inference |
+|-------------|-|------|-------|-------|-------|---|
+| Poplar | Miscellaneous | Monte carlo ray tracing | N/A | Ray tracing | ✅ | ✅ |
 
-This uses the third party repository [light](https://github.com/mpups/light) which in turn is based on [Smallpaint](https://users.cg.tuwien.ac.at/zsolnai/gfx/smallpaint/) by Károly Zsolnai-Fehér, both of which are released under the MIT license.
 
-### File structure
+## Instructions summary
 
-* `src/` C++ files for the Poplar application.
-* `src/codelets/` IPU path tracing compute kernels.
-* `src/exr/` C++ code for EXR post processing tools.
-* `light/` Submodule that fetches the custom version of Smallpaint.
-* `scripts/` Utility scripts.
-* `CMakeLists.txt` CMake build description.
-* `README.md` This file.
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-### How to use this demo
+2. Install the system and Python requirements (see Environment setup)
 
-1. Prepare the environment.
 
-Install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` script for poplar.
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
 
-2. Install the apt dependencies for Ubuntu 18.04 (requires admin privileges):
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
 
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+
+
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the apt requirements
 ```bash
 sudo apt install $(< required_apt_packages.txt)
 ```
 
-3. Build and run the application:
-
+4. Build the application:
 ```bash
-git clone https://github.com/mpups/light.git
-cd light
-git checkout 589b32f
-cd ..
+git clone -b ipu_example https://github.com/mpups/light.git
 mkdir build
 cd build
 cmake ../ -G Ninja
 ninja
+```
+
+
+## Run the example
+```bash
 ./ipu_trace --outfile image.png -w 960 -h 1080 --tile-width 40 --tile-height 18 --samples 1000 --samples-per-step 100 --ipus 1
 ```
 
@@ -49,17 +68,10 @@ This will render an image to a final sample count of 1000 paths per pixel (previ
 
 The output image format is determined by the extension given to the `--outfile` option (support for different formats comes directly from [OpenCV](https://opencv.org/)). In addition to the chosen output format light always saves the raw high dynamic range (HDR) output in an EXR file (e.g. image.png.exr). You can use [pfs tools](http://pfstools.sourceforge.net) to manipulate and view the EXR file (e.g. to apply tone mapping: `pfsin image.png.exr | pfstmo_reinhard05 | pfsout tone_mapped.png`).
 
-## Running the tests
 
-In a Python3 environment:
-```
-pip install -r tests/requirements.txt
-pytest ./tests
-```
+## Custom running and other features
 
-NOTE: The test relies on Ubuntu's apt installed `convert` program and will not work with other versions such as the one bundled with oneAPI (see below).
-
-## Distributed rendering
+### Distributed rendering
 
 The script 'scripts/distributed_render.sh' shows how to utilise many IPUs to render a high quality image. This script requires the following external dependency for the final de-noising step:
 * [Intel Open Image Denoiser](https://www.openimagedenoise.org/).

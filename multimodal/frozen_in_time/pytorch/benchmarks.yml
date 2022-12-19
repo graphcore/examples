@@ -12,8 +12,12 @@ common_options: &common_options
       regexp: 'loss=([\d\+\.e]+)'
       skip: 1
 
+config_options: &config_options
+  requirements_path: requirements.txt
+  required_apt_packages_path: required_apt_packages.txt
+
 pytorch_fit_pretrain_gen_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Frozen in time n-frame pretraining throughput test
     using host generated data on 8IPUs.
@@ -32,7 +36,7 @@ pytorch_fit_pretrain_gen_pod16:
       --trainer.wandb False
 
 pytorch_fit_1f_pretrain_real_pod16_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Frozen in time 1-frame pretraining on 8IPUs.
   cmd: >-
@@ -54,7 +58,7 @@ pytorch_fit_1f_pretrain_real_pod16_conv:
       --trainer.run_name pytorch_fit_1f_pretrain_real_pod16_conv
 
 pytorch_fit_2f_pretrain_real_pod16_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Frozen in time 2-frame pretraining on 8IPUs.
   cmd: >-
@@ -76,7 +80,7 @@ pytorch_fit_2f_pretrain_real_pod16_conv:
       --trainer.run_name pytorch_fit_2f_pretrain_real_pod16_conv
 
 pytorch_fit_4f_pretrain_real_pod16_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Frozen in time 4-frame pretraining on 8IPUs.
   cmd: >-

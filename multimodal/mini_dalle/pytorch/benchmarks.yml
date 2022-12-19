@@ -14,9 +14,11 @@ common_options: &common_options
     - [loss, 'loss']
     - [sec, 'compile_time']
 
+config_options: &config_options
+  requirements_path: requirements.txt
 
 pytorch_minidalle_train_real_pod4:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   cmd: >-
     python3 train.py
       --config L16
@@ -26,7 +28,7 @@ pytorch_minidalle_train_real_pod4:
       --epochs 2
 
 pytorch_minidalle_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   cmd: >-
     python3 train.py
       --config L16_POD16
@@ -36,7 +38,7 @@ pytorch_minidalle_train_real_pod16:
       --epochs 2
 
 pytorch_minidalle_train_real_pod64:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   cmd: >-
     python3 train.py
       --config L16_POD64
@@ -46,7 +48,7 @@ pytorch_minidalle_train_real_pod64:
       --epochs 2
 
 pytorch_minidalle_train_real_pod64_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   cmd: >-
     python3 train.py
       --config L16_POD64

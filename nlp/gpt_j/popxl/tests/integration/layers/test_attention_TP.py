@@ -11,7 +11,6 @@ import popxl
 import popxl_addons as addons
 from popxl_addons.patterns import apply_pre_alias_patterns
 from popxl_addons.task_session import TaskSession
-
 from config import GPTJConfig
 from modelling.attention import GPTJSelfAttentionTP
 from utils.utils import repeat
@@ -148,7 +147,7 @@ def test_attention_to_hf(test_config: GPTJConfig):
 
     inputs = {h2d: repeat(data, n_shards)
               for h2d, data in zip(inputs_host_steam, inputs_data)}
-    session = TaskSession(inputs, [fwd_d2h], vars, ir, 'ipu_hw')
+    session = TaskSession(inputs, [fwd_d2h], vars, ir=ir, device_desc='ipu_hw')
 
     with session:
         out = session.run(inputs)[fwd_d2h]

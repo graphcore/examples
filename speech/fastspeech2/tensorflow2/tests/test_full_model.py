@@ -45,7 +45,7 @@ def create_gpu_model(config):
 def create_ipu_model(config, use_pipeline=False):
     from fastspeech2 import build_pipeline_model, build_model
     if use_pipeline:
-        model = ipu.keras.PipelineModel(*build_pipeline_model(config))
+        model = tf.keras.ipu.PipelineModel(*build_pipeline_model(config))
     else:
         model = tf.keras.Model(*build_model(config))
     model._name = "FastSpeech2"

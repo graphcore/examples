@@ -1,186 +1,154 @@
-PyTorch Object Detector reference application on IPUs
----
+# YOLOv4-P5
+YOLOv4-P5 (object detection reference application), based on [this repository](https://github.com/WongKinYiu/ScaledYOLOv4), optimised for Graphcore's IPU.
 
-## Overview
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| Pytorch | Vision | YOLOv4-P5 | COCO 2017 | Object detection | ❌ | ✅ | [Scaled-YOLOv4: Scaling Cross Stage Partial Network](https://arxiv.org/abs/2011.08036) |
 
-Run Object Detector inference on Graphcore IPUs using PyTorch.
 
-The following models are supported in inference:
-1. YOLOv4-P5, implementation of [Scaled-YOLOv4: Scaling Cross Stage Partial Network](https://arxiv.org/abs/2011.08036). [Original repository](https://github.com/WongKinYiu/ScaledYOLOv4).
+## Instructions summary
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-### Folder structure
+2. Install the system and Python requirements (see Environment setup)
 
-* `run.py` Reference script to run the application.
-* `models` Models definition.
-* `utils` Contains common code such as tools and dataset functionalities.
-* `configs` Contains the default configuration for inference.
-* `tests` Contains all the different tests for the model.
-* `README.md` This file.
-* `requirements.txt` Required Python packages.
-* `conftest.py` Test helper functions.
+3. Download the ImageNet LSVRC 2012 dataset (See Dataset setup)
 
-### Installation instructions
 
-1. Prepare the PopTorch environment. Install the Poplar SDK following the
-   [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for your IPU system. Make sure to source the
-   `enable.sh` scripts for Poplar and PopART and activate a Python virtualenv with PopTorch installed.
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
 
-2. Install the pip dependencies:
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
 
-```console
-pip install -r requirements.txt
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-3. Download labels and sample images for inference and training:
-
-Download the labels:
-
-```console
-curl -L https://github.com/ultralytics/yolov5/releases/download/v1.0/coco2017labels.zip -o coco2017labels.zip && unzip -q coco2017labels.zip -d '/localdata/datasets' && rm coco2017labels.zip
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-This command might need root access or sudo to unzip the folders.
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
 
-Download the images:
 
-```console
-bash utils/download_coco_dataset.sh
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
 ```
 
-4. Build the custom ops:
+2. Navigate to the Poplar SDK root directory
 
-```console
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
+```
+
+4. Navigate to this example's root directory
+
+5. Install the Python requirements:
+```bash
+pip3 install -r requirements.txt
+```
+
+5. Build the custom ops:
+```bash
 make
 ```
 
+
+## Dataset setup
+
+### COCO 2017
+Download the COCO 2017 dataset from [the source](http://images.cocodataset.org/zips/) or [via kaggle](https://www.kaggle.com/datasets/awsaf49/coco-2017-dataset), or via the script we provide:
+```bash
+bash utils/download_coco_dataset.sh
+```
+
+Additionally, also download  and unzip the labels:
+```bash
+curl -L https://github.com/ultralytics/yolov5/releases/download/v1.0/coco2017labels.zip -o coco2017labels.zip && unzip -q coco2017labels.zip -d '<dataset path>' && rm coco2017labels.zip
+```
+
+Disk space required: 26G
+
+```bash
+.
+├── LICENSE
+├── README.txt
+├── annotations
+├── images
+├── labels
+├── test-dev2017.txt
+├── train2017.cache
+├── train2017.txt
+├── val2017.cache
+└── val2017.txt
+
+3 directories, 7 files
+```
+
+
 ## Running and benchmarking
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
 
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
+For example:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
 Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
-### Running inference
 
-1. Running inference without the weight:
+## Custom training/inference and other features
 
-```console
-python run.py
-```
-`run.py` will use the default config defined in `configs/inference-yolov4p5.yaml` which can be overridden by the following options:
-```
-  -h, --help            show this help message and exit
-  --data DATA           Path to the dataset root dir (default:
-                        /localdata/datasets/)
-  --config CONFIG       Configuration of the model (default:
-                        configs/inference-yolov4p5.yaml)
-  --show-config         Show configuration for the program (default: False)
-  --weights WEIGHTS     Pretrained weight path to use if specified (default:
-                        None)
-  --num-ipus NUM_IPUS   Number of IPUs to use (default: 1)
-  --num-workers NUM_WORKERS
-                        Number of workers to use (default: 20)
-  --input-channels INPUT_CHANNELS
-                        Number of channels in the input image (default: 3)
-  --activation ACTIVATION
-                        Activation function to use in the model (default:
-                        mish)
-  --normalization NORMALIZATION
-                        Normalization function to use in the model (default:
-                        batch)
-  --num-classes NUM_CLASSES
-                        Number of classes of the model (default: 80)
-  --epochs EPOCHS       Number of training epochs (default: 300)
-  --class-name-path CLASS_NAME_PATH
-                        Path to the class names yaml (default:
-                        ./configs/class_name.yaml)
-  --image-size IMAGE_SIZE
-                        Size of the input image (default: 896)
-  --micro-batch-size MICRO_BATCH_SIZE
-                        The number of samples calculated in one full
-                        forward/backward pass (default: 1)
-  --mode MODE           Mode to run the model (default: test)
-  --precision {half,mixed,single}
-                        Precision to run the model with (default: half)
-  --benchmark           Run performance benchmark (default: False)
-  --sharded             Use sharded execution, where IPU will sequentially
-                        execute a part of the model, otherwise pipeline
-                        execution will be used instead (default: False)
-  --exec-cache EXEC_CACHE
-                        Path to store training executable cache for the
-                        compiled model (default: ./exec_cache)
-  --cpu                 Use cpu to run model (default: True)
-  --device-iterations DEVICE_ITERATIONS
-                        Number of device iterations (default: 1)
-  --gradient-accumulation GRADIENT_ACCUMULATION
-                        Number of gradient accumulation, only relevant for
-                        training (default: 1)
-  --initial-lr INITIAL_LR
-                        Initial learning rate (default: 0.01)
-  --momentum-lr MOMENTUM_LR
-                        Initial learning rate (default: 0.937)
-  --class-conf-threshold CLASS_CONF_THRESHOLD
-                        Minimum threshold for class prediction probability
-                        (default: 0.4)
-  --obj-threshold OBJ_THRESHOLD
-                        Minimum threshold for the objectness score (default:
-                        0.4)
-  --iou-threshold IOU_THRESHOLD
-                        Minimum threshold for IoU used in NMS (default: 0.65)
-  --plot-step PLOT_STEP
-                        Plot every n image (default: 250)
-  --plot-dir PLOT_DIR   Directory for storing the plot output (default: plots)
-  --dataset-name DATASET_NAME
-                        Name of the dataset (default: coco)
-  --max-bbox-per-scale MAX_BBOX_PER_SCALE
-                        Maximum number of bounding boxes per image (default:
-                        90)
-  --train-file TRAIN_FILE
-                        Path to the train annotations (default: train2017.txt)
-  --test-file TEST_FILE
-                        Path to the test annotations (default: val2017.txt)
-  --no-eval             Dont compute the precision recall metrics (default:
-                        True)
-  --verbose             Print out class wise eval (default: False)
-  --wandb               Log metrics to weight and biases (default: False)
-  --logging-interval LOGGING_INTERVAL
-                        Number of steps to log training progress on console
-                        and/or to wandb (default: 200)
-```
-2. Running pre-trained model:
-
+### Inference with pre-trained weights
 To download the pretrained weights, run the following commands:
-```
+```bash
 mkdir weights
 cd weights
 curl https://gc-demo-resources.s3.us-west-1.amazonaws.com/yolov4_p5_reference_weights.tar.gz -o yolov4_p5_reference_weights.tar.gz && tar -zxvf yolov4_p5_reference_weights.tar.gz && rm yolov4_p5_reference_weights.tar.gz
 cd ..
 ```
-These weights are derived from the a pre-trained model shared by the [YOLOv4's author](https://github.com/WongKinYiu/ScaledYOLOv4).
-We have post-processed these weights to remove the model description and leave a state_dict compatible with the IPU model description.
+These weights are derived from the a pre-trained model shared by the [YOLOv4's author](https://github.com/WongKinYiu/ScaledYOLOv4). We have post-processed these weights to remove the model description and leave a state_dict compatible with the IPU model description.
 
-To run inference with the weights:
+To run:
+```bash
+python3 run.py --weights weights/yolov4_p5_reference_weights/yolov4-p5-sd.pt
+```
+
+### Inference without pre-trained weights
 
 ```console
-python run.py --weights weights/yolov4_p5_reference_weights/yolov4-p5-sd.pt
+python run.py
 ```
+`run.py` will use the default config defined in `configs/inference-yolov4p5.yaml` which can be overridden by various arguments (`python run.py --help` for more info)
 
 ### Evalution
 
 To compute evaluation metrics run:
-``` console
+```bash
 python run.py --weights '/path/to/your/pretrain_weights.pt' --obj-threshold 0.001 --class-conf-threshold 0.001
 ```
-You can use the `--verbose` flag if you want to print the metrics per class. Here is a comparison of our metrics against theirs on the COCO 2017 detection validation set:
+You can use the `--verbose` flag if you want to print the metrics per class. Here is a comparison of our metrics against the GPU on the COCO 2017 detection validation set:
 
 | Model | Image Size | Type | Classes | Precision | Recall | mAP@0.5 | mAP@0.5:.95 |
 |-------|------------|------|---------|-----------|--------|---------|-------------|
@@ -189,12 +157,3 @@ You can use the `--verbose` flag if you want to print the metrics per class. Her
 |  IPU  | 896        | FP16 | all     | 0.45032   | 0.7674 | 0.68674 | 0.49159     |
 
 We generate the numbers for the GPU by re-running the Scaled-YOLOv4 repo code on an AWS instance. Please note that these numbers are slightly different from what they report in their repo. This is attributed to the `rect` parameter. In their inference, this is set to be `True`. The IPU currently can not support different sized images, and therefore, we set this to `False` in their evaluation in order to draw a fair comparison. In that regard, we do perform at par with SOTA. 
-
-
-### Running the tests
-
-After following installation instructions run:
-
-```console
-pytest
-```

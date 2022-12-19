@@ -13,14 +13,9 @@ from deep_voice_model import PopartDeepVoice
 import deep_voice_data
 import conf_utils
 import text_utils
-from examples_utils import load_lib
 
 # set up logging
 logger = logging_util.get_basic_logger('DEEP_VOICE')
-
-logger.info("Building (if necessary) and loading gradient_clipping_pattern.")
-load_lib(os.path.dirname(os.path.abspath(__file__)) + '/custom_ops/gradient_clipping_pattern.cpp')
-
 
 def _get_popart_type(np_type):
     return {

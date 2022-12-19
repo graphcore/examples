@@ -15,6 +15,7 @@ def handle_distributed_settings(args):
 
 
 def init_popdist(args):
+    popdist.init()
     hvd.init()
     args.use_popdist = True
     if popdist.getNumTotalReplicas() != args.replicas:

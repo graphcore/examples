@@ -7,21 +7,9 @@ common_options: &common_options
     loss:
       reduction_type: "final"
       regexp: 'total loss: *(\d*\.\d*)'
-    rpn_loss_cls:
-      reduction_type: "final"
-      regexp: 'rpn_loss_cls: *(\d*\.\d*)'
-    loss_cls:
-      reduction_type: "final"
-      regexp: 'loss_cls: *(\d*\.\d*)'
-    loss_box:
-      reduction_type: "final"
-      regexp: 'loss_box: *(\d*\.\d*)'
   output:
     - [samples/sec, "throughput"]
     - [loss, "loss"]
-    - [rpn_loss_cls, "rpn_loss_cls"]
-    - [loss_cls, "loss_cls"]
-    - [loss_box, "loss_box"]
 
 popart_faster_rcnn_train_real_pod16:
   <<: *common_options

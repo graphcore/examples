@@ -14,23 +14,26 @@ common_options: &common_options
         - [loss, 'loss']
         - [sec, 'compile_time']
 
+config_options: &config_options
+    requirements_path: requirements.txt
+
 pytorch_clip_vit_b_32_train_gen_pod16:
-    <<: *common_options
+    <<: [*common_options, *config_options]
     description:
         Pytorch CLIP_ViT-B-32 8 IPU throughput benchmark using host generated synthetic data.
     cmd: >-
-        python train.py
+        python3 train.py
             --config CLIP_ViT-B-32_cc3m
             --host_generate_data True
             --epochs 2
             --warmup_epochs 1
 
 pytorch_clip_vit_b_32_train_real_pod16_conv:
-    <<: *common_options
+    <<: [*common_options, *config_options]
     description:
         Pytorch CLIP_ViT-B-32 8 IPU loss benchmark using cc3m dataset.
     cmd: >-
-        python train.py
+        python3 train.py
             --config CLIP_ViT-B-32_cc3m
             --wandb
             --wandb_run_name pytorch_clip_vit_b_32_train_real_pod16_conv

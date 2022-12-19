@@ -52,8 +52,9 @@ def generate_greedy_tp(config: GPTJConfig, logits: popxl.Tensor,
     # gather tensor parallel shards and get full logits: (mb_size, vocab_size)
     next_token_logits = ops.collectives.replicated_all_gather(
         next_token_logits,
-        group=popxl.gcg().ir.replica_grouping(group_size=tp))
-    next_token_logits = next_token_logits.transpose((1, 0, 2)).reshape_(
+        group=popxl.gcg().ir.replica_grouping(group_size=tp),
+        output_shape='new_axis')
+    next_token_logits = next_token_logits.transpose((1,0,2)).reshape_(
         (config.execution.micro_batch_size, config.model.embedding.vocab_size))
 
     # (mb_size,)
@@ -190,10 +191,7 @@ class GPTJLMHeadLossAndGradTP(addons.Module):
 
         required_grads = [fwd_graph.graph.inputs[0]]
         accums = list(fwd_graph.args.tensors)
-        none_is_all_replica = partial(
-            fill_none_group, none_value=popxl.gcg().ir.replica_grouping())
-        replica_groupings = fwd_facts.replica_groupings.map(
-            none_is_all_replica)
+        replica_groupings = fwd_facts.replica_groupings.copy()
         replica_groupings.insert('word_embedding', self.replica_grouping)
 
         bwd_facts, bwd_graph = addons.transforms.autodiff_with_accumulation(

@@ -70,10 +70,6 @@ def training(config: BertConfig, dataset, pretrained):
                     data_map[h2d] = to_numpy(data[key], h2d.dtype)\
                         .reshape(session.ir.num_host_transfers, config.execution.data_parallel, *h2d.shape)
 
-                seeds = popxl.create_seeds(
-                    config.model.seed, step, batches_per_step=session.ir.num_host_transfers, replicas=config.execution.data_parallel)
-                data_map[session.inputs[4]] = seeds
-
                 # Add learning rate inputs
                 # TODO: Allow broadcasted inputs
                 for h2d in session.inputs[len(data_map):]:

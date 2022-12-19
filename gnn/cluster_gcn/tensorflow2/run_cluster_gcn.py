@@ -26,7 +26,7 @@ import numpy as np
 import popdist.tensorflow
 import tensorflow as tf
 import wandb
-from tensorflow.python.ipu import horovod
+from tensorflow.python.ipu import distributed
 
 from data_utils.batch_config import BatchConfig
 from data_utils.clustering_utils import ClusterGraph
@@ -60,7 +60,7 @@ def run(config):
     # Check if `poprun` has initiated distributed training.
     distributed_training = popdist.isPopdistEnvSet()
     if distributed_training:
-        horovod.init()
+        popdist.init()
     time_now = get_time_now(distributed_training)
 
     # Set a name for this run

@@ -18,8 +18,13 @@ common_options: &common_options
     POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
     PYTORCH_CACHE_DIR: "./pt_cache/"
 
+config_options: &config_options
+  requirements_path: requirements.txt
+  required_apt_packages_path: required_apt_packages.txt 
+  pre_run_commands: [make install, make install-turbojpeg]
+
 pytorch_resnet50_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: ResNet training on 16 Mk2 IPUs, real data.
   cmd: >-
     poprun
@@ -36,7 +41,7 @@ pytorch_resnet50_train_real_pod16:
       --dataloader-rebatch-size 256
 
 pytorch_resnet50_train_real_pod64_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     ResNet training on 64 Mk2 IPUs with real data
     for convergence testing.
@@ -45,11 +50,11 @@ pytorch_resnet50_train_real_pod64_conv:
       -vv
       --num-instances=32
       --num-replicas=64
-      --vipu-server-host=$VIPU_CLI_API_HOST
+      --vipu-server-host=$IPUOF_VIPU_API_HOST
       --host=$HOSTS
       --vipu-server-port 8090
-      --vipu-partition=$PARTITION
-      --vipu-cluster=$CLUSTER
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-cluster=$VIPU_CLUSTER_ID
       --update-partition=yes
       --remove-partition=yes
       --reset-partition=no
@@ -71,11 +76,12 @@ pytorch_resnet50_train_real_pod64_conv:
       --dataloader-worker 14
       --dataloader-rebatch-size 256
       --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --checkpoint-output-dir ./checkpoints
       --wandb
       --validation-mode none
 
 pytorch_efficientnet_b0_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     EfficientNet-B0-G16-GN training pipelined on 4 IPU-Ms (16 IPUs)
     using real data
@@ -94,7 +100,7 @@ pytorch_efficientnet_b0_train_real_pod16:
       --weight-avg-strategy none
 
 pytorch_efficientnet_b4_g16_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     EfficientNet-B4-G16-GN training pipelined on 4 IPU-Ms (16 IPUs)
     using real data

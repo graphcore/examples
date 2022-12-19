@@ -28,7 +28,7 @@ from tensorflow.python.ipu import (
     application_compile_op,
     embedded_runtime,
 )
-from tensorflow.python.keras import backend as K
+from keras import backend as K
 
 from utils import set_precision_policy
 

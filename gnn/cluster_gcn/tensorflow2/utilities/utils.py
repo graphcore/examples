@@ -5,7 +5,7 @@ from datetime import datetime
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.ipu import horovod
+from tensorflow.python.ipu import distributed
 from utilities.constants import AdjacencyForm, MethodMaxNodesEdges
 
 
@@ -51,7 +51,7 @@ def decompose_sparse_adjacency(adjacency_coo):
 def get_time_now(distributed_training):
     if distributed_training:
         time_now = float(
-            horovod.broadcast(tf.convert_to_tensor(value=datetime.now().timestamp(), dtype=tf.float32), 0))
+            distributed.broadcast(tf.convert_to_tensor(value=datetime.now().timestamp(), dtype=tf.float32), 0))
     else:
         time_now = datetime.now().timestamp()
     return time_now

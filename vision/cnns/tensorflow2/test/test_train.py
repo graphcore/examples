@@ -94,7 +94,7 @@ class SimplePass(SubProcessChecker):
                            '--ckpts-per-epoch', '1/3',
                            '--first-ckpt-epoch', '2',
                            '--num-epochs', '5',
-                           '--checkpoint-dir', checkpoint_dir,
+                           '--checkpoint-output-dir', checkpoint_dir,
                            '--clean-dir', 'False')
         checkpoint_files = glob.glob(os.path.join(checkpoint_dir, '*.h5'))
         for idx, epoch in [(0, 2.0), (1, 5.0)]:

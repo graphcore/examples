@@ -1,3 +1,0 @@
-pytest==6.2.5
-pytest-pythonpath==0.7.4
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils

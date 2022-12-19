@@ -39,7 +39,6 @@ from torch.utils.tensorboard import SummaryWriter
 from bert_data import get_pretraining_dataset, get_squad_dataset
 from bert_model import Bert, BertConfig
 from bert_optimizer import ScheduledOptimizerFactory, LinearOptimizerFactory
-from bert_tf_loader import load_initializers_from_tf
 from utils import popvision, packed_bert_utils, get_validation_args, parse_bert_args
 from utils.device import acquire_device, device_is_replicated
 from utils.distributed import broadcast_dict, popdist_root, distributed_barrier
@@ -557,7 +556,7 @@ def bert_inference_session(model, args, feed, device):
 def bert_writer(args):
     writer = None
     if args.log_dir is not None and popdist_root(args):
-        log_name = f"{os.path.basename(args.checkpoint_dir)}."\
+        log_name = f"{os.path.basename(args.checkpoint_output_dir)}."\
                    f"{datetime.datetime.now().isoformat()}"
         log_dir = os.path.join(
             args.log_dir, log_name)
@@ -592,10 +591,10 @@ def save_model(args, session, step, epoch=None, step_in_filename=False):
             save_file += f":{step}"
 
         if args.save_initializers_externally:
-            save_dir = Path(args.checkpoint_dir, save_file)
+            save_dir = Path(args.checkpoint_output_dir, save_file)
             save_dir.mkdir(parents=True, exist_ok=True)
         else:
-            save_dir = args.checkpoint_dir
+            save_dir = args.checkpoint_output_dir
         save_file += '.onnx'
         save_path = os.path.join(save_dir, save_file)
         save_vars = 'vars'.join(save_path.rsplit('model', 1))
@@ -792,13 +791,9 @@ def bert_pretrained_initialisers(config, args):
         return None
 
     init = None
-    if args.onnx_checkpoint:
-        logger.info(f"Initialising from ONNX checkpoint: {args.onnx_checkpoint}")
-        init = load_initializers_from_onnx(args.onnx_checkpoint)
-
-    if args.tf_checkpoint:
-        logger.info(f"Initialising from TF checkpoint: {args.tf_checkpoint}")
-        init = load_initializers_from_tf(args.tf_checkpoint, True, config, args.task)
+    if args.checkpoint_input_dir:
+        logger.info(f"Initialising from ONNX checkpoint: {args.checkpoint_input_dir}")
+        init = load_initializers_from_onnx(args.checkpoint_input_dir)
 
     return init
 
@@ -878,7 +873,7 @@ def main(args):
         if not args.no_training:
             optimizer_factory = bert_optimizer_factory(args, model, iteration)
             if args.save_initializers_externally:
-                save_dir = Path(args.checkpoint_dir,
+                save_dir = Path(args.checkpoint_output_dir,
                                 f'model_{args.continue_training_from_epoch}')
                 save_dir.mkdir(parents=True, exist_ok=True)
                 weight_tensors = [item for sublist in model.tensors.values() for item in sublist]
@@ -901,7 +896,7 @@ def main(args):
             save_model(args, session, iteration.count)
             if args.wandb_save_checkpoints:
                 artifact = wandb.Artifact(name=args.wandb_save_checkpoints, type="model")
-                artifact.add_dir(args.checkpoint_dir)
+                artifact.add_dir(args.checkpoint_output_dir)
                 wandb.log_artifact(artifact)
 
             device.detach()
@@ -945,13 +940,13 @@ if __name__ == "__main__":
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), filepath)
 
     if args.save_initializers_externally:
-        if os.path.isabs(args.checkpoint_dir):
+        if os.path.isabs(args.checkpoint_output_dir):
             # This is a needed because relative path conventions are different
             # for onnx reader and popart builder object. Calling onnx external
             # data_helper explicity solves this issue, but does not support abs paths.
             # Onnx external data helper removes leading `/` while reading the checkpoint back."
             # "https://github.com/onnx/onnx/blob/v1.10.0/onnx/external_data_helper.py#L46"
-            raise ValueError("Please specify relative path for `checkpoint_dir` when saving initializers externally. ")
+            raise ValueError("Please specify relative path for `checkpoint_output_dir` when saving initializers externally. ")
 
     if args.profile:
         path = args.profile_dir
@@ -975,7 +970,7 @@ if __name__ == "__main__":
         if args.wandb_checkpoint:
             artifact = wandb.use_artifact(args.wandb_checkpoint, type='model')
             artifact_dir = artifact.download()
-            args.onnx_checkpoint = os.path.join(artifact_dir, "model.onnx")
+            args.checkpoint_input_dir = os.path.join(artifact_dir, "model.onnx")
 
     logger.info("Program Start")
     logger.info("Hostname: " + socket.gethostname())

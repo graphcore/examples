@@ -6,7 +6,7 @@ from typing import Callable, Optional, Tuple
 import numpy as np
 
 import popdist
-from tensorflow.python.ipu import horovod as hvd
+from tensorflow.python.ipu import distributed
 import tensorflow as tf
 from eight_bit_transfer import EightBitTransfer
 
@@ -157,7 +157,11 @@ class DatasetFactory:
             if split != 'train':
 
                 # compute per instance dataset size
-                unpadded_dataset_size = ds.reduce(0, lambda x, _: x + 1).numpy()
+                unpadded_dataset_size = (
+                    dataset.size()
+                    if popdist.getNumInstances() == 1
+                    else ds.reduce(0, lambda x, _: x + 1).numpy()
+                )
 
                 # compute per instance discarded samples
                 num_discarded_samples = batch_config.get_num_discarded_samples(unpadded_dataset_size,
@@ -169,7 +173,7 @@ class DatasetFactory:
                 # get padding samples from largest padded dataset size across all instances
                 if popdist.getNumInstances() > 1:
                     padded_dataset_size = unpadded_dataset_size + num_padding_samples
-                    padded_dataset_sizes = hvd.allgather(
+                    padded_dataset_sizes = distributed.allgather(
                         tf.convert_to_tensor([padded_dataset_size], dtype=tf.int32)
                     )
                     padded_dataset_size = np.max(padded_dataset_sizes.numpy())

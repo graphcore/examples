@@ -51,6 +51,12 @@ def add_shared_arguments(parser):
     parser.add_argument("--enable-wandb",
                         type=str_to_bool,
                         help="Enable Weights and Biases logging.")
+    parser.add_argument("--wandb-entity-name",
+                        type=str,
+                        help="Weights and Biases entity name")
+    parser.add_argument("--wandb-project-name",
+                        type=str,
+                        help="Weights and Biases project name")                        
     parser.add_argument("--generated-dataset",
                         type=str_to_bool,
                         help="Enable generated dataset for pretraining and fine-tuning.")

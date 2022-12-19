@@ -1,63 +1,190 @@
-# TensorFlow 2 BERT on Graphcore IPUs
+# BERT (TensorFlow2)
+Bidirectional Encoder Representations from Transformers for NLP pre-training and fine-tuning tasks (SQuAD), using the [huggingface transformers library](https://huggingface.co/docs/transformers/index), optimised for Graphcore's IPU.
 
-## Table of contents
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| TensorFlow2 | NLP | BERT | WIKI-103 | Next sentence prediction, Masked language modelling, Question/Answering | ✅  | ✅ | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) | 
 
-1. [Introduction](#intro)
-2. [Datasets](#datasets)
-3. [Quick start guide](#quick_start)
-    * [Prepare environment](#prep_env)
-    * [Pre-training with BERT on IPU](#pretrain_IPU)
-    * [View the pre-training results in Weights & Biases](#wandb)
-4. [Pre-training BERT on Wikipedia](#large_wiki)
-5. [Fine-tuining BERT on SQuAD](#large_squad)
-6. [Detailed overview of the config file format](#config)
-7. [Notes for optimization approaches](#optimization)
+## Instructions summary
 
-## Introduction <a name='intro' ></a>
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-This directory demonstrates how to run the natural language model BERT (https://arxiv.org/pdf/1810.04805.pdf) on Graphcore IPUs utilising the [huggingface transformers library](https://huggingface.co/docs/transformers/index). 
+2. Install the system and Python requirements (see Environment setup)
 
-There are two examples:
+3. Download the WIKI-103 dataset (See Dataset setup)
 
-1. BERT for pre-training on masked Wikipedia data - `run_pretraining.py`
-2. BERT for SQuAD (Stanford Question Answering Dataset) fine-tuning - `run_squad.py`
 
-The BERT model in these examples is taken from the Huggingface transformers library and is converted into an IPU optimised format. 
-This includes dynamically replacing layers of the model with their IPU specific counterparts, outlining repeated blocks of the model, recomputation, and pipelining the model to efficiently over several Graphcore IPUs.
-The pretraining implementation of BERT uses the LAMB optimiser to capitalise on a large batch-size of 65k sequences in pre-training, and the SQuAD fine-tuning demonstrates converting a pre-existing Huggingface checkpoint. 
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+```
 
-## Datasets <a name="datasets"></a>
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
 
-The Wikipedia dataset contains approximately 2.5 billion word-piece tokens. This is only an approximate size since the Wikipedia dump file is updated all the time.
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
 
-If full pre-training is required (with the two phases with different sequence lengths) then data will need to be generated separately for the two phases:
+## Environment setup
+To prepare your environment, follow these steps:
 
-* once with --sequence-length 128 --mask-tokens 20
-* once with --sequence-length 384 --mask-tokens 56
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
 
-For further details on generating the datasets look at the PyTorch implementation [here](https://github.com/graphcore/examples/blob/v2.3.0/applications/pytorch/bert/README.md)
+2. Navigate to the Poplar SDK root directory
 
-An example sample text and a corresponding `tfrecord` file can be found in the `data_utils/wikipedia/` directory to show the correct format.
+3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+```bash
+cd <poplar sdk root dir>
+pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
+pip3 install ipu_tensorflow_addons-2.X.X...any.whl
+```
+For the CPU architecture you are running on
 
-## Quick start guide <a name="quick_start"></a>
+4. Install the Keras wheel:
+```bash
+pip3 install --force-reinstall --no-deps keras-2.X.X...any.whl
+```
+For further information on Keras on the IPU, see the [documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/keras/keras.html#keras-with-ipus) and the [tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/tensorflow2/keras).
 
-### Prepare environment <a name="prep_env"></a>
+5. Navigate to this example's root directory
 
-**1) Download the Poplar SDK**
+6. Install the Python requirements with:
+```bash
+pip3 install -r requirements.txt
+```
 
-[Download](https://downloads.graphcore.ai/) and install the Poplar SDK following the Getting Started guide for your IPU system. Source the `enable.sh` script for poplar.
 
-**2) Configure Python virtual environment**
+## Dataset setup
+The dataset used for pretraining is WIKI-103. It can be generated from a RAW dump of Wikipedia following a five step process.
 
-Create a virtual environment and install the appropriate Graphcore TensorFlow 2.4 wheels from inside the SDK directory:
+Disk space required: 143GB - Sequence length 128 (Variable), 203GB - Sequence length 512 (Variable)
 
-```shell
-virtualenv --python python3.6 .bert_venv
-source .bert_venv/bin/activate
-pip install -r requirements.txt
-pip install <path to the TensorFlow-2 wheel from the Poplar SDK>
-pip install --force-reinstall --no-deps <path to the Keras wheel from the Poplar SDK>
-pip install <path to the ipu_tensorflow_addons wheel for TensorFlow 2 from the Poplar SDK>
+```bash
+.
+├── wiki_000.index
+├── wiki_000.tfrecord
+    .
+    .
+    .
+├── wiki_xxx.index
+└── wiki_xxx.tfrecord
+
+0 directories, XXXX files
+```
+
+### 1. Download
+
+Use the `wikipedia_download.sh` script to download the latest Wikipedia dump, about 20GB in size.
+
+```bash
+./data/wikipedia_download.sh <chosen-path-for-dump-file>
+```
+
+Dumps are available from <https://dumps.wikimedia.org/> (and mirrors) and are licensed under CC BY-SA 3.0 and GNU Free Documentation Licenses.
+
+### 2. Extraction
+
+In order to create the pre-training data we need to extract the Wikipedia dump and put it in this form:
+
+```text
+<doc id = article1>
+Title of article 1
+
+Body of article 1
+
+</doc>
+
+<doc id = article2>
+Title of article 2
+
+Body of article 2
+</doc>
+```
+
+and so on.
+
+One of the tools that can be used to do so is WikiExtractor, <https://github.com/attardi/wikiextractor>.
+Install the WikiExtractor package with:
+```bash
+pip3 install wikiextractor
+```
+
+In order not to encounter a `UnicodeEncodeError` at this step, you may want to run these two commands first:
+
+```bash
+export PYTHONIOENCODING=utf-8
+export LC_ALL=C.UTF-8
+```
+
+You can then use the the `wikipedia_extract.sh` script to use WikiExtractor to extract the data dump.
+
+```bash
+./data/wikipedia_extract.sh <chosen-path-for-dump-file>/wikidump.xml <chosen-folder-for-extracted-files>
+```
+
+The result should be a folder containing directories named `AA`, `AB`, ...
+Note that the number of directories depends on the parameters of the `wikipedia_extract.sh` script, and is not to be confused with alphabetical ordering of the wikipedia articles.
+In other words you should probably not expect all of `AC`, `AD`, ... `ZX`, `ZY`, `ZZ` to be created by the script.
+
+### 3. Pre-processing
+
+Install nltk package with:
+```bash
+pip3 install nltk
+```
+
+Use the `wikipedia_preprocess.py` script to preprocess the extracted files.
+
+```bash
+python3 ./data/wikipedia_preprocess.py --input-file-path <chosen-folder-for-extracted-files> --output-file-path <chosen-folder-for-preprocessed-files>
+```
+
+### 4. Tokenization
+
+The script `create_pretraining_data.py` can accept a glob of input files to tokenize.
+However, attempting to process them all at once may result in the process being killed by the OS for consuming too much memory.
+It is therefore preferable to convert the files in groups. This is handled by the `./data/wikipedia_tokenize.py` script.
+At the same time, it is worth bearing in mind that `create_pretraining_data.py` shuffles the training instances across the loaded group of files, so a larger group would result in better shuffling of the samples seen by BERT during pre-training.
+
+The tokenization depends on `tensorflow` which can be installed by:
+
+```bash
+pip3 install tensorflow
+```
+
+sequence length 128
+
+```bash
+python3 ./data/wikipedia_tokenize.py <chosen-folder-for-preprocessed-files> <chosen-folder-for-dataset-files> --sequence-length 128 --mask-tokens 20
+```
+
+sequence length 512
+
+```bash
+python3 ./data/wikipedia_tokenize.py <chosen-folder-for-preprocessed-files> <chosen-folder-for-dataset-files> --sequence-length 512 --mask-tokens 76
+```
+
+### 5. Indexing
+
+In order to use the multi-threaded `dataloader`, `tfrecord` index files need to be generated.
+First install the `tfrecord` Python package into your Python environment:
+
+```bash
+pip3 install tfrecord
+```
+
+Then go to the directory containing the pre-processed Wikipedia files and run:
+
+```bash
+for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .tfrecord`.index; done
 ```
 
 **3) (Optional) Download Huggingface checkpoint**
@@ -80,13 +207,27 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
-### Pre-training with BERT on IPU <a name="pretrain_IPU"></a>
 
+## Custom training/inference and other features
+
+### Introduction
+This directory demonstrates how to run the natural language model BERT (https://arxiv.org/pdf/1810.04805.pdf) on Graphcore IPUs utilising the [huggingface transformers library](https://huggingface.co/docs/transformers/index). 
+
+There are two examples:
+
+1. BERT for pre-training on masked Wikipedia data - `run_pretraining.py`
+2. BERT for SQuAD (Stanford Question Answering Dataset) fine-tuning - `run_squad.py`
+
+The BERT model in these examples is taken from the Huggingface transformers library and is converted into an IPU optimised format. 
+This includes dynamically replacing layers of the model with their IPU specific counterparts, outlining repeated blocks of the model, recomputation, and pipelining the model to efficiently over several Graphcore IPUs.
+The pretraining implementation of BERT uses the LAMB optimiser to capitalise on a large batch-size of 65k sequences in pre-training, and the SQuAD fine-tuning demonstrates converting a pre-existing Huggingface checkpoint. 
+
+### Pre-training with BERT on IPU
 To validate that the machine and repository are set up correctly the BERT tiny model and sample text can be used. 
 
 The `tests/pretrain_tiny_test.json` file is a small model that can be used for simple experiments. Note that if you don't specify the directory where the sample text file is stored, this will default to using the whole wikipedia dataset. 
 
-```shell
+```bash
 python run_pretraining.py --config tests/pretrain_tiny_test.json --dataset-dir data_utils/wikipedia/
 ```
 
@@ -99,7 +240,7 @@ For more information please see https://www.wandb.com/.
 Once logged into wandb logging can be activated by toggling the `log_to_wandb` option in the config file. 
 You can also name your wandb run with the flag `--name <YOUR RUN NAME HERE>`.
 
-# Run Pre-Training Phase 1 <a name="large_wiki"></a>
+### Run Pre-Training Phase 1 <a name="large_wiki"></a>
 
 Pre-Training BERT Phase 1 uses sequence length 128, and uses masked Wikipedia data to learn word and position embeddings - task specific performance is later tuned with finetuning.
 This can be thought of as training the body of the model while the finetuning provides performance for specific heads.
@@ -109,8 +250,8 @@ Provided configs are for `BASE` and `LARGE`, tuned to run on a Graphcore IPU POD
 
 To run pre-training for BERT Base use the following command:
 
-```shell
-python run_pretraining.py --config configs/pretrain_base_128_phase1.json
+```bash
+python3 run_pretraining.py --config configs/pretrain_base_128_phase1.json
 ```
 
 Swapping the config for `pretrain_large_128.phase1.json` will train the BERT Large model. 
@@ -122,17 +263,17 @@ The resulting MLM loss curve will look like the following figure. You should see
 
 <img src=./figs/MLM_loss_phase1.png width=80% height=80%>
 
-# Run Pre-Training Phase 2  <a name="large_wiki_2"></a>
+### Run Pre-Training Phase 2  <a name="large_wiki_2"></a>
 
 Phase 2 of pre-training is done using a sequence length of 384 with the masked Wikipedia dataset, this second phase is run using the same `run_pretraining.py` script as for phase 1.
 
 To run pre-training phase 2 starting from a phase 1 checkpoint for BERT Base use the following command:
 
-```shell
-python run_pretraining.py --config configs/pretrain_base_384_phase2.json --pretrained-ckpt-path <PATH TO PHASE 1 CHECKPOINT>
+```bash
+python3 run_pretraining.py --config configs/pretrain_base_384_phase2.json --pretrained-ckpt-path <PATH TO PHASE 1 CHECKPOINT>
 ```
 
-# Fine-Tuning BERT for Question Answering with SQuAD 1.1 <a name="large_squad"></a>
+### Fine-Tuning BERT for Question Answering with SQuAD 1.1 <a name="large_squad"></a>
 
 Provided are the scripts to fine-tune BERT on the Stanford Question Answering Dataset (SQuAD 1.1), a popular question answering benchmark dataset. In version 1.1 there are no unanswerable questions.
 
@@ -145,7 +286,7 @@ To run BERT fine-tuning on SQuAD requires the same set-up as for pre-training, f
 
 The fine-tuning for a Large model on SQuAD 1.1 can be run with the following command:
 
-``` shell
+``` bash
 python3 run_squad.py configs/squad_base.json 
 ```
 
@@ -153,7 +294,7 @@ After fine-tuning the predictions file will be generated and the results evaluat
 You should expect to see results for BERT Base approximately as:
 `{"f1": 87.97, "exact_match": 80.60}`.
 
-# Detailed overview of the config file format <a name="config"></a>
+### Detailed overview of the config file format <a name="config"></a>
 
 The config files are how the bulk of the interaction with the model is conducted. These config files have two sections; firstly parameters that describe the model architecture (hidden layer size, number of attention heads, etc.) and differentiate between different BERT models; secondly, the parameters that describe the optimisation of the model for the IPU are given (such as batch size, loss scaling, outlining, and the pipeline configuration.)
 
@@ -195,61 +336,7 @@ Key parameters to consider  if customising the model are:
    customised can be seen in the BERT configurations where the _pooler_ layer and the heads are placed on IPU 0 with 
    the embeddings layer to improve performance.
 
-# Multi-Host training using PopDist <a name="popdist"></a>
-
-As explained in section [Detailed overview of the config file format](#config) above, the `replicas` parameter allows 
-for _data parallelism_, replicating the model multiple times, such that each replica processes a part of the batch size. 
-
-BERT Large with 8 samples per replica (micro batch) fits in 4 IPUs. Hence, we can use 4 replicas in a POD16 or 16 
-replicas in a POD64. Both POD16 and POD64 are usually built in a rack system that includes a single host, hence they
-can be run by simply setting the `replica` parameter to 4 or 16, respectively. In addition to increasing the value of the 
-`replicas` parameter, we can use PopDist. PopDist is the tool shipped with the SDK that allows to run multiple SDK instances
-at the same time on the same or different hosts. 
-
-The script in `scripts/pretrain_distributed.sh` uses `poprun` to train BERT for pretraining with 16 replicas in a POD64 
-(recall this can be done without `poprun` too).
-
-The config  files ending with '_POD64' have been specifically designed to be trained using PopDist.
-
-Before launching this we need to set up the V-IPU cluster and eventually a V-IPU partition, the procedure for which can 
-be found in the [V-IPU user-guide](https://docs.graphcore.ai/projects/vipu-user/en/latest/). 
-We need then to set up the dataset and the SDKs, it is important that these components are found on each host in the 
-same global path. The same is valid for the virtual environment and for the `run_pretraining.py` script.
-
-Further details on how to set up `poprun`, and the arguemnts used, can be found in the 
-[docs]( https://docs.graphcore.ai/projects/poprun-user-guide/en/latest/index.html).
-The relevant set up is provided in the script given in `scripts/pretrain_distributed.sh`. This will be detailed in the 
-following section.
-
-## Script to train BERT Large on Graphcore IPU-POD64 <a name="popdist_script"></a>
-
-We provide a utility script to run Phase 1 and Phase 2 pre-training on an IPU-POD64 machine. This script manages the 
-config and checkpoints required for both phases of pre-training.
-This can be executed as:
-
-``` shell
-./scripts/pretrain_distributed.sh <MODEL> <CONFIG> <VIPU_CLUSTER_NAME> <VIPU_PARTITION_NAME> <VIPU_HOST> <HOSTS>
-```
-
-`MODEL`: One of 'base' or 'large'.
-
-`CONFIG`: 'POD64'.
-
-`VIPU_CLUSTER_NAME`: The name of the cluster in the POD. It can be obtained with `$ vipu list partition`, 
-once logged in the POD.
-
-`VIPU_PARTITION_NAME` : The name of the partition of the POD. It can be obtained with `$ vipu list partition`, 
-once logged in the POD.
-
-`VIPU_HOST`: IP address of VIPU host. Once logged in the POD, the host name can be obtained with 
-`$ vipu --server-version`; then the IP can be obtained with `host <hostname>`. 
-
-`HOSTS`: Space separated list of IP addresses where the instances will be run.
-
-Inside this script the ssh keys will be copied across the hosts, as will the files in the BERT directory, as well as 
-SDKs. Ensure your directory structure aligns with that used in the script, including the path to the wikipedia dataset.
-
-# Notes for optimization approaches <a name="optimization"></a>
+### Notes for optimization approaches <a name="optimization"></a>
 In order to reach optimized performance for the BERT model, the following optimization methods have been adopted:
 * The Keras precision policy was set to float16 in `run_pretraining.py`, `run_squad.py` and `run_seq_classification.py`:
    ```

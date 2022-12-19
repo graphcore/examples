@@ -13,6 +13,9 @@ regex==2022.4.24
 scipy==1.5.4
 scikit-learn==0.24.2
 tensorflow-addons==0.14.0
+# Workaround for OGB issue on Python3.9
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==1.13.0+cu116; python_version >= '3.9'
 trainlog==0.2
 wandb==0.12.8
-git+https://github.com/graphcore/examples-utils@1aded5f35073d93fedcb516ad3782082daba3f87#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils

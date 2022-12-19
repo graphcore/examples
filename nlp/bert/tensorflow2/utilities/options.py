@@ -143,6 +143,8 @@ class SharedOptions(BaseModel):
     global_batches_per_log: int
     enable_wandb: bool
     wandb_tags: List[str] = []
+    wandb_entity_name: str = "sw-apps"
+    wandb_project_name: str = "TF2-BERT"
 
     @root_validator()
     def RTS_replica_check(cls, values):

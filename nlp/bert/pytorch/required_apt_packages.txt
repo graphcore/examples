@@ -1,4 +1,3 @@
-build-essential
 cmake
 git
 libboost-all-dev
@@ -7,3 +6,4 @@ libssl-dev
 python3-dev
 rapidjson-dev
 virtualenv
+libopenmpi-dev

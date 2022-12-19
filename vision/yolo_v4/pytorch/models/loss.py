@@ -92,16 +92,16 @@ class PreprocessTargets(nn.Module):
         # Then we get the worst ratio for each label per anchor in any of the 2 dimensions
         # and we compare to a hyper parameter if the worst case is smaller then is a good fit
         mask = torch.amax(worse_ratios_wh, 3)[0]
-        mask = torch.where(mask != 0., mask, torch.tensor([torch.finfo(torch.half).max]))
+        mask = torch.where(mask != 0., mask, torch.broadcast_to(torch.tensor([torch.finfo(torch.half).max]),mask.shape))
         mask = torch.lt(mask, torch.tensor([self.anchor_threshold]))
 
         # We mask the labels and the anchor indexes, these are the best labels for our anchors
-        best_targets = torch.where(mask.unsqueeze(axis=-1).repeat(1, 1, 1, labels.shape[-1]), labels, torch.tensor([0.]))
+        best_targets = torch.where(mask.unsqueeze(axis=-1).repeat(1, 1, 1, labels.shape[-1]), labels, torch.broadcast_to(torch.tensor([0.]), labels.shape))
 
         # We get the point x and y
         best_xy = best_targets[:, :, :, 1:3]
         # Do the inverse of the point:
-        best_inverse_xy = torch.where(best_xy != 0., feature_map_size - best_xy, torch.tensor([0.]))
+        best_inverse_xy = torch.where(best_xy != 0., feature_map_size - best_xy, torch.broadcast_to(torch.tensor([0.]), best_xy.shape))
 
         # We mask as true all the pixels that the decimal part is smaller than 0.5 and not located in the right up border.
         # For example, 3.2 .2 is smaller than g=0.5 and 3. is greater than 1.
@@ -117,11 +117,15 @@ class PreprocessTargets(nn.Module):
         indices = torch.stack((torch.ones_like(x_mask, dtype=int).bool(), x_mask, y_mask, inverse_x_mask, inverse_y_mask))
 
         # Now we mask with those combinations
-        targets = torch.where(indices.unsqueeze(axis=-1).repeat(1, 1, 1, 1, best_targets.shape[-1]), best_targets.unsqueeze(axis=0).repeat(indices.shape[0], 1, 1, 1, 1), torch.tensor([0.]))
+        targets = torch.where(indices.unsqueeze(axis=-1).repeat(1, 1, 1, 1, best_targets.shape[-1]),
+                              best_targets.unsqueeze(axis=0).repeat(indices.shape[0], 1, 1, 1, 1),
+                              torch.broadcast_to(torch.tensor([0.]),(indices.shape[0],*best_targets.shape)))
 
         # Offsets will decrease or increase the values for the masks where we checked if the decimal part was greater or smaller than 0.5
         # For all the x, y values smaller than 0.5 we will add 0.5 for all the values grester than 0.5 we will add -0.5
-        offsets = torch.where(indices.unsqueeze(axis=-1).repeat(1, 1, 1, 1, off.shape[-1]), off.view(indices.shape[0], 1, 1, 1, off.shape[-1]).repeat(1, b_size, n_labels, self.anchor_per_scale, 1), torch.tensor([0.]))
+        offsets = torch.where(indices.unsqueeze(axis=-1).repeat(1, 1, 1, 1, off.shape[-1]),
+                              off.view(indices.shape[0], 1, 1, 1, off.shape[-1]).repeat(1, b_size, n_labels, self.anchor_per_scale, 1),
+                              torch.broadcast_to(torch.tensor([0.]),(*indices.shape[:4],off.shape[-1])))
 
         # We flatten the tensors to index them efficiently
         targets = targets.view(-1, targets.shape[-1])
@@ -153,7 +157,7 @@ class PreprocessTargets(nn.Module):
         label_wh = targets[:, 3:5]
 
         # We calculate the indices of x and y
-        label_xy_indices = torch.where(label_xy != 0., (label_xy - offsets).long(), torch.tensor([0.], dtype=torch.long))
+        label_xy_indices = torch.where(label_xy != 0., (label_xy - offsets).long(), torch.broadcast_to(torch.tensor([0.], dtype=torch.long), label_xy.shape))
 
         # Make sure that x, y, and anchors stay within their range
         x_ind, y_ind = label_xy_indices.permute(1, 0).clamp_(0, feature_map_size-1).long()

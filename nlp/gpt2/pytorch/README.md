@@ -1,103 +1,117 @@
-# PyTorch GPT2
+# GPT-2
+GPT-2 for NLP pre-training and text generation, using the [huggingface transformers library](https://huggingface.co/docs/transformers/index), optimised for Graphcore's IPU.
 
-This directory contains an implementation of GPT2 models in PyTorch for the IPU, leveraging the HuggingFace Transformers library. 
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| Pytorch | NLP | GPT-2 | Wikipedia | Next sentence prediction, Masked language modelling, Question/Answering | ✅  | ✅ | [Language Models are Unsupervised Multitask Learners](https://d4mucfpksywv.cloudfront.net/better-language-models/language-models.pdf) | 
 
-There are two examples for GPT2, the one is for pretraining: `train_gpt2.py` and the second one is text generation `text_generate_gpt2.py`
+
+## Instructions summary
+
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
+
+2. Install the system and Python requirements (see Environment setup)
+
+3. Download the WIKI-103 dataset (See Dataset setup)
+
+
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+```
+
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
+```
+
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+
 
 ## Environment setup
+To prepare your environment, follow these steps:
 
-### 1. Install the Poplar SDK
-SDK version: 2.5
-
-First, install the Poplar SDK following the instructions in the Getting Started guide for your IPU system. Make sure to source the `enable.sh` scripts for Poplar and PopART.
-
-Then, create a virtualenv:
-```
-virtualenv venv -p python3.6
-source venv/bin/activate
-```
-### 2. Python
-Install the required packages:
-```
-pip install -r requirements.txt
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
 ```
 
-### 3. Compile custom ops
-From inside this directory:
+2. Navigate to the Poplar SDK root directory
+
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
 ```
+
+4. Navigate to this example's root directory
+
+5. Install the Python requirements:
+```bash
+pip3 install -r requirements.txt
+```
+
+5. Build the custom ops:
+```bash
 make
 ```
-This should create `custom_ops.so`.
-
-## Run the tests (optional)
-Setup your environment as explained above and run `python3 -m pytest` from the root folder.
 
 
-## Quick start with generated mock dataset
-
-Setup your environment as explained above and run the example with generated datas.
-
-```
-python train_gpt2.py \
-    --model gpt2 \
-    --max-len 1024 \
-    --layers-per-ipu 0 4 4 4 \
-    --matmul-proportion 0.15 0.15 0.15 0.15 \
-    --ipus-per-replica 4 \
-    --replication-factor 1 \
-    --epochs 3 \
-    --gradient-accumulation 512 \
-    --device-iterations 1 \
-    --batch-size 1 \
-    --enable-sequence-serialized True \
-    --remap-logit True \
-    --embedding-serialization-factor 4 \
-    --recompute-checkpoint-every-layer True \
-    --enable-half-partials True \
-    --dataset 'generated'
-```
-
-## Dataset
-
-Wikipedia dataset and Webtext dataset can be used for GPT2 pretraining.
-To obtain the data used for pretraining follow the below instructions.
-
-### 1. Wikipedia Dataset
+## Dataset setup
+### Wikipedia
 
 **Download**
 
-Download the latest raw wikipedia dump from: <https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2>
+Download the latest raw wikipedia dump from: <https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2>. You can also download a sample here <https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles1.xml-p1p41242.bz2>.
 
 **Extract**
 
 Once you have downloaded the raw file, extract it using [WikiExtractor](https://github.com/attardi/wikiextractor).
+```bash
+pip3 install wikiextractor==3.0.6
+python3 -m wikiextractor.WikiExtractor --json --no-templates -o wikipedia_extracted enwiki-latest-pages-articles.xml.bz2
 ```
-pip install wikiextractor
-python -m wikiextractor.WikiExtractor --json --no-templates -o wikipedia_extracted enwiki-latest-pages-articles.xml.bz2
-```
+
 Then merge all extracted file into a single json file.
-```
+
+```bash
 find ./wikipedia_extracted/ -depth -name wiki_* -exec cat {} + > wikipedia_data.json
 ```
+
 **Preprocess**
 
-We recommand to follow Nvidia's Megatron for data preprocessing and generated the training data, see <https://github.com/NVIDIA/Megatron-LM#data-preprocessing>.
+We recommand to follow Nvidia's Megatron for data preprocessing and generated the training data, see <https://github.com/NVIDIA/Megatron-LM/tree/0ed2f6ac943560ab0a8a58b6628a669af8c250db#data-preprocessing>.
 
-```
-git clone https://github.com/NVIDIA/Megatron-LM.git
-python Megatron-LM/preprocess_data.py \
+```bash
+git clone https://github.com/NVIDIA/Megatron-LM.git@0ed2f6ac943560ab0a8a58b6628a669af8c250db
+pip3 install nltk
+python3 Megatron-LM/tools/preprocess_data.py	 \
        --input wikipedia_data.json \
        --output-prefix wikipedia-gpt2 \
-       --vocab tokenizer/gpt2-vocab-50256.json \
+       --vocab $APP_DIR/tokenizer/gpt2-vocab-50256.json \
        --dataset-impl mmap \
        --tokenizer-type GPT2BPETokenizer \
-       --merge-file tokenizer/gpt2-merges-50256.txt \
+       --merge-file $APP_DIR/tokenizer/gpt2-merges-50256.txt \
        --append-eod
 ```
+
+Where `$APP_DIR` is the directory of this README.
+
 The output files are named `wikipedia-gpt2_text_document.bin` and `wikipedia-gpt2_text_document.idx`, set `--dataset mmap` and `--input-files <path>/wikipedia-gpt2_text_document` in the training scripts to start gpt2 pretraining.
 
-
-### 2. Webtext Dataset
+### Webtext
 
 **Download**
 
@@ -105,37 +119,38 @@ Download the open webtext dataset from: <https://skylion007.github.io/OpenWebTex
 
 **Extract**
 
-```
+```bash
 tar -xvf openwebtext.tar.xz
 python data/extract_and_merge.py ./openwebtext ./openwebtext_extracted
 ```
+
 The output file is `openwebtext_raw.json`
 
 **Preprocess**
 
 Before generate the binary file for training, we are going to filter, clean, and deduplicate the raw json file. See <https://github.com/NVIDIA/Megatron-LM/blob/main/tools/openwebtext>
 
-```
+```bash
 git clone https://github.com/NVIDIA/Megatron-LM.git
 
-python Megatron-LM/tools/openwebtext/cleanup_dataset.py openwebtext_raw.json openwebtext_clean.json
+python3 Megatron-LM/tools/openwebtext/cleanup_dataset.py openwebtext_raw.json openwebtext_clean.json
 
-python Megatron-LM/tools/openwebtext/find_duplicates.py \
+python3 Megatron-LM/tools/openwebtext/find_duplicates.py \
 	   --inputs openwebtext_clean.json url
 	   --output openwebtext_duplicate_url.json
 
-python Megatron-LM/tools/openwebtext/group_duplicate_urls.py openwebtext_duplicate_url.json openwebtext_duplicate.json
+python3 Megatron-LM/tools/openwebtext/group_duplicate_urls.py openwebtext_duplicate_url.json openwebtext_duplicate.json
 
-python Megatron-LM/tools/openwebtext/remove_group_duplicates.py openwebtext_duplicate.json openwebtext_clean.json openwebtext_deduplicate.json
+python3 Megatron-LM/tools/openwebtext/remove_group_duplicates.py openwebtext_duplicate.json openwebtext_clean.json openwebtext_deduplicate.json
 
 shuf openwebtext_deduplicate.json -o openwebtext_deduplicate_shuf.json
 
-python Megatron-LM/tools/openwebtext/filter_ngrams.py \
+python3 Megatron-LM/tools/openwebtext/filter_ngrams.py \
        --tasks lambada \
        --dedup-dataset openwebtext_deduplicate_shuf.json text \
        --output openwebtext.json
 
-python Megatron-LM/tools/preprocess_data.py \
+python3 Megatron-LM/tools/preprocess_data.py \
        --input openwebtext.json \
        --output-prefix openwebtext-gpt2 \
        --vocab tokenizer/gpt2-vocab-50256.json \
@@ -146,11 +161,33 @@ python Megatron-LM/tools/preprocess_data.py \
        --merge-file tokenizer/gpt2-merges-50256.txt \
        --append-eod
 ```
+
 The output files are named `openwebtext-gpt2_text_document.bin` and `openwebtext-gpt2_text_document.idx`, set `--dataset mmap` and `--input-files <path>/openwebtext-gpt2_text_document` in the training scripts to start gpt2 pretraining.
 
 
-## Run the pretraining application
-**Notice**: The default scripts are used to get benchmarks for throughput only. You must passing path to processed data files to `--input-files` to start the actual pretraining, you may also need to specify the `--save-model-path` to save checkpoints. It is recommended to use `--gradient-accumulation 512` when pretraining on the wikipedia dataset for better convergence. It takes 20 epochs(about 0.15 days per epoch) to reach a relative low LM loss together with the SOTA accuracy on evaluation tasks.
+## Running and benchmarking
+
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
+
+For example:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
+```
+
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
+
+```bash
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
+```
+
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
+
+
+## Custom training/inference and other features
+
+### Run the pretraining application
+**Notice**: The default scripts are used to get benchmarks for throughput only. You must passing path to processed data files to `--input-files` to start the actual pretraining, you may also need to specify the `--checkpoint-output-dir` to save checkpoints. It is recommended to use `--gradient-accumulation 512` when pretraining on the wikipedia dataset for better convergence. It takes 20 epochs(about 0.15 days per epoch) to reach a relative low LM loss together with the SOTA accuracy on evaluation tasks.
 
 Further arguments are described in the source file `arguments.py`.
 
@@ -162,162 +199,33 @@ There are four GPT2 models:
 
 The JSON configuration files provided in the configs directory `config/` define detailed parameters for GPT2 models.
 
-### Run GPT2-small
-This script runs the 117M parameter GPT2 pretraining.
-```
-bash run/pretraining_small.sh
-```
-or
-```
-python train_gpt2.py \
-    --model gpt2 \
-    --max-len 1024 \
-    --optimizer AdamW \
-    --learning-rate 0.00015 \
-    --lr-schedule cosine \
-    --lr-warmup 0.01 \
-    --layers-per-ipu 0 4 4 4 \
-    --matmul-proportion 0.15 0.15 0.15 0.15 \
-    --ipus-per-replica 4 \
-    --replication-factor 4 \
-    --epochs 20 \
-    --gradient-accumulation 2048 \
-    --device-iterations 8 \
-    --batch-size 1 \
-    --enable-sequence-serialized True \
-    --remap-logit True \
-    --embedding-serialization-factor 4 \
-    --recompute-checkpoint-every-layer True \
-    --enable-half-partials True \
-    --dataset 'generated' \
-    --replicated-tensor-sharding True
-```
-### Run GPT2-medium
-This script runs the 345M parameter GPT2 pretraining.
-```
-bash run/pretraining_medium.sh
-```
-or
-```
-python train_gpt2.py \
-    --model gpt2-medium \
-    --max-len 1024 \
-    --optimizer AdamW \
-    --learning-rate 0.00015 \
-    --lr-schedule cosine \
-    --lr-warmup 0.01 \
-    --layers-per-ipu 0 3 3 3 3 4 4 4 \
-    --matmul-proportion 0.30 0.15 0.15 0.15 0.15 0.15 0.15 0.15 \
-    --ipus-per-replica 8 \
-    --replication-factor 2 \
-    --epochs 20 \
-    --gradient-accumulation 4096 \
-    --device-iterations 8 \
-    --batch-size 1 \
-    --enable-sequence-serialized True \
-    --remap-logit True \
-    --embedding-serialization-factor 4 \
-    --recompute-checkpoint-every-layer True \
-    --enable-half-partials True \
-    --dataset 'generated' \
-    --replicated-tensor-sharding True
-```
-### Run GPT2-large(SL=512)
-This script runs the 762M parameter GPT2 pretraining, with sequence length=512.
-```
-bash run/pretraining_large_512.sh
-```
-or
-```
-python train_gpt2.py \
-    --model gpt2-large \
-    --max-len 512 \
-    --optimizer AdamW \
-    --learning-rate 0.00015 \
-    --lr-schedule cosine \
-    --lr-warmup 0.01 \
-    --layers-per-ipu 1 5 5 5 5 5 5 5 \
-    --matmul-proportion 0.15 0.12 0.15 0.15 0.15 0.15 0.15 0.15 \
-    --ipus-per-replica 8 \
-    --replication-factor 2 \
-    --epochs 20 \
-    --gradient-accumulation 4096 \
-    --device-iterations 8 \
-    --batch-size 1 \
-    --enable-sequence-serialized True \
-    --remap-logit True \
-    --embedding-serialization-factor 8 \
-    --recompute-checkpoint-every-layer True \
-    --enable-half-partials True \
-    --dataset 'generated' \
-    --replicated-tensor-sharding True
-```
-### Run GPT2-large(SL=1024)
-This script runs the 762M parameter GPT2 pretraining, with sequence length=1024.
-```
-bash run/pretraining_large_1024.sh
-```
-or
-```
-python train_gpt2.py \
-    --model gpt2-large \
-    --max-len 1024 \
-    --optimizer AdamW \
-    --learning-rate 0.00015 \
-    --lr-schedule cosine \
-    --lr-warmup 0.01 \
-    --layers-per-ipu 0 2 2 2 2 2 2 2 2 3 3 3 3 3 3 2 \
-    --matmul-proportion 0.2 0.15 0.2 0.2 0.2 0.15 0.15 0.2 0.2 0.15 0.2 0.2 0.2 0.15 0.15 0.2 \
-    --ipus-per-replica 16 \
-    --replication-factor 1 \
-    --epochs 20 \
-    --gradient-accumulation 8192 \
-    --device-iterations 8 \
-    --batch-size 1 \
-    --enable-sequence-serialized True \
-    --remap-logit True \
-    --embedding-serialization-factor 4 \
-    --recompute-checkpoint-every-layer True \
-    --enable-half-partials True \
-    --dataset 'generated' \
-    --replicated-tensor-sharding False
-```
-
-### Run GPT2-large by PopRun
-This script runs the 762M parameter GPT2 distributed pretraining using PopRun, which can scale the application from POD16 to POD64.
-
-We advise you to first read through the [User Guide](https://docs.graphcore.ai/projects/poprun-user-guide/en/latest/index.html) for PopRun before running this script.
-```
-bash run/pretraining_large_poprun.sh
-```
-
-
-## Evaluation
 ### WikiText Perplexity Evaluation
-we evaluate perplexity on the word-level [WikiText-103 test dataset](https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-v1.zip), 
-and appropriately compute perplexity given the change in tokens 
+we evaluate perplexity on the word-level [WikiText-103 test dataset](https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-v1.zip),
+and appropriately compute perplexity given the change in tokens
 when using our generated BPE tokenizer.
 
 We use the following command to run WikiText-103 evaluation on pretrained model.
-```
+```bash
 bash tasks/run_evaluate.sh wiki
 ```
 
 ### LAMBADA Cloze Accuracy
-To compute LAMBADA cloze accuracy (the accuracy of predicting the last token given the preceeding tokens) 
+To compute LAMBADA cloze accuracy (the accuracy of predicting the last token given the preceeding tokens)
 we utilize a detokenized, processed version of the [LAMBADA dataset](https://github.com/cybertronai/bflm/blob/master/lambada_test.jsonl).
 
 We use the following command to run LAMBADA evaluation on a pretrained model.
-```
+```bash
 bash tasks/run_evaluate.sh lmbd
 ```
 
-##  Text Generation
-```
+###  Text Generation
+```bash
 bash tasks/run_text_generator.sh
 ```
+
 or
-```
+
+```bash
 python text_generate_gpt2.py \
       --model-name-or-path gpt2 \
       --fp16 true \
@@ -325,10 +233,11 @@ python text_generate_gpt2.py \
       --poptorch-loop true \
       --output-len 256
 ```
-This task is interactive. You can enter one sentence such as "My name is " and it will generate the rest sentences.  
+
+This task is interactive. You can enter one sentence such as "My name is " and it will generate the rest sentences.
 
 | Arguments | Meaning |
-| ---- | ---- | 
+| ---- | ---- |
 | --model-name-or-path | Path to pre-trained model or shortcut names from huggingface.co. The default is 'gpt2' |
 | --fp16 | Whether to use fp16 model for this task|
 | --single-ipu | Whether to use single IPU for this task |
@@ -338,23 +247,6 @@ This task is interactive. You can enter one sentence such as "My name is " and i
 | --output-len| The maximum output length you want to set for this task|
 
 Further arguments are described in the source file `text_generate_gpt2.py`
-
-## Running and benchmarking
-
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
-```
-
-Or to run a specific benchmark in the `benchmarks.yml` file provided:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
-```
-
-For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
-
 
 
 ## Licensing

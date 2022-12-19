@@ -19,6 +19,7 @@ from .throughput_estimator_callback import ThroughputEstimatorCallback
 from .correction_metric_callback import CorrectionMetricCallback
 from .epoch_calculation_callback import EpochCalculationCallback
 from .lr_logger_callback import LRLoggerCallback
+from .loss_scaling_factor_logger_callback import LossScalingFactorLoggerCallback
 from .epoch_from_ckpt_name_callback import EpochFromCkptNameCallback
 from .epochs_to_target_callback import EpochsToTargetCallback
 from .optimization_metric_callback import OptimizationMetricCallback
@@ -47,6 +48,8 @@ class CallbackFactory:
         callbacks.append(EpochCalculationCallback(micro_batches_per_epoch))
         callbacks.append(CPUMemoryCallback())
         callbacks.append(LRLoggerCallback())
+        if hyperparams.auto_loss_scaling:
+            callbacks.append(LossScalingFactorLoggerCallback(hyperparams.auto_loss_scaling))
 
         if outfeed_queues is not None:
             for name, outfeed_queue in outfeed_queues:

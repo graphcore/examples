@@ -20,7 +20,7 @@ from typing import List, Optional, Union
 from ipu_utils import safe_mean
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.ipu import horovod as hvd
+from tensorflow.python.ipu import distributed
 import popdist
 
 
@@ -56,7 +56,7 @@ class BenchmarkResult:
 
     @classmethod
     def print_report(cls, results: List):
-        hvd.init()
+        popdist.init()
         tput_stats, latency_stats = list(
             zip(*[r.get_stats() for r in results]))
 
@@ -69,12 +69,12 @@ class BenchmarkResult:
                                 for f in cls.stats_fns]
 
         if popdist.isPopdistEnvSet():
-            tput_summaries = hvd.allgather(tf.constant([tput_summary], name='Throughputs',
+            tput_summaries = distributed.allgather(tf.constant([tput_summary], name='Throughputs',
                                         dtype = tf.float32)).numpy()
-            latency_summaries = hvd.allgather(tf.constant([latency_summary], name='Latencies',
+            latency_summaries = distributed.allgather(tf.constant([latency_summary], name='Latencies',
                                         dtype = tf.float32)).numpy()
-            tput_summary = np.sum(tput_summaries, axis=0)
-            latency_summary = np.mean(latency_summaries, axis=0)
+            tput_summary = np.sum(tput_summaries, axis=0)[0]
+            latency_summary = np.max(latency_summaries, axis=0)[0]
 
         if not popdist.isPopdistEnvSet() or popdist.getInstanceIndex() == 0:
             print("Benchmark complete.")

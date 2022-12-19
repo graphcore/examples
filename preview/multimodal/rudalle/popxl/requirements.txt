@@ -1,8 +1,8 @@
---find-links https://download.pytorch.org/whl/torch_stable.html
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 numpy==1.19.5
-torch==1.10.0+cpu
+torch==1.13.0+cpu
 scipy==1.5.4
-torchvision==0.11.1+cpu
+torchvision==0.14.0+cpu
 omegaconf==2.1.2
 rudalle==1.0.0
 
@@ -11,4 +11,4 @@ bs4
 pytest
 pytest-pythonpath
 
-git+ssh://git@github.com/graphcore/popxl-addons.git@6da586a0c27e2f5c2280b481d88f349f8e04b627#egg=popxl-addons
+git+ssh://git@github.com/graphcore/popxl-addons.git@sdk-release-3.1

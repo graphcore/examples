@@ -52,6 +52,7 @@ def test_grouped_scatter_gather():
 
     config = ipu.config.IPUConfig()
     config.auto_select_ipus = 1
+    config.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
     ipu.utils.configure_ipu_system(config)
 
     gather_grads = dict()

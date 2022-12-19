@@ -536,6 +536,7 @@ def configure_ipu(conf):
             # Configure the IPU system
             cfg = ipu.config.IPUConfig()
             cfg.auto_select_ipus = conf.replication_factor
+            cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
             cfg.matmuls.poplar_options = {
                 'availableMemoryProportion': conf.availableMemoryProportion
             }

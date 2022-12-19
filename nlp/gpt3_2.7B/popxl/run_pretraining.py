@@ -59,8 +59,6 @@ def training(config: GPTConfig, session: TaskSession, dataset: Dataset):
                 labels = to_numpy(data['labels'],
                                   session.inputs.labels.dtype).reshape(
                                       -1, *session.inputs.labels.shape)
-                seeds = popxl.create_seeds(config.model.seed, step,
-                                           samples_per_step)
                 lr = np.full((session.ir.num_host_transfers,
                               config.execution.data_parallel * n_shards, 1),
                              lr_schedule[step]).astype('float32').squeeze()
@@ -75,9 +73,6 @@ def training(config: GPTConfig, session: TaskSession, dataset: Dataset):
                     partial(GPTEmbeddingsTP.offset_input,
                             vocab_size=config.model.embedding.vocab_size,
                             n_shards=n_shards))
-                # Seed (different per DP and identical per TP replica)
-                data_map[session.inputs.seed] = tensor_parallel_input(
-                    seeds, n_shards, replicas)
                 # Add learning rate inputs
                 data_map[session.inputs.lr] = lr
 

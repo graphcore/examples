@@ -7,9 +7,11 @@ common_options: &common_options
   output:
     - [samples/sec, 'throughput']
 
+config_options: &config_options
+  requirements_path: requirements.txt
 
 pytorch_fastpitch_train_gen_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: Pytorch FastPitch throughput benchmark using generated data.
   cmd: >-
     python train.py

@@ -104,9 +104,7 @@ def test_lm_TP_cmp_huggingface(test_config: GPTConfig):
     ir.num_host_transfers = test_config.execution.device_iterations
 
     with popxl.Session(ir, "ipu_hw") as session:
-        # TODO remove write_variables_pb once T56776 has landed
-        # session.write_variables_data(weights)
-        write_variables_pb(session, weights)
+        session.write_variables_data(weights)
         outs = session.run(inputs)
 
     # Fwd output

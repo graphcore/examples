@@ -1,10 +1,11 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 simple-parsing==0.0.19.post1
 pyyaml==5.4.1
 dataclasses==0.8; python_version < '3.7'
 transformers==4.18.0
 datasets==2.1.0
 tfrecord==1.14.1
-torch==1.10.0+cpu
+torch==1.13.0+cpu
 numpy==1.19.5
 scipy>=1.5.4
 more-itertools==8.13.0
@@ -14,6 +15,6 @@ sklearn==0.0
 pytest==6.2.5
 pytest-pythonpath==0.7.4
 
-git+ssh://git@github.com/graphcore/popxl-addons.git@6da586a0c27e2f5c2280b481d88f349f8e04b627#egg=popxl-addons
+git+ssh://git@github.com/graphcore/popxl-addons.git@sdk-release-3.1
 
 protobuf==3.20.*; python_version > '3.6'

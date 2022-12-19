@@ -79,10 +79,7 @@ Create a virtualenv and install the required packages:
 virtualenv venv -p python3.6
 source venv/bin/activate
 pip install -r requirements.txt
-pip install <path to the tensorflow-1 wheel from the Poplar SDK>
 ```
-
-Note: TensorFlow is required by `bert_tf_loader.py`. You can use the Graphcore TensorFlow version, or the standard TensorFlow version.
 
 ### Generate pre-training data (small sample)
 
@@ -199,7 +196,7 @@ For BERT Base phase 2, use the following command:
 
 `python3 bert.py --config configs/pretrain_base_512.json`
 
-You will also need to specify the option `--onnx-checkpoint <path-to-checkpoint>` to load the weights from a previous training phase. You will find the checkpoint path for a training phase logged just after the compilation has completed in a date-time stamped directory. The checkpoints will be of the form `{checkpoint-dir}/{timestamp}/model_{epoch}.onnx`.
+You will also need to specify the option `--checkpoint_input_dir <path-to-checkpoint>` to load the weights from a previous training phase. You will find the checkpoint path for a training phase logged just after the compilation has completed in a date-time stamped directory. The checkpoints will be of the form `{checkpoint-output-dir}/{timestamp}/model_{epoch}.onnx`.
 
 ### Run the training loop with training data (SQuAD 1.1)
 
@@ -217,7 +214,7 @@ and for BERT Large:
 
 View the JSON files in configs for detailed parameters.
 
-By default, SQuAD finetuning will use the pre-trained weights downloaded alongside the vocab, but you can also specify an onnx checkpoint using the option `--onnx-checkpoint <path-to-checkpoint>`.
+By default, SQuAD finetuning will use the pre-trained weights downloaded alongside the vocab, but you can also specify an onnx checkpoint using the option `--checkpoint-input-dir <path-to-checkpoint>`.
 
 ## Training options
 

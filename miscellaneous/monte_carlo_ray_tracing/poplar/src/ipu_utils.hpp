@@ -16,8 +16,7 @@
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/ostr.h>
+#include "logging.hpp"
 
 namespace ipu_utils {
 

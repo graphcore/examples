@@ -18,12 +18,16 @@ common_options: &common_options
     }'
     PYTORCH_EXE_DIR: "/tmp/pt_cache/"
 
+config_options: &config_options
+  requirements_path: requirements.txt
+  pre_run_commands: [cd remap, make clean, make, cd ..]
+
 pytorch_mae_train_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Mae training with real data.
   cmd: >-
-    python main_pretrain.py
+    python3 main_pretrain.py
       --config vit_base_pod16
       --data_path $DATASETS_DIR/imagenet-raw-dataset
       --epochs 1
@@ -32,7 +36,7 @@ pytorch_mae_train_real_pod16:
       --wandb_run_name pytorch_mae_train_real_pod16
 
 pytorch_mae_train_real_pod64:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Mae training performance test with real data.
   cmd: >-
@@ -62,7 +66,7 @@ pytorch_mae_train_real_pod64:
         -x POPLAR_LOG_LEVEL=WARN
         -x POPLAR_SDK_ENABLED
         -x POPLAR_ENGINE_OPTIONS"
-    python main_pretrain.py
+    python3 main_pretrain.py
       --config vit_base_pod64
       --data_path $DATASETS_DIR/imagenet-raw-dataset
       --epochs 3
@@ -70,7 +74,7 @@ pytorch_mae_train_real_pod64:
       --wandb_run_name pytorch_mae_train_real_pod64
 
 pytorch_mae_train_real_pod64_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Mae training convergence test with real data.
   cmd: >-
@@ -100,29 +104,29 @@ pytorch_mae_train_real_pod64_conv:
         -x POPLAR_LOG_LEVEL=WARN
         -x POPLAR_SDK_ENABLED
         -x POPLAR_ENGINE_OPTIONS"
-    python main_pretrain.py
+    python3 main_pretrain.py
       --config vit_base_pod64
       --data_path $DATASETS_DIR/imagenet-raw-dataset
       --wandb
       --wandb_run_name pytorch_mae_train_real_pod64_conv
 
 pytorch_mae_finetune_real_pod16_conv:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Mae finetuning with real data.
   cmd:
-    python main_finetune.py
-      --finetune checkpoint_mae_vit_base/checkpoint.pth
+    python3 main_finetune.py
+      --finetune checkpoint_mae_vit_base_pod64/checkpoint.pth
       --data_path $DATASETS_DIR/imagenet-raw-dataset
       --wandb
       --wandb_run_name pytorch_mae_finetune_real_pod16_conv
 
 pytorch_mae_validation_real_pod16:
-  <<: *common_options
+  <<: [*common_options, *config_options]
   description: |
     Mae validation after pretraining.
   cmd:
-    python finetune_validate.py
+    python3 finetune_validate.py
       --resume checkpoint_mae_vit_base_finetune/checkpoint.pth
       --batch_size 16
       --data_path $DATASETS_DIR/imagenet-raw-dataset

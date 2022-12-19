@@ -12,6 +12,7 @@ from popxl.utils import to_numpy
 import popxl_addons as addons
 from popxl_addons.patterns import apply_pre_alias_patterns
 from popxl_addons import TaskSession
+from popxl_addons.named_tensors import NamedTensors
 
 from config import GPTJConfig
 from modelling.embedding import GPTJEmbeddingsTP
@@ -159,7 +160,7 @@ def test_gptj_to_hf(test_config: GPTJConfig):
 
     inputs = dict(zip(inputs_host_steam, [words_offsetted]))
 
-    session = TaskSession(inputs, [act_stream], vars, ir, 'ipu_hw')
+    session = TaskSession(inputs, [act_stream], NamedTensors(fwd=vars), ir=ir, device_desc='ipu_hw')
 
     with session:
         out = session.run(inputs)[act_stream]

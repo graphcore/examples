@@ -6,12 +6,12 @@
 #include <vector>
 #include <iostream>
 
-#include <spdlog/spdlog.h>
 #include <boost/program_options.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "../logging.hpp"
 #include <light/src/exr/exr.hpp>
 
 std::shared_ptr<spdlog::logger> logger() {

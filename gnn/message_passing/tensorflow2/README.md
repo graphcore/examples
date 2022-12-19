@@ -1,81 +1,81 @@
 # Message Passing Neural Network (MPNN)
+MPNN implementations (Graph Isomorphism Network, Graph Network and Interaction Network), optimised for Graphcore's IPU.
 
-## Table of contents
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| TensorFlow2 | GNNs | MPNN | MolHIV |  | ✅ | ❌ | [How powerful are graph neural networks?](https://arxiv.org/abs/1810.00826), [Relational inductive biases, deep learning, and graph networks](https://arxiv.org/abs/1806.01261), [Neural message passing for quantum chemistry](https://arxiv.org/abs/1704.01212) |
 
-1. [Overview of the Architectures](#overview)
-2. [Setup](#setup)
-3. [Dataset](#dataset)
-    1. [Model Details](#model)
-    2. [Performance](#performance)
-4. [Benchmarking](#benchmarking)
-5. [Profiling](#profiling)
-6. [Changelog](#changelog)
-7. [Licensing](#licensing)
 
-## Overview of the Architectures <a name='overview' ></a>
+## Instructions summary
 
-In this repository, we use the Graphcore IPU to implement a few popular graph neural network architectures.
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
 
-For training, `--model==graph_isomorphism` uses a Graph Isomorphism Network (GIN)[1]. `--model==graph_network` uses a Graph Network[2], and `--model=interaction_network` implements an Interaction Network[3]. These are all used to predict chemical properties of molecules on the IPU.
+2. Install the system and Python requirements (see Environment setup)
 
-The script `run_training.py` runs and evaluates training. This repository is written in TensorFlow 2 and uses Keras extensively.
+3. Download the MolHIV dataset (See Dataset setup)
 
-This repository supports training, evaluation, and benchmarking the throughput.
 
-<!--
--->
-*[1] Xu, Keyulu, et al. "How powerful are graph neural networks?." arXiv preprint arXiv:1810.00826 (2018).*
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
+```bash
+ echo $POPLAR_SDK_ENABLED
+ ```
 
-*[2] Battaglia, Peter W., et al. "Relational inductive biases, deep learning, and graph networks." arXiv preprint arXiv:1806.01261 (2018).*
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
 
-*[3] Gilmer, Justin, et al. "Neural message passing for quantum chemistry." International conference on machine learning. PMLR, 2017.*
-
-## Setup <a name='setup' ></a>
-
-Create a virtual environment and install the appropriate Graphcore TensorFlow 2 wheels from inside
-the SDK directory:
-
-```shell
-virtualenv --python python3.6 .gcn_venv
-source .gcn_venv/bin/activate
-pip install -r requirements.txt
-pip install <path to the TensorFlow-2 wheel from the Poplar SDK>
-pip install --force-reinstall --no-deps <path to the Keras wheel from the Poplar SDK>
-pip install <path to the ipu_tensorflow_addons wheel for TensorFlow 2 from the Poplar SDK>
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-Our IPU implementation uses a TensorFlow custom op that has to be compiled prior to use.
-First, make sure you have sourced your TensorFlow environment, then from
-your top directory (the one containing this README) run
-`cd static_ops && make && cd -`.
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
 
-### Quick-start
 
-To train a Graph Isomorphism Network, run:
+## Environment setup
+To prepare your environment, follow these steps:
 
-```shell
-python run_training.py --model=graph_isomorphism --n_graph_layers=5  --nodes_dropout=0.1
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
 ```
 
-This should get a test AUC of slightly above 0.75.
+2. Navigate to the Poplar SDK root directory
 
-## Dataset <a name='dataset' ></a>
+3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+```bash
+cd <poplar sdk root dir>
+pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
+pip3 install ipu_tensorflow_addons-2.X.X...any.whl
+```
+For the CPU architecture you are running on
 
-This example trains using the Open Graph Benchmark [4] — specifically, the `molhiv` dataset. This contains over 40,000 molecules. The machine learning task is to predict whether a molecule inhibits HIV replication.
+4. Build the custom ops:
+```bash
+cd static_ops && make
+```
 
-The leaderboard for this task is found [here](https://ogb.stanford.edu/docs/leader_graphprop/).
 
-*[4] Hu, Weihua, et al. "Open graph benchmark: Datasets for machine learning on graphs." arXiv preprint arXiv:2005.00687 (2020).*
+## Dataset setup
+### MolHIV
+Download the "molhiv" dataset via [the ogb repository](https://github.com/snap-stanford/ogb). The leaderboard for this task is found [here](https://ogb.stanford.edu/docs/leader_graphprop/).
 
-### Model Details <a name='model' ></a>
+*[1] Hu, Weihua, et al. "Open graph benchmark: Datasets for machine learning on graphs." arXiv preprint arXiv:2005.00687 (2020).*
+
+
+## Custom training/inference and other features
+
+### Model Details
 
 To integrate the use of edges (i.e. the information from atomic bonds), we follow [5] and embed the edges afresh at each layer. These embedded edges are combined with the neighborhood aggregation from the nodes.
 
 We used similar parameters to the example in [5], but use Layer Normalization instead of Batch Normalization at the hidden layers of the multi-layer perceptrons.
 
-*[5] Hu, Weihua, et al. "Strategies for pre-training graph neural networks." arXiv preprint arXiv:1905.12265 (2019).*
+*[2] Hu, Weihua, et al. "Strategies for pre-training graph neural networks." arXiv preprint arXiv:1905.12265 (2019).*
 
-### Performance <a name='performance' ></a>
+### Performance
 
 We compare our model with the GIN implemented on the [OGB leaderboard](https://ogb.stanford.edu/docs/leader_graphprop/#ogbg-molhiv). As per the instructions, training is performed 10 times and the results reported.
 
@@ -88,35 +88,20 @@ The test results are consistent with the reported results.
 | GIN on leaderboard | 1,885,206| 0.7558 ± 0.0140 | 0.8232 ± 0.0090 |
 | IPU GIN model | 1,708,106 | 0.7574 ± 0.0215 | 0.7915 ± 0.0114|
 
-## Running and benchmarking
 
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
-```
-
-Or to run a specific benchmark in the `benchmarks.yml` file provided:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
-```
-
-For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
-
-## Changelog <a name='changelog' ></a>
-
-`June 2022`: This repository now implements *grouped* gathers and scatters: i.e. the compiler
+### Grouped gathers/scatters
+This repository now implements *grouped* gathers and scatters: i.e. the compiler
 is fully aware that each member of the batch can only communicate within its own
 batch. To use this efficiently, we concatenate several graphs into each member
 of the batch. The `packing_strategy_finder` plans the packing so as to minimise
 padding. Using this grouping improves our throughput.
 
-## Licensing <a name='licensing' ></a>
+
+## Licensing
 
 This example is licensed under the MIT license.
 
-Copyright 2021 Graphcore
+Copyright 2022 Graphcore
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 

@@ -27,7 +27,7 @@ from pretraining_data import get_dataloader, get_generated_datum
 from modeling import PipelinedBertForPretraining, PipelinedPackedBertForPretraining
 from ipu_options import get_options
 from optimization import get_lr_scheduler, get_optimizer
-from checkpointing import save_checkpoint, checkpoints_exist
+from checkpointing import save_checkpoint, checkpoints_exist, resolve_checkpoint_input_dir
 from utils import get_sdk_version, cycle, logger, sync_metrics
 from args import parse_bert_args
 
@@ -86,18 +86,19 @@ if __name__ == "__main__":
 
     # Restore model from checkpoint
     steps_finished = 0
-    if config.pretrained_checkpoint:
+    if config.checkpoint_input_dir:
+        config.checkpoint_input_dir = resolve_checkpoint_input_dir(config.checkpoint_input_dir)
         # Load from checkpoint
         if config.packed_data:
-            model = PipelinedPackedBertForPretraining.from_pretrained(config.pretrained_checkpoint, config=config).parallelize().half().train()
+            model = PipelinedPackedBertForPretraining.from_pretrained(config.checkpoint_input_dir, config=config).parallelize().half().train()
         else:
-            model = PipelinedBertForPretraining.from_pretrained(config.pretrained_checkpoint, config=config).parallelize().half().train()
+            model = PipelinedBertForPretraining.from_pretrained(config.checkpoint_input_dir, config=config).parallelize().half().train()
         optimizer = get_optimizer(config, model)
         scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
                                      config.lr_warmup, config.training_steps)
 
         if config.resume_training_from_checkpoint:
-            training_state = torch.load(Path(config.pretrained_checkpoint) / "training_state.pt")
+            training_state = torch.load(Path(config.checkpoint_input_dir) / "training_state.pt")
             optimizer.load_state_dict(training_state["optimizer_state_dict"])
             scheduler.last_epoch = steps_finished = training_state["step"]
             checkpoint_metrics = training_state["metrics"]

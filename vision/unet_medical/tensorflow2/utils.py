@@ -53,6 +53,7 @@ def configure_ipu(args):
 
     # Attach to given number of IPUs
     ipu_config.auto_select_ipus = args.nb_ipus_per_replica * args.replicas
+    ipu_config.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
     ipu_config.configure_ipu_system()
 
 

@@ -121,7 +121,7 @@ def _worker_loop(dataset, index_queue, data_queue, done_event, collate_fn,
         # runs first
         os.nice(5)
 
-        torch.set_num_threads(1)
+        torch.set_num_threads(2)
 
         random.seed(seed)
         torch.manual_seed(seed)
