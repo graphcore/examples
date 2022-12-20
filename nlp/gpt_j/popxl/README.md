@@ -46,25 +46,12 @@ python3 -m venv <venv name>
 source <venv path>/bin/activate
 ```
 
-2. Navigate to the Poplar SDK root directory
+2. Navigate to this example's root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the Python requirements:
 ```bash
-cd <poplar sdk root dir>
-pip3 install poptorch...x86_64.whl
-```
-
-4. Download and install PopXL add-ons:
-```bash
-
-```
-PopXL is an experimental framework and may be subject to change in future releases.
-
-4. Navigate to this example's root directory
-
-5. Install the Python requirements:
-```bash
-make install
+pip3 install -r requirements.txt
+```nstall
 ```
 
 
