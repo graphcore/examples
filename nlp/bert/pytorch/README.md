@@ -3,7 +3,7 @@ Bidirectional Encoder Representations from Transformers for NLP pre-training and
 
 Run our BERT-L Fine-tuning on SQuAD dataset on Paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://bash.paperspace.com/github/gradient-ai/Graphcore-PyTorch?machine=Free-IPU-POD16&container=graphcore%2Fpytorch-jupyter%3A2.6.0-ubuntu-20.04-20220804&file=%2Fget-started%2FFine-tuning-BERT.ipynb)
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3WiyZIC)
 
 | Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
 |-------------|-|------|-------|-------|-------|---|---|
@@ -67,7 +67,7 @@ pip3 install poptorch...x86_64.whl
 sudo apt install $(< required_apt_packages.txt)
 ```
 
-5. Install the Python requirements:
+6. Install the Python requirements:
 ```bash
 pip3 install -r requirements.txt
 ```

@@ -1,6 +1,10 @@
 # ViT (Vision Transformer)
 Vision Transformer for image recognition, optimised for Graphcore's IPU.  Based on the models provided by the [`transformers`](https://github.com/huggingface/transformers) library and from [jeonsworld](https://github.com/jeonsworld/ViT-pytorch)
 
+Run our ViT on Paperspace.
+<br>
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3uTF5Uj)
+
 | Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
 |-------------|-|------|-------|-------|-------|---|-------|
 | Pytorch | Vision | ViT | ImageNet LSVRC 2012, CIFAR-10 | Image recognition | ✅  | ✅ | [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929) |

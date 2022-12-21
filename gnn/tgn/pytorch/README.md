@@ -1,36 +1,74 @@
 # Temporal Graph Networks
 
-This directory contains a PyTorch implementation of [Temporal Graph Networks](https://arxiv.org/abs/2006.10637) to train on IPU.
-This implementation is based on [`examples/tgn.py`](https://github.com/rusty1s/pytorch_geometric/blob/master/examples/tgn.py) from PyTorch-Geometric.
+Temporal graph networks for link prediction in dynamic graphs, based on [`examples/tgn.py`](https://github.com/rusty1s/pytorch_geometric/blob/master/examples/tgn.py) from PyTorch-Geometric, optimised for Graphcore's IPU.
 
-## Running on IPU
+Run our TGN on paperspace.
+<br>
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3uUI2nt)
 
-### Setting up the environment
-Install the Poplar SDK following the [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for the IPU system. 
-Source the `enable.sh` scripts for Poplar and PopART and activate a Python virtualenv with PopTorch installed.
+| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
+|-------------|-|------|-------|-------|-------|---|---|
+| Pytorch | GNNs | TGN | JODIE | Link prediction | ✅ | ❌ | [Temporal Graph Networks for Deep Learning on Dynamic Graphs](https://arxiv.org/abs/2006.10637v3) |
 
-Now install the dependencies of the TGN model:
+
+## Instructions summary
+
+1. Install and enable the Poplar SDK (see Poplar SDK setup)
+
+2. Install the system and Python requirements (see Environment setup)
+
+
+## Poplar SDK setup
+To check if your Poplar SDK has already been enabled, run:
 ```bash
-pip install -r requirements.txt
+ echo $POPLAR_SDK_ENABLED
+ ```
+
+If no path is provided, then follow these steps:
+1. Navigate to your Poplar SDK root directory
+
+2. Enable the Poplar SDK with:
+```bash 
+cd poplar-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-### Train the model
-To train the model run 
-```bash
-python train.py
+3. Additionally, enable PopArt with:
+```bash 
+cd popart-<OS version>-<SDK version>-<hash>
+. enable.sh
 ```
 
-The following flags can be used to adjust the behaviour of `train.py`
+More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
 
---data: directory to load/save the data (default: data/JODIE) <br>
--t, --target: device to run on (choices: {ipu, cpu}, default: ipu) <br>
--d, --dtype: floating point format (default: float32) <br>
--e, --epochs: number of epochs to train for (default: 50) <br>
---lr: learning rate (default: 0.0001) <br>
---dropout: dropout rate in the attention module (default: 0.1) <br>
---optimizer, Optimizer (choices: {SGD, Adam}, default: Adam) <br>
 
-### Running and benchmarking
+## Environment setup
+To prepare your environment, follow these steps:
+
+1. Create and activate a Python3 virtual environment:
+```bash
+python3 -m venv <venv name>
+source <venv path>/bin/activate
+```
+
+2. Navigate to the Poplar SDK root directory
+
+3. Install the PopTorch (Pytorch) wheel:
+```bash
+cd <poplar sdk root dir>
+pip3 install poptorch...x86_64.whl
+```
+
+4. Navigate to this example's root directory
+
+5. Install the Python requirements:
+```bash
+pip3 install -r requirements.txt
+```
+
+
+## Running and benchmarking
+
 To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
 
 For example:
