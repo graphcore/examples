@@ -3,7 +3,7 @@ Cluster graph convolutional networks for node classification, using cluster samp
 
 Run our Cluster GCN training on arXiv dataset on Paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://console.paperspace.com/github/gradient-ai/Graphcore-Tensorflow2?machine=Free-IPU-POD16&container=graphcore%2Ftensorflow-jupyter%3A2-amd-2.6.0-ubuntu-20.04-20220804&file=%2Fget-started%2Frun_cluster_gcn_notebook.ipynb)
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3UYkV6d)
 
 | Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
 |-------------|-|------|-------|-------|-------|---|---|
