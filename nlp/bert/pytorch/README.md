@@ -340,23 +340,6 @@ In order to re-generate the sample dataset, run the following script:
 python3 third_party/create_pretraining_data.py --input-file data/sample_text.txt --output-file data/sample_text.tfrecord --sequence-length 128 --mask-tokens 20 --duplication-factor 4 --do-lower-case --model bert-base-uncased
 ```
 
-
-### Running and benchmarking
-
-To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
-```
-
-Or to run a specific benchmark in the `benchmarks.yml` file provided:
-
-```python
-python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
-```
-
-For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
-
 ### Troubleshooting
 
 If Triton server tests fails with such error:
