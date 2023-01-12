@@ -3,11 +3,11 @@ Bidirectional Encoder Representations from Transformers for NLP pre-training and
 
 Run our BERT-L Fine-tuning on SQuAD dataset on Paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3WiyZIC)
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3GTWwK7)
 
 | Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
 |-------------|-|------|-------|-------|-------|---|---|
-| Pytorch | NLP | BERT | WIKI-103 | Next sentence prediction, Masked language modelling, Question/Answering | ✅  | ✅ | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) | 
+| Pytorch | NLP | BERT | WIKI-103 | Next sentence prediction, Masked language modelling, Question/Answering | ✅  | ✅ | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) |
 
 
 ## Instructions summary
@@ -29,13 +29,13 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
 3. Additionally, enable PopArt with:
-```bash 
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```

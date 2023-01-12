@@ -3,7 +3,7 @@ Cluster graph convolutional networks for node classification, using cluster samp
 
 Run our Cluster GCN training on arXiv dataset on Paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3UYkV6d)
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3CHtqfy)
 
 | Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
 |-------------|-|------|-------|-------|-------|---|---|
@@ -29,7 +29,7 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
@@ -83,10 +83,10 @@ these datasets can be selected in the config by setting `dataset_type`.
 
 ### PPI (Protein-protein interactions) dataset <a name='ppi' ></a>
 
-The [PPI dataset](https://paperswithcode.com/dataset/ppi) depicts protein roles in various protein-protein 
+The [PPI dataset](https://paperswithcode.com/dataset/ppi) depicts protein roles in various protein-protein
 interaction (PPI) graphs. Each graph in the datasets corresponds to a different human tissue. Positional gene sets are
-used, motif gene sets and immunological signatures as features and gene ontology sets as multi-class binary labels 
-(121 in total). The dataset contains in total 56944 nodes, 818716 edges and node feature size 50. The preprocessed PPI 
+used, motif gene sets and immunological signatures as features and gene ontology sets as multi-class binary labels
+(121 in total). The dataset contains in total 56944 nodes, 818716 edges and node feature size 50. The preprocessed PPI
 datasets can be downloaded from [Stanford GraphSAGE](https://snap.stanford.edu/graphsage).
 
 ### Reddit dataset <a name='reddit' ></a>
@@ -121,9 +121,9 @@ for test. To use this dataset, simply use the train_products.json config, the da
 The [ogbn-mag dataset](https://ogb.stanford.edu/docs/nodeprop/#ogbn-mag) is a directed heterogeneous graph that is
 a subset of Microsoft Academic Graph (MAG). The node types are papers, authors, institutions and fields of study.
 These are connected by four edge types, author affiliated with institution, author writes a paper, paper cites a paper,
-and paper has a topic of a field of study. Each paper has a 128-dimmensional node feature vector, that 
+and paper has a topic of a field of study. Each paper has a 128-dimmensional node feature vector, that
 encodes the title and abstract, similar to ogbn-arxiv. The task is to predict the venue of each paper. The train
-portion of the dataset is all papers published until 2017, the papers published in 2018 are the validation 
+portion of the dataset is all papers published until 2017, the papers published in 2018 are the validation
 set, and papers published in 2019 are the test set. To use this dataset, simply use the train_mag.json config,
 the dataset will be downloaded automatically.
 
@@ -144,12 +144,12 @@ which uses PCA to reduce the feature size. There a script is provided to pre-pro
 download the pre-processed data directly, which you can download from
 [DeepMind’s cloud storage](https://storage.googleapis.com/deepmind-ogb-lsc/mag/data/preprocessed/merged_feat_from_paper_feat_pca_129.npy).
 Note that the dataset is licensed under ODC-BY.
-The path for the downloaded `.npy` file can be given in the `train_mag240.json` config under the `pca_features_path` 
-parameter, which is expected relative to the data path. 
+The path for the downloaded `.npy` file can be given in the `train_mag240.json` config under the `pca_features_path`
+parameter, which is expected relative to the data path.
 The other parts of the dataset, for example the edges, nodes and labels, will be downloaded automatically when running
 the application. The dataset is around 200Gb so can take some time to download (a few hours to a day). The path of this
-can be given in the `train_mag240.json` config under `data_path`, or with the `--data-path` argument in the command 
-line. 
+can be given in the `train_mag240.json` config under `data_path`, or with the `--data-path` argument in the command
+line.
 For example, the following configuration will load the data from or download to directory
 `/graph-datasets/ogb-lsc-mag240`, and will attempt to load the PCA features from file
 `/graph-datasets/ogb-lsc-mag240/mag240m_kddcup2021/merged_feat_from_paper_feat_pca_129.npy`:

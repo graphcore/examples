@@ -4,7 +4,7 @@ Temporal graph networks for link prediction in dynamic graphs, based on [`exampl
 
 Run our TGN on paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3uUI2nt)
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3CG1WqL)
 
 | Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
 |-------------|-|------|-------|-------|-------|---|---|
@@ -28,13 +28,13 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
 3. Additionally, enable PopArt with:
-```bash 
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```

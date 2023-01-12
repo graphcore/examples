@@ -3,7 +3,7 @@ Vision Transformer for image recognition, optimised for Graphcore's IPU.  Based 
 
 Run our ViT on Paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3uTF5Uj)
+[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3W2Ru39)
 
 | Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
 |-------------|-|------|-------|-------|-------|---|-------|
@@ -29,13 +29,13 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
 3. Additionally, enable PopArt with:
-```bash 
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
@@ -132,7 +132,7 @@ python validation.py --config b16_imagenet1k_valid
 ```
 ### Employing automatic loss scaling (ALS) for half precision training
 
-ALS is a feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision. 
+ALS is a feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision.
 
 NB. This feature expects the `poptorch` training option `accumulationAndReplicationReductionType` to be set to `poptorch.ReductionType.Mean`, and for accumulation by the optimizer to be done in half precision (using `accum_type=torch.float16` when instantiating the optimizer), or else it may lead to unexpected behaviour.
 
