@@ -70,10 +70,10 @@ def inference(config: GPTJConfig) -> TaskSession:
             # ----- Create Variables -----
 
             # Create RemoteBuffers for each variable
-            embeddings_buffers = named_variable_buffers(embeddings_facts)
+            embeddings_buffers = named_variable_buffers(embeddings_facts, shard_over_dict=False)
             layer_buffers = named_variable_buffers(
-                layer_facts, entries=config.model.layers)
-            lm_buffers = named_variable_buffers(lm_facts)
+                layer_facts, entries=config.model.layers, shard_over_dict=False)
+            lm_buffers = named_variable_buffers(lm_facts, shard_over_dict=False)
 
             variables = NamedTensors()
             transformer = NamedTensors()

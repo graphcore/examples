@@ -1,10 +1,9 @@
 # GPT-J
 GPT-J for NLP pre-training and text generation, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference |
-|-------------|-|------|-------|-------|-------|---|
-| opXL | NLP | GPT-J | MNLI | Next sentence prediction, Question/Answering | ✅  | ✅ |
-
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference |
+|-----------|--------|-------|----------|-------|----------|-----------|
+| popXL | NLP | GPT-J | MNLI | Next sentence prediction, Question/Answering | | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required | <p style="text-align: center;">✅ <br> Min. 16 IPU (POD16) required |
 
 # Instructions summary
 
@@ -51,7 +50,6 @@ source <venv path>/bin/activate
 3. Install the Python requirements:
 ```bash
 pip3 install -r requirements.txt
-```nstall
 ```
 
 
@@ -72,9 +70,10 @@ The task is to predict the relation between the premise and the hypothesis, whic
 
 
 The default model size for fine-tuning is GPT-J 6B on POD64 (named `gptj_6B_1024_pod64`). You can
-change it to other configurations that are available in the configuration file `config/finetuning.yml` using the `- -config` CLI parameter:
+change it to other configurations that are available in the configuration file `config/finetuning.yml` using the `--config` CLI parameter.
+In particular, you can run fine-tuning on a POD16 using
 ```bash
-python3 run_finetuning_mnli.py - -config gptj_6B_1024_pod64
+python3 run_finetuning_mnli.py --config gptj_6B_1024_pod16
 ```
 
 When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable this, use the environment variable `POPXL_CACHE_DIR=<PATH/TO/CACHE>` when running the application:
