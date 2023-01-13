@@ -149,7 +149,7 @@ def training(config: GPTJConfig, session: TaskSession, pretrained):
                               f"Duration: {duration:6.4f} s "
                               f"Throughput: {throughput:6.1f} samples/s ")
                 logging.info(result_str)
-                if popdist.getInstanceIndex() == 0:
+                if popdist.getInstanceIndex() == 0 and wandb.run is not None:
                     wandb.log(
                         {
                             "Loss": loss,
