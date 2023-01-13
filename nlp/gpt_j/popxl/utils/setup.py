@@ -124,7 +124,7 @@ def gptj_fine_tuning_setup(
 ) -> Tuple[GPTJConfig, argparse.Namespace, Optional[GPTJForCausalLM]]:
     """GPT-J setup for fine tunning scripts"""
     config, args, pretrained = gptj_config_setup(config_file, presets_key, default_config,
-                                                 wandb_setup=True, hf_model_setup=True)
+                                                 wandb_setup=False, hf_model_setup=True)
 
     return config, args, pretrained
 
