@@ -12,5 +12,5 @@ scikit-learn==0.24.2
 pyworld==0.3.0
 wandb==0.12.8
 dataclasses==0.8; python_version < '3.7'
-git+https://github.com/graphcore/examples-utils@0f3024827451878955ed495daf2e1b552eaf749f#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@latest_stable
 
