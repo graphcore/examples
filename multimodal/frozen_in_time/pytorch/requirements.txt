@@ -24,7 +24,7 @@ numpy==1.19.5
 olefile==0.46
 packaging==21.3
 pandas==1.1.5
-Pillow==8.4.0
+Pillow==9.3.0
 protobuf==3.17.2
 py-cpuinfo==8.0.0
 pycparser==2.21
