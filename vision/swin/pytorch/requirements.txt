@@ -5,7 +5,7 @@ torchvision==0.14.0+cpu; python_version > '3.6'
 torchvision==0.11.0+cpu; python_version <= '3.6'
 timm==0.4.5
 tlt==0.1.0
-protobuf==3.19.4
+protobuf==3.19.5
 wandb==0.12.1
 transformers==4.18.0
 yacs==0.1.8
