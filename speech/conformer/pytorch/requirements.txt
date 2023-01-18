@@ -4,7 +4,7 @@ fire==0.4.0
 pyyaml==5.4.1
 pandas==1.1.5
 wandb==0.12.8
-protobuf==3.19.4
+protobuf==3.19.5
 pillow==8.4.0
 pytest==6.2.5
 editdistance==0.5.2
