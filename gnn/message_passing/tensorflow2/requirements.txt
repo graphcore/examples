@@ -11,4 +11,4 @@ regex==2022.4.24
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==1.13.0+cu116; python_version >= '3.9'
 wandb==0.12.8
-git+https://github.com/graphcore/examples-utils@8f57bfda96af84e3c931837bed052a657328d264#egg=examples-utils
+git+https://github.com/graphcore/examples-utils@latest_stable
