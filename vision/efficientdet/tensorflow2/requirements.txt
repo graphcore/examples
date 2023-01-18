@@ -1,7 +1,7 @@
 lxml==4.8.0
 absl-py~=0.10
 matplotlib==3.3.4
-Pillow==8.4.0
+Pillow==9.3.0
 PyYAML==5.4.1
 six==1.15.0
 tensorflow-model-optimization==0.7.2
