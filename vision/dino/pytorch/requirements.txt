@@ -9,5 +9,5 @@ pytest==6.2.4
 pyyaml==5.4.1
 horovod==0.24.3
 wandb==0.12.8
-protobuf==3.19.4
+protobuf==3.19.5
 git+https://github.com/graphcore/examples-utils@latest_stable
