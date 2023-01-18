@@ -1,6 +1,6 @@
 --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 absl-py==1.0.0
-protobuf==3.19.4
+protobuf==3.19.5
 attrs==22.1.0
 cppimport==22.8.2
 dataclasses==0.6
