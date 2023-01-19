@@ -3,7 +3,7 @@ GPT-J for NLP pre-training and text generation, optimised for Graphcore's IPU.
 
 | Framework | Domain | Model | Datasets | Tasks | Training | Inference |
 |-----------|--------|-------|----------|-------|----------|-----------|
-| popXL | NLP | GPT-J | MNLI | Next sentence prediction, Question/Answering | | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required | <p style="text-align: center;">✅ <br> Min. 16 IPU (POD16) required |
+| popXL | NLP | GPT-J | MNLI | Next sentence prediction, Question/Answering | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required | <p style="text-align: center;">✅ <br> Min. 16 IPU (POD16) required |
 
 # Instructions summary
 
