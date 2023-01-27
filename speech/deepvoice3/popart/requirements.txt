@@ -9,7 +9,7 @@ librosa==0.7.2; python_version < '3.9'
 librosa==0.8.1; python_version >= '3.9'
 nltk==3.6.5
 protobuf==3.19.4
-onnx==1.11.0
+onnx==1.13.0
 tqdm==4.46.1
 six==1.15.0
 pytest==6.2.5
