@@ -6,7 +6,7 @@ torch==1.10.0+cpu; python_version=='3.6'
 torch==1.13.0+cpu; python_version>'3.6'
 nltk==3.6.5
 future==0.17.1
-onnx==1.11.0
+onnx==1.13.0
 tqdm==4.45.0
 protobuf==3.19.4
 pytest==6.2.5
