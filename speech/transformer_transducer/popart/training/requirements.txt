@@ -8,7 +8,7 @@ sentencepiece==0.1.94
 pandas==1.1.5
 tqdm==4.64.0
 pyyaml==5.4.1
-onnx==1.11.0
+onnx==1.13.0
 protobuf==3.19.4
 wandb==0.12.8
 numba==0.53.1
