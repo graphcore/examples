@@ -5,7 +5,7 @@ attrs==22.1.0
 cppimport==22.8.2
 dataclasses==0.6
 filelock==3.0.4
-future==0.18.2
+future==0.18.3
 iniconfig==1.1.1
 Mako==1.0.4; python_version<='3.6'
 Mako==1.2.4; python_version>'3.6'
