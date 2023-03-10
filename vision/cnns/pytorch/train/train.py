@@ -26,7 +26,8 @@ import datasets.augmentations as augmentations
 
 
 def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, validation_function=None):
-    logging.info("Training the model")
+    training_start_time = datetime.now()
+    logging.info(f"Training the model. Start: {str(training_start_time)}")
 
     # A generic container used by the train function to set and update the host-side training state.
     class TrainingState(): pass
@@ -113,6 +114,10 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
                     running_mean_acc,
                     args,
                 )
+
+    training_end_time = datetime.now()
+    total_training_time = training_end_time - training_start_time
+    logging.info(f"Finished training. Time: {str(training_end_time)}. It took: {str(total_training_time)}")
 
 
 def get_augmented_samples(args, input_data, random_generator):

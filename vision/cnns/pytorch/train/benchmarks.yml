@@ -16,7 +16,7 @@ common_options: &common_options
     - [loss, "loss"]
   env:
     POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
-    PYTORCH_CACHE_DIR: "./pt_cache/"
+    PYTORCH_CACHE_DIR: "/tmp/pt_cache/"
 
 config_options: &config_options
   requirements_path: requirements.txt
@@ -40,11 +40,39 @@ pytorch_resnet50_train_real_pod16:
       --dataloader-worker 14
       --dataloader-rebatch-size 256
 
-pytorch_resnet50_train_real_pod64_conv:
+pytorch_resnet50_train_real_1host_pod64_conv:
+  <<: [*common_options, *config_options]
+  description: |
+    ResNet training on 64 Mk2 IPUs with real data on a single host
+    for convergence testing.
+  cmd: >-
+    poprun
+      -vv
+      --num-instances=8
+      --num-replicas=64
+      --vipu-server-host=$IPUOF_VIPU_API_HOST
+      --vipu-server-port 8090
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-allocation=$VIPU_ALLOCATION_ID
+      --update-partition=yes
+      --remove-partition=yes
+      --reset-partition=no
+      --sync-type=ST_POD_NATIVE_DEFAULT
+      --executable-cache-path=$PYTORCH_CACHE_DIR
+    python3 train.py
+      --config resnet50-pod64
+      --dataloader-worker 28
+      --dataloader-rebatch-size 256
+      --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --checkpoint-output-dir ./checkpoints
+      --wandb
+      --validation-mode none
+
+pytorch_resnet50_train_real_4host_pod64_conv:
   <<: [*common_options, *config_options]
   description: |
     ResNet training on 64 Mk2 IPUs with real data
-    for convergence testing.
+    for convergence testing on 4 hosts.
   cmd: >-
     poprun
       -vv
