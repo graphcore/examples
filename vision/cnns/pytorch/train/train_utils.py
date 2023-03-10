@@ -37,7 +37,6 @@ def parse_arguments():
     parser.add_argument('--epoch', type=int, default=10, help="Number of training epochs")
     parser.add_argument('--checkpoint-input-dir', type=str, default="", help="The dir/path to load pre-existing checkpoints from to initialise a model. If not specified, no checkpoints will be used.")
     parser.add_argument('--checkpoint-output-dir', type=str, default="", help="The dir/path to save checkpoints to during training. If not specified, no checkpoints will be saved.")
-    parser.add_argument("--checkpoint-save-freq", type=int, default=1, help="Frequency of saving checkpoints when training.")
     parser.add_argument('--validation-mode', choices=['none', 'during', 'after'], default="after", help='The model validation mode. none=no validation; during=validate after every epoch; after=validate after the training')
     parser.add_argument('--wandb', action='store_true', help="Add Weights & Biases logging")
     parser.add_argument('--wandb-weight-histogram', action='store_true', help="Log the weight histogram with Weights & Biases")

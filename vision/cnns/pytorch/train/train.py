@@ -23,7 +23,6 @@ import models.loss
 import utils
 import datasets
 import datasets.augmentations as augmentations
-from datetime import datetime
 
 
 def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, validation_function=None):
@@ -87,7 +86,7 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
             update_lr(lr_scheduler, optimizer, training_model, state, args)
 
         # End of the epoch.
-        if not args.checkpoint_output_dir == "" and (state.epoch % args.checkpoint_save_freq) == 0:
+        if not args.checkpoint_output_dir == "":
             model_state = models.get_model_state_dict(training_model)
             optimizer_state = optimizer.state_dict()
             
