@@ -10,6 +10,7 @@ import popdist
 import horovod.torch as hvd
 import numpy as np
 
+from datetime import datetime
 from poptorch.optim import SGD, RMSprop, AdamW
 from lr_schedule import WarmUpLRDecorator, PeriodicLRDecorator
 from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR, ExponentialLR
