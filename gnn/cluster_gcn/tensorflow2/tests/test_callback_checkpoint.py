@@ -12,11 +12,9 @@ from keras_extensions.callbacks.checkpoint_callback import CheckpointCallback
 
 
 class TestCheckpointCallbacks:
-
     def test_checkpoint_creation(self):
         with TemporaryDirectory() as temp_dir:
-            checkpoint_name = (f"{inspect.currentframe().f_code.co_name}"
-                               f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            checkpoint_name = f"{inspect.currentframe().f_code.co_name}" f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             checkpoint_dir = Path(temp_dir).joinpath(checkpoint_name).joinpath("test")
 
             micro_batch_size = 4
@@ -31,11 +29,9 @@ class TestCheckpointCallbacks:
 
             cfg = ipu.config.IPUConfig()
             cfg.auto_select_ipus = num_replicas
-            cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
             cfg.configure_ipu_system()
 
-            callback = CheckpointCallback(checkpoint_dir=checkpoint_dir,
-                                          executions_per_ckpt=executions_per_ckpt)
+            callback = CheckpointCallback(checkpoint_dir=checkpoint_dir, executions_per_ckpt=executions_per_ckpt)
 
             strategy = ipu.ipu_strategy.IPUStrategy()
             with strategy.scope():
@@ -44,13 +40,8 @@ class TestCheckpointCallbacks:
                 x = tf.keras.layers.Dense(1, use_bias=False)(input_layer)
                 model = tf.keras.Model(input_layer, x)
                 model.build(input_shape=(1, 1))
-                model.compile(optimizer=optimizer,
-                              loss=tf.keras.losses.MSE,
-                              steps_per_execution=steps_per_execution)
-                model.fit(ds,
-                          steps_per_epoch=total_num_micro_batches,
-                          epochs=1,
-                          callbacks=callback)
+                model.compile(optimizer=optimizer, loss=tf.keras.losses.MSE, steps_per_execution=steps_per_execution)
+                model.fit(ds, steps_per_epoch=total_num_micro_batches, epochs=1, callbacks=callback)
 
             checkpoint_files = glob(str(checkpoint_dir.joinpath("*.h5")))
 
@@ -58,4 +49,4 @@ class TestCheckpointCallbacks:
 
             # 2 checkpoints created at 60 and 120 micro batches
             # 1 checkpoint created at end of training (130 micro batches)
-            assert(len(checkpoint_files) == 3)
+            assert len(checkpoint_files) == 3

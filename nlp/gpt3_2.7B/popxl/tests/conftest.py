@@ -23,5 +23,4 @@ def test_config():
 # Below functions enable long tests to be skipped, unless a --long-test
 # cli option is specified.
 def pytest_addoption(parser):
-    parser.addoption("--long-tests", action="store_true", default=False,
-                     help="Run long tests")
+    parser.addoption("--long-tests", action="store_true", default=False, help="Run long tests")

@@ -5,17 +5,19 @@ from typing import Tuple, Optional, Union, Mapping
 
 import torch
 import numpy as np
-from transformers.models.perceiver.modeling_perceiver import (_check_or_build_spatial_positions,
-                                                              restructure,
-                                                              PerceiverEmbeddings,
-                                                              PerceiverBasicDecoder,
-                                                              PerceiverClassifierOutput,
-                                                              PerceiverMultimodalDecoder,
-                                                              PerceiverMultimodalPreprocessor,
-                                                              PerceiverMultimodalPostprocessor,
-                                                              PerceiverFourierPositionEncoding,
-                                                              PerceiverTrainablePositionEncoding,
-                                                              PerceiverForMultimodalAutoencoding)
+from transformers.models.perceiver.modeling_perceiver import (
+    _check_or_build_spatial_positions,
+    restructure,
+    PerceiverEmbeddings,
+    PerceiverBasicDecoder,
+    PerceiverClassifierOutput,
+    PerceiverMultimodalDecoder,
+    PerceiverMultimodalPreprocessor,
+    PerceiverMultimodalPostprocessor,
+    PerceiverFourierPositionEncoding,
+    PerceiverTrainablePositionEncoding,
+    PerceiverForMultimodalAutoencoding,
+)
 
 from optimum.graphcore.modeling_utils import register
 
@@ -27,45 +29,45 @@ register(PerceiverForMultimodalAutoencoding)
 
 
 class IPUPerceiverForMultimodalAutoencoding(PerceiverForMultimodalAutoencoding):
-
     def __init__(self, config):
         super().__init__(config)
         self.perceiver.embeddings.__class__ = IPUPerceiverEmbeddings
         self.perceiver.decoder.__class__ = IPUPerceiverMultimodalDecoder
         self.perceiver.decoder.decoder__class__ = IPUPerceiverBasicDecoder
-        self.perceiver.decoder.modalities['audio'].__class__ = IPUPerceiverBasicDecoder
-        self.perceiver.decoder.modalities['image'].decoder.output_position_encodings.__class__ = IPUPerceiverFourierPositionEncoding
-        self.perceiver.decoder.modalities['label'].decoder.output_position_encodings.__class__ = IPUPerceiverTrainablePositionEncoding
+        self.perceiver.decoder.modalities["audio"].__class__ = IPUPerceiverBasicDecoder
+        self.perceiver.decoder.modalities[
+            "image"
+        ].decoder.output_position_encodings.__class__ = IPUPerceiverFourierPositionEncoding
+        self.perceiver.decoder.modalities[
+            "label"
+        ].decoder.output_position_encodings.__class__ = IPUPerceiverTrainablePositionEncoding
         self.perceiver.input_preprocessor.__class__ = IPUPerceiverMultimodalPreprocessor
-        self.perceiver.input_preprocessor.modalities['image'].position_embeddings.__class__ = IPUPerceiverFourierPositionEncoding
-        self.perceiver.input_preprocessor.modalities['audio'].position_embeddings.__class__ = IPUPerceiverFourierPositionEncoding
+        self.perceiver.input_preprocessor.modalities[
+            "image"
+        ].position_embeddings.__class__ = IPUPerceiverFourierPositionEncoding
+        self.perceiver.input_preprocessor.modalities[
+            "audio"
+        ].position_embeddings.__class__ = IPUPerceiverFourierPositionEncoding
         self.perceiver.output_postprocessor.__class__ = IPUPerceiverMultimodalPostprocessor
 
     def forward(
-            self,
-            image: torch.Tensor,
-            audio: torch.Tensor,
-            label: torch.Tensor,
-            image_subsampling: torch.tensor = None,
-            audio_subsampling: torch.tensor = None,
-            label_subsampling: torch.tensor = None,
-            head_mask: Optional[torch.Tensor] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            labels: Optional[torch.Tensor] = None,
-            return_dict: bool = False) -> Union[Tuple, PerceiverClassifierOutput]:
+        self,
+        image: torch.Tensor,
+        audio: torch.Tensor,
+        label: torch.Tensor,
+        image_subsampling: torch.tensor = None,
+        audio_subsampling: torch.tensor = None,
+        label_subsampling: torch.tensor = None,
+        head_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        labels: Optional[torch.Tensor] = None,
+        return_dict: bool = False,
+    ) -> Union[Tuple, PerceiverClassifierOutput]:
 
-        inputs = {
-            'image': image,
-            'audio': audio,
-            'label': label
-        }
+        inputs = {"image": image, "audio": audio, "label": label}
 
-        subsampled_output_points = {
-            'image': image_subsampling,
-            'audio': audio_subsampling,
-            'label': label_subsampling
-        }
+        subsampled_output_points = {"image": image_subsampling, "audio": audio_subsampling, "label": label_subsampling}
 
         outputs = self.perceiver(
             inputs=inputs,
@@ -73,7 +75,7 @@ class IPUPerceiverForMultimodalAutoencoding(PerceiverForMultimodalAutoencoding):
             head_mask=head_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict
+            return_dict=return_dict,
         )
         logits = outputs[0]
 
@@ -87,7 +89,6 @@ class IPUPerceiverForMultimodalAutoencoding(PerceiverForMultimodalAutoencoding):
 
 
 class IPUPerceiverMultimodalDecoder(PerceiverMultimodalDecoder):
-
     def decoder_query(self, inputs, modality_sizes, inputs_without_pos=None, subsampled_points=None):
         # Partition the flat inputs among the different modalities
         inputs = restructure(modality_sizes, inputs)
@@ -120,22 +121,15 @@ class IPUPerceiverMultimodalDecoder(PerceiverMultimodalDecoder):
 
 
 class IPUPerceiverBasicDecoder(PerceiverBasicDecoder):
-
     @property
     def num_query_channels(self) -> int:
         if self.position_encoding_only:
-            return self.position_encoding_kwargs.get(
-                'project_pos_dim', self.output_position_encodings.output_size()
-            )
+            return self.position_encoding_kwargs.get("project_pos_dim", self.output_position_encodings.output_size())
         if self.final_project:
             return self.output_num_channels
         return self.num_channels
 
-    def decoder_query(self,
-                      inputs,
-                      modality_sizes=None,
-                      inputs_without_pos=None,
-                      subsampled_points=None):
+    def decoder_query(self, inputs, modality_sizes=None, inputs_without_pos=None, subsampled_points=None):
 
         if self.position_encoding_type == "none":  # Queries come from elsewhere
             raise ValueError("You cannot construct decoder queries when position_encoding_type is set to none")
@@ -187,11 +181,9 @@ class IPUPerceiverBasicDecoder(PerceiverBasicDecoder):
 
 
 class IPUPerceiverMultimodalPreprocessor(PerceiverMultimodalPreprocessor):
-
-    def forward(self,
-                inputs: Mapping[str, torch.Tensor],
-                pos: Optional[torch.Tensor] = None,
-                network_input_is_1d: bool = True) -> PreprocessorOutputType:
+    def forward(
+        self, inputs: Mapping[str, torch.Tensor], pos: Optional[torch.Tensor] = None, network_input_is_1d: bool = True
+    ) -> PreprocessorOutputType:
 
         padded = {}
         modality_sizes = {}
@@ -206,22 +198,17 @@ class IPUPerceiverMultimodalPreprocessor(PerceiverMultimodalPreprocessor):
             # pad to the same common_channel_size.
             batch_size, num_samples, num_channels = output.shape
             pos_enc = self.padding[modality].expand(
-                batch_size,
-                self.padding[modality].shape[0],
-                self.padding[modality].shape[1]
+                batch_size, self.padding[modality].shape[0], self.padding[modality].shape[1]
             )
 
-            padding = pos_enc.expand(
-                batch_size,
-                num_samples,
-                self.num_channels - num_channels
-            )
+            padding = pos_enc.expand(batch_size, num_samples, self.num_channels - num_channels)
             output_padded = torch.cat([output, padding], dim=2)
 
             # mask if required
             if modality in self.mask_probs:
                 mask_token = self.mask[modality].expand(
-                    batch_size, self.mask[modality].shape[0], self.mask[modality].shape[1])
+                    batch_size, self.mask[modality].shape[0], self.mask[modality].shape[1]
+                )
                 mask_prob = self.mask_probs[modality]
                 mask = torch.bernoulli(torch.full([batch_size, num_samples], mask_prob))
                 mask = torch.unsqueeze(mask, dim=2).to(mask_token.device)
@@ -240,11 +227,7 @@ class IPUPerceiverMultimodalPreprocessor(PerceiverMultimodalPreprocessor):
 
 
 class IPUPerceiverMultimodalPostprocessor(PerceiverMultimodalPostprocessor):
-
-    def forward(self,
-                inputs: torch.Tensor,
-                pos: Optional[torch.Tensor] = None,
-                modality_sizes=None) -> tuple:
+    def forward(self, inputs: torch.Tensor, pos: Optional[torch.Tensor] = None, modality_sizes=None) -> tuple:
 
         if not self.input_is_dict:
             # Slice up modalities by their sizes.
@@ -260,26 +243,18 @@ class IPUPerceiverMultimodalPostprocessor(PerceiverMultimodalPostprocessor):
 
 
 class IPUPerceiverTrainablePositionEncoding(PerceiverTrainablePositionEncoding):
-
     def forward(self, batch_size):
         position_embeddings = self.position_embeddings
         if batch_size is not None:
             position_embeddings = position_embeddings.expand(
-                batch_size,
-                position_embeddings.shape[0],
-                position_embeddings.shape[1]
+                batch_size, position_embeddings.shape[0], position_embeddings.shape[1]
             )
         return position_embeddings
 
 
 class IPUPerceiverEmbeddings(PerceiverEmbeddings):
-
     def forward(self, batch_size):
-        return self.latents.expand(
-            batch_size,
-            self.latents.shape[0],
-            self.latents.shape[1]
-        )
+        return self.latents.expand(batch_size, self.latents.shape[0], self.latents.shape[1])
 
 
 def generate_fourier_features(pos, num_bands, max_resolution=(224, 224), concat_pos=True, sine_only=False):
@@ -301,9 +276,7 @@ def generate_fourier_features(pos, num_bands, max_resolution=(224, 224), concat_
         per_pos_features = torch.sin(np.pi * (per_pos_features))
     else:
         # Output is size [n, 2 * d * num_bands]
-        per_pos_features = torch.cat(
-            [torch.sin(np.pi * per_pos_features), torch.cos(np.pi * per_pos_features)], dim=-1
-        )
+        per_pos_features = torch.cat([torch.sin(np.pi * per_pos_features), torch.cos(np.pi * per_pos_features)], dim=-1)
     # Concatenate the raw input positions.
     if concat_pos:
         # Adds d bands to the encoding.

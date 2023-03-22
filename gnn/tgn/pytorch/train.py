@@ -7,6 +7,7 @@ import poptorch
 from pathlib import Path
 import time
 import numpy as np
+import shutil
 import warnings
 from poptorch import DataLoader
 from sklearn.metrics import average_precision_score, roc_auc_score
@@ -15,22 +16,18 @@ from tgn_modules import TGN, Data, DataWrapper, init_weights
 
 
 def build_tgn(
-        data: Path,
-        dtype: str,
-        batch_size: int,
-        nodes_size: int,
-        edges_size: int,
-        dropout: float,
-        target: str,
+    data: Path,
+    dtype: str,
+    batch_size: int,
+    nodes_size: int,
+    edges_size: int,
+    dropout: float,
+    target: str,
 ):
     model_dtype = torch.float32 if dtype == "float32" else torch.float16
 
-    train_data = DataWrapper(
-        Data(data, torch.float32, batch_size, nodes_size, edges_size), 'train'
-    )
-    test_data = DataWrapper(
-        Data(data, torch.float32, batch_size, nodes_size, edges_size), 'val'
-    )
+    train_data = DataWrapper(Data(data, torch.float32, batch_size, nodes_size, edges_size), "train")
+    test_data = DataWrapper(Data(data, torch.float32, batch_size, nodes_size, edges_size), "val")
 
     tgn = TGN(
         num_nodes=9227,
@@ -54,10 +51,10 @@ def run_train(model, train_data, optim, target, do_reset) -> float:
 
     if do_reset:
         model.memory.reset_state()  # Start with a fresh memory.
-        if target == 'ipu':
+        if target == "ipu":
             model.copyWeightsToDevice()
     for n, batch in enumerate(train_data):
-        if target == 'ipu':
+        if target == "ipu":
             count, loss = model(**batch)
         else:
             optim.zero_grad()
@@ -93,31 +90,10 @@ def _main() -> None:
         description="Train the TGN example",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument(
-        "--data",
-        default="data/JODIE",
-        type=Path,
-        help="directory to load/save the data"
-    )
-    parser.add_argument(
-        "-b",
-        "--batch-size",
-        default=40,
-        type=int,
-        help="batch size for training and validation/test"
-    )
-    parser.add_argument(
-        "--nodes-size",
-        default=400,
-        type=int,
-        help="padding for nodes"
-    )
-    parser.add_argument(
-        "--edges-size",
-        default=1200,
-        type=int,
-        help="padding for edges"
-    )
+    parser.add_argument("--data", default="data/JODIE", type=Path, help="directory to load/save the data")
+    parser.add_argument("-b", "--batch-size", default=40, type=int, help="batch size for training and validation/test")
+    parser.add_argument("--nodes-size", default=400, type=int, help="padding for nodes")
+    parser.add_argument("--edges-size", default=1200, type=int, help="padding for edges")
     parser.add_argument(
         "-t",
         "--target",
@@ -179,6 +155,11 @@ def _main() -> None:
     lr = args.pop("lr")
     device_iterations = args.pop("device_iterations")
 
+    processed_dir = args["data"].joinpath("wikipedia").joinpath("processed")
+    # Cleanup artifacts left by previous run
+    if processed_dir.exists():
+        shutil.rmtree(processed_dir)
+
     # Build dataloader and model
     train_data, test_data, model = build_tgn(**args)
 
@@ -189,35 +170,39 @@ def _main() -> None:
     if not num_batches % device_iterations == 0:
         factors = [x for x in np.arange(1, num_batches + 1) if num_batches % x == 0]
         device_iterations = int(min(factors, key=lambda x: abs(x - device_iterations)))
-        warnings.warn(f"device_iterations was set to {device_iterations}, the closest "
-                      f"factor of the training batch count")
+        warnings.warn(
+            f"device_iterations was set to {device_iterations}, the closest " f"factor of the training batch count"
+        )
 
     train_opts = poptorch.Options()
     train_opts.deviceIterations(device_iterations)
     test_opts = poptorch.Options()
     test_opts.deviceIterations(1)
 
-    torch.multiprocessing.set_sharing_strategy('file_system')
+    torch.multiprocessing.set_sharing_strategy("file_system")
 
     async_options = {
-            "sharing_strategy": poptorch.SharingStrategy.SharedMemory,
-            "load_indefinitely": True,
-            "early_preload": True,
-            "buffer_size": 2}
-    train_dl = DataLoader(options=train_opts, dataset=train_data, batch_size=1,
-                          mode=poptorch.DataLoaderMode.Async,
-                          async_options=async_options)
+        "sharing_strategy": poptorch.SharingStrategy.SharedMemory,
+        "load_indefinitely": True,
+        "early_preload": True,
+        "buffer_size": 2,
+    }
+    train_dl = DataLoader(
+        options=train_opts,
+        dataset=train_data,
+        batch_size=1,
+        mode=poptorch.DataLoaderMode.Async,
+        async_options=async_options,
+    )
     test_dl = DataLoader(options=test_opts, dataset=test_data, batch_size=1)
 
     if args["target"] == "ipu":
         if optim.lower() == "sgd":
             optim = poptorch.optim.SGD(model.parameters(), lr=lr)
         elif optim.lower() == "adam":
-            optim = poptorch.optim.AdamW(model.parameters(), lr=lr,
-                                         bias_correction=True,
-                                         weight_decay=0.0,
-                                         eps=1e-8,
-                                         betas=(0.9, 0.999))
+            optim = poptorch.optim.AdamW(
+                model.parameters(), lr=lr, bias_correction=True, weight_decay=0.0, eps=1e-8, betas=(0.9, 0.999)
+            )
         else:
             raise NotImplementedError(f"Optimizer {optim}")
         model_train = poptorch.trainingModel(model, options=train_opts, optimizer=optim)
@@ -232,24 +217,24 @@ def _main() -> None:
         model_train = model
         model_eval = model
 
-    dataset_size = len(train_dl) * (device_iterations * args['batch_size'])
+    dataset_size = len(train_dl) * (device_iterations * args["batch_size"])
 
     # Run training
-    for epoch in range(1, epochs+1):
+    for epoch in range(1, epochs + 1):
         t0 = time.time()
-        loss = run_train(model_train, train_dl, optim, args["target"],
-                         do_reset=(epoch > 1))
+        loss = run_train(model_train, train_dl, optim, args["target"], do_reset=(epoch > 1))
         duration = time.time() - t0
         tput = dataset_size / duration
-        print(f'Epoch {epoch}: Loss {loss:.4f}, Time {duration:.4f}, '
-                f'Throughput: {tput:.4f} samples/s')
+        print(f"Epoch {epoch}: Loss {loss:.4f}, Time {duration:.4f}, " f"Throughput: {tput:.4f} samples/s")
 
         if epoch % validate_every == 0 or epoch == epochs:
             aps, aucs = run_test(model_eval, test_dl)
-            print(f'Validation APS {aps:.4f}, AUCS {aucs:.4f}')
+            print(f"Validation APS {aps:.4f}, AUCS {aucs:.4f}")
 
-    print(f'Training finished \n'
-          f'APS {aps:.4f}, AUCS {aucs:.4f}')
+    print(f"Training finished \n" f"APS {aps:.4f}, AUCS {aucs:.4f}")
+
+    # Cleanup artifacts created by this run
+    shutil.rmtree(processed_dir)
 
 
 if __name__ == "__main__":

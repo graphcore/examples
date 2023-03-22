@@ -23,14 +23,14 @@ class AdjacencyProcessing(tf.keras.layers.Layer):
     """
 
     def __init__(
-            self,
-            num_nodes,
-            transform_mode,
-            diag_lambda=None,
-            regularisation=None,
-            adjacency_form=AdjacencyForm.DENSE,
-            adjacency_dtype=tf.float32,
-            **kwargs
+        self,
+        num_nodes,
+        transform_mode,
+        diag_lambda=None,
+        regularisation=None,
+        adjacency_form=AdjacencyForm.DENSE,
+        adjacency_dtype=tf.float32,
+        **kwargs,
     ):
         """
         Arguments:
@@ -85,8 +85,7 @@ class AdjacencyProcessing(tf.keras.layers.Layer):
 
     def call(self, adjacency):
         if self.transform_mode not in ALLOWED_ADJACENCY_TRANSFORM:
-            raise ValueError(f"Not valid 'adjacency_mode', "
-                             f"it must be one of {ALLOWED_ADJACENCY_TRANSFORM}.")
+            raise ValueError(f"Not valid 'adjacency_mode', " f"it must be one of {ALLOWED_ADJACENCY_TRANSFORM}.")
 
         # If adjacency matrix is a tf.Tensor, cast from bool to the chosen float precision.
         if isinstance(adjacency, tf.Tensor):
@@ -110,11 +109,7 @@ class AdjacencyProcessing(tf.keras.layers.Layer):
             # A' denotes A normalised and regularised.
             # A_tilde = A'
             adj_norm = self.normalise_adjacency(adjacency)
-            adj_reg_norm = self.regularise_adjacency(
-                adj_norm,
-                self.regularisation,
-                self.adjacency_form
-            )
+            adj_reg_norm = self.regularise_adjacency(adj_norm, self.regularisation, self.adjacency_form)
             return adj_reg_norm
 
         if self.transform_mode == "self_connections_scaled_by_degree":
@@ -123,10 +118,7 @@ class AdjacencyProcessing(tf.keras.layers.Layer):
             eye = mat_ops.eye(shape_(adjacency)[0], dtype_(adjacency), self.adjacency_form)
             adj_self_loops = mat_ops.add(adjacency, eye)
             inv_deg_plus_eye_vec = self.get_degree_plus_eye_inverse(adjacency)
-            adjacency_tilde = mat_ops.diag_matmul(
-                inv_deg_plus_eye_vec,
-                adj_self_loops
-            )
+            adjacency_tilde = mat_ops.diag_matmul(inv_deg_plus_eye_vec, adj_self_loops)
             return adjacency_tilde
 
         if self.transform_mode == "normalised_regularised_self_connections_scaled_by_degree":
@@ -135,16 +127,8 @@ class AdjacencyProcessing(tf.keras.layers.Layer):
             # A_tilde = (D + I)^(-1) @ (A' + I)
             inv_deg_plus_eye_vec = self.get_degree_plus_eye_inverse(adjacency)
             adj_norm = self.normalise_adjacency(adjacency)
-            adj_reg_norm = self.regularise_adjacency(
-                adj_norm,
-                self.regularisation,
-                self.adjacency_form
-            )
-            eye = mat_ops.eye(
-                shape_(adjacency)[0],
-                dtype_(adjacency),
-                self.adjacency_form
-            )
+            adj_reg_norm = self.regularise_adjacency(adj_norm, self.regularisation, self.adjacency_form)
+            eye = mat_ops.eye(shape_(adjacency)[0], dtype_(adjacency), self.adjacency_form)
             adj_reg_norm_self_loops = mat_ops.add(adj_reg_norm, eye)
             adjacency_tilde = mat_ops.diag_matmul(inv_deg_plus_eye_vec, adj_reg_norm_self_loops)
             return adjacency_tilde
@@ -160,9 +144,6 @@ class AdjacencyProcessing(tf.keras.layers.Layer):
             adjacency_tilde_diag_part = mat_ops.diag_part(adjacency_tilde)
             diag_adjacency_tilde = mat_ops.diag(adjacency_tilde_diag_part, self.adjacency_form)
 
-            scaled_diag_adjacency_tilde = mat_ops.scale_by_constant(
-                diag_adjacency_tilde,
-                self.diag_lambda
-            )
+            scaled_diag_adjacency_tilde = mat_ops.scale_by_constant(diag_adjacency_tilde, self.diag_lambda)
             adjacency_tilde = mat_ops.add(adjacency_tilde, scaled_diag_adjacency_tilde)
             return adjacency_tilde

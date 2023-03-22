@@ -20,4 +20,3 @@ python train.py \
     --weight-decay 1e-6 \
     --gradient-accumulation 64 \
     --replication-factor 2
-

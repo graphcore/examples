@@ -16,8 +16,7 @@ class LoggingCallback(tf.keras.callbacks.Callback):
         self.log_period = log_period
         self.__current_batch_operations = self.__first_batch_operations
         self.logger = logging.getLogger("logging_callback")
-        self.logger.info("Logging with a period of 1 log every"
-                         f" {log_period} executions.")
+        self.logger.info("Logging with a period of 1 log every" f" {log_period} executions.")
         self.epoch = 0
 
     def on_epoch_begin(self, epoch, logs=None):
@@ -29,7 +28,8 @@ class LoggingCallback(tf.keras.callbacks.Callback):
         if (batch + 1) % self.log_period == 0:
             metrics = self.metrics.get_normalized()
             logger_metrics_str = ", ".join(
-                [f"{k}: {v:.3f}" for k, v in metrics.items() if k not in LOGGING_EXCLUDE_METRICS])
+                [f"{k}: {v:.3f}" for k, v in metrics.items() if k not in LOGGING_EXCLUDE_METRICS]
+            )
             self.logger.info(f"Epoch {self.epoch} - Batch {batch+1}: {logger_metrics_str}")
             self.metrics.reset()
 
@@ -43,8 +43,7 @@ class LoggingCallback(tf.keras.callbacks.Callback):
                 self.logger.info(f"{key} {logs[key]}")
 
         # filter one off metrics
-        logs = {metric: logs[metric]
-                for metric in logs if metric not in LOGGING_ONE_OFF_METRICS}
+        logs = {metric: logs[metric] for metric in logs if metric not in LOGGING_ONE_OFF_METRICS}
 
         # which metrics are accumulated are only known at runtime
         # but stay the same for the duration of training
@@ -56,24 +55,24 @@ class LoggingCallback(tf.keras.callbacks.Callback):
 
 
 class TrainingLoggingCallback(LoggingCallback):
-
     def on_train_batch_end(self, batch, logs=None):
         self.log_data(batch, logs)
 
     def on_train_end(self, logs=None):
         if logs is not None:
-            logging.info(f"Mean throughput for training: {logs.get('mean_throughput', 'nan')} samples/sec,"
-                         f" STD throughput for training: {logs.get('std_throughput', 'nan')} samples/sec,"
-                         f" Mean throughput: {logs.get('mean_real_throughput', 'nan')} samples/sec over real nodes (no padding) for training"
-                         f" loss: {logs.get('loss', 'nan')}")
+            logging.info(
+                f"Mean throughput for training: {logs.get('mean_throughput', 'nan')} samples/sec,"
+                f" STD throughput for training: {logs.get('std_throughput', 'nan')} samples/sec,"
+                f" Mean throughput: {logs.get('mean_real_throughput', 'nan')} samples/sec over real nodes (no padding) for training"
+                f" loss: {logs.get('loss', 'nan')}"
+            )
 
 
 class ValidationLoggingCallback(LoggingCallback):
-
     def on_test_batch_end(self, batch, logs=None):
-        val_logs = {k+"_validation": logs[k] for k in logs.keys()}
+        val_logs = {k + "_validation": logs[k] for k in logs.keys()}
         self.log_data(batch, val_logs)
 
     def __first_batch_operations(self, logs):
-        logs = {k+"_validation": logs[k] for k in logs.keys() if k not in VALIDATION_EXCLUDE_METRICS}
+        logs = {k + "_validation": logs[k] for k in logs.keys() if k not in VALIDATION_EXCLUDE_METRICS}
         return super().__first_batch_operations(logs)

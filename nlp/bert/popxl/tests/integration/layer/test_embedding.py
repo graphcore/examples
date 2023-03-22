@@ -28,8 +28,7 @@ def test_embedding_cmp_huggingface(test_config: BertConfig):
     hidden_size = test_config.model.hidden_size
 
     # HF forwards
-    words = torch.randint(1, config.vocab_size,
-                          (micro_bs, seq_len), dtype=torch.int32)
+    words = torch.randint(1, config.vocab_size, (micro_bs, seq_len), dtype=torch.int32)
     token_types = torch.randint(2, (micro_bs, seq_len), dtype=torch.int32)
     output_HF = module(words, token_types)
 
@@ -51,15 +50,14 @@ def test_embedding_cmp_huggingface(test_config: BertConfig):
     main = ir.main_graph
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(words.flatten(), popxl.int32, name="words"),
-            addons.host_load(token_types.flatten(),
-                             popxl.int32, name="token_type"),
-        ])
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(words.flatten(), popxl.int32, name="words"),
+                addons.host_load(token_types.flatten(), popxl.int32, name="token_type"),
+            ]
+        )
         args, graph = BertEmbeddings(test_config).create_graph(*inputs_tensors)
-        grad_graph = addons.autodiff(
-            graph,
-            grads_required=graph.args.tensors)
+        grad_graph = addons.autodiff(graph, grads_required=graph.args.tensors)
 
         embed = args.init("embedding")
         layer = graph.bind(embed)
@@ -69,19 +67,14 @@ def test_embedding_cmp_huggingface(test_config: BertConfig):
         output = addons.host_store(act)
 
         # Backwards
-        gradient = popxl.constant(grad_wrt.reshape(
-            act.shape).numpy().copy(), act.dtype, "gradient")
-        grad_call_info = grad_graph.call_with_info(
-            gradient, args=grad_graph.grad_graph_info.inputs_dict(call_info))
+        gradient = popxl.constant(grad_wrt.reshape(act.shape).numpy().copy(), act.dtype, "gradient")
+        grad_call_info = grad_graph.call_with_info(gradient, args=grad_graph.grad_graph_info.inputs_dict(call_info))
 
-        grad_map = grad_graph.grad_graph_info.fwd_graph_ins_to_grad_parent_outs(
-            grad_call_info)
+        grad_map = grad_graph.grad_graph_info.fwd_graph_ins_to_grad_parent_outs(grad_call_info)
 
         words_grad_stream = addons.host_store(grad_map[graph.args.word.weight])
-        positions_grad_stream = addons.host_store(
-            grad_map[graph.args.positional.weight])
-        token_types_grad_stream = addons.host_store(
-            grad_map[graph.args.token_type.weight])
+        positions_grad_stream = addons.host_store(grad_map[graph.args.positional.weight])
+        token_types_grad_stream = addons.host_store(grad_map[graph.args.token_type.weight])
 
     weights = BertEmbeddings.hf_mapping(test_config, embed, module)
 
@@ -93,10 +86,11 @@ def test_embedding_cmp_huggingface(test_config: BertConfig):
         session.write_variables_data(weights)
         outs = session.run(inputs)
 
+    np.testing.assert_almost_equal(output_HF, outs[output].reshape(output_HF.shape), 5)
     np.testing.assert_almost_equal(
-        output_HF, outs[output].reshape(output_HF.shape), 5)
-    np.testing.assert_almost_equal(words_grad_HF, outs[words_grad_stream][:test_config.model.embedding.vocab_size, :], 5)
+        words_grad_HF, outs[words_grad_stream][: test_config.model.embedding.vocab_size, :], 5
+    )
     np.testing.assert_almost_equal(
-        positions_grad_HF, outs[positions_grad_stream][:test_config.model.embedding.max_positional_length, :], 5)
-    np.testing.assert_almost_equal(
-        token_types_grad_HF, outs[token_types_grad_stream][:2, :], 5)
+        positions_grad_HF, outs[positions_grad_stream][: test_config.model.embedding.max_positional_length, :], 5
+    )
+    np.testing.assert_almost_equal(token_types_grad_HF, outs[token_types_grad_stream][:2, :], 5)

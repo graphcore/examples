@@ -13,8 +13,10 @@ from popxl_addons import NamedTensors
 from popxl_addons.named_tensors import NamedTensorData
 from utils.utils import shard
 from popxl_addons.layers import Linear, LayerNorm
-from popxl_addons.ops.replicated_all_reduce_TP import (replicated_all_reduce_identical_inputs,
-                                                       replicated_all_reduce_identical_grad_inputs)
+from popxl_addons.ops.replicated_all_reduce_TP import (
+    replicated_all_reduce_identical_inputs,
+    replicated_all_reduce_identical_grad_inputs,
+)
 
 from transformers.models.gptj.modeling_gptj import GPTJBlock as HFModel
 from transformers.models.gptj.configuration_gptj import GPTJConfig as GPTJConfigHF
@@ -55,28 +57,22 @@ class GPTJDecoderBlockTP(addons.Module):
         dtype = config.model.dtype
         weights = {
             variables.ln_1.weight: to_numpy(hf_model.ln_1.weight.data, dtype),
-            variables.ln_1.bias: to_numpy(hf_model.ln_1.bias.data, dtype)
+            variables.ln_1.bias: to_numpy(hf_model.ln_1.bias.data, dtype),
         }
-        weights.update(GPTJSelfAttentionTP.hf_mapping(
-            config, variables.attention, hf_model.attn))
-        weights.update(GPTJFeedForwardTP.hf_mapping(
-            config, variables.feed_forward, hf_model.mlp))
+        weights.update(GPTJSelfAttentionTP.hf_mapping(config, variables.attention, hf_model.attn))
+        weights.update(GPTJFeedForwardTP.hf_mapping(config, variables.feed_forward, hf_model.mlp))
 
         return weights
 
     @staticmethod
     def to_hf(config: GPTJConfigHF, variables_data: NamedTensorData, hf_model: HFModel) -> Dict[str, torch.Tensor]:
-        attn = GPTJSelfAttentionTP.to_hf(
-            config, variables_data.attention, hf_model.attn)
-        mlp = GPTJFeedForwardTP.to_hf(
-            config, variables_data.feed_forward, hf_model.mlp)
+        attn = GPTJSelfAttentionTP.to_hf(config, variables_data.attention, hf_model.attn)
+        mlp = GPTJFeedForwardTP.to_hf(config, variables_data.feed_forward, hf_model.mlp)
         state_dict = {}
-        state_dict['ln_1.weight'] = torch.tensor(
-            variables_data.ln_1.weight, dtype=config.torch_dtype)
-        state_dict['ln_1.bias'] = torch.tensor(
-            variables_data.ln_1.bias, dtype=config.torch_dtype)
-        state_dict.update({'attn.' + k: v for k, v in attn.items()})
-        state_dict.update({'mlp.' + k: v for k, v in mlp.items()})
+        state_dict["ln_1.weight"] = torch.tensor(variables_data.ln_1.weight, dtype=config.torch_dtype)
+        state_dict["ln_1.bias"] = torch.tensor(variables_data.ln_1.bias, dtype=config.torch_dtype)
+        state_dict.update({"attn." + k: v for k, v in attn.items()})
+        state_dict.update({"mlp." + k: v for k, v in mlp.items()})
         return state_dict
 
 
@@ -87,11 +83,10 @@ class GPTJDecoderTP(addons.Module):
 
     def build(self, x: popxl.Tensor):
 
-        facts, graph = GPTJDecoderBlockTP(
-            self.config).create_graph(x)  # Outline GPT Layer
+        facts, graph = GPTJDecoderBlockTP(self.config).create_graph(x)  # Outline GPT Layer
 
         for i in range(self.config.model.layers):
             args_nt = self.add_variable_inputs(i, facts)
-            x, = graph.bind(args_nt).call(x)
+            (x,) = graph.bind(args_nt).call(x)
 
         return x

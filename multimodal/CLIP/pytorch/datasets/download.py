@@ -16,7 +16,7 @@ from PIL import Image
 
 
 def generate_name():
-    random_str = ''.join(random.sample(string.ascii_letters + string.digits, 20))
+    random_str = "".join(random.sample(string.ascii_letters + string.digits, 20))
 
     return random_str + ".jpg"
 
@@ -38,7 +38,7 @@ def grab(line):
         # Try to parse this an Image file, we'll fail out if not
         im = Image.open(BytesIO(dat.content))
         im.thumbnail((512, 512), Image.BICUBIC)
-        if min(*im.size) < max(*im.size)/3:
+        if min(*im.size) < max(*im.size) / 3:
             print("Too small", url)
             return
 
@@ -68,8 +68,8 @@ def grab(line):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download cc3m dataset")
-    parser.add_argument('--url_file', type=str, help="The path of input file")
-    parser.add_argument('--save_path', type=str, help="The path to save the downloaded files")
+    parser.add_argument("--url_file", type=str, help="The path of input file")
+    parser.add_argument("--save_path", type=str, help="The path to save the downloaded files")
 
     args = parser.parse_args()
 
@@ -79,8 +79,7 @@ if __name__ == "__main__":
 
     p = mp.Pool(100)
 
-    results = p.map(grab,
-                    [line for i, line in enumerate(open(file, "r", encoding='utf-8').read().split("\n"))])
+    results = p.map(grab, [line for i, line in enumerate(open(file, "r", encoding="utf-8").read().split("\n"))])
 
     out = open(f"{save_path}/img_cap.csv", "w")
 

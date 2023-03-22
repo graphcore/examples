@@ -5,11 +5,7 @@ from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 
 
 class LearningRateWarmupAndDecay(LearningRateSchedule):
-
-    def __init__(self,
-                 warmup_frac: float,
-                 total_steps: int,
-                 max_learning_rate: float):
+    def __init__(self, warmup_frac: float, total_steps: int, max_learning_rate: float):
         super().__init__()
         self.num_warmup_steps = int(warmup_frac * total_steps)
         self.total_steps = total_steps

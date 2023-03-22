@@ -7,10 +7,7 @@ from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 
 
 class CosineLRSchedule(LearningRateSchedule):
-
-    def __init__(self,
-                 initial_learning_rate: float,
-                 weight_updates_to_total_decay: int):
+    def __init__(self, initial_learning_rate: float, weight_updates_to_total_decay: int):
 
         super(CosineLRSchedule, self).__init__()
         self._weight_updates_to_total_decay = float(weight_updates_to_total_decay)
@@ -24,7 +21,6 @@ class CosineLRSchedule(LearningRateSchedule):
 
 
 class ConstLRSchedule(LearningRateSchedule):
-
     def __init__(self, initial_learning_rate: float = 1e-3):
 
         super(ConstLRSchedule, self).__init__()

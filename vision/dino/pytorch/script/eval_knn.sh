@@ -23,7 +23,7 @@ python script/extract_weights.py \
        	--weights $weights_path \
         --output $knn_dir/vit_model.pth
 
-train_features="python script/extract_feature.py 
+train_features="python script/extract_feature.py
                 --arch $arch
                 --data_path ./data/imagenet1k/train
                 --weights $knn_dir/vit_model.pth
@@ -31,7 +31,7 @@ train_features="python script/extract_feature.py
                 --di 128
                 --output $knn_dir/train.pth"
 
-val_features="python script/extract_feature.py 
+val_features="python script/extract_feature.py
                 --arch $arch
                 --data_path ./data/imagenet1k/validation
                 --weights $knn_dir/vit_model.pth

@@ -8,7 +8,7 @@ from custom_exceptions import InvalidPrecisionException
 class EightBitTransfer:
     def __init__(self, compute_precision: tf.dtypes.DType):
         if compute_precision not in [tf.float16, tf.float32]:
-            raise InvalidPrecisionException(f'invalid precision: {compute_precision}')
+            raise InvalidPrecisionException(f"invalid precision: {compute_precision}")
         self.tf_compute_precision = compute_precision
 
     # compression - host side

@@ -49,7 +49,7 @@ class NmsOpx;
 namespace {
 // for C++11 compatibility, we don't use std::make_unique
 template <typename T, typename... Args>
-std::unique_ptr<T> make_unique(Args &&... args) {
+std::unique_ptr<T> make_unique(Args &&...args) {
   return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 } // namespace
@@ -164,7 +164,8 @@ public:
     verifyOp<NmsOp>(op, Onnx::CustomOperators::Nms);
     std::string file_path("/utils/custom_ops/nms/codelet.cpp");
     std::string detection_path(std::getenv("PYTORCH_APPS_DETECTION_PATH"));
-    graph().addCodelets(detection_path + file_path); // add codelets to the graph
+    graph().addCodelets(detection_path +
+                        file_path); // add codelets to the graph
   }
 
   void grow(poplar::program::Sequence &prog) const final {

@@ -28,22 +28,18 @@ import tensorflow as tf
 def generate_numpy_data(args):
     nb_samples = 30
     X = np.random.uniform(size=(nb_samples, 572, 572)).astype(args.dtype)
-    Y = np.random.uniform(
-        size=(nb_samples, 388, 388, args.nb_classes)).astype(args.dtype)
+    Y = np.random.uniform(size=(nb_samples, 388, 388, args.nb_classes)).astype(args.dtype)
     X_test = np.random.uniform(size=(nb_samples, 572, 572)).astype(args.dtype)
     return X, Y, X_test
 
 
 def get_images_labels(args):
-    images_path = os.path.join(args.data_dir, 'train-volume.tif')
-    masks_path = os.path.join(args.data_dir, 'train-labels.tif')
-    test_images_path = os.path.join(args.data_dir, 'test-volume.tif')
-    inputs = np.array([np.array(p)
-                       for p in ImageSequence.Iterator(Image.open(images_path))])
-    labels = np.array([np.array(p)
-                       for p in ImageSequence.Iterator(Image.open(masks_path))])
-    test_inputs = np.array([np.array(p)
-                            for p in ImageSequence.Iterator(Image.open(test_images_path))])
+    images_path = os.path.join(args.data_dir, "train-volume.tif")
+    masks_path = os.path.join(args.data_dir, "train-labels.tif")
+    test_images_path = os.path.join(args.data_dir, "test-volume.tif")
+    inputs = np.array([np.array(p) for p in ImageSequence.Iterator(Image.open(images_path))])
+    labels = np.array([np.array(p) for p in ImageSequence.Iterator(Image.open(masks_path))])
+    test_inputs = np.array([np.array(p) for p in ImageSequence.Iterator(Image.open(test_images_path))])
     return inputs, labels, test_inputs
 
 
@@ -68,25 +64,20 @@ def _normalize_labels(labels):
     labels = tf.image.resize_with_crop_or_pad(labels, 572, 572)
 
     cond = tf.less(labels, 0.5 * tf.ones(tf.shape(input=labels)))
-    labels = tf.where(cond, tf.zeros(tf.shape(input=labels)),
-                      tf.ones(tf.shape(input=labels)))
+    labels = tf.where(cond, tf.zeros(tf.shape(input=labels)), tf.ones(tf.shape(input=labels)))
     return tf.one_hot(tf.squeeze(tf.cast(labels, tf.int32)), 2)
 
 
 def data_augmentation(inputs, labels):
     # Horizontal flip
     h_flip = tf.random.uniform([]) > 0.5
-    inputs = tf.cond(pred=h_flip, true_fn=lambda: tf.image.flip_left_right(
-        inputs), false_fn=lambda: inputs)
-    labels = tf.cond(pred=h_flip, true_fn=lambda: tf.image.flip_left_right(
-        labels), false_fn=lambda: labels)
+    inputs = tf.cond(pred=h_flip, true_fn=lambda: tf.image.flip_left_right(inputs), false_fn=lambda: inputs)
+    labels = tf.cond(pred=h_flip, true_fn=lambda: tf.image.flip_left_right(labels), false_fn=lambda: labels)
 
     # Vertical flip
     v_flip = tf.random.uniform([]) > 0.5
-    inputs = tf.cond(pred=v_flip, true_fn=lambda: tf.image.flip_up_down(
-        inputs), false_fn=lambda: inputs)
-    labels = tf.cond(pred=v_flip, true_fn=lambda: tf.image.flip_up_down(
-        labels), false_fn=lambda: labels)
+    inputs = tf.cond(pred=v_flip, true_fn=lambda: tf.image.flip_up_down(inputs), false_fn=lambda: inputs)
+    labels = tf.cond(pred=v_flip, true_fn=lambda: tf.image.flip_up_down(labels), false_fn=lambda: labels)
 
     # Prepare for batched transforms
     inputs = tf.expand_dims(inputs, 0)
@@ -98,10 +89,8 @@ def data_augmentation(inputs, labels):
     top = tf.random.uniform([]) * 0.3
     bottom = 1 - tf.random.uniform([]) * 0.3
 
-    inputs = tf.image.crop_and_resize(
-        inputs, [[top, left, bottom, right]], [0], (572, 572))
-    labels = tf.image.crop_and_resize(
-        labels, [[top, left, bottom, right]], [0], (572, 572))
+    inputs = tf.image.crop_and_resize(inputs, [[top, left, bottom, right]], [0], (572, 572))
+    labels = tf.image.crop_and_resize(labels, [[top, left, bottom, right]], [0], (572, 572))
     inputs = tf.squeeze(inputs, 0)
     labels = tf.squeeze(labels, 0)
     # random brightness and keep values in range
@@ -117,11 +106,9 @@ def preprocess_fn(inputs, labels, dtype, augment=False):
         inputs, labels = data_augmentation(inputs, labels)
 
     # Bring back labels to network's output size and remove interpolation artifacts
-    labels = tf.image.resize_with_crop_or_pad(
-        labels, target_width=388, target_height=388)
+    labels = tf.image.resize_with_crop_or_pad(labels, target_width=388, target_height=388)
     cond = tf.less(labels, 0.5 * tf.ones(tf.shape(input=labels)))
-    labels = tf.where(cond, tf.zeros(tf.shape(input=labels)),
-                      tf.ones(tf.shape(input=labels)))
+    labels = tf.where(cond, tf.zeros(tf.shape(input=labels)), tf.ones(tf.shape(input=labels)))
 
     # cast inputs and labels to given dtype
     inputs = tf.cast(inputs, dtype)
@@ -135,8 +122,10 @@ def tf_fit_dataset(args, inputs, labels):
     ds = ds.repeat()
 
     if not args.host_generated_data:
-        ds = ds.map(partial(preprocess_fn, dtype=args.dtype, augment=args.augment),
-                    num_parallel_calls=min(32, multiprocessing.cpu_count()))
+        ds = ds.map(
+            partial(preprocess_fn, dtype=args.dtype, augment=args.augment),
+            num_parallel_calls=min(32, multiprocessing.cpu_count()),
+        )
     ds = ds.batch(args.micro_batch_size, drop_remainder=True)
     if args.use_prefetch:
         ds = ds.prefetch(args.steps_per_execution)
@@ -145,10 +134,9 @@ def tf_fit_dataset(args, inputs, labels):
 
 def tf_eval_dataset(args, X_eval, y_eval):
     ds = tf.data.Dataset.from_tensor_slices((X_eval, y_eval))
-    ds = ds.repeat(count=args.gradient_accumulation_count//len(X_eval) + 1)
+    ds = ds.repeat(count=args.gradient_accumulation_count // len(X_eval) + 1)
     if not args.host_generated_data:
-        ds = ds.map(partial(preprocess_fn, dtype=args.dtype),
-                    num_parallel_calls=min(32, multiprocessing.cpu_count()))
+        ds = ds.map(partial(preprocess_fn, dtype=args.dtype), num_parallel_calls=min(32, multiprocessing.cpu_count()))
     ds = ds.batch(args.micro_batch_size, drop_remainder=True)
 
     return ds

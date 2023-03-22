@@ -30,13 +30,14 @@ def get_options(config):
     # Load custom ops
     if config.custom_ops is True:
         logging.info("Building (if necessary) and loading residual_add_inplace_pattern.")
-        load_lib(os.path.dirname(__file__) + '/custom_ops/workarounds/residual_add_inplace_pattern.cpp')
+        load_lib(os.path.dirname(__file__) + "/custom_ops/workarounds/residual_add_inplace_pattern.cpp")
 
-    # Poptorch options
+    # PopTorch options
     if config.use_popdist:
         # Use popdist.poptorch options if running in distributed mode
         import popdist
         import popdist.poptorch
+
         opts = popdist.poptorch.Options(ipus_per_replica=config.ipus_per_replica)
     else:
         opts = poptorch.Options()
@@ -71,21 +72,18 @@ def get_options(config):
         # Optimizer state lives on- or off-chip
         .useOnChipStorage(not config.optimizer_state_offchip)
         # Shard optimizer state between replicas with zero-redundancy
-        .useReplicatedTensorSharding(config.replicated_tensor_sharding))
+        .useReplicatedTensorSharding(config.replicated_tensor_sharding)
+    )
 
     # Use Pipelined Execution
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
 
     # Compile offline (no IPUs required)
     if config.compile_only:
         opts.useOfflineIpuTarget()
 
     # Set available Transient Memory For matmuls and convolutions operations
-    mem_prop = {
-        f'IPU{i}': config.matmul_proportion[i]
-        for i in range(config.ipus_per_replica)
-    }
+    mem_prop = {f"IPU{i}": config.matmul_proportion[i] for i in range(config.ipus_per_replica)}
     opts.setAvailableMemoryProportion(mem_prop)
 
     # Enable caching the compiled executable to disk
@@ -107,8 +105,9 @@ def get_options(config):
     # Only stream needed tensors back to host
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
     # Parallelize optimizer step update across IPUs
-    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
-                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
+    opts._Popart.set(
+        "accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized)
+    )
     opts._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
     # Enable patterns for better throughput and memory reduction
     opts._Popart.set("subgraphCopyingStrategy", int(popart.SubgraphCopyingStrategy.JustInTime))
@@ -128,7 +127,7 @@ def get_options(config):
                 "autoReport.directory": config.profile_dir,
                 "profiler.format": "v3",
                 "autoReport.all": "true",
-            }
+            },
         }
     opts._Popart.set("engineOptions", engine_options)
 

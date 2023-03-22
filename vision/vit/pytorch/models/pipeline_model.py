@@ -30,8 +30,7 @@ class PipelinedViTForImageClassification(transformers.ViTForImageClassification)
 
     def parallelize(self):
         self._hooks = []
-        self.vit.embeddings = poptorch.BeginBlock(
-            self.vit.embeddings, "Embedding", ipu_id=0)
+        self.vit.embeddings = poptorch.BeginBlock(self.vit.embeddings, "Embedding", ipu_id=0)
 
         layer_ipu = get_layer_ipu(self.config.layers_per_ipu)
         for index, layer in enumerate(self.vit.encoder.layer):
@@ -42,10 +41,8 @@ class PipelinedViTForImageClassification(transformers.ViTForImageClassification)
             ipu = layer_ipu[index]
             self.vit.encoder.layer[index] = poptorch.BeginBlock(layer, f"Encoder{index}", ipu_id=ipu)
 
-        self.vit.layernorm = poptorch.BeginBlock(
-            self.vit.layernorm, "LayerNorm", ipu_id=3)
-        self.classifier = poptorch.BeginBlock(
-            self.classifier, "Classifier", ipu_id=3)
+        self.vit.layernorm = poptorch.BeginBlock(self.vit.layernorm, "LayerNorm", ipu_id=3)
+        self.classifier = poptorch.BeginBlock(self.classifier, "Classifier", ipu_id=3)
         return self
 
     def deparallelize(self):
@@ -77,36 +74,31 @@ class PipelinedViTForImageClassificationPretraining(nn.Module):
         super().__init__()
 
         self.config = config
-        self.model = VisionTransformer(config=config,
-                                       num_labels=config.num_labels,
-                                       representation_size=config.representation_size)
+        self.model = VisionTransformer(
+            config=config, num_labels=config.num_labels, representation_size=config.representation_size
+        )
         self.model.apply(weight_init)
         if self.config.pretrain:
             nn.init.constant_(self.model.head.bias, -10)
-            nn.init.normal_(
-                self.model.embeddings.position_embeddings, std=0.02)
+            nn.init.normal_(self.model.embeddings.position_embeddings, std=0.02)
         layer_ipu = get_layer_ipu(config.layers_per_ipu)
 
         print("---------- Device Allocation -----------")
         print("Embedding  --> IPU 0")
-        self.model.embeddings = poptorch.BeginBlock(
-            self.model.embeddings, "Embedding", ipu_id=0)
+        self.model.embeddings = poptorch.BeginBlock(self.model.embeddings, "Embedding", ipu_id=0)
 
         for index, layer in enumerate(self.model.encoder.layer):
             ipu = layer_ipu[index]
             if config.recompute_checkpoint_every_layer:
                 recomputation_checkpoint(layer)
             print(f"Encoder {index:<2} --> IPU {ipu}")
-            self.model.encoder.layer[index] = poptorch.BeginBlock(layer, f"Encoder{ipu}",
-                                                                  ipu_id=ipu)
+            self.model.encoder.layer[index] = poptorch.BeginBlock(layer, f"Encoder{ipu}", ipu_id=ipu)
 
         print("Representation --> IPU 3")
-        self.model.representation = poptorch.BeginBlock(
-            self.model.representation, "Representation", ipu_id=3)
+        self.model.representation = poptorch.BeginBlock(self.model.representation, "Representation", ipu_id=3)
 
         print("Head     --> IPU 3")
-        self.model.head = poptorch.BeginBlock(
-            self.model.head, "Head", ipu_id=3)
+        self.model.head = poptorch.BeginBlock(self.model.head, "Head", ipu_id=3)
         print("---------------------------------------")
 
     def forward(self, x, labels=None, lam=None):

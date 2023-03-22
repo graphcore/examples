@@ -9,15 +9,13 @@ from utilities.metric_enqueuer import wrap_loss_in_enqueuer
 def ipu_prog(wrapped_loss, heads=1):
     micro_batch_size = 2
 
-    ds = tf.data.Dataset.from_tensor_slices(([1.] * micro_batch_size,
-                                             [2.] * micro_batch_size))
+    ds = tf.data.Dataset.from_tensor_slices(([1.0] * micro_batch_size, [2.0] * micro_batch_size))
     ds = ds.batch(micro_batch_size, drop_remainder=True)
 
     num_micro_batches = len(ds)
 
     cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
 
     strategy = ipu.ipu_strategy.IPUStrategy()
@@ -28,25 +26,21 @@ def ipu_prog(wrapped_loss, heads=1):
         outputs = []
         for i in range(heads):
             outputs.append(
-                tf.keras.layers.Dense(1,
-                                      use_bias=False,
-                                      kernel_initializer=kernel_initializer,
-                                      name=f"dense_{i}")(input_layer))
+                tf.keras.layers.Dense(1, use_bias=False, kernel_initializer=kernel_initializer, name=f"dense_{i}")(
+                    input_layer
+                )
+            )
 
         model = tf.keras.Model(input_layer, outputs)
         model.build(input_shape=(micro_batch_size, 1))
-        model.compile(optimizer="SGD",
-                      loss=wrapped_loss,
-                      steps_per_execution=num_micro_batches)
+        model.compile(optimizer="SGD", loss=wrapped_loss, steps_per_execution=num_micro_batches)
         return model.fit(ds, steps_per_epoch=num_micro_batches)
 
 
 class TestLossEnqueuer:
-
     def test_single_loss_enqueued(self):
         loss_key = "loss"
-        loss = wrap_loss_in_enqueuer(tf.keras.losses.CategoricalCrossentropy,
-                                     [loss_key])()
+        loss = wrap_loss_in_enqueuer(tf.keras.losses.CategoricalCrossentropy, [loss_key])()
         history = ipu_prog(loss)
 
         assert loss.outfeed_queue.enqueued
@@ -57,8 +51,7 @@ class TestLossEnqueuer:
     def test_multiple_loss_enqueued_from_single_loss_function(self):
         loss_key_1 = "loss_1"
         loss_key_2 = "loss_2"
-        loss = wrap_loss_in_enqueuer(tf.keras.losses.CategoricalCrossentropy,
-                                     [loss_key_1, loss_key_2])()
+        loss = wrap_loss_in_enqueuer(tf.keras.losses.CategoricalCrossentropy, [loss_key_1, loss_key_2])()
         history = ipu_prog({"dense_0": loss, "dense_1": loss}, heads=2)
 
         assert loss.outfeed_queue.enqueued
@@ -70,11 +63,9 @@ class TestLossEnqueuer:
 
     def test_multiple_loss_enqueued_from_multiple_loss_functions(self):
         loss_key_1 = "loss_1"
-        loss_1 = wrap_loss_in_enqueuer(tf.keras.losses.CategoricalCrossentropy,
-                                       [loss_key_1])()
+        loss_1 = wrap_loss_in_enqueuer(tf.keras.losses.CategoricalCrossentropy, [loss_key_1])()
         loss_key_2 = "loss_2"
-        loss_2 = wrap_loss_in_enqueuer(tf.keras.losses.CategoricalCrossentropy,
-                                       [loss_key_2])()
+        loss_2 = wrap_loss_in_enqueuer(tf.keras.losses.CategoricalCrossentropy, [loss_key_2])()
         history = ipu_prog({"dense_0": loss_1, "dense_1": loss_2}, heads=2)
 
         assert loss_1.outfeed_queue.enqueued

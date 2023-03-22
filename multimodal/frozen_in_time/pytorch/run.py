@@ -9,8 +9,9 @@ from configs.parse_config import ConfigParser
 from modeling.trainer import TrainerIPU
 from sacred import Experiment
 
-config=None
-ex = Experiment('train')
+config = None
+ex = Experiment("train")
+
 
 @ex.main
 def run():
@@ -20,19 +21,22 @@ def run():
     else:
         trainer.train()
 
-def parse_config(config_name: str, validation_only : bool = False, compile_only: bool = False, timestamp_ckpt: bool = True,  **kwargs):
+
+def parse_config(
+    config_name: str, validation_only: bool = False, compile_only: bool = False, timestamp_ckpt: bool = True, **kwargs
+):
     """
-    Argument parser 
+    Argument parser
 
     Additional args must be of the form key=value. Key is of the form
     A.B.C with A.B.C corresponding to a set of keys to be used as input
     to the nested dict loaded through CONFIG_NAME json file.
-    See configs/*.json for example configs. 
-    
-    To override values in the loaded dict, provide (nested) keys in the form A.B.C=value. 
+    See configs/*.json for example configs.
+
+    To override values in the loaded dict, provide (nested) keys in the form A.B.C=value.
     For Example to override arch.type=FrozenInTime in webvid2m-8ipu-1f.json,
-    provide the argument --arch.type=new_value. 
-    
+    provide the argument --arch.type=new_value.
+
     To remove values, set the key to None, e.g. --arch.type=None.
 
     Keys that do not exist in the loaded dict will automatically be added.
@@ -40,17 +44,19 @@ def parse_config(config_name: str, validation_only : bool = False, compile_only:
     global config
     kwargs["validation_only"] = validation_only
     kwargs["compile_only"] = compile_only
-    config=ConfigParser(config_name, timestamp=timestamp_ckpt, **kwargs)
+    config = ConfigParser(config_name, timestamp=timestamp_ckpt, **kwargs)
     ex.add_config(config._config)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     fire.Fire(parse_config)
 
-    if config._config['trainer'].get("wandb",False):
+    if config._config["trainer"].get("wandb", False):
         wandb.init(
             project=config["trainer"].get("project_name", "torch-frozen-in-time"),
             name=config["trainer"].get("run_name", None),
             config=config._config,
-            dir="/tmp")
-    
+            dir="/tmp",
+        )
+
     run()

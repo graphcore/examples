@@ -28,16 +28,16 @@ class BertFusedSelfAttention(BertSelfAttention):
         combined_result = hidden_state @ torch.transpose(combined_weight, -2, -1)
         biases = (self.query.bias, self.key.bias, self.value.bias)
         if all(map(lambda b: b is not None, biases)):
-            combined_bias = torch.cat(
-                biases,
-                dim=0)
+            combined_bias = torch.cat(biases, dim=0)
             combined_result += combined_bias
         elif any(map(lambda b: b is not None, biases)):
-            raise RuntimeError("Some attention layers had biases but not all. This is not supported. "
-                               "Please enable biases on all Query, Key and Value or none. "
-                               f"query.bias = {biases[0] is not None}, "
-                               f"key.bias = {biases[1] is not None}, "
-                               f"value.bias = {biases[2] is not None}")
+            raise RuntimeError(
+                "Some attention layers had biases but not all. This is not supported. "
+                "Please enable biases on all Query, Key and Value or none. "
+                f"query.bias = {biases[0] is not None}, "
+                f"key.bias = {biases[1] is not None}, "
+                f"value.bias = {biases[2] is not None}"
+            )
         hidden_size = hidden_state.shape[-1]
         return torch.split(combined_result, hidden_size, dim=-1)
 
@@ -99,7 +99,7 @@ class BertFusedSelfAttention(BertSelfAttention):
 
         # --- Change: Use reciprocal multiply for speed ---
 
-        attention_scores = attention_scores * (1. / math.sqrt(self.attention_head_size))
+        attention_scores = attention_scores * (1.0 / math.sqrt(self.attention_head_size))
 
         # ------------------------------------------------
         # Implementation below here is from

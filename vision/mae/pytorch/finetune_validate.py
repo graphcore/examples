@@ -34,20 +34,16 @@ import wandb
 def evaluate(data_loader, model, print_freq):
     criterion = torch.nn.CrossEntropyLoss()
 
-    batch_time = AverageMeter('time', ':6.3f')
-    data_time = AverageMeter('data', ':6.3f')
-    losses = AverageMeter('loss', ':.3f')
-    tput = AverageMeter('throughput', ':.0f')
-    acc1_log = AverageMeter('acc1', ':.3f')
-    acc5_log = AverageMeter('acc5', ':.3f')
+    batch_time = AverageMeter("time", ":6.3f")
+    data_time = AverageMeter("data", ":6.3f")
+    losses = AverageMeter("loss", ":.3f")
+    tput = AverageMeter("throughput", ":.0f")
+    acc1_log = AverageMeter("acc1", ":.3f")
+    acc5_log = AverageMeter("acc5", ":.3f")
     # switch to evaluation mode
     model.eval()
     meters = [batch_time, data_time, losses, tput, acc1_log, acc5_log]
-    progress = ProgressMeter(
-        len(data_loader),
-        meters,
-        prefix="Evluation: "
-    )
+    progress = ProgressMeter(len(data_loader), meters, prefix="Evluation: ")
 
     if args.wandb:
         wandb_logger = WandbLog(meters)
@@ -77,22 +73,20 @@ def evaluate(data_loader, model, print_freq):
         tput.update(utils.sync_metrics(batch_size / batch_time.val))
 
         if it % print_freq == 0:
-            if not args.use_popdist or (
-                    args.use_popdist and args.popdist_rank == 0):
+            if not args.use_popdist or (args.use_popdist and args.popdist_rank == 0):
                 logger.info(progress.display(it))
                 if args.wandb:
                     wandb_logger.log()
 
-    logger.info('* Acc@1 {top1} Acc@5 {top5} loss {losses}'
-                .format(top1=acc1_log, top5=acc5_log, losses=losses))
+    logger.info("* Acc@1 {top1} Acc@5 {top5} loss {losses}".format(top1=acc1_log, top5=acc5_log, losses=losses))
 
     return {meter.name: meter.avg for meter in meters}
 
 
 def load_eval_checkpoint(model, path):
-    assert os.path.exists(path), f'{path} not exists'
+    assert os.path.exists(path), f"{path} not exists"
     model_state = torch.load(path)
-    weights = model_state['model']
+    weights = model_state["model"]
 
     model.load_state_dict(weights)
     logger.info(f"Loaded checkpoint from path: {path}")
@@ -100,15 +94,12 @@ def load_eval_checkpoint(model, path):
 
 
 def main(args):
-    log_path = os.path.join(args.output, 'eval')
+    log_path = os.path.join(args.output, "eval")
     now = time.strftime("%Y-%m-%d-%H_%M_%S", time.localtime(time.time()))
-    fileHandler = logging.FileHandler(
-        log_path + '_' + now + '.log',
-        mode='w',
-        encoding='UTF-8')
+    fileHandler = logging.FileHandler(log_path + "_" + now + ".log", mode="w", encoding="UTF-8")
     fileHandler.setLevel(logging.NOTSET)
     logger.addHandler(fileHandler)
-    args.async_type = 'async'
+    args.async_type = "async"
     args.replica = 1
     args.batch_size = 16
     args.di = 1000
@@ -118,13 +109,11 @@ def main(args):
         half=args.half,
         ipu_per_replica=args.ipus,
         device_iterations=args.device_iterations,
-        opt_type='eval')
+        opt_type="eval",
+    )
 
-    logger.info(
-        'job dir: {}'.format(
-            os.path.dirname(
-                os.path.realpath(__file__))))
-    logger.info("{}".format(args).replace(', ', ',\n'))
+    logger.info("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
+    logger.info("{}".format(args).replace(", ", ",\n"))
     # fix the seed for reproducibility
     seed = args.seed
     torch.manual_seed(seed)
@@ -132,7 +121,7 @@ def main(args):
 
     dataset_val = build_dataset(is_train=False, args=args)
 
-    if args.async_type == 'async':
+    if args.async_type == "async":
         mode = poptorch.DataLoaderMode.Async
         data_loader_val = poptorch.DataLoader(
             options=opts_infer,
@@ -144,9 +133,9 @@ def main(args):
             persistent_workers=True,
             worker_init_fn=None,
             mode=mode,
-            async_options={'load_indefinitely': True},
+            async_options={"load_indefinitely": True},
         )
-    elif args.async_type == 'rebatch':
+    elif args.async_type == "rebatch":
         mode = poptorch.DataLoaderMode.AsyncRebatched
 
         data_loader_val = poptorch.DataLoader(
@@ -159,7 +148,7 @@ def main(args):
             persistent_workers=True,
             worker_init_fn=None,
             mode=mode,
-            async_options={'load_indefinitely': True},
+            async_options={"load_indefinitely": True},
             rebatched_worker_size=args.rebatched_worker_size,
         )
     else:
@@ -173,7 +162,7 @@ def main(args):
         )
 
     mixup_fn = None
-    mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
+    mixup_active = args.mixup > 0 or args.cutmix > 0.0 or args.cutmix_minmax is not None
     if mixup_active:
         logger.info("Mixup is activated!")
         mixup_fn = Mixup(
@@ -184,12 +173,13 @@ def main(args):
             switch_prob=args.mixup_switch_prob,
             mode=args.mixup_mode,
             label_smoothing=args.smoothing,
-            num_classes=args.nb_classes)
+            num_classes=args.nb_classes,
+        )
 
     if mixup_fn is not None:
         # smoothing is handled with mixup label transform
         criterion = SoftTargetCrossEntropy()
-    elif args.smoothing > 0.:
+    elif args.smoothing > 0.0:
         criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
     else:
         criterion = torch.nn.CrossEntropyLoss()
@@ -202,35 +192,30 @@ def main(args):
         global_pool=args.global_pool,
     )
 
-    n_parameters = sum(p.numel()
-                       for p in model.parameters() if p.requires_grad)
-    logger.info('number of params (M): %.2f' % (n_parameters / 1.e6))
+    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logger.info("number of params (M): %.2f" % (n_parameters / 1.0e6))
 
     model = load_eval_checkpoint(model, args.resume)
 
     # switch to evaluation mode before creating an inference model
     model.eval()
     ipu_infer_model = poptorch.inferenceModel(model, options=opts_infer)
-    test_stats = evaluate(
-        data_loader_val,
-        ipu_infer_model,
-        args.print_freq)
+    test_stats = evaluate(data_loader_val, ipu_infer_model, args.print_freq)
     logger.info(f"Accuracy of the network on the {len(data_loader_val)} test images: {test_stats['acc1']:.1f}%")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = get_args_parser()
 
     utils.init_popdist(args)
 
     if args.wandb:
-        if not args.use_popdist or (
-                args.use_popdist and args.popdist_rank == 0):
+        if not args.use_popdist or (args.use_popdist and args.popdist_rank == 0):
             wandb.init(
                 project=args.wandb_project_name,
                 name=args.wandb_run_name,
                 settings=wandb.Settings(console="wrap"),
-                config=vars(args)
+                config=vars(args),
             )
             if args.half:
                 wandb.config.update({"precision": "16.16"})

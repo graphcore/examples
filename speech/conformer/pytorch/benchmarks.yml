@@ -65,7 +65,7 @@ pytorch_wenet_conformer_globalbs_288_validation_real_pod4:
       --trainer.wandb_project_name torch-conformer
       --trainer.wandb_run_name pytorch_wenet_conformer_globalbs_288_validation_real_pod16
   data:
-    loss: 
+    loss:
       regexp: loss_valid:\s+([\d\.]+)'
       reduction_type: 'final'
   output:

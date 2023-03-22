@@ -4,46 +4,43 @@ import torch
 import poptorch
 from typing import Optional
 
-from optimum.graphcore.modeling_utils import (register,
-                                              recomputation_checkpoint,
-                                              PipelineMixin)
+from optimum.graphcore.modeling_utils import register, recomputation_checkpoint, PipelineMixin
 
 from optimum.utils import logging
-from transformers.models.perceiver.modeling_perceiver import (space_to_depth,
-                                                              PerceiverEncoder,
-                                                              PerceiverEmbeddings,
-                                                              PerceiverImagePreprocessor,
-                                                              PerceiverTrainablePositionEncoding)
+from transformers.models.perceiver.modeling_perceiver import (
+    space_to_depth,
+    PerceiverEncoder,
+    PerceiverEmbeddings,
+    PerceiverImagePreprocessor,
+    PerceiverTrainablePositionEncoding,
+)
 
 
 logger = logging.get_logger(__name__)
 
 
 def register_subclass(huggingface_cls, recomputation: bool = False):
-
     @register(huggingface_cls)
-    class PipelinedPerceiver(
-        huggingface_cls,
-        PipelineMixin
-    ):
-
+    class PipelinedPerceiver(huggingface_cls, PipelineMixin):
         def parallelize(self):
             super().parallelize()
             self.perceiver.embeddings.__class__ = WorkaroundPerceiverEmbeddings
             self.perceiver.input_preprocessor.__class__ = WorkaroundPerceiverImagePreprocessor
-            self.perceiver.decoder.decoder.output_position_encodings.__class__ = WorkaroundPerceiverTrainablePositionEncoding
+            self.perceiver.decoder.decoder.output_position_encodings.__class__ = (
+                WorkaroundPerceiverTrainablePositionEncoding
+            )
 
             if self.ipu_config.ipus_per_replica > 1:
-                print('[pipelining] perceiver.input_preprocessor --> IPU0')
+                print("[pipelining] perceiver.input_preprocessor --> IPU0")
                 self.perceiver.input_preprocessor = poptorch.BeginBlock(
                     self.perceiver.input_preprocessor,
-                    'preprocessor',
+                    "preprocessor",
                     ipu_id=0,
                 )
-                print('[pipelining] perceiver.embeddings --> IPU0')
+                print("[pipelining] perceiver.embeddings --> IPU0")
                 self.perceiver.embeddings = poptorch.BeginBlock(
                     self.perceiver.embeddings,
-                    'embedding',
+                    "embedding",
                     ipu_id=0,
                 )
 
@@ -52,16 +49,16 @@ def register_subclass(huggingface_cls, recomputation: bool = False):
                     ipu_ids += [i] * num_layers
                 self.perceiver.encoder.__class__ = setup_encoder_for_pipelining(ipu_ids=ipu_ids)
 
-                print('[pipelining] perceiver.decoder --> IPU0')
+                print("[pipelining] perceiver.decoder --> IPU0")
                 self.perceiver.decoder = poptorch.BeginBlock(
                     self.perceiver.decoder,
-                    'decoder',
+                    "decoder",
                     ipu_id=0,
                 )
 
             for idx, self_attend in enumerate(self.perceiver.encoder.self_attends):
                 if recomputation:
-                    print(f'[recomputation] perceiver.encoder.self_attends[{idx}]')
+                    print(f"[recomputation] perceiver.encoder.self_attends[{idx}]")
                     self._hooks.append(recomputation_checkpoint(self_attend))
 
             return self
@@ -71,7 +68,6 @@ def register_subclass(huggingface_cls, recomputation: bool = False):
 
 
 def setup_encoder_for_pipelining(ipu_ids):
-
     class WorkaroundPerceiverEncoder(PerceiverEncoder):
         """The Perceiver Encoder: a scalable, fully attentional encoder."""
 
@@ -86,11 +82,8 @@ def setup_encoder_for_pipelining(ipu_ids):
             output_hidden_states=False,
             return_dict=False,
         ):
-            print('[pipelining] perceiver.encoder.cross_attention --> IPU0')
-            poptorch.Block.start(
-                user_id='cross_attend',
-                ipu_id=0
-            )
+            print("[pipelining] perceiver.encoder.cross_attention --> IPU0")
+            poptorch.Block.start(user_id="cross_attend", ipu_id=0)
             # Apply the cross-attention between the latents (hidden_states) and inputs:
             layer_outputs = self.cross_attention(
                 hidden_states,
@@ -98,26 +91,22 @@ def setup_encoder_for_pipelining(ipu_ids):
                 head_mask=None,
                 inputs=inputs,
                 inputs_mask=inputs_mask,
-                output_attentions=False
+                output_attentions=False,
             )
             hidden_states = layer_outputs[0]
 
             # Apply the block of self-attention layers more than once:
             for block_i in range(self.config.num_blocks):
                 for i, layer_module in enumerate(self.self_attends):
-                    print(f'[pipelining] perceiver.encoder.self_attends[{i}] '
-                          f'from block[{block_i}] --> IPU{ipu_ids[i]}')
-                    poptorch.Block.start(
-                        user_id=f'self_attend{block_i}{ipu_ids[i]}',
-                        ipu_id=ipu_ids[i]
+                    print(
+                        f"[pipelining] perceiver.encoder.self_attends[{i}] "
+                        f"from block[{block_i}] --> IPU{ipu_ids[i]}"
                     )
+                    poptorch.Block.start(user_id=f"self_attend{block_i}{ipu_ids[i]}", ipu_id=ipu_ids[i])
 
                     layer_head_mask = head_mask[i] if head_mask is not None else None
                     layer_outputs = layer_module(
-                        hidden_states,
-                        attention_mask=attention_mask,
-                        head_mask=layer_head_mask,
-                        output_attentions=False
+                        hidden_states, attention_mask=attention_mask, head_mask=layer_head_mask, output_attentions=False
                     )
 
                     hidden_states = layer_outputs[0]
@@ -128,7 +117,6 @@ def setup_encoder_for_pipelining(ipu_ids):
 
 
 class WorkaroundPerceiverImagePreprocessor(PerceiverImagePreprocessor):
-
     def forward(self, inputs: torch.Tensor, pos: Optional[torch.Tensor] = None, network_input_is_1d: bool = True):
         if self.prep_type == "conv":
             # Convnet image featurization.

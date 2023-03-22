@@ -188,14 +188,14 @@ class GPTConfig(Config):
 
     @property
     def gradient_accumulation(self):
-        denom = (self.execution.data_parallel *
-                 self.execution.micro_batch_size)
+        denom = self.execution.data_parallel * self.execution.micro_batch_size
         if self.training.global_batch_size % denom != 0:
             raise RuntimeError(
                 "Unable to set gradient accumulation to match the global batch size. "
                 "global_batch_size % (data_parallel * micro_batch_size) != 0. "
                 f"{self.training.global_batch_size} % "
-                f"({self.execution.data_parallel} * {self.execution.micro_batch_size}) != 0")
+                f"({self.execution.data_parallel} * {self.execution.micro_batch_size}) != 0"
+            )
 
         return self.training.global_batch_size // denom
 
@@ -209,9 +209,10 @@ class GPTConfig(Config):
 
     def validate(self):
         if self.training.epochs > 1 and self.training.steps > 1:
-            logging.warning(
-                "Both `steps` and `epochs` are specified. Only one will be used.")
-        assert self.model.hidden_size % self.model.attention.heads == 0, "Hidden size should be a multiple of attention heads"
+            logging.warning("Both `steps` and `epochs` are specified. Only one will be used.")
+        assert (
+            self.model.hidden_size % self.model.attention.heads == 0
+        ), "Hidden size should be a multiple of attention heads"
 
 
 if __name__ == "__main__":

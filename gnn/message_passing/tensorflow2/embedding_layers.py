@@ -13,8 +13,8 @@ FLAGS = flags.FLAGS
 class OneHotEmbedding(tf.keras.layers.Embedding):
     def call(self, inputs):
         dtype = backend.dtype(inputs)
-        if dtype != 'int32' and dtype != 'int64':
-            inputs = tf.cast(inputs, 'int32')
+        if dtype != "int32" and dtype != "int64":
+            inputs = tf.cast(inputs, "int32")
 
         one_hot = tf.one_hot(inputs, self.input_dim, dtype=self.compute_dtype)
         out = one_hot @ self.embeddings
@@ -26,7 +26,7 @@ class OneHotEmbedding(tf.keras.layers.Embedding):
 
 
 class MultiFeatureEncoder(tf.keras.layers.Layer):
-    def __init__(self, emb_dim, n_feature_dims, name=''):
+    def __init__(self, emb_dim, n_feature_dims, name=""):
         """
         For something like an atom, which has several categorical features,
           we build a learnable embedding by summing a looked-up embedding from each
@@ -52,12 +52,10 @@ class MultiFeatureEncoder(tf.keras.layers.Layer):
 
 
 class AtomEncoder(MultiFeatureEncoder):
-
-    def __init__(self, emb_dim, name='AtomEncoder'):
+    def __init__(self, emb_dim, name="AtomEncoder"):
         super().__init__(emb_dim=emb_dim, n_feature_dims=get_atom_feature_dims(), name=name)
 
 
 class BondEncoder(MultiFeatureEncoder):
-
-    def __init__(self, emb_dim, name='BondEncoder'):
+    def __init__(self, emb_dim, name="BondEncoder"):
         super().__init__(emb_dim=emb_dim, n_feature_dims=get_bond_feature_dims(), name=name)

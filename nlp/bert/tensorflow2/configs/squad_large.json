@@ -25,7 +25,7 @@
             "schedule_name": "up_down",
             "max_learning_rate": 1e-3,
             "warmup_frac": 0.3
-        }    
+        }
     },
     "seed": 1984,
     "global_batches_per_log": 1,

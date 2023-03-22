@@ -16,17 +16,18 @@ from models.tokenizer import SimpleTokenizer, YttmTokenizer
 
 
 class TextImageDataset(Dataset):
-    def __init__(self,
-                 folder,
-                 text_len=256,
-                 image_size=128,
-                 truncate_captions=False,
-                 resize_ratio=0.75,
-                 bpe_path=None,
-                 shuffle=False,
-                 not_real_data=False,
-                 image_dtype=False
-                 ):
+    def __init__(
+        self,
+        folder,
+        text_len=256,
+        image_size=128,
+        truncate_captions=False,
+        resize_ratio=0.75,
+        bpe_path=None,
+        shuffle=False,
+        not_real_data=False,
+        image_dtype=False,
+    ):
         """
         @param folder: Folder containing images and text files matched by their paths' respective "stem"
         @param truncate_captions: Rather than throw an exception, captions which are too long will be truncated.
@@ -41,28 +42,22 @@ class TextImageDataset(Dataset):
             return
         path = Path(folder)
 
-        text_files = [*path.glob('**/*.txt')]
-        image_files = [
-            *path.glob('**/*.png'), *path.glob('**/*.jpg'),
-            *path.glob('**/*.jpeg'), *path.glob('**/*.bmp')
-        ]
+        text_files = [*path.glob("**/*.txt")]
+        image_files = [*path.glob("**/*.png"), *path.glob("**/*.jpg"), *path.glob("**/*.jpeg"), *path.glob("**/*.bmp")]
 
         text_files = {text_file.stem: text_file for text_file in text_files}
         image_files = {image_file.stem: image_file for image_file in image_files}
 
-        keys = (image_files.keys() & text_files.keys())
+        keys = image_files.keys() & text_files.keys()
 
         self.keys = list(keys)
         self.text_files = {k: v for k, v in text_files.items() if k in keys}
         self.image_files = {k: v for k, v in image_files.items() if k in keys}
         self.truncate_captions = truncate_captions
         self.resize_ratio = resize_ratio
-        self.image_transform = T.Compose([
-            T.RandomResizedCrop(image_size,
-                                scale=(self.resize_ratio, 1.),
-                                ratio=(1., 1.)),
-            T.ToTensor()
-        ])
+        self.image_transform = T.Compose(
+            [T.RandomResizedCrop(image_size, scale=(self.resize_ratio, 1.0), ratio=(1.0, 1.0)), T.ToTensor()]
+        )
 
     def __len__(self):
         if self.not_real_data:
@@ -101,7 +96,7 @@ class TextImageDataset(Dataset):
         text_file = self.text_files[key]
         image_file = self.image_files[key]
 
-        descriptions = text_file.read_text().split('\n')
+        descriptions = text_file.read_text().split("\n")
         descriptions = list(filter(lambda t: len(t) > 0, descriptions))
         try:
             description = choice(descriptions)
@@ -110,22 +105,18 @@ class TextImageDataset(Dataset):
             print(f"Skipping index {ind}")
             return self.skip_sample(ind)
 
-        tokenized_text = tokenizer.tokenize(
-            description,
-            self.text_len,
-            truncate_text=self.truncate_captions
-        ).squeeze(0)
+        tokenized_text = tokenizer.tokenize(description, self.text_len, truncate_text=self.truncate_captions).squeeze(0)
         try:
             img = PIL.Image.open(image_file)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
+            if img.mode != "RGB":
+                img = img.convert("RGB")
             image_tensor = self.image_transform(img)
         except (PIL.UnidentifiedImageError, OSError) as corrupt_image_exceptions:
             print(f"An exception occurred trying to load file {image_file}.")
             print(f"Skipping index {ind}")
             return self.skip_sample(ind)
         if self.image_dtype == torch.uint8:
-            image_tensor = torch.clip((image_tensor*255).round_(), 0, 255).byte()
+            image_tensor = torch.clip((image_tensor * 255).round_(), 0, 255).byte()
         elif self.image_dtype == torch.float16:
             image_tensor = image_tensor.half()
 
@@ -153,27 +144,27 @@ def get_data(configs, model_opts, image_size, train=True, async_dataloader=False
         bpe_path=configs.bpe_path,
         shuffle=True,
         not_real_data=(configs.generated_data or configs.synthetic_data),
-        image_dtype=image_dtype
+        image_dtype=image_dtype,
     )
 
-    assert len(dataset) > 0, 'dataset is empty'
-    print(f'{len(dataset)} image-text pairs found for training')
+    assert len(dataset) > 0, "dataset is empty"
+    print(f"{len(dataset)} image-text pairs found for training")
 
-    rebatched_worker_size = max(int(configs.gradient_accumulation/4), configs.batch_size)
+    rebatched_worker_size = max(int(configs.gradient_accumulation / 4), configs.batch_size)
     mode = poptorch.DataLoaderMode.AsyncRebatched if async_dataloader else poptorch.DataLoaderMode.Sync
-    dataloader = poptorch.DataLoader(model_opts,
-                                     dataset,
-                                     batch_size=configs.batch_size if not(isinstance(
-                                         dataset, IterableDataset)) else None,
-                                     num_workers=configs.dataloader_workers,
-                                     shuffle=train and not(isinstance(dataset, IterableDataset)),
-                                     drop_last=not(isinstance(dataset, IterableDataset)),
-                                     persistent_workers=True,
-                                     auto_distributed_partitioning=not isinstance(
-                                         dataset, IterableDataset),
-                                     worker_init_fn=None,
-                                     mode=mode,
-                                     rebatched_worker_size=rebatched_worker_size,
-                                     async_options={"early_preload": True, 'load_indefinitely': True})
+    dataloader = poptorch.DataLoader(
+        model_opts,
+        dataset,
+        batch_size=configs.batch_size if not (isinstance(dataset, IterableDataset)) else None,
+        num_workers=configs.dataloader_workers,
+        shuffle=train and not (isinstance(dataset, IterableDataset)),
+        drop_last=not (isinstance(dataset, IterableDataset)),
+        persistent_workers=True,
+        auto_distributed_partitioning=not isinstance(dataset, IterableDataset),
+        worker_init_fn=None,
+        mode=mode,
+        rebatched_worker_size=rebatched_worker_size,
+        async_options={"early_preload": True, "load_indefinitely": True},
+    )
 
     return dataloader

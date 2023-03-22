@@ -1,0 +1,16 @@
+pyyaml==5.4.1
+dataclasses
+transformers>=4.20.0
+datasets==2.1.0
+tfrecord==1.14.1
+torch
+numpy==1.23.5
+scipy>=1.5.4
+more-itertools==8.12.0
+wandb
+
+pytest
+pytest-pythonpath
+
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils.git@f8673d362fdc7dc77e1fee5f77cbcd81dd9e4a2e
+git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.2

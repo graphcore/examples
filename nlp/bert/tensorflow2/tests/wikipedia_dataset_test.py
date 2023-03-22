@@ -73,24 +73,24 @@ import tensorflow as tf
 from data_utils.wikipedia.load_wikipedia_data import get_dataset_files_count, get_pretraining_dataset
 
 config = {
-    'batch_size': 10,
-    'train_files_path': '/localdata/datasets/wikipedia/128/',
-    'test_file': '/localdata/datasets/wikipedia/128_test/',
-    'seq_length': 128,
-    'masked_tokens': 20,
-    'vocab_size': 30522,
-    'max_predictions_per_seq': 20,
-    'distributed_worker_count': 1
+    "batch_size": 10,
+    "train_files_path": "/localdata/datasets/wikipedia/128/",
+    "test_file": "/localdata/datasets/wikipedia/128_test/",
+    "seq_length": 128,
+    "masked_tokens": 20,
+    "vocab_size": 30522,
+    "max_predictions_per_seq": 20,
+    "distributed_worker_count": 1,
 }
 
 
 def check_dimensions(config, tokens, attn_mask, token_types, mask_lm_positions, labels, nsp):
-    assert (tokens.shape == (config['seq_length'], ))
-    assert (attn_mask.shape == (config['seq_length'], ))
-    assert (token_types.shape == (config['seq_length'], ))
-    assert (mask_lm_positions.shape == (config['masked_tokens'], ))
-    assert (labels.shape == (config['masked_tokens'], ))
-    assert (nsp.shape == (1, ))
+    assert tokens.shape == (config["seq_length"],)
+    assert attn_mask.shape == (config["seq_length"],)
+    assert token_types.shape == (config["seq_length"],)
+    assert mask_lm_positions.shape == (config["masked_tokens"],)
+    assert labels.shape == (config["masked_tokens"],)
+    assert nsp.shape == (1,)
 
 
 def check_tokens(config, tokens, mask_lm_position, labels):
@@ -110,7 +110,7 @@ def check_tokens(config, tokens, mask_lm_position, labels):
 
     # After second 102 [SEP] it should be all padding
     indices_102 = np.where(tokens_nomask == 102)[0]
-    assert np.all(tokens_nomask[indices_102[1] + 1:] == 0)
+    assert np.all(tokens_nomask[indices_102[1] + 1 :] == 0)
 
     # The unmasked tokens in the sentences minus special characters
     # have values between 999 and vocab_size
@@ -123,10 +123,8 @@ def check_tokens(config, tokens, mask_lm_position, labels):
     normal_tokens_0 = sentence_0[~np.in1d(sentence_0, special_tokens)]
     normal_tokens_1 = sentence_1[~np.in1d(sentence_1, special_tokens)]
 
-    assert np.all((normal_tokens_0 >= 999) &
-                  (normal_tokens_0 < config['vocab_size']))
-    assert np.all((normal_tokens_1 >= 999) &
-                  (normal_tokens_1 < config['vocab_size']))
+    assert np.all((normal_tokens_0 >= 999) & (normal_tokens_0 < config["vocab_size"]))
+    assert np.all((normal_tokens_1 >= 999) & (normal_tokens_1 < config["vocab_size"]))
 
 
 def check_attention_mask(attn_mask, tokens):
@@ -184,7 +182,7 @@ def check_mask_lm_positions(config, mask_lm_positions):
     Position of MLM tokens.
     Must be less then the sequence_length of tokens.
     """
-    assert np.all(mask_lm_positions < config['seq_length'])
+    assert np.all(mask_lm_positions < config["seq_length"])
 
 
 def check_labels(config, tokens, mask_lm_positions, labels):
@@ -197,7 +195,7 @@ def check_labels(config, tokens, mask_lm_positions, labels):
     10% it will be random int between [0, vocab_size)
     """
     masked_tokens = tokens[mask_lm_positions[labels != 0]]
-    assert np.all((masked_tokens >= 0) & (masked_tokens < config['vocab_size']))
+    assert np.all((masked_tokens >= 0) & (masked_tokens < config["vocab_size"]))
 
 
 def mask_type_count(tokens, mask_lm_positions, labels):
@@ -206,8 +204,7 @@ def mask_type_count(tokens, mask_lm_positions, labels):
     mask_types = Counter({"103": 0, "same": 0, "random": 0})
     mask_types["103"] += np.where(masked_tokens == 103)[0].shape[0]
     mask_types["same"] += np.where(masked_tokens == true_tokens)[0].shape[0]
-    mask_types["random"] += np.where(
-        (masked_tokens != 103) & (masked_tokens != true_tokens))[0].shape[0]
+    mask_types["random"] += np.where((masked_tokens != 103) & (masked_tokens != true_tokens))[0].shape[0]
 
     assert sum(mask_types.values()) == masked_tokens.shape[0]
     return mask_types
@@ -227,33 +224,35 @@ def check_nsp(nsp):
 def test_wikipedia_dataset():
     num_tokens = 0
     replacement_counts = Counter({"103": 0, "same": 0, "random": 0})
-    dataset, total_samples = get_pretraining_dataset(micro_batch_size=config["batch_size"],
-                                                     dataset_dir=config["train_files_path"],
-                                                     max_seq_length=config["seq_length"],
-                                                     max_predictions_per_seq=config["masked_tokens"],
-                                                     vocab_size=config["vocab_size"],
-                                                     seed=1222,
-                                                     data_type=tf.float16,
-                                                     generated_dataset=False,
-                                                     distributed_worker_count=1,
-                                                     distributed_worker_index=0,
-                                                     debug=True)
+    dataset, total_samples = get_pretraining_dataset(
+        micro_batch_size=config["batch_size"],
+        dataset_dir=config["train_files_path"],
+        max_seq_length=config["seq_length"],
+        max_predictions_per_seq=config["masked_tokens"],
+        vocab_size=config["vocab_size"],
+        seed=1222,
+        data_type=tf.float16,
+        generated_dataset=False,
+        distributed_worker_count=1,
+        distributed_worker_index=0,
+        debug=True,
+    )
     total_samples = int(total_samples)
     total_samples = min(total_samples, 500000)
     i = 0
     for datum in dataset:
-        if i * config['batch_size'] < total_samples:
+        if i * config["batch_size"] < total_samples:
             if i % 5000 == 0:  # note that total number of samples = i*batch_size
                 print(i)
-            i = i+1
-            tokens = datum[0]['input_ids'].numpy()
-            attn_mask = datum[0]['attention_mask'].numpy()
-            types = datum[0]['token_type_ids'].numpy()
-            mask_lm_pos = datum[0]['masked_lm_positions'].numpy()
-            labels = datum[0]['masked_lm_ids'].numpy()
-            nsp = datum[0]['next_sentence_labels'].numpy()
+            i = i + 1
+            tokens = datum[0]["input_ids"].numpy()
+            attn_mask = datum[0]["attention_mask"].numpy()
+            types = datum[0]["token_type_ids"].numpy()
+            mask_lm_pos = datum[0]["masked_lm_positions"].numpy()
+            labels = datum[0]["masked_lm_ids"].numpy()
+            nsp = datum[0]["next_sentence_labels"].numpy()
 
-            for b in range(config['batch_size']):
+            for b in range(config["batch_size"]):
                 check_dimensions(config, tokens[b], attn_mask[b], types[b], mask_lm_pos[b], labels[b], nsp[b])
                 check_tokens(config, tokens[b], mask_lm_pos[b], labels[b])
                 check_attention_mask(attn_mask[b], tokens[b])
@@ -267,7 +266,7 @@ def test_wikipedia_dataset():
                 # Number of tokens, not including padding
                 num_tokens += attn_mask[b, attn_mask[b] == 1].shape[0]
         else:
-            print('Finished looping over all samples.')
+            print("Finished looping over all samples.")
             break
 
     # Test masked token proportions
@@ -275,7 +274,7 @@ def test_wikipedia_dataset():
     for k in replacement_counts:
         replacement_counts[k] /= total
 
-    assert (0.79 < replacement_counts["103"] < 0.81)
-    assert (0.09 < replacement_counts["same"] < 0.11)
-    assert (0.09 < replacement_counts["random"] < 0.11)
-    assert (0.14 < total / num_tokens < 0.16)  # should be ~0.15
+    assert 0.79 < replacement_counts["103"] < 0.81
+    assert 0.09 < replacement_counts["same"] < 0.11
+    assert 0.09 < replacement_counts["random"] < 0.11
+    assert 0.14 < total / num_tokens < 0.16  # should be ~0.15

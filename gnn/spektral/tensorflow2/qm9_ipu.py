@@ -33,22 +33,19 @@ gradient_accumulation_steps_per_replica, epochs = (1, 2) if args.profile else (6
 ################################################################################
 cfg = IPUConfig()
 cfg.auto_select_ipus = args.num_ipus
-cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
 cfg.configure_ipu_system()
 
 # Mixed precision support
-tf.keras.backend.set_floatx('float16')
+tf.keras.backend.set_floatx("float16")
 
 ################################################################################
 # LOAD DATA
 ################################################################################
-A, X, E, y = qm9.load_data(return_type='numpy',
-                           nf_keys='atomic_num',
-                           ef_keys='type',
-                           self_loops=True,
-                           amount=args.amount)  # Set to None to train on whole dataset
+A, X, E, y = qm9.load_data(
+    return_type="numpy", nf_keys="atomic_num", ef_keys="type", self_loops=True, amount=args.amount
+)  # Set to None to train on whole dataset
 
-y = y[['cv']].values  # Heat capacity at 298.15K
+y = y[["cv"]].values  # Heat capacity at 298.15K
 
 # Preprocessing
 X_uniq = np.unique(X)
@@ -60,10 +57,10 @@ X = label_to_one_hot(X, X_uniq)
 E = label_to_one_hot(E, E_uniq)
 
 # Parameters
-N = X.shape[-2]       # Number of nodes in the graphs
-F = X[0].shape[-1]    # Dimension of node features
-S = E[0].shape[-1]    # Dimension of edge features
-n_out = y.shape[-1]   # Dimension of the target
+N = X.shape[-2]  # Number of nodes in the graphs
+F = X[0].shape[-1]  # Dimension of node features
+S = E[0].shape[-1]  # Dimension of edge features
+n_out = y.shape[-1]  # Dimension of the target
 
 # Train/test split
 data = train_test_split(A, X, E, y, test_size=0.1, random_state=0)
@@ -94,13 +91,12 @@ with strategy.scope():
     A_in = Input(shape=(N, N))
     E_in = Input(shape=(N, N, S))
 
-    X_1 = EdgeConditionedConv(32, activation='relu')([X_in, A_in, E_in])
-    X_2 = EdgeConditionedConv(32, activation='relu')([X_1, A_in, E_in])
+    X_1 = EdgeConditionedConv(32, activation="relu")([X_in, A_in, E_in])
+    X_2 = EdgeConditionedConv(32, activation="relu")([X_1, A_in, E_in])
     X_3 = GlobalSumPool()(X_2)
     output = Dense(n_out)(X_3)
 
-    model = tf.keras.Model(inputs=[X_in, A_in, E_in],
-                           outputs=output)
+    model = tf.keras.Model(inputs=[X_in, A_in, E_in], outputs=output)
 
     model.set_gradient_accumulation_options(
         gradient_accumulation_steps_per_replica=gradient_accumulation_steps_per_replica
@@ -109,7 +105,7 @@ with strategy.scope():
 
     # `steps_per_execution` is per replica
     steps_per_execution = len(train_dataset) // num_replicas
-    model.compile(optimizer=optimizer, loss='mse', steps_per_execution=steps_per_execution)
+    model.compile(optimizer=optimizer, loss="mse", steps_per_execution=steps_per_execution)
     model.summary()
 
     ############################################################################
@@ -118,12 +114,7 @@ with strategy.scope():
     train_steps_per_epoch = num_replicas if args.profile else None
 
     tic = time.perf_counter()
-    model.fit(
-        train_dataset,
-        batch_size=args.micro_batch_size,
-        epochs=epochs,
-        steps_per_epoch=train_steps_per_epoch
-    )
+    model.fit(train_dataset, batch_size=args.micro_batch_size, epochs=epochs, steps_per_epoch=train_steps_per_epoch)
     toc = time.perf_counter()
     duration = toc - tic
     print(f"Training time duration {duration}")
@@ -133,7 +124,7 @@ with strategy.scope():
         # EVALUATE MODEL
         ############################################################################
 
-        print('Testing model')
+        print("Testing model")
         tic = time.perf_counter()
         model_loss = model.evaluate(test_dataset, batch_size=1)
         print(f"Done. Test loss {model_loss}")
@@ -141,4 +132,4 @@ with strategy.scope():
         toc = time.perf_counter()
         duration = toc - tic
         print(f"Testing time duration {duration}")
-    print('Completed')
+    print("Completed")

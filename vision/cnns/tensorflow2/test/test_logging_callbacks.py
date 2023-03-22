@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 import sys
 import tensorflow as tf
+
 sys.path.append(str(Path(__file__).absolute().parent.parent))
 from callbacks.logging_callback import LoggingCallback
 import logging
@@ -12,33 +13,32 @@ import re
 
 
 class TestLoggingCallbacks(unittest.TestCase):
-
     def test_compilation_time_logging(self):
-        with self.assertLogs('logging_callback', level=logging.INFO) as test_log:
+        with self.assertLogs("logging_callback", level=logging.INFO) as test_log:
             callback = LoggingCallback(log_period=10)
 
             callback.on_train_begin()
             callback.on_train_batch_begin(batch=0)
-            callback.on_train_batch_end(batch=0, logs={'Compilation Time': 30})
+            callback.on_train_batch_end(batch=0, logs={"Compilation Time": 30})
 
             self.assertEqual(len(test_log.output), 2)
-            self.assertIn('logging every 10 micro batches', test_log.output[0])
-            self.assertIn('Compilation Time 30', test_log.output[1])
+            self.assertIn("logging every 10 micro batches", test_log.output[0])
+            self.assertIn("Compilation Time 30", test_log.output[1])
 
     def test_log_period(self):
-        with self.assertLogs('logging_callback', level=logging.INFO) as test_log:
+        with self.assertLogs("logging_callback", level=logging.INFO) as test_log:
             log_period = 7
             callback = LoggingCallback(log_period)
 
             callback.on_train_begin()
-            self.assertIn(f'logging every {log_period} micro batches', ' '.join(test_log.output))
+            self.assertIn(f"logging every {log_period} micro batches", " ".join(test_log.output))
 
             for batch in range(30):
 
                 callback.on_train_batch_begin(batch)
-                callback.on_train_batch_end(batch, logs={'throughput': 0})
+                callback.on_train_batch_end(batch, logs={"throughput": 0})
 
-                test_log_output_str = ' '.join(test_log.output)
+                test_log_output_str = " ".join(test_log.output)
                 search_str = f"batch {batch+1}: ['throughput:"
                 if (batch + 1) % log_period == 0:
                     self.assertIn(search_str, test_log_output_str)
@@ -57,7 +57,6 @@ class TestLoggingCallbacks(unittest.TestCase):
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = 1
         cfg.device_connection.enable_remote_buffers = True
-        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
 
         with strategy.scope():
@@ -73,7 +72,7 @@ class TestLoggingCallbacks(unittest.TestCase):
             return model.get_weights()[0][0][0]
 
     def test_average_log(self):
-        with self.assertLogs('logging_callback', level=logging.INFO) as test_log:
+        with self.assertLogs("logging_callback", level=logging.INFO) as test_log:
             num_steps = 2
             callback = LoggingCallback(log_period=num_steps)
             last_weigth = self.run_ipu_prog(callback, num_steps)

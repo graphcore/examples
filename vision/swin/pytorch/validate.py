@@ -35,74 +35,42 @@ def set_opts():
     opts.Training.gradientAccumulation(1)
     opts.Precision.setPartialsType(torch.float)
     opts.randomSeed(42)
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
-    opts.enableExecutableCaching('./cache')
+    opts.enableExecutableCaching("./cache")
     opts.outputMode(poptorch.OutputMode.All)
     opts.Precision.enableStochasticRounding(False)
     return opts
 
 
 def parse_option():
-    parser = argparse.ArgumentParser(
-        'Swin Transformer training and evaluation script',
-        add_help=False)
+    parser = argparse.ArgumentParser("Swin Transformer training and evaluation script", add_help=False)
     parser.add_argument(
-        '--cfg',
+        "--cfg",
         type=str,
         required=True,
         metavar="FILE",
-        help='path to config file',
+        help="path to config file",
     )
+    parser.add_argument("--data-path", type=str, required=True, metavar="FILE", help="path to dataset")
+    parser.add_argument("--output", type=str, required=True, metavar="FILE", help="path to save output files")
     parser.add_argument(
-        '--data-path',
+        "--pretrained-model", type=str, default=None, help="path to init checkpoint when fine tune models"
+    )
+    parser.add_argument("--batch-size", type=int, help="batch size for single GPU")
+    parser.add_argument("--num-workers", type=int, default=8, help="batch size for single GPU")
+    parser.add_argument("--weights", type=str, help="weights for model")
+    parser.add_argument("--device", type=str, default="", choices=["cpu", "ipu", "gpu"])
+    parser.add_argument("--alignment", action="store_true", help="if alignment fwd or bwd")
+    parser.add_argument("--half", action="store_true", help="use half")
+    parser.add_argument(
+        "--resume",
+        default="",
         type=str,
-        required=True,
-        metavar="FILE",
-        help='path to dataset')
-    parser.add_argument(
-        '--output',
-        type=str,
-        required=True,
-        metavar="FILE",
-        help='path to save output files')
-    parser.add_argument(
-        '--pretrained-model',
-        type=str,
-        default=None,
-        help='path to init checkpoint when fine tune models')
-    parser.add_argument(
-        '--batch-size',
-        type=int,
-        help="batch size for single GPU")
-    parser.add_argument(
-        '--num-workers',
-        type=int,
-        default=8,
-        help="batch size for single GPU")
-    parser.add_argument('--weights', type=str, help='weights for model')
-    parser.add_argument(
-        '--device',
-        type=str,
-        default='',
-        choices=[
-            'cpu',
-            'ipu',
-            'gpu'])
-    parser.add_argument(
-        '--alignment',
-        action='store_true',
-        help='if alignment fwd or bwd')
-    parser.add_argument('--half', action='store_true', help='use half')
-    parser.add_argument(
-        '--resume',
-        default='',
-        type=str,
-        metavar='PATH',
-        help='Resume full model and optimizer state from checkpoint (default: none)')
-    parser.add_argument('--checkpoint', default='', type=str, metavar='PATH',
-                        help='validate')
+        metavar="PATH",
+        help="Resume full model and optimizer state from checkpoint (default: none)",
+    )
+    parser.add_argument("--checkpoint", default="", type=str, metavar="PATH", help="validate")
 
     args, unparsed = parser.parse_known_args()
     config = get_config(args)
@@ -131,13 +99,13 @@ def validate(data_loader, model):
         end = time.time()
         if idx % 50 == 0:
             print(
-                f'Test: [{idx}/{len(data_loader)}]\t'
-                f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                f'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
-                f'Acc@1 {acc1_meter.val:.3f} ({acc1_meter.avg:.3f})\t'
-                f'Acc@5 {acc5_meter.val:.3f} ({acc5_meter.avg:.3f})\t'
+                f"Test: [{idx}/{len(data_loader)}]\t"
+                f"Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t"
+                f"Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t"
+                f"Acc@1 {acc1_meter.val:.3f} ({acc1_meter.avg:.3f})\t"
+                f"Acc@5 {acc5_meter.val:.3f} ({acc5_meter.avg:.3f})\t"
             )
-    print(f' * Acc@1 {acc1_meter.avg:.3f} Acc@5 {acc5_meter.avg:.3f}')
+    print(f" * Acc@1 {acc1_meter.avg:.3f} Acc@5 {acc5_meter.avg:.3f}")
     return acc1_meter.avg, acc5_meter.avg, loss_meter.avg
 
 
@@ -147,7 +115,7 @@ def main():
     dataset_val, data_loader_val = build_dataloader_val(config, opts)
     criterion = torch.nn.CrossEntropyLoss()
     model = build_model(config=config, train_loss_fn=criterion).eval()
-    model.load_state_dict(torch.load(args.checkpoint)['state_dict'])
+    model.load_state_dict(torch.load(args.checkpoint)["state_dict"])
     model.eval()
     print(args.checkpoint)
     valid_opts = poptorch.Options()
@@ -158,6 +126,6 @@ def main():
     validate(data_loader_val, model)
 
 
-if __name__ == '__main__':
-    ctypes.cdll.LoadLibrary('./custom_ops.so')
+if __name__ == "__main__":
+    ctypes.cdll.LoadLibrary("./custom_ops.so")
     main()

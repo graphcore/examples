@@ -22,5 +22,5 @@ class CompilationTimeCallback(tf.keras.callbacks.Callback):
 
     def __calculate_compilation_time(self, logs):
         if logs is not None:
-            logs['Compilation Time'] = time.time() - self.compilation_start_time
+            logs["Compilation Time"] = time.time() - self.compilation_start_time
         self.__current_batch_operations = self.__do_nothing

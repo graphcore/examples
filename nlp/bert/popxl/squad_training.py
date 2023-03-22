@@ -13,7 +13,11 @@ from popxl_addons.optimizers.adam import AdamOptimizerStep
 from popxl_addons.graph import GraphWithNamedArgs
 from popxl_addons.variable_factory import NamedVariableFactories
 from popxl_addons.named_tensors import NamedTensors
-from popxl_addons.transforms.batch_serialisation import batch_serialise_fwd_and_grad, batch_serial_buffer, batch_serialise
+from popxl_addons.transforms.batch_serialisation import (
+    batch_serialise_fwd_and_grad,
+    batch_serial_buffer,
+    batch_serialise,
+)
 from popxl_addons.transforms.repeat_graph import repeat_graph
 from popxl_addons.rts import (
     all_gather_replica_sharded_graph,
@@ -26,8 +30,7 @@ from popxl_addons.remote import (
     load_remote_graph,
     store_remote_graph,
 )
-from popxl_addons.named_replica_grouping import NamedReplicaGrouping, \
-    get_ild_replica_grouping
+from popxl_addons.named_replica_grouping import NamedReplicaGrouping, get_ild_replica_grouping
 
 from config import BertConfig, CONFIG_DIR
 from utils.setup import bert_config_setup
@@ -62,17 +65,13 @@ def get_rts_groups(facts: NamedVariableFactories) -> NamedReplicaGrouping:
 
 
 class Graphs:
-    def __init__(self,
-                 config: BertConfig,
-                 layer: addons.Module,
-                 optimizer: addons.Module,
-                 *args, **kwargs):
+    def __init__(self, config: BertConfig, layer: addons.Module, optimizer: addons.Module, *args, **kwargs):
         # Create Graphs for computing forward, gradient and optimizer
         fwd_args, self.fwd = layer.create_graph(*args, **kwargs)
-        required_grads = () if isinstance(
-            layer, BertEmbeddings) else (self.fwd.graph.inputs[0],)
+        required_grads = () if isinstance(layer, BertEmbeddings) else (self.fwd.graph.inputs[0],)
         grad_args, self.grad = addons.autodiff_with_accumulation(
-            self.fwd, self.fwd.args.tensors, grads_required=required_grads)
+            self.fwd, self.fwd.args.tensors, grads_required=required_grads
+        )
 
         optim_args = {}
         self.optim: OptimGraphs = {}
@@ -83,43 +82,38 @@ class Graphs:
                 replica_sharded_spec(var, shard_over[name]),
                 replica_sharded_spec(var, shard_over[name]),
                 lr=popxl.TensorSpec((), popxl.float32),
-                weight_decay=config.training.optimizer.weight_decay if requires_weight_decay(
-                    var) else 0.0,
+                weight_decay=config.training.optimizer.weight_decay if requires_weight_decay(var) else 0.0,
                 beta1=config.training.optimizer.beta1,
                 beta2=config.training.optimizer.beta2,
                 eps=(1e-6 * config.execution.loss_scaling),
-                bias_correction=False)
+                bias_correction=False,
+            )
 
         optim_args = NamedVariableFactories.from_dict(optim_args)
         # Variables required
-        self.args = NamedVariableFactories(
-            fwd=fwd_args,
-            optim=optim_args)
+        self.args = NamedVariableFactories(fwd=fwd_args, optim=optim_args)
         self.grad_args = grad_args
 
         # Create remote buffers for fwd vars and optimiser state.
         entries = config.model.layers if isinstance(layer, BertLayer) else 1
-        rts_group = NamedReplicaGrouping(
-            fwd=fwd_rts_groups, optim=get_rts_groups(optim_args))
-        shard_over = {k: rg.group_size for k,
-                      rg in rts_group.to_dict().items()}
-        self.buffers = named_variable_buffers(
-            self.args, entries, shard_over_dict=shard_over)
+        rts_group = NamedReplicaGrouping(fwd=fwd_rts_groups, optim=get_rts_groups(optim_args))
+        shard_over = {k: rg.group_size for k, rg in rts_group.to_dict().items()}
+        self.buffers = named_variable_buffers(self.args, entries, shard_over_dict=shard_over)
 
         # Create Graphs for loading/gathering/storing/reducing
-        self._fwd_load, self._fwd_load_names = load_remote_graph(
-            self.buffers.fwd, entries)
-        self._optim_load, self._optim_load_names = load_remote_graph(
-            self.buffers, entries)
+        self._fwd_load, self._fwd_load_names = load_remote_graph(self.buffers.fwd, entries)
+        self._optim_load, self._optim_load_names = load_remote_graph(self.buffers, entries)
         self._optim_store = store_remote_graph(self.buffers, entries)
 
         self._fwd_all_gather, self._fwd_all_gather_names = all_gather_replica_sharded_graph(
-            NamedTensors.pack(self._fwd_load_names, self._fwd_load.graph.outputs))
+            NamedTensors.pack(self._fwd_load_names, self._fwd_load.graph.outputs)
+        )
 
         grad_accums = self.grad.args.copy()
         grad_accums.pop("mean_accum_counter")
         self._grad_reduce, self._grad_reduce_names = reduce_replica_sharded_graph(
-            grad_accums, 'mean', shard_groups=get_rts_groups(self.grad_args))
+            grad_accums, "mean", shard_groups=get_rts_groups(self.grad_args)
+        )
 
     @classmethod
     def empty(cls):
@@ -153,12 +147,12 @@ def create_squad_graph(config: BertConfig, optimizer: addons.Module, *args, **kw
             replica_sharded_spec(var, shard_over[name]),
             replica_sharded_spec(var, shard_over[name]),
             lr=popxl.constant(1e-3),  # TODO: Replace with TensorSpec
-            weight_decay=config.training.optimizer.weight_decay if requires_weight_decay(
-                var) else 0.0,
+            weight_decay=config.training.optimizer.weight_decay if requires_weight_decay(var) else 0.0,
             beta1=config.training.optimizer.beta1,
             beta2=config.training.optimizer.beta2,
             eps=(1e-6 * config.execution.loss_scaling),
-            bias_correction=False)
+            bias_correction=False,
+        )
 
     args.insert("optim", NamedVariableFactories.from_dict(optim_args))
     grad_args = args.pop("grad")
@@ -170,20 +164,19 @@ def create_squad_graph(config: BertConfig, optimizer: addons.Module, *args, **kw
     squad.grad_args = grad_args
     # Create remote buffers for fwd vars and optimiser state.
     rts_group = get_rts_groups(args)
-    shard_over = {k: rg.group_size for k,
-                  rg in rts_group.to_dict().items()}
+    shard_over = {k: rg.group_size for k, rg in rts_group.to_dict().items()}
     squad.buffers = named_variable_buffers(args, shard_over_dict=shard_over)
-    squad._fwd_load, squad._fwd_load_names = load_remote_graph(
-        squad.buffers.fwd)
-    squad._optim_load, squad._optim_load_names = load_remote_graph(
-        squad.buffers)
+    squad._fwd_load, squad._fwd_load_names = load_remote_graph(squad.buffers.fwd)
+    squad._optim_load, squad._optim_load_names = load_remote_graph(squad.buffers)
     squad._optim_store = store_remote_graph(squad.buffers)
     squad._fwd_all_gather, squad._fwd_all_gather_names = all_gather_replica_sharded_graph(
-        NamedTensors.pack(squad._fwd_load_names, squad._fwd_load.graph.outputs))
+        NamedTensors.pack(squad._fwd_load_names, squad._fwd_load.graph.outputs)
+    )
     grad_accums = grad_args.copy()
     grad_accums.pop("mean_accum_counter")
     squad._grad_reduce, squad._grad_reduce_names = reduce_replica_sharded_graph(
-        grad_accums, 'mean', shard_groups=get_rts_groups(grad_accums))
+        grad_accums, "mean", shard_groups=get_rts_groups(grad_accums)
+    )
 
     return squad
 
@@ -195,23 +188,21 @@ def get_optimizer_state(name: str, state: NamedTensors) -> NamedTensors:
     return state
 
 
-def optimizer_step(optim_graphs: OptimGraphs,
-                   vars_and_state: NamedTensors,
-                   grads: NamedTensors,
-                   lr: popxl.Tensor):
+def optimizer_step(optim_graphs: OptimGraphs, vars_and_state: NamedTensors, grads: NamedTensors, lr: popxl.Tensor):
     _variables = vars_and_state.fwd.to_dict()
     _state = vars_and_state.optim
     _grads = grads.accum.to_dict()
     for name, graph in optim_graphs.items():
-        graph.bind(get_optimizer_state(name, _state)).call(
-            _variables[name], _grads[name], lr)
+        graph.bind(get_optimizer_state(name, _state)).call(_variables[name], _grads[name], lr)
 
 
-def embeddings_batch_serialise(config: BertConfig,
-                               embeddings: Graphs,
-                               inputs: addons.InputStreams,
-                               x_buffer: popxl.RemoteBuffer,
-                               dx_buffer: popxl.RemoteBuffer):
+def embeddings_batch_serialise(
+    config: BertConfig,
+    embeddings: Graphs,
+    inputs: addons.InputStreams,
+    x_buffer: popxl.RemoteBuffer,
+    dx_buffer: popxl.RemoteBuffer,
+):
     fwd, grad = batch_serialise_fwd_and_grad(
         embeddings.fwd,
         embeddings.grad,
@@ -220,24 +211,25 @@ def embeddings_batch_serialise(config: BertConfig,
         load_handles={
             embeddings.fwd.graph.inputs[0]: inputs.words,
             embeddings.fwd.graph.inputs[1]: inputs.token_type,
-            embeddings.grad.graph.inputs[0]: (dx_buffer, 0)
+            embeddings.grad.graph.inputs[0]: (dx_buffer, 0),
         },
         store_streams={},
-        store_buffers={
-            embeddings.fwd.graph.outputs[0]: (x_buffer, 0)
-        },
+        store_buffers={embeddings.fwd.graph.outputs[0]: (x_buffer, 0)},
         seed_input=embeddings.fwd.graph.inputs[2],
         rows=1,
-        io_mode='io')
+        io_mode="io",
+    )
     embeddings.fwd = fwd.graph
     embeddings.grad = grad.graph
 
 
-def layer_batch_serialise(config: BertConfig,
-                          layer: Graphs,
-                          x_buffer: popxl.RemoteBuffer,
-                          dx_buffer: popxl.RemoteBuffer,
-                          mask_buffer: popxl.RemoteBuffer):
+def layer_batch_serialise(
+    config: BertConfig,
+    layer: Graphs,
+    x_buffer: popxl.RemoteBuffer,
+    dx_buffer: popxl.RemoteBuffer,
+    mask_buffer: popxl.RemoteBuffer,
+):
     fwd, grad = batch_serialise_fwd_and_grad(
         layer.fwd,
         layer.grad,
@@ -246,38 +238,38 @@ def layer_batch_serialise(config: BertConfig,
         load_handles={
             layer.fwd.graph.inputs[0]: (x_buffer, 0),
             layer.fwd.graph.inputs[1]: (mask_buffer, None),
-            layer.grad.graph.inputs[0]: (dx_buffer, 1)
+            layer.grad.graph.inputs[0]: (dx_buffer, 1),
         },
         store_streams={},
-        store_buffers={
-            layer.fwd.graph.outputs[0]: (x_buffer, 1),
-            layer.grad.graph.outputs[0]: (dx_buffer, 0)
-        },
+        store_buffers={layer.fwd.graph.outputs[0]: (x_buffer, 1), layer.grad.graph.outputs[0]: (dx_buffer, 0)},
         seed_input=layer.fwd.graph.inputs[2],
         rows=config.model.layers,
-        io_mode='io')
+        io_mode="io",
+    )
     layer.fwd = fwd.graph
     layer.grad = grad.graph
 
 
-def squad_batch_serialise(config: BertConfig,
-                          squad: Graphs,
-                          inputs: addons.InputStreams,
-                          outputs: addons.OutputStreams,
-                          x_buffer: popxl.RemoteBuffer,
-                          dx_buffer: popxl.RemoteBuffer):
+def squad_batch_serialise(
+    config: BertConfig,
+    squad: Graphs,
+    inputs: addons.InputStreams,
+    outputs: addons.OutputStreams,
+    x_buffer: popxl.RemoteBuffer,
+    dx_buffer: popxl.RemoteBuffer,
+):
     bs_squad = batch_serialise(
         squad.fwd,
         config.gradient_accumulation,
         load_handles={
             squad.fwd.graph.inputs[0]: (x_buffer, config.model.layers),
-            squad.fwd.graph.inputs[1]: inputs.labels
+            squad.fwd.graph.inputs[1]: inputs.labels,
         },
         store_streams={squad.fwd.graph.outputs[0]: outputs.loss},
-        store_buffers={squad.fwd.graph.outputs[1]: (
-            dx_buffer, config.model.layers)},
+        store_buffers={squad.fwd.graph.outputs[1]: (dx_buffer, config.model.layers)},
         rows=1,
-        io_mode='io')
+        io_mode="io",
+    )
     squad.fwd = bs_squad.graph
 
 
@@ -296,18 +288,15 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
 
     with main:
         # -----  Define input and output streams -----
-        input_shape = (
-            config.execution.micro_batch_size * config.model.sequence_length,)
+        input_shape = (config.execution.micro_batch_size * config.model.sequence_length,)
         inputs = addons.InputStreams(
             words=(input_shape, popxl.uint32),
             token_type=(input_shape, popxl.uint32),
             mask=(input_shape, config.model.dtype),
             labels=((config.execution.micro_batch_size, 2), popxl.uint32),
-            lr=((), popxl.float32)
+            lr=((), popxl.float32),
         )
-        outputs = addons.OutputStreams(
-            loss=((), config.model.dtype)
-        )
+        outputs = addons.OutputStreams(loss=((), config.model.dtype))
 
         # ---- Initialise Random Seed ----
         seed_v, seed = addons.seed_variable(config.model.seed)
@@ -316,15 +305,13 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
         optimizer = AdamOptimizerStep(cache=True)
 
         embeddings = Graphs(
-            config, BertEmbeddings(config), optimizer, inputs.words.spec, inputs.token_type.spec, seed=seed.spec)
+            config, BertEmbeddings(config), optimizer, inputs.words.spec, inputs.token_type.spec, seed=seed.spec
+        )
         layer = Graphs(
-            config, BertLayer(config), optimizer, embeddings.fwd.graph.outputs[0].spec, inputs.mask.spec, seed=seed.spec)
+            config, BertLayer(config), optimizer, embeddings.fwd.graph.outputs[0].spec, inputs.mask.spec, seed=seed.spec
+        )
 
-        squad = create_squad_graph(
-            config,
-            optimizer,
-            layer.fwd.graph.outputs[0].spec,
-            inputs.labels.spec)
+        squad = create_squad_graph(config, optimizer, layer.fwd.graph.outputs[0].spec, inputs.labels.spec)
 
         # ---- Transform graphs ----
 
@@ -335,33 +322,31 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
         # Batch Serialisation
         #   Buffers
         x_buffer = batch_serial_buffer(
-            embeddings.fwd.graph.outputs[0], steps=config.gradient_accumulation, rows=config.model.layers+1)
+            embeddings.fwd.graph.outputs[0], steps=config.gradient_accumulation, rows=config.model.layers + 1
+        )
         dx_buffer = batch_serial_buffer(
-            embeddings.grad.graph.inputs[0], steps=config.gradient_accumulation, rows=config.model.layers+1)
-        mask_buffer = batch_serial_buffer(
-            layer.fwd.graph.inputs[1], steps=config.gradient_accumulation)
+            embeddings.grad.graph.inputs[0], steps=config.gradient_accumulation, rows=config.model.layers + 1
+        )
+        mask_buffer = batch_serial_buffer(layer.fwd.graph.inputs[1], steps=config.gradient_accumulation)
         #   Graphs
-        embeddings_batch_serialise(
-            config, embeddings, inputs, x_buffer, dx_buffer)
+        embeddings_batch_serialise(config, embeddings, inputs, x_buffer, dx_buffer)
         layer_batch_serialise(config, layer, x_buffer, dx_buffer, mask_buffer)
-        squad_batch_serialise(config, squad, inputs,
-                              outputs, x_buffer, dx_buffer)
+        squad_batch_serialise(config, squad, inputs, outputs, x_buffer, dx_buffer)
 
         # Available Memory Proportion
-        addons.set_available_memory_proportion_by_ipu(
-            ir, config.execution.available_memory_proportion)
+        addons.set_available_memory_proportion_by_ipu(ir, config.execution.available_memory_proportion)
 
         # ----- Create Variables -----
 
         variables = NamedTensors(random_seed=seed_v)
-        variables.insert("embeddings", embeddings.args.init_remote(
-            embeddings.buffers, 0, "embeddings"))
-        variables.insert("squad", squad.args.init_remote(
-            squad.buffers, 0, "squad"))
-        variables.insert("layer", NamedTensors.from_dict({
-            n: layer.args.init_remote(layer.buffers, n, f"layer.{n}")
-            for n in range(config.model.layers)
-        }))
+        variables.insert("embeddings", embeddings.args.init_remote(embeddings.buffers, 0, "embeddings"))
+        variables.insert("squad", squad.args.init_remote(squad.buffers, 0, "squad"))
+        variables.insert(
+            "layer",
+            NamedTensors.from_dict(
+                {n: layer.args.init_remote(layer.buffers, n, f"layer.{n}") for n in range(config.model.layers)}
+            ),
+        )
 
         # ---- Execute ----
 
@@ -378,7 +363,8 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
 
             # Load from host then store all masks TODO: Move this into the embedding loop
             mask_fill_graph = ir.create_graph(
-                fill_buffer_from_host, popxl.constant(0, popxl.uint32), inputs.mask, mask_buffer)
+                fill_buffer_from_host, popxl.constant(0, popxl.uint32), inputs.mask, mask_buffer
+            )
             for i in range(config.gradient_accumulation):
                 ops.call(mask_fill_graph, i)
 
@@ -410,8 +396,8 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
                 # Load Squad layer
                 squad_vars = squad.optim_load(0)
                 squad_fwd_vars = NamedTensors(
-                    fwd=squad.fwd_all_gather(squad_vars.fwd),
-                    grad=squad.grad_args.init_zero())
+                    fwd=squad.fwd_all_gather(squad_vars.fwd), grad=squad.grad_args.init_zero()
+                )
                 # Forward + Gradient
                 squad.fwd.bind(squad_fwd_vars).call(0)
                 # Optimizer
@@ -438,15 +424,13 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
                 return n - 1
 
             i = popxl.constant(config.model.layers - 1)
-            bwd_graph = ir.create_graph(
-                single_bert_layer_grad_optimizer_phase, i, lr)
+            bwd_graph = ir.create_graph(single_bert_layer_grad_optimizer_phase, i, lr)
             ops.repeat(bwd_graph, config.model.layers, i, lr)
 
             def embedding_grad_optimizer_phase():
                 # Load Embeddings layer
                 embeddings_vars = embeddings.optim_load(0)
-                embeddings_fwd_vars = embeddings.fwd_all_gather(
-                    embeddings_vars.fwd)
+                embeddings_fwd_vars = embeddings.fwd_all_gather(embeddings_vars.fwd)
                 # Gradient
                 grads = embeddings.grad_args.init_zero()
                 bwd_vars = grads.copy()
@@ -454,8 +438,7 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
                 embeddings.grad.bind(bwd_vars).call(0)
                 # Optimizer
                 reduced_grads = embeddings.grad_reduce(grads)
-                optimizer_step(embeddings.optim,
-                               embeddings_vars, reduced_grads, lr)
+                optimizer_step(embeddings.optim, embeddings_vars, reduced_grads, lr)
                 # Store
                 embeddings.optim_store(embeddings_vars, 0)
 
@@ -465,38 +448,26 @@ def squad_training_phased(config: BertConfig) -> TaskSession:
 
     fwd_vars = NamedTensors(
         embeddings=variables.embeddings.fwd,
-        layer=NamedTensors.from_dict(
-            {i: variables.layer[i].fwd for i in range(config.model.layers)}),
+        layer=NamedTensors.from_dict({i: variables.layer[i].fwd for i in range(config.model.layers)}),
         squad=variables.squad.fwd,
     )
 
-    logging.info(
-        f"popxl IR construction duration: {(time.time() - t) / 60:.2f} mins")
+    logging.info(f"popxl IR construction duration: {(time.time() - t) / 60:.2f} mins")
 
-    ir.num_host_transfers = config.execution.device_iterations * \
-        config.gradient_accumulation
-    session = TaskSession(
-        inputs=inputs,
-        outputs=outputs,
-        state=fwd_vars,
-        ir=ir,
-        device_desc="ipu_hw"
-    )
+    ir.num_host_transfers = config.execution.device_iterations * config.gradient_accumulation
+    session = TaskSession(inputs=inputs, outputs=outputs, state=fwd_vars, ir=ir, device_desc="ipu_hw")
     return session
 
 
 def main():
     """Run a benchmark configuration"""
-    config, _ = bert_config_setup(
-        CONFIG_DIR / "squad_training.yml",
-        "phased",
-        "large")
+    config, _ = bert_config_setup(CONFIG_DIR / "squad_training.yml", "phased", "large")
     session = squad_training_phased(config)
 
     inputs = {
-        stream: np.ones(session._full_input_shape(
-            stream.shape), stream.dtype.as_numpy())
-        for stream in session.expected_inputs()}
+        stream: np.ones(session._full_input_shape(stream.shape), stream.dtype.as_numpy())
+        for stream in session.expected_inputs()
+    }
 
     with session:
         # Skip one result
@@ -509,11 +480,8 @@ def main():
             durations.append(time.time() - start)
     duration = np.mean(durations)
 
-    samples_per_step = config.execution.device_iterations * \
-        config.training.global_batch_size
-    result_str = \
-        f"Duration: {duration} s " \
-        f"throughput: {samples_per_step/duration:6.1f} samples/sec "
+    samples_per_step = config.execution.device_iterations * config.training.global_batch_size
+    result_str = f"Duration: {duration} s " f"throughput: {samples_per_step/duration:6.1f} samples/sec "
     logging.info(result_str)
 
 

@@ -1,9 +1,9 @@
 # Message Passing Neural Network (MPNN)
 MPNN implementations (Graph Isomorphism Network, Graph Network and Interaction Network), optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| TensorFlow2 | GNNs | MPNN | MolHIV |  | ✅ | ❌ | [How powerful are graph neural networks?](https://arxiv.org/abs/1810.00826), [Relational inductive biases, deep learning, and graph networks](https://arxiv.org/abs/1806.01261), [Neural message passing for quantum chemistry](https://arxiv.org/abs/1704.01212) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| TensorFlow 2 | GNNs | MPNN | MolHIV |  | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required| <p style="text-align: center;">❌ | [How powerful are graph neural networks?](https://arxiv.org/abs/1810.00826), [Relational inductive biases, deep learning, and graph networks](https://arxiv.org/abs/1806.01261), [Neural message passing for quantum chemistry](https://arxiv.org/abs/1704.01212) |
 
 
 ## Instructions summary
@@ -25,12 +25,12 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -44,7 +44,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -58,6 +58,8 @@ cd static_ops && make
 ```
 
 
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
+
 ## Dataset setup
 ### MolHIV
 Download the "molhiv" dataset via [the ogb repository](https://github.com/snap-stanford/ogb). The leaderboard for this task is found [here](https://ogb.stanford.edu/docs/leader_graphprop/).
@@ -65,7 +67,7 @@ Download the "molhiv" dataset via [the ogb repository](https://github.com/snap-s
 *[1] Hu, Weihua, et al. "Open graph benchmark: Datasets for machine learning on graphs." arXiv preprint arXiv:2005.00687 (2020).*
 
 
-## Custom training/inference and other features
+## Custom training
 
 ### Model Details
 
@@ -88,9 +90,10 @@ The test results are consistent with the reported results.
 | GIN on leaderboard | 1,885,206| 0.7558 ± 0.0140 | 0.8232 ± 0.0090 |
 | IPU GIN model | 1,708,106 | 0.7574 ± 0.0215 | 0.7915 ± 0.0114|
 
+## Other features
 
 ### Grouped gathers/scatters
-This repository now implements *grouped* gathers and scatters: i.e. the compiler
+This repository now implements *grouped* gathers and scatters. The compiler
 is fully aware that each member of the batch can only communicate within its own
 batch. To use this efficiently, we concatenate several graphs into each member
 of the batch. The `packing_strategy_finder` plans the packing so as to minimise

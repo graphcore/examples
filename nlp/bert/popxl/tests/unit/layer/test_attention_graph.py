@@ -17,21 +17,23 @@ def test_attention_graph(test_config: BertConfig):
 
     input_shape = (
         test_config.execution.micro_batch_size * test_config.model.sequence_length,
-        test_config.model.hidden_size)
-    mask_shape = (test_config.execution.micro_batch_size *
-                  test_config.model.sequence_length,)
+        test_config.model.hidden_size,
+    )
+    mask_shape = (test_config.execution.micro_batch_size * test_config.model.sequence_length,)
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(np.zeros(input_shape), popxl.float32, name="act"),
-            addons.host_load(np.zeros(mask_shape), popxl.float32, name="mask"),
-        ])
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(np.zeros(input_shape), popxl.float32, name="act"),
+                addons.host_load(np.zeros(mask_shape), popxl.float32, name="mask"),
+            ]
+        )
         act, mask = inputs_tensors
         args, attn_graph = SelfAttention(test_config).create_graph(act, mask)
 
         attn = attn_graph.bind(args.init())
         call_info = attn.call_with_info(act, mask)
-        act, = call_info.outputs
+        (act,) = call_info.outputs
 
     variables = [t for t in main.tensors if isinstance(t, Variable)]
     assert len(variables) == 6
@@ -48,13 +50,10 @@ def test_attention_graph(test_config: BertConfig):
     with main:
         # Don't include mask
         grads_required = [attn_graph.graph.inputs[0], *attn_graph.args.tensors]
-        grad_attn_graph = addons.autodiff(
-            attn_graph, grads_required=grads_required)
+        grad_attn_graph = addons.autodiff(attn_graph, grads_required=grads_required)
 
-        seed_gradient = popxl.constant(
-            np.ones(act.shape), act.dtype, "seed_gradient")
-        grad_attn_graph.call(
-            seed_gradient, args=grad_attn_graph.grad_graph_info.inputs_dict(call_info))
+        seed_gradient = popxl.constant(np.ones(act.shape), act.dtype, "seed_gradient")
+        grad_attn_graph.call(seed_gradient, args=grad_attn_graph.grad_graph_info.inputs_dict(call_info))
 
     bs = test_config.execution.micro_batch_size
     seq = test_config.model.sequence_length
@@ -63,8 +62,7 @@ def test_attention_graph(test_config: BertConfig):
     ah = h // test_config.model.attention.heads
 
     # Check the correct activations have been attached
-    acts_shapes = list(
-        map(lambda t: t.shape, grad_attn_graph.grad_graph_info.inputs))
+    acts_shapes = list(map(lambda t: t.shape, grad_attn_graph.grad_graph_info.inputs))
 
     assert len(acts_shapes) == 16
 

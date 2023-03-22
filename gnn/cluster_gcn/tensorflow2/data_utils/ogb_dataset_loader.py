@@ -16,11 +16,7 @@ def load_ogb_heterogeneous_dataset(graph, labels, split_idx):
         "validation": {key: np.array(split, dtype=np.int32) for key, split in split_idx["valid"].items()},
         "test": {key: np.array(split, dtype=np.int32) for key, split in split_idx["test"].items()},
     }
-    return (num_nodes,
-            edges,
-            features,
-            labels,
-            dataset_split)
+    return (num_nodes, edges, features, labels, dataset_split)
 
 
 def load_ogb_homogeneous_dataset(graph, labels, split_idx):
@@ -31,13 +27,9 @@ def load_ogb_homogeneous_dataset(graph, labels, split_idx):
     dataset_split = {
         "train": np.array(split_idx["train"], dtype=np.int32),
         "validation": np.array(split_idx["valid"], dtype=np.int32),
-        "test": np.array(split_idx["test"], dtype=np.int32)
+        "test": np.array(split_idx["test"], dtype=np.int32),
     }
-    return (num_nodes,
-            edges,
-            features,
-            labels,
-            dataset_split)
+    return (num_nodes, edges, features, labels, dataset_split)
 
 
 def load_ogb_dataset(dataset_path, dataset_name):

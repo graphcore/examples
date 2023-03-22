@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Copyright (c) 2022 Graphcore Ltd. All Rights Reserved.
-# This script sources environment variables for pod configuration. 
-# It should be launched from the main host 
-# and it will sync all the data to the other specified hosts.  
+# This script sources environment variables for pod configuration.
+# It should be launched from the main host
+# and it will sync all the data to the other specified hosts.
 
 display_usage() {
 
@@ -51,9 +51,9 @@ NETMASK_CIDR="${NETMASK_CIDR__IP_PART[0]}.${NETMASK_CIDR__IP_PART[1]}.0.0/16"
 
 LOCAL_HOME="/localdata/${USER}"
 
-if [ -d "${LOCAL_HOME}/exec_cache" ] 
+if [ -d "${LOCAL_HOME}/exec_cache" ]
 then
-    echo "Directory ${LOCAL_HOME}/exec_cache exists." 
+    echo "Directory ${LOCAL_HOME}/exec_cache exists."
 else
     echo "Directory ${LOCAL_HOME}/exec_cache does not exists, creating one."
     mkdir ${LOCAL_HOME}/exec_cache
@@ -64,7 +64,7 @@ unset MPI_LOCAL_ARGS
 unset HOSTS_LIST
 unset HOSTS
 unset LISTED_HOST
-# MPI options	
+# MPI options
 
 export MPI_GLOBAL_ARGS="--tag-output --mca btl_tcp_if_include ${NETMASK_CIDR} --mca oob_tcp_if_include ${NETMASK_CIDR}"
 export MPI_LOCAL_ARGS="-x TF_CPP_VMODULE='poplar_compiler=0, poplar_executor=0' -x HOROVOD_LOG_LEVEL=WARN -x IPUOF_LOG_LEVEL=WARN -x POPLAR_LOG_LEVEL=WARN -x CPATH -x TF_POPLAR_FLAGS=--executable_cache_path=${LOCAL_HOME}/exec_cache"
@@ -78,7 +78,7 @@ sync_venvs_and_code() {
       rsync --stats -av "${LOCAL_HOME}/public_examples" "${host}:${LOCAL_HOME}/"
       echo "Syncing local venvs with ${host}"
       rsync --stats -av "${LOCAL_HOME}/venvs" "${host}:${LOCAL_HOME}/"
-      echo "Syncing local SDK with ${host}"	
+      echo "Syncing local SDK with ${host}"
       rsync --stats -av "${LOCAL_HOME}/sdks" "${host}:${LOCAL_HOME}/"
    done
 }
@@ -86,7 +86,7 @@ sync_venvs_and_code() {
 sync_imagenet() {
   if [ -d "/localdata/datasets/imagenet-data" ]; then
       for host in ${HOSTS}; do
-                  echo "Syncing Imagenet with ${host}"	
+                  echo "Syncing Imagenet with ${host}"
                   rsync --stats -av "/localdata/datasets/imagenet-data" "${host}:/localdata/datasets/"
       done
   fi
@@ -95,7 +95,7 @@ sync_imagenet() {
 let NUM_HOSTS=$#+1
 
 echo "Number of host (including main host) ${NUM_HOSTS}"
-      
+
 if [[ $# -gt 0 ]]; then
       HOSTS="$@"
       LISTED_HOST="${HOSTS}"
@@ -109,7 +109,7 @@ if [[ $# -gt 0 ]]; then
                         echo "${host} is a bad host name"
                         return 1
                   else
-                        echo "$host ip is $HOSTIP"   
+                        echo "$host ip is $HOSTIP"
                         LISTED_HOST[$i]=$HOSTIP
             fi
             let i+=1
@@ -119,25 +119,25 @@ if [[ $# -gt 0 ]]; then
 
       export HOSTS_LIST="${VIPU_SERVER_IP},${LISTED_HOST// /,}"
 
-      if [ -d "${LOCAL_HOME}/venvs" ] 
+      if [ -d "${LOCAL_HOME}/venvs" ]
       then
-      echo "Directory ${LOCAL_HOME}/venvs exists." 
+      echo "Directory ${LOCAL_HOME}/venvs exists."
       else
       echo "Directory ${LOCAL_HOME}/venvs does not exists, please change your local popsdk envs."
       return 1
       fi
 
-      if [ -d "${LOCAL_HOME}/sdks" ] 
+      if [ -d "${LOCAL_HOME}/sdks" ]
       then
-      echo "Directory ${LOCAL_HOME}/sdks exists." 
+      echo "Directory ${LOCAL_HOME}/sdks exists."
       else
       echo "Directory ${LOCAL_HOME}/sdks does not exists, please change your local popsdk sdks."
       return 1
       fi
 
-      if [ -d "${LOCAL_HOME}/public_examples" ] 
+      if [ -d "${LOCAL_HOME}/public_examples" ]
       then
-      echo "Directory ${LOCAL_HOME}/public_examples exists." 
+      echo "Directory ${LOCAL_HOME}/public_examples exists."
       else
       echo "Directory ${LOCAL_HOME}/public_examples does not exists, please change your local public examples."
       return 1
@@ -146,7 +146,7 @@ if [[ $# -gt 0 ]]; then
       sync_venvs_and_code
       sync_imagenet
 else
-      export HOSTS_LIST="${VIPU_SERVER_IP}"      
-fi      
+      export HOSTS_LIST="${VIPU_SERVER_IP}"
+fi
 
 echo "List of host IPs separated by comma: ${HOSTS_LIST} and exported to HOST_LIST"

@@ -22,11 +22,7 @@ import sys
 
 from data_utils.generated_dataset_loader import generate_mock_graph_data
 from data_utils.graphsage_dataset_loader import load_graphsage_data
-from data_utils.graph_dataset import (
-    GraphDataset,
-    HeterogeneousGraphDataset,
-    HomogeneousGraphDataset
-)
+from data_utils.graph_dataset import GraphDataset, HeterogeneousGraphDataset, HomogeneousGraphDataset
 from data_utils.ogb_dataset_loader import load_ogb_dataset
 from data_utils.ogb_lsc_dataset_loader import load_ogb_lsc_mag_dataset
 from utilities.constants import GraphType, Task
@@ -36,41 +32,49 @@ from utilities.options import ALLOWED_DATASET_TYPE
 def check_data_exists(dataset_path, dataset_name):
     if not os.path.exists(dataset_path):
         logging.fatal("Data {} is not present at {}.".format(dataset_name, dataset_path))
-        logging.fatal("Please download data using python3 data_utils/dataset_loader.py --dataset-name {} --data-path {}".format(dataset_name, dataset_path))
+        logging.fatal(
+            "Please download data using python3 data_utils/dataset_loader.py --dataset-name {} --data-path {}".format(
+                dataset_name, dataset_path
+            )
+        )
         sys.exit(-1)
 
+
 def load_dataset(
-        dataset_path,
-        dataset_name,
-        precalculate_first_layer,
-        adjacency_dtype,
-        features_dtype,
-        labels_dtype,
-        normalize_features=True,
-        regenerate_cache=False,
-        save_dataset_cache=True,
-        pca_features_path=None
+    dataset_path,
+    dataset_name,
+    precalculate_first_layer,
+    adjacency_dtype,
+    features_dtype,
+    labels_dtype,
+    normalize_features=True,
+    regenerate_cache=False,
+    save_dataset_cache=True,
+    pca_features_path=None,
 ):
 
-    preprocessed_file_path = Path(dataset_path).absolute().joinpath(
-        f"{dataset_name}_preprocessed"
-        f"_normalized_{normalize_features}"
-        f"_precalc_{precalculate_first_layer}"
-        f"_adjdtype_{adjacency_dtype.__name__}"
-        f"_featdtype_{features_dtype.__name__}"
-        f"_labelsdtype_{labels_dtype.__name__}"
-        ".pickle.gz"
+    preprocessed_file_path = (
+        Path(dataset_path)
+        .absolute()
+        .joinpath(
+            f"{dataset_name}_preprocessed"
+            f"_normalized_{normalize_features}"
+            f"_precalc_{precalculate_first_layer}"
+            f"_adjdtype_{adjacency_dtype.__name__}"
+            f"_featdtype_{features_dtype.__name__}"
+            f"_labelsdtype_{labels_dtype.__name__}"
+            ".pickle.gz"
+        )
     )
-    base_directory = Path(dataset_path).absolute().joinpath(
-        f"{dataset_name}_preprocessed/"
-    )
+    base_directory = Path(dataset_path).absolute().joinpath(f"{dataset_name}_preprocessed/")
     if dataset_name != "ogbn-lsc-mag240":
         if preprocessed_file_path.is_file() and not regenerate_cache:
             logging.info(
                 f"Loading {dataset_name} preprocessed dataset from"
                 f" {preprocessed_file_path}. If this is not intended,"
                 " either remove this file or run with argument"
-                " `--regenerate-dataset-cache` set to True.")
+                " `--regenerate-dataset-cache` set to True."
+            )
             return GraphDataset.load_preprocessed_dataset(preprocessed_file_path)
     else:
         if base_directory.is_dir() and not regenerate_cache:
@@ -93,8 +97,7 @@ def load_dataset(
         add_undirected_connections = True
     elif dataset_name == "ppi":
         check_data_exists(dataset_path, dataset_name)
-        num_nodes, edges, features, labels, dataset_splits = load_graphsage_data(
-            dataset_path, dataset_name)
+        num_nodes, edges, features, labels, dataset_splits = load_graphsage_data(dataset_path, dataset_name)
         dataset = HomogeneousGraphDataset(
             dataset_name=dataset_name,
             total_num_nodes=num_nodes,
@@ -108,8 +111,7 @@ def load_dataset(
         add_undirected_connections = True
     elif dataset_name == "reddit":
         check_data_exists(dataset_path, dataset_name)
-        num_nodes, edges, features, labels, dataset_splits = load_graphsage_data(
-            dataset_path, dataset_name)
+        num_nodes, edges, features, labels, dataset_splits = load_graphsage_data(dataset_path, dataset_name)
         dataset = HomogeneousGraphDataset(
             dataset_name=dataset_name,
             total_num_nodes=num_nodes,
@@ -123,8 +125,7 @@ def load_dataset(
         add_undirected_connections = True
     elif dataset_name == "ogbn-arxiv":
         check_data_exists(dataset_path, dataset_name)
-        num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(
-            dataset_path, dataset_name)
+        num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(dataset_path, dataset_name)
         dataset = HomogeneousGraphDataset(
             dataset_name=dataset_name,
             total_num_nodes=num_nodes,
@@ -139,8 +140,7 @@ def load_dataset(
         add_undirected_connections = True
     elif dataset_name == "ogbn-products":
         check_data_exists(dataset_path, dataset_name)
-        num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(
-            dataset_path, "ogbn-products")
+        num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(dataset_path, "ogbn-products")
         dataset = HomogeneousGraphDataset(
             dataset_name=dataset_name,
             total_num_nodes=num_nodes,
@@ -154,10 +154,7 @@ def load_dataset(
         add_undirected_connections = False
     elif dataset_name == "ogbn-mag":
         check_data_exists(dataset_path, dataset_name)
-        num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(
-            dataset_path,
-            dataset_name
-        )
+        num_nodes, edges, features, labels, dataset_splits = load_ogb_dataset(dataset_path, dataset_name)
         dataset = HeterogeneousGraphDataset(
             dataset_name=dataset_name,
             total_num_nodes=num_nodes,
@@ -175,23 +172,20 @@ def load_dataset(
                 ("author", "affiliated_with", "institution"),
                 ("author", "writes", "paper"),
                 ("paper", "cites", "paper"),
-                ("paper", "has_topic", "field_of_study")
-            )
+                ("paper", "has_topic", "field_of_study"),
+            ),
         )
         add_undirected_connections = False
         # Dictionary describing the mapping between nodes and features to average
         # for missing features. Ordered dict ensures dependence on features preserved.
         feature_mapping = [
-            ("author", {"feature": "paper",
-                        "edge_list": ('author', 'writes', 'paper')}),
-            ("institution", {"feature": "author",
-                             "edge_list": ('author', 'affiliated_with', 'institution')})]
+            ("author", {"feature": "paper", "edge_list": ("author", "writes", "paper")}),
+            ("institution", {"feature": "author", "edge_list": ("author", "affiliated_with", "institution")}),
+        ]
     elif dataset_name == "ogbn-lsc-mag240":
         check_data_exists(dataset_path, dataset_name)
         num_nodes, edges, features, labels, dataset_splits = load_ogb_lsc_mag_dataset(
-            dataset_path,
-            dataset_name,
-            pca_features_path
+            dataset_path, dataset_name, pca_features_path
         )
         logging.info("Processing MAG240 as heterogeneous dataset...")
         dataset = HeterogeneousGraphDataset(
@@ -210,13 +204,13 @@ def load_dataset(
             edge_types=(
                 ("author", "affiliated_with", "institution"),
                 ("author", "writes", "paper"),
-                ("paper", "cites", "paper")
-            ))
+                ("paper", "cites", "paper"),
+            ),
+        )
         add_undirected_connections = False
         feature_mapping = None
     else:
-        raise ValueError(f"Unrecognised dataset type: `{dataset_name}`."
-                         f" Choose one of {ALLOWED_DATASET_TYPE}")
+        raise ValueError(f"Unrecognised dataset type: `{dataset_name}`." f" Choose one of {ALLOWED_DATASET_TYPE}")
     logging.info(f"Raw dataset loaded.")
 
     logging.info(f"Preprocessing dataset...")
@@ -256,18 +250,14 @@ def load_dataset(
             dataset.save_mag(base_directory)
     return dataset
 
+
 if __name__ == "__main__":
     import argparse
-    logging.basicConfig(format="%(asctime)s %(levelname)-8s %(message)s",
-                        datefmt="%Y-%m-%d %H:%M:%S")
+
+    logging.basicConfig(format="%(asctime)s %(levelname)-8s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
     parser = argparse.ArgumentParser(description="Cluster-GCN data downloader")
-    parser.add_argument("--data-path",
-                        type=str,
-                        help="Path for the dataset.")
-    parser.add_argument("--dataset-name",
-                        type=str,
-                        choices=ALLOWED_DATASET_TYPE,
-                        help="Select dataset to use.")
+    parser.add_argument("--data-path", type=str, help="Path for the dataset.")
+    parser.add_argument("--dataset-name", type=str, choices=ALLOWED_DATASET_TYPE, help="Select dataset to use.")
     args = parser.parse_args()
     logging.info("Downloading {} to {}".format(args.dataset_name, args.data_path))
     if args.dataset_name in ["ppi", "reddit"]:

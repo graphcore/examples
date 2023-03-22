@@ -8,8 +8,19 @@ class PaddedConv(torch.nn.Conv2d):
     Expects 3 input channel and converts it for 4 channel for the Conv2d layer.
     The inputs forth channel is padded with zeros.
     """
+
     def __init__(self, layer):
-        super().__init__(4, layer.out_channels, layer.kernel_size, stride=layer.stride, padding=layer.padding, dilation=layer.dilation, groups=layer.groups, bias=hasattr(layer, "bias"), padding_mode=layer.padding_mode)
+        super().__init__(
+            4,
+            layer.out_channels,
+            layer.kernel_size,
+            stride=layer.stride,
+            padding=layer.padding,
+            dilation=layer.dilation,
+            groups=layer.groups,
+            bias=hasattr(layer, "bias"),
+            padding_mode=layer.padding_mode,
+        )
         self.extract_weights(layer)
 
     def forward(self, input):

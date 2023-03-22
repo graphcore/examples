@@ -13,12 +13,11 @@
 # limitations under the License.
 
 
-
 import torch as t
 import poptorch as pt
 
-INDEX_PREFIX = '__'
-SPLIT_SYMBOL = '.'
+INDEX_PREFIX = "__"
+SPLIT_SYMBOL = "."
 
 
 def lfind(string, symbol=SPLIT_SYMBOL):
@@ -29,7 +28,7 @@ def lfind(string, symbol=SPLIT_SYMBOL):
 
 def split_layer_path(layer_path, symbol=SPLIT_SYMBOL):
     index = lfind(layer_path, symbol)
-    current_layer_name = layer_path[: index-1]
+    current_layer_name = layer_path[: index - 1]
     child_layer_path = layer_path[index:]
     return current_layer_name, child_layer_path
 
@@ -37,8 +36,9 @@ def split_layer_path(layer_path, symbol=SPLIT_SYMBOL):
 class BasePipelineModel(t.nn.Module):
     """
     base pipeline model.
-    useage inherite this class just as a nn.Module
+    usage inherite this class just as a nn.Module
     """
+
     def __init__(self):
         super().__init__()
 
@@ -80,7 +80,8 @@ class BasePipelineModel(t.nn.Module):
         return layer_pointer
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+
     class TestSubModule(t.nn.Module):
         def __init__(self):
             super().__init__()
@@ -93,7 +94,6 @@ if __name__ == '__main__':
             self.module_list = t.nn.ModuleList([TestSubModule() for i in range(3)])
 
     class TestBasePipelineModel(BasePipelineModel):
-
         def _warp_start_point(self, layer_pointer, ipu_id=0):
             layer_pointer = t.nn.Linear(99, 99)
             return layer_pointer
@@ -106,5 +106,5 @@ if __name__ == '__main__':
 
     test_model = TestModel()
     print(test_model)
-    test_model.set_start_point('module_a.module_list__0.sub_module_layer_a')
+    test_model.set_start_point("module_a.module_list__0.sub_module_layer_a")
     print(test_model)

@@ -17,16 +17,17 @@ from keras_extensions.callbacks.outfeed_queue_callback import OutFeedQueueCallba
 
 
 class CallbackFactory:
-
     @staticmethod
-    def get_callbacks(universal_run_name,
-                      batch_config,
-                      model,
-                      checkpoint_path,
-                      ckpt_every_n_steps_per_execution,
-                      outfeed_queues=None,
-                      distributed_training=False,
-                      enable_wandb=False):
+    def get_callbacks(
+        universal_run_name,
+        batch_config,
+        model,
+        checkpoint_path,
+        ckpt_every_n_steps_per_execution,
+        outfeed_queues=None,
+        distributed_training=False,
+        enable_wandb=False,
+    ):
 
         callbacks = []
         log_period = batch_config.steps_per_execution
@@ -42,26 +43,33 @@ class CallbackFactory:
             for outfeed_queue in outfeed_queues:
                 callbacks.append(OutFeedQueueCallback(outfeed_queue))
 
-        # For distributed validation peform all reduce on metrics
+        # For distributed validation perform all reduce on metrics
         if distributed_training:
             callbacks.append(AllReduceMetricsCallback())
 
         if log_period > 0:
-            logging.info("Creating callback for logging to terminal with"
-                         f" a period of every {log_period} micro batches")
+            logging.info(
+                "Creating callback for logging to terminal with" f" a period of every {log_period} micro batches"
+            )
             callbacks.append(LoggingCallback(log_period=log_period))
 
             if enable_wandb and popdist.getInstanceIndex() == 0:
-                logging.info("Creating callback for logging to weights and biases"
-                             f" a period of every {log_period} micro batches")
-                callbacks.append(CustomWandbCallback(log_period=log_period,
-                                                     model=model))
+                logging.info(
+                    "Creating callback for logging to weights and biases"
+                    f" a period of every {log_period} micro batches"
+                )
+                callbacks.append(CustomWandbCallback(log_period=log_period, model=model))
         if popdist.getInstanceIndex() == 0:
-            logging.info("Creating callback for creating checkpoints. Checkpoints"
-                         f" will be saved to path: {checkpoint_path}")
-            callbacks.append(CheckpointCallback(universal_run_name=universal_run_name,
-                                                checkpoint_dir=checkpoint_path,
-                                                ckpt_every_n_steps_per_execution=ckpt_every_n_steps_per_execution,
-                                                batch_config=batch_config))
+            logging.info(
+                "Creating callback for creating checkpoints. Checkpoints" f" will be saved to path: {checkpoint_path}"
+            )
+            callbacks.append(
+                CheckpointCallback(
+                    universal_run_name=universal_run_name,
+                    checkpoint_dir=checkpoint_path,
+                    ckpt_every_n_steps_per_execution=ckpt_every_n_steps_per_execution,
+                    batch_config=batch_config,
+                )
+            )
 
         return callbacks

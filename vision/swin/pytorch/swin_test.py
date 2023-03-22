@@ -47,77 +47,34 @@ class ReturnIndexDataset(datasets.ImageFolder):
 
 
 def parse_option():
-    parser = argparse.ArgumentParser(
-        'Swin Transformer training and evaluation script',
-        add_help=False)
+    parser = argparse.ArgumentParser("Swin Transformer training and evaluation script", add_help=False)
     parser.add_argument(
-        '--cfg',
-        default='SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16',
+        "--cfg",
+        default="SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16",
         type=str,
-        metavar='PATH',
-        help='path to config file',
+        metavar="PATH",
+        help="path to config file",
     )
+    parser.add_argument("--batch-size", type=int, help="batch size for single GPU")
+    parser.add_argument("--num-workers", type=int, default=8, help="batch size for single GPU")
+    parser.add_argument("--weights", type=str, help="weights for model")
+    parser.add_argument("--device", type=str, default="", choices=["cpu", "ipu", "gpu"])
+    parser.add_argument("--alignment", action="store_true", help="if alignment fwd or bwd")
+    parser.add_argument("--half", default=True, action="store_true", help="use half")
     parser.add_argument(
-        '--batch-size',
-        type=int,
-        help="batch size for single GPU")
-    parser.add_argument(
-        '--num-workers',
-        type=int,
-        default=8,
-        help="batch size for single GPU")
-    parser.add_argument('--weights', type=str, help='weights for model')
-    parser.add_argument(
-        '--device',
+        "--resume",
+        default="",
         type=str,
-        default='',
-        choices=[
-            'cpu',
-            'ipu',
-            'gpu'])
-    parser.add_argument(
-        '--alignment',
-        action='store_true',
-        help='if alignment fwd or bwd')
-    parser.add_argument(
-        '--half',
-        default=True,
-        action='store_true',
-        help='use half')
-    parser.add_argument(
-        '--resume',
-        default='',
-        type=str,
-        metavar='PATH',
-        help='Resume full model and optimizer state from checkpoint (default: none)')
-    parser.add_argument(
-        '--data-path',
-        type=str,
-        metavar="FILE",
-        help='path to dataset')
-    parser.add_argument(
-        '--output',
-        type=str,
-        metavar="FILE",
-        help='path to save output files')
-    parser.add_argument(
-        '--pretrained-model',
-        type=str,
-        help='path to init checkpoint when fine tune models')
-    parser.add_argument(
-        '--ga',
-        type=int,
-        help="Gradient Accumulations Steps")
-    parser.add_argument(
-        '--amp',
-        type=float,
-        help="Available memory proportion")
-    parser.add_argument(
-        '--rts',
-        action='store_true',
-        help="Replicated tensor sharding")
-    parser.add_argument(
-        '--compile-only', action='store_true', help='Compile only')
+        metavar="PATH",
+        help="Resume full model and optimizer state from checkpoint (default: none)",
+    )
+    parser.add_argument("--data-path", type=str, metavar="FILE", help="path to dataset")
+    parser.add_argument("--checkpoint-output-dir", type=str, metavar="FILE", help="path to save output files")
+    parser.add_argument("--pretrained-model", type=str, help="path to init checkpoint when fine tune models")
+    parser.add_argument("--ga", type=int, help="Gradient Accumulations Steps")
+    parser.add_argument("--amp", type=float, help="Available memory proportion")
+    parser.add_argument("--rts", action="store_true", help="Replicated tensor sharding")
+    parser.add_argument("--compile-only", action="store_true", help="Compile only")
     args, unparsed = parser.parse_known_args()
     config = get_config(args)
     return args, config
@@ -125,19 +82,14 @@ def parse_option():
 
 def get_random_datum(config):
     result = []
-    batch_size = config.DATA.BATCH_SIZE * config.IPU.NUM_LOCALREPLICA * \
-        config.IPU.GRADIENT_ACCUMULATION_STEPS
-    if config.PRECISION[0] == 'half':
+    batch_size = config.DATA.BATCH_SIZE * config.IPU.NUM_LOCALREPLICA * config.IPU.GRADIENT_ACCUMULATION_STEPS
+    if config.PRECISION[0] == "half":
         use_half = True
     else:
         use_half = False
     dataset = GeneratedDataset(
-        shape=[
-            3,
-            config.DATA.IMG_SIZE[0],
-            config.DATA.IMG_SIZE[0]],
-        size=batch_size,
-        half_precision=use_half)
+        shape=[3, config.DATA.IMG_SIZE[0], config.DATA.IMG_SIZE[0]], size=batch_size, half_precision=use_half
+    )
     data = (dataset[i] for i in range(batch_size))
     for batches in zip(*data):
         result.append(torch.stack(batches))
@@ -166,7 +118,7 @@ class GeneratedDataset(Dataset):
         return synthetic_data, synthetic_label
 
 
-def compile_model(poptorch_model,  config):
+def compile_model(poptorch_model, config):
     datum = get_random_datum(config)
     (pre_input, pre_label) = datum
     mixup_fn = Mixup(
@@ -177,20 +129,20 @@ def compile_model(poptorch_model,  config):
         switch_prob=config.AUG.MIXUP_SWITCH_PROB,
         mode=config.AUG.MIXUP_MODE,
         label_smoothing=config.MODEL.LABEL_SMOOTHING,
-        num_classes=config.MODEL.NUM_CLASSES)
+        num_classes=config.MODEL.NUM_CLASSES,
+    )
     pre_input, pre_label = mixup_fn(pre_input, pre_label)
     poptorch_model.compile(pre_input, pre_label)
     return pre_input, pre_label
 
 
 class TestSWIN(unittest.TestCase):
-
     @pytest.mark.ipus(8)
     def test_swin_model(self):
         cmd = "make"
         ret = subprocess.check_call(cmd, shell=True, cwd=swin_root_path)
-        assert os.path.exists(os.path.join(swin_root_path, 'custom_ops.so')), 'please compile custom op'
-        ctypes.cdll.LoadLibrary(os.path.join(swin_root_path, 'custom_ops.so'))
+        assert os.path.exists(os.path.join(swin_root_path, "custom_ops.so")), "please compile custom op"
+        ctypes.cdll.LoadLibrary(os.path.join(swin_root_path, "custom_ops.so"))
         args, config = parse_option()
         config.defrost()
         config.IPU.NUM_LOCALREPLICA = 1
@@ -205,22 +157,20 @@ class TestSWIN(unittest.TestCase):
         self.train(args, opts, config)
 
     def train(self, args, opts, config):
-        if config.AUG.MIXUP > 0.:
+        if config.AUG.MIXUP > 0.0:
             # smoothing is handled with mixup label transform
             criterion = SoftTargetCrossEntropy()
-        elif config.MODEL.LABEL_SMOOTHING > 0.:
-            criterion = LabelSmoothingCrossEntropy(
-                smoothing=config.MODEL.LABEL_SMOOTHING)
+        elif config.MODEL.LABEL_SMOOTHING > 0.0:
+            criterion = LabelSmoothingCrossEntropy(smoothing=config.MODEL.LABEL_SMOOTHING)
         else:
             criterion = torch.nn.CrossEntropyLoss()
         model = build_model(config=config, train_loss_fn=criterion)
         if args.half:
-            print('use half')
+            print("use half")
             model.half()
 
         optimizer = build_optimizer(config, model)
-        model = poptorch.trainingModel(
-            model.train(), opts, optimizer=optimizer)
+        model = poptorch.trainingModel(model.train(), opts, optimizer=optimizer)
         data, targets = compile_model(model, config)
         lr_scheduler = build_scheduler(config, optimizer, 10008)
         start_epoch = 0
@@ -231,5 +181,5 @@ class TestSWIN(unittest.TestCase):
             model.setOptimizer(lr_scheduler.optimizer)
             _, loss = model(data, targets)
             time_e = time.time()
-            print('batch time:', time_e - time_s)
-            assert loss.mean() <= 10., 'loss error'
+            print("batch time:", time_e - time_s)
+            assert loss.mean() <= 10.0, "loss error"

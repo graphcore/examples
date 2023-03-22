@@ -28,7 +28,7 @@ def training(config: BertConfig, dataset, pretrained):
 
     # Write pretrained checkpoint to the IPU
     if config.checkpoint.load:
-        session.load_checkpoint(config.checkpoint.load, 'none')
+        session.load_checkpoint(config.checkpoint.load, "none")
     else:
         session.write_variables_data(hf_mapping(config, session, pretrained))
 
@@ -47,9 +47,12 @@ def training(config: BertConfig, dataset, pretrained):
         batch_size=samples_per_step,
         shuffle=True,
         drop_last=False,
-        collate_fn=PadCollate(samples_per_step,
-                              # This is the ignore_index
-                              {"labels": config.model.sequence_length}))
+        collate_fn=PadCollate(
+            samples_per_step,
+            # This is the ignore_index
+            {"labels": config.model.sequence_length},
+        ),
+    )
 
     step = 0
 
@@ -57,7 +60,8 @@ def training(config: BertConfig, dataset, pretrained):
         config.training.epochs * len(train_dl),
         1e-7,
         config.training.optimizer.learning_rate.maximum,
-        config.training.optimizer.learning_rate.warmup_proportion)
+        config.training.optimizer.learning_rate.warmup_proportion,
+    )
 
     # Training loop
     with session:
@@ -65,17 +69,19 @@ def training(config: BertConfig, dataset, pretrained):
         for _ in range(config.training.epochs):
             for data in train_dl:
                 data_map = {}
-                for idx, key in enumerate(['input_ids', 'token_type_ids', 'attention_mask', 'labels']):
+                for idx, key in enumerate(["input_ids", "token_type_ids", "attention_mask", "labels"]):
                     h2d = session.inputs[idx]
-                    data_map[h2d] = to_numpy(data[key], h2d.dtype)\
-                        .reshape(session.ir.num_host_transfers, config.execution.data_parallel, *h2d.shape)
+                    data_map[h2d] = to_numpy(data[key], h2d.dtype).reshape(
+                        session.ir.num_host_transfers, config.execution.data_parallel, *h2d.shape
+                    )
 
                 # Add learning rate inputs
                 # TODO: Allow broadcasted inputs
-                for h2d in session.inputs[len(data_map):]:
+                for h2d in session.inputs[len(data_map) :]:
                     # TODO: Allow accepting of smaller sized inputs.
                     data_map[h2d] = np.full(
-                        (session.ir.num_host_transfers, config.execution.data_parallel, 1), lr_schedule[step]).astype(np.float32)
+                        (session.ir.num_host_transfers, config.execution.data_parallel, 1), lr_schedule[step]
+                    ).astype(np.float32)
 
                 # Run program
                 losses = session.run(data_map)  # type: ignore
@@ -86,18 +92,16 @@ def training(config: BertConfig, dataset, pretrained):
                 start = time.perf_counter()
 
                 loss = np.mean(losses_np.astype(np.float32))
-                throughput = samples_per_step/duration
+                throughput = samples_per_step / duration
                 total_steps = config.execution.device_iterations * step
                 result_str = (
                     f"Step: {total_steps} "
                     f"Loss: {loss:5.3f} "
                     f"Duration: {duration:6.4f} s "
-                    f"throughput: {throughput:6.1f} samples/sec ")
+                    f"throughput: {throughput:6.1f} samples/sec "
+                )
                 logging.info(result_str)
-                wandb.log({"Loss": loss,
-                           "LR": lr_schedule[step],
-                           "Throughput": throughput},
-                          step=total_steps)
+                wandb.log({"Loss": loss, "LR": lr_schedule[step], "Throughput": throughput}, step=total_steps)
                 step += 1
 
     return session
@@ -118,17 +122,18 @@ def validation(config: BertConfig, dataset, train_session):
         batched=True,
         num_proc=1,
         remove_columns=dataset.column_names,
-        load_from_cache_file=True)
+        load_from_cache_file=True,
+    )
 
     samples_per_step = config.execution.device_iterations * config.execution.micro_batch_size
 
     val_dl = torch.utils.data.DataLoader(
-        features.remove_columns(
-            ['example_id', 'offset_mapping']),
+        features.remove_columns(["example_id", "offset_mapping"]),
         batch_size=samples_per_step,
         shuffle=False,
         drop_last=False,
-        collate_fn=PadCollate(samples_per_step))
+        collate_fn=PadCollate(samples_per_step),
+    )
 
     raw_predictions = [[], []]
 
@@ -143,25 +148,18 @@ def validation(config: BertConfig, dataset, train_session):
             outputs: np.ndarray = session.run(data_map)[session.outputs[0]]  # type: ignore
 
             start, end = np.split(outputs.astype(np.float32), 2, axis=-1)
-            raw_predictions[0].append(
-                start.reshape(-1, config.model.sequence_length))
-            raw_predictions[1].append(
-                end.reshape(-1, config.model.sequence_length))
+            raw_predictions[0].append(start.reshape(-1, config.model.sequence_length))
+            raw_predictions[1].append(end.reshape(-1, config.model.sequence_length))
 
     raw_predictions[0] = np.concatenate(raw_predictions[0], axis=0)
     raw_predictions[1] = np.concatenate(raw_predictions[1], axis=0)
 
-    final_predictions = postprocess_qa_predictions(dataset,
-                                                   features,
-                                                   raw_predictions)
+    final_predictions = postprocess_qa_predictions(dataset, features, raw_predictions)
 
     metric = load_metric("squad")
-    formatted_predictions = [{"id": k, "prediction_text": v}
-                             for k, v in final_predictions.items()]
-    references = [{"id": ex["id"], "answers": ex["answers"]}
-                  for ex in dataset]
-    metrics = metric.compute(
-        predictions=formatted_predictions, references=references)
+    formatted_predictions = [{"id": k, "prediction_text": v} for k, v in final_predictions.items()]
+    references = [{"id": ex["id"], "answers": ex["answers"]} for ex in dataset]
+    metrics = metric.compute(predictions=formatted_predictions, references=references)
     logging.info(metrics)
     for k, v in metrics.items():  # type: ignore
         wandb.run.summary[k] = v
@@ -176,10 +174,10 @@ def main():
         "base",
     )
 
-    wandb_init(config, tags=['PE'], disable=args.wandb == 'False')
+    wandb_init(config, tags=["PE"], disable=args.wandb == "False")
 
     # Setup dataset
-    dataset = load_dataset('squad')
+    dataset = load_dataset("squad")
 
     # Train
     train_session = training(config, dataset["train"], pretrained)

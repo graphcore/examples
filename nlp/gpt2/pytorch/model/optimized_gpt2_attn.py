@@ -26,7 +26,7 @@ class OptimizedGPT2Attention(GPT2Attention):
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         if self.scale_attn_weights:
-            attn_weights *= 1. / (value.size(-1) ** 0.5)
+            attn_weights *= 1.0 / (value.size(-1) ** 0.5)
 
         # Layer-wise attention scaling
         if self.scale_attn_by_inverse_layer_idx:
@@ -57,15 +57,15 @@ class OptimizedGPT2Attention(GPT2Attention):
         return attn_output, attn_weights
 
     def forward(
-            self,
-            hidden_states,
-            layer_past=None,
-            attention_mask=None,
-            head_mask=None,
-            encoder_hidden_states=None,
-            encoder_attention_mask=None,
-            use_cache=False,
-            output_attentions=False,
+        self,
+        hidden_states,
+        layer_past=None,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        use_cache=False,
+        output_attentions=False,
     ):
         if encoder_hidden_states is not None:
             if not hasattr(self, "q_attn"):
@@ -75,12 +75,10 @@ class OptimizedGPT2Attention(GPT2Attention):
                 )
 
             query = self.q_attn(hidden_states)
-            key, value = self.c_attn(encoder_hidden_states).split(
-                self.split_size, dim=2)
+            key, value = self.c_attn(encoder_hidden_states).split(self.split_size, dim=2)
             attention_mask = encoder_attention_mask
         else:
-            query, key, value = self.c_attn(
-                hidden_states).split(self.split_size, dim=2)
+            query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
 
         query = self._split_heads(query, self.num_heads, self.head_dim)
         key = self._split_heads(key, self.num_heads, self.head_dim)
@@ -96,11 +94,9 @@ class OptimizedGPT2Attention(GPT2Attention):
         else:
             present = None
 
-        attn_output, attn_weights = self.optimized_attn(
-            query, key, value, attention_mask, head_mask)
+        attn_output, attn_weights = self.optimized_attn(query, key, value, attention_mask, head_mask)
 
-        attn_output = self._merge_heads(
-            attn_output, self.num_heads, self.head_dim)
+        attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
 
@@ -115,16 +111,18 @@ class OptimizedGPT2AttentionBuffer(GPT2Attention):
     def __init__(self, config, is_cross_attention=False, layer_idx=None):
         super().__init__(config, is_cross_attention=False, layer_idx=None)
         self.config = config
-        self.register_buffer("past_key",
-                             torch.zeros(config.batch, config.n_head, config.seq, int(config.n_embd/config.n_head)))
-        self.register_buffer("past_value",
-                             torch.zeros(config.batch, config.n_head, config.seq, int(config.n_embd/config.n_head)))
+        self.register_buffer(
+            "past_key", torch.zeros(config.batch, config.n_head, config.seq, int(config.n_embd / config.n_head))
+        )
+        self.register_buffer(
+            "past_value", torch.zeros(config.batch, config.n_head, config.seq, int(config.n_embd / config.n_head))
+        )
 
     def optimized_attn(self, query, key, value, attention_mask=None, head_mask=None):
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         if self.scale_attn_weights:
-            attn_weights *= 1. / (value.size(-1) ** 0.5)
+            attn_weights *= 1.0 / (value.size(-1) ** 0.5)
 
         # Layer-wise attention scaling
         if self.scale_attn_by_inverse_layer_idx:
@@ -153,15 +151,15 @@ class OptimizedGPT2AttentionBuffer(GPT2Attention):
         return attn_output, attn_weights
 
     def forward(
-            self,
-            hidden_states,
-            layer_past=None,
-            attention_mask=None,
-            head_mask=None,
-            encoder_hidden_states=None,
-            encoder_attention_mask=None,
-            use_cache=False,
-            output_attentions=False,
+        self,
+        hidden_states,
+        layer_past=None,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        use_cache=False,
+        output_attentions=False,
     ):
         if encoder_hidden_states is not None:
             if not hasattr(self, "q_attn"):
@@ -171,12 +169,10 @@ class OptimizedGPT2AttentionBuffer(GPT2Attention):
                 )
 
             query = self.q_attn(hidden_states)
-            key, value = self.c_attn(encoder_hidden_states).split(
-                self.split_size, dim=2)
+            key, value = self.c_attn(encoder_hidden_states).split(self.split_size, dim=2)
             attention_mask = encoder_attention_mask
         else:
-            query, key, value = self.c_attn(
-                hidden_states).split(self.split_size, dim=2)
+            query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
 
         query = self._split_heads(query, self.num_heads, self.head_dim)
         key = self._split_heads(key, self.num_heads, self.head_dim)
@@ -188,10 +184,8 @@ class OptimizedGPT2AttentionBuffer(GPT2Attention):
             self.past_key.copy_(key)
             self.past_value.copy_(value)
         else:
-            key_ = torch.cat(
-                (key, self.past_key[:, :, :-self.config.input_len, :]), dim=-2)
-            value_ = torch.cat(
-                (value, self.past_value[:, :, :-self.config.input_len, :]), dim=-2)
+            key_ = torch.cat((key, self.past_key[:, :, : -self.config.input_len, :]), dim=-2)
+            value_ = torch.cat((value, self.past_value[:, :, : -self.config.input_len, :]), dim=-2)
             self.past_key.copy_(key_)
             self.past_value.copy_(value_)
 
@@ -204,11 +198,9 @@ class OptimizedGPT2AttentionBuffer(GPT2Attention):
             present = (key, value)
         else:
             present = None
-        attn_output, attn_weights = self.optimized_attn(
-            query, key, value, attention_mask, head_mask)
+        attn_output, attn_weights = self.optimized_attn(query, key, value, attention_mask, head_mask)
 
-        attn_output = self._merge_heads(
-            attn_output, self.num_heads, self.head_dim)
+        attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
 
@@ -228,7 +220,7 @@ class OptimizedGPT2AttentionCache(GPT2Attention):
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
 
         if self.scale_attn_weights:
-            attn_weights *= 1. / (value.size(-1) ** 0.5)
+            attn_weights *= 1.0 / (value.size(-1) ** 0.5)
 
         # Layer-wise attention scaling
         if self.scale_attn_by_inverse_layer_idx:
@@ -255,18 +247,12 @@ class OptimizedGPT2AttentionCache(GPT2Attention):
 
         # custom op to optimize the layout for attn_weights and value for latency
         attn_weights = attn_weights.type(value.dtype)
-        attn_weights_remap = poptorch.custom_op([attn_weights],
-                                                "RemapCE",
-                                                "ai.graphcore",
-                                                1,
-                                                example_outputs=[attn_weights],
-                                                attributes={"grain_size": 8})
-        value_remap = poptorch.custom_op([value],
-                                         "RemapCE",
-                                         "ai.graphcore",
-                                         1,
-                                         example_outputs=[value],
-                                         attributes={"grain_size": 8})
+        attn_weights_remap = poptorch.custom_op(
+            [attn_weights], "RemapCE", "ai.graphcore", 1, example_outputs=[attn_weights], attributes={"grain_size": 8}
+        )
+        value_remap = poptorch.custom_op(
+            [value], "RemapCE", "ai.graphcore", 1, example_outputs=[value], attributes={"grain_size": 8}
+        )
         attn_weights = attn_weights_remap[0].type(value.dtype)
         value = value_remap[0].type(value.dtype)
 
@@ -274,15 +260,15 @@ class OptimizedGPT2AttentionCache(GPT2Attention):
         return attn_output, attn_weights
 
     def forward(
-            self,
-            hidden_states,
-            layer_past=None,
-            attention_mask=None,
-            head_mask=None,
-            encoder_hidden_states=None,
-            encoder_attention_mask=None,
-            use_cache=False,
-            output_attentions=False,
+        self,
+        hidden_states,
+        layer_past=None,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        use_cache=False,
+        output_attentions=False,
     ):
         if encoder_hidden_states is not None:
             if not hasattr(self, "q_attn"):
@@ -292,12 +278,10 @@ class OptimizedGPT2AttentionCache(GPT2Attention):
                 )
 
             query = self.q_attn(hidden_states)
-            key, value = self.c_attn(encoder_hidden_states).split(
-                self.split_size, dim=2)
+            key, value = self.c_attn(encoder_hidden_states).split(self.split_size, dim=2)
             attention_mask = encoder_attention_mask
         else:
-            query, key, value = self.c_attn(
-                hidden_states).split(self.split_size, dim=2)
+            query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
 
         query = self._split_heads(query, self.num_heads, self.head_dim)
         key = self._split_heads(key, self.num_heads, self.head_dim)
@@ -313,11 +297,9 @@ class OptimizedGPT2AttentionCache(GPT2Attention):
         else:
             present = None
 
-        attn_output, attn_weights = self.optimized_attn(
-            query, key, value, attention_mask, head_mask)
+        attn_output, attn_weights = self.optimized_attn(query, key, value, attention_mask, head_mask)
 
-        attn_output = self._merge_heads(
-            attn_output, self.num_heads, self.head_dim)
+        attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
 

@@ -19,6 +19,7 @@ import popdist.poptorch
 import horovod.torch as hvd
 
 import logging
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 

@@ -7,6 +7,7 @@ from typing import List
 
 class OverlapModel(torch.nn.Module):
     """Wraps the model to use IO tiles to overlap the IO with compute"""
+
     def __init__(self, model: torch.nn.Module):
         super().__init__()
         self.model = model
@@ -31,12 +32,13 @@ class OverlapModel(torch.nn.Module):
 
 class NormalizeInputModel(torch.nn.Module):
     """Wraps the model and convert the input tensor to the given type, and normalise it."""
+
     def __init__(self, model: torch.nn.Module, mean: List[float], std: List[float], output_cast=None):
         super().__init__()
         self.model = model
         mean = torch.as_tensor(mean)
         std = torch.as_tensor(std)
-        self.mul = (1.0/(255.0 * std)).view(-1, 1, 1)
+        self.mul = (1.0 / (255.0 * std)).view(-1, 1, 1)
         self.sub = (mean / std).view(-1, 1, 1)
         self.output_cast = output_cast
         if output_cast == "full":

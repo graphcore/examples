@@ -8,8 +8,11 @@ from typing import Callable, List, Tuple
 
 class ModelManipulator:
     """Manipulates an existing model at op level."""
+
     def __init__(self, model: torch.nn.Module):
-        traced_graph = torch.fx.Tracer(autowrap_functions=getattr(self.__class__, "untractable_functions", [])).trace(model)
+        traced_graph = torch.fx.Tracer(autowrap_functions=getattr(self.__class__, "untractable_functions", [])).trace(
+            model
+        )
         self.traced_model = torch.fx.GraphModule(model, traced_graph)
 
     @classmethod
@@ -19,8 +22,12 @@ class ModelManipulator:
             cls.untractable_functions = []
         cls.untractable_functions.append(function)
 
-    def transform(self, match_fn: Callable[[torch.fx.Node], bool], transform_fn: Callable[[torch.fx.Node], None],
-                  transform_name: str="") -> torch.fx.GraphModule:
+    def transform(
+        self,
+        match_fn: Callable[[torch.fx.Node], bool],
+        transform_fn: Callable[[torch.fx.Node], None],
+        transform_name: str = "",
+    ) -> torch.fx.GraphModule:
         """
         Apply transformation on the model
         match_fn: the function which return true if a given node requires transformation. Signiture of the method is fn(node:Node)
@@ -35,8 +42,10 @@ class ModelManipulator:
                 self.traced_model.recompile()
         return self.traced_model
 
-    def transform_pipeline(self, transform_list: List[Tuple[Callable[[torch.fx.Node], Callable[[torch.fx.Node], None]]]]) -> torch.fx.GraphModule:
-        """ Apply multiple transformation"""
+    def transform_pipeline(
+        self, transform_list: List[Tuple[Callable[[torch.fx.Node], Callable[[torch.fx.Node], None]]]]
+    ) -> torch.fx.GraphModule:
+        """Apply multiple transformation"""
         for match, trans, name in transform_list:
             self.transform(match, trans, name)
         return self.traced_model
@@ -50,16 +59,19 @@ class ModelManipulator:
             if match_fn(node):
                 cls.match_nr += 1
                 return cls.match_nr == 1
+
         return fn
 
 
 def next_node(match_fn: Callable[[torch.fx.Node], bool]) -> Callable[[torch.fx.Node], bool]:
     """Check whether any of the following node matches with the given function"""
+
     def fn(node):
         for next_n in node.users.keys():
             if match_fn(next_n):
                 return True
         return False
+
     return fn
 
 
@@ -74,6 +86,7 @@ def name_match(name_patterns: List[str]) -> Callable[[torch.fx.Node], bool]:
             if re.fullmatch(name_pattern, name):
                 return True
         return False
+
     return fn
 
 
@@ -88,11 +101,13 @@ def type_match(types: List) -> Callable[[torch.fx.Node], bool]:
             if isinstance(node_module, t):
                 return True
         return False
+
     return fn
 
 
 def replace_op(node2node_func: Callable[[torch.fx.Node], torch.fx.Node]) -> Callable[[torch.fx.Node], None]:
     """Replace the node to a new one. The new node defined by a function, which maps the old Node to a new Node"""
+
     def fn(node):
         traced_graph = node.graph
         new_op = node2node_func(node)
@@ -100,11 +115,13 @@ def replace_op(node2node_func: Callable[[torch.fx.Node], torch.fx.Node]) -> Call
             new_node = traced_graph.call_function(new_op, args=tuple(node.all_input_nodes))
             node.replace_all_uses_with(new_node)
             node.graph.erase_node(node)
+
     return fn
 
 
 def insert_after(node2node_func: Callable[[torch.fx.Node], torch.fx.Node]) -> Callable[[torch.fx.Node], None]:
     """Insert a new node after the current one. The new node defined by a function, which uses the current Node."""
+
     def fn(node):
         traced_graph = node.graph
         new_op = node2node_func(node)
@@ -112,25 +129,28 @@ def insert_after(node2node_func: Callable[[torch.fx.Node], torch.fx.Node]) -> Ca
             new_node = traced_graph.call_function(new_op, args=(node,))
             node.replace_all_uses_with(new_node)
             new_node.args = (node,)
+
     return fn
 
 
 def replace_module(node2node_func: Callable[[torch.fx.Node], torch.fx.Node]) -> Callable[[torch.fx.Node], None]:
     """Replaces the module, which belongs to the current node.
-        The new node defined by a function, which uses the current Node.
+    The new node defined by a function, which uses the current Node.
     """
+
     def fn(node):
         new_op = node2node_func(node)
-        sub_module_names = node.target.split('.')
+        sub_module_names = node.target.split(".")
         module = node.graph.owning_module
         for name in sub_module_names[:-1]:
             module = module.get_submodule(name)
         setattr(module, sub_module_names[-1], new_op)
+
     return fn
 
 
 def get_module_from_node(node: torch.fx.node.Node) -> torch.nn.Module:
-    """ Return the asigned module for the node. If it doesn't exist return None."""
+    """Return the assigned module for the node. If it doesn't exist return None."""
     modules = dict(node.graph.owning_module.named_modules())
     return modules.get(node.target, None)
 
@@ -140,7 +160,7 @@ def get_node_name(node: torch.fx.node.Node) -> str:
     if get_module_from_node(node) is None:
         name = str(node)
     else:
-        name = str(node.target).replace('.', '/')
+        name = str(node.target).replace(".", "/")
     return name
 
 

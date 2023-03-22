@@ -24,7 +24,7 @@ def pretraining_accuracy_fn(labels, logits):
         predictions = tf.cast(predictions * mask, dtype=tf.float32)
         acc_total = tf.reduce_sum(predictions)
         total_samples = tf.cast(tf.reduce_sum(mask), dtype=tf.float32)
-        acc = acc_total/total_samples
+        acc = acc_total / total_samples
 
     # check if logits are from NSP head
     elif len(tf.shape(logits)) == 2:
@@ -45,8 +45,7 @@ def classification_accuracy_fn(labels, logits):
     """
     log_probs = tf.nn.log_softmax(logits, axis=-1)
     labels = tf.reshape(tf.cast(labels, tf.int32), [-1])
-    predict_labels = tf.reshape(
-        tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32), [-1])
+    predict_labels = tf.reshape(tf.cast(tf.argmax(log_probs, -1), dtype=tf.int32), [-1])
     acc = tf.cast(tf.equal(predict_labels, labels), dtype=tf.float32)
     acc = tf.reduce_mean(acc)
 

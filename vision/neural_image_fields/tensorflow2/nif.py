@@ -87,10 +87,10 @@ def bilinear_interpolate(img, coords):
     wc = np.repeat(wc, Ic.shape[1], axis=1)
     wd = np.repeat(wd, Id.shape[1], axis=1)
 
-    return wa*Ia + wb*Ib + wc*Ic + wd*Id
+    return wa * Ia + wb * Ib + wc * Ic + wd * Id
 
 
-def encode_samples(image, uv_coords, transfer_function, debug_filename = ""):
+def encode_samples(image, uv_coords, transfer_function, debug_filename=""):
     width = image.shape[1]
     height = image.shape[0]
     remap_coords = (uv_coords * [height - 1, width - 1]).astype(np.float32)
@@ -118,13 +118,12 @@ def encode_samples(image, uv_coords, transfer_function, debug_filename = ""):
         "max": max_value.astype(float),
         "log_tone_map": transfer_function == "log",  # Set for backwards compatibility
         "transfer_function": transfer_function,
-        "eps": eps
+        "eps": eps,
     }
 
     # Optionally reconstruct an image from the input samples (useful for debugging):
     if debug_filename:
-        cv2.imwrite(debug_filename,
-                    decode_samples(image.shape, pixel_coords, train_values, encode_params))
+        cv2.imwrite(debug_filename, decode_samples(image.shape, pixel_coords, train_values, encode_params))
 
     return train_values, encode_params
 
@@ -142,8 +141,7 @@ def make_train_data(train_uv, train_values, args):
     factor = args.gradient_accumulation_count * args.replicas
     dataset_batch_size = args.batch_size // factor
     effective_batch_size = dataset_batch_size * factor
-    print(f"Effective batch-size: {effective_batch_size} "
-          f"Dataset batch-size: {dataset_batch_size} ")
+    print(f"Effective batch-size: {effective_batch_size} " f"Dataset batch-size: {dataset_batch_size} ")
     train_steps = train_uv.shape[0] // effective_batch_size
 
     # Steps per exec must be multiple of the number of replicas:
@@ -156,13 +154,13 @@ def make_train_data(train_uv, train_values, args):
     # Steps per epoch must be multiple of steps per exec:
     steps_per_epoch = (train_steps // steps_per_exec) * steps_per_exec
 
-    ds = tf.data.Dataset.from_tensor_slices(
-        (train_uv, train_values)).batch(dataset_batch_size, drop_remainder=True)
+    ds = tf.data.Dataset.from_tensor_slices((train_uv, train_values)).batch(dataset_batch_size, drop_remainder=True)
     print(f"Training dataset: {ds}")
-    print(f"Training steps-per-epoch: {steps_per_epoch} "
-          f"Training steps-per-execution: {steps_per_exec}")
+    print(f"Training steps-per-epoch: {steps_per_epoch} " f"Training steps-per-execution: {steps_per_exec}")
     if steps_per_epoch == 0:
-        raise RuntimeError("Training steps == 0: make sure you have enough training samples given the batch size and exec steps.")
+        raise RuntimeError(
+            "Training steps == 0: make sure you have enough training samples given the batch size and exec steps."
+        )
     return ds, steps_per_epoch, steps_per_exec
 
 
@@ -170,8 +168,7 @@ def make_prediction_dataset(width, height, batch_size, embedding_dimension, embe
     pixel_coords, uv_coords = make_image_grid(width, height)
     if embedding_dimension > 0:
         uv_coords = uv_positional_encode(uv_coords, embedding_dimension, embedding_sigma)
-    ds = tf.data.Dataset.from_tensor_slices(
-        uv_coords).batch(batch_size, drop_remainder=True)
+    ds = tf.data.Dataset.from_tensor_slices(uv_coords).batch(batch_size, drop_remainder=True)
     print(f"Prediction dataset: {ds}")
     return ds, pixel_coords
 
@@ -186,7 +183,7 @@ def uv_positional_encode(uv, dimension, sigma):
     print(f"Position encoded UV shape: {encoded.shape}")
 
     # Order of components doesn't matter as they will be fed to a fully
-    # connected layer so we can concatentate in a more efficient order:
+    # connected layer so we can concatenate in a more efficient order:
     i = 0
     half_dim = 2 * dimension
     for px, py in uv2:
@@ -197,8 +194,7 @@ def uv_positional_encode(uv, dimension, sigma):
     return encoded
 
 
-def save_metadata(file_name, name, args, shape, encode_params,
-                  embedding_dim, embedding_sigma, model_path):
+def save_metadata(file_name, name, args, shape, encode_params, embedding_dim, embedding_sigma, model_path):
     nif_params = {
         "name": name,
         "train_command": args,
@@ -206,7 +202,7 @@ def save_metadata(file_name, name, args, shape, encode_params,
         "embedding_dimension": embedding_dim,
         "embedding_sigma": embedding_sigma,
         "keras_model": model_path,
-        "encode_params": encode_params
+        "encode_params": encode_params,
     }
     with open(file_name, "w") as file:
         json.dump(nif_params, file, indent=2, sort_keys=True)
@@ -244,14 +240,10 @@ def color_space_to_bgr_matrix(color_space: str):
         raise ValueError(f"Unsupported color space: {color_space}")
     # From YUV color space:
     if color_space == "yuv":
-        return np.array([[1, 2.032, 0],       # B
-                         [1, -0.395, -0.581],  # G
-                         [1, 0, 1.140]])       # R
+        return np.array([[1, 2.032, 0], [1, -0.395, -0.581], [1, 0, 1.140]])  # B  # G  # R
     # From YCoCg color space:
     if color_space == "ycocg":
-        return np.array([[1, -1, -1],  # B
-                         [1, 0, 1],     # G
-                         [1, -1, 1]])   # R
+        return np.array([[1, -1, -1], [1, 0, 1], [1, -1, 1]])  # B  # G  # R
     return None
 
 
@@ -260,6 +252,7 @@ class EvalCallback(tf.keras.callbacks.Callback):
     A Keras callback which logs training info and optionally launches a
     separate evaluation process to run in parallel with training.
     """
+
     def __init__(self, original_file, model_path, period, compute_psnr, no_ipu, log_dir=None):
         super().__init__()
         self.input_file = original_file
@@ -269,9 +262,18 @@ class EvalCallback(tf.keras.callbacks.Callback):
         self.compute_psnr = compute_psnr
         _, file_extension = os.path.splitext(self.input_file)
         self.tmp_output = os.path.join(self.model_path, "tmp_eval_image" + file_extension)
-        self.eval_args = ['python3', 'predict_nif.py', '--model', self.model_path, '--output', self.tmp_output, '--original', self.input_file]
+        self.eval_args = [
+            "python3",
+            "predict_nif.py",
+            "--model",
+            self.model_path,
+            "--output",
+            self.tmp_output,
+            "--original",
+            self.input_file,
+        ]
         if no_ipu:
-            self.eval_args.append('--no-ipu')
+            self.eval_args.append("--no-ipu")
         if log_dir:
             self.summary_writer = tf.summary.create_file_writer(os.path.join(log_dir, "eval"))
             img = self.load_image_for_tensorboard(self.input_file)
@@ -290,11 +292,14 @@ class EvalCallback(tf.keras.callbacks.Callback):
             wait_start = time.time()
             try:
                 self.eval_process.wait(timeout=90)
-                stdout, stderr, = self.eval_process.communicate(timeout=30)
+                (
+                    stdout,
+                    stderr,
+                ) = self.eval_process.communicate(timeout=30)
                 wait_time = time.time() - wait_start
                 print(f"Previous eval process successful (waited {wait_time:.2f} seconds).")
                 # Read the evaluation metric back (currently peak-signal-to-noise-ratio):
-                text = stdout.decode('utf-8')
+                text = stdout.decode("utf-8")
 
                 psnr_rgb = find_output_value(text, "PSNR RGB:.*$")
                 psnr_l = find_output_value(text, "PSNR L:.*$")
@@ -315,7 +320,10 @@ class EvalCallback(tf.keras.callbacks.Callback):
             except subprocess.TimeoutExpired:
                 print(f"Killing previous eval process (pid: {self.eval_process.pid}).")
                 self.eval_process.kill()
-                stdout, stderr, = self.eval_process.communicate()
+                (
+                    stdout,
+                    stderr,
+                ) = self.eval_process.communicate()
             return stdout, stderr
         return None, None
 
@@ -338,5 +346,9 @@ class EvalCallback(tf.keras.callbacks.Callback):
                 if "TF_POPLAR_FLAGS" in eval_env:
                     tf_poplar_flags += eval_env["TF_POPLAR_FLAGS"]
                 eval_env["TF_POPLAR_FLAGS"] = tf_poplar_flags
-                self.eval_process = subprocess.Popen(self.eval_args, env=eval_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                print(f"{datetime.datetime.now().isoformat()}: Launched eval process (pid: {self.eval_process.pid}) at epoch {epoch}")
+                self.eval_process = subprocess.Popen(
+                    self.eval_args, env=eval_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                print(
+                    f"{datetime.datetime.now().isoformat()}: Launched eval process (pid: {self.eval_process.pid}) at epoch {epoch}"
+                )

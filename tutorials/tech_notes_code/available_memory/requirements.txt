@@ -1,0 +1,4 @@
+torchvision==0.14.1
+tqdm==4.48.2
+pytest~=6.2
+pytest-pythonpath==0.7.3

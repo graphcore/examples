@@ -11,7 +11,7 @@ class Memory(nn.Module):
     def __init__(self):
         super(Memory, self).__init__()
         self._mem_size = (10, 512)
-        self.register_buffer('_mem', torch.empty(*self._mem_size, dtype=torch.float))
+        self.register_buffer("_mem", torch.empty(*self._mem_size, dtype=torch.float))
         self._mem.data.fill_(0)
 
     def detach(self):
@@ -23,7 +23,7 @@ class Memory(nn.Module):
 
     def update_mem(self):
         indices = torch.tensor([0, 1]).long()
-        values = torch.tensor([[1]*self._mem_size[1], [1]*self._mem_size[1]]).float()
+        values = torch.tensor([[1] * self._mem_size[1], [1] * self._mem_size[1]]).float()
         print(indices.shape)
         print(values.shape)
         self._mem.index_put_(indices=(indices,), values=values)
@@ -43,7 +43,6 @@ class Model(nn.Module):
 
 
 class TestRegisterBuffer(unittest.TestCase):
-
     def test_compare_cpu_ipu(self):
         # Test on IPU
         model = Model()
@@ -52,10 +51,10 @@ class TestRegisterBuffer(unittest.TestCase):
         ipu_model = poptorch.trainingModel(model, optimizer=optimizer)
 
         loss_ipu_first_pass = ipu_model()
-        assert loss_ipu_first_pass == 0.0, f'Running on IPU, should be 0: {loss_ipu_first_pass}'
+        assert loss_ipu_first_pass == 0.0, f"Running on IPU, should be 0: {loss_ipu_first_pass}"
 
         loss_ipu_second_pass = ipu_model()
-        assert loss_ipu_second_pass == 1.0, f'Running on IPU, should be 1: {loss_ipu_second_pass}'
+        assert loss_ipu_second_pass == 1.0, f"Running on IPU, should be 1: {loss_ipu_second_pass}"
 
         # Test on CPU
         model = Model()
@@ -67,12 +66,12 @@ class TestRegisterBuffer(unittest.TestCase):
         optimizer.step()
         model.memory.detach()
 
-        assert loss_cpu_first_pass == 0.0, f'Running on CPU, should be 0: {loss_cpu_first_pass}'
-        print(f'Running on CPU, should be 0: {loss_cpu_first_pass}')
+        assert loss_cpu_first_pass == 0.0, f"Running on CPU, should be 0: {loss_cpu_first_pass}"
+        print(f"Running on CPU, should be 0: {loss_cpu_first_pass}")
 
         optimizer.zero_grad()
         loss_cpu_second_pass = model.forward()
         loss_cpu_second_pass.backward()
         optimizer.step()
         model.memory.detach()
-        assert loss_cpu_second_pass == 1.0, f'Running on CPU, should be 1: {loss_cpu_second_pass}'
+        assert loss_cpu_second_pass == 1.0, f"Running on CPU, should be 1: {loss_cpu_second_pass}"

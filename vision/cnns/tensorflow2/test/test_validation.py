@@ -6,84 +6,113 @@ import subprocess
 import pytest
 from examples_tests.test_util import SubProcessChecker
 
-@pytest.mark.skip(reason='use of external data (T68092)')
+
+@pytest.mark.skip(reason="use of external data (T68092)")
 class Simple(SubProcessChecker):
     def test_simple_validation(self):
-        path_to_cifar10 = '/localdata/datasets/cifar10'
+        path_to_cifar10 = "/localdata/datasets/cifar10"
         if not os.path.exists(path_to_cifar10):
-            raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train(self, '--weight-updates-per-epoch', '1',
-                           '--dataset-path', '/localdata/datasets/',
-                           '--training', 'False')
-        self.assertIn('loss:', output)
-        self.assertIn('validation_accuracy:', output)
+            raise NameError(f"Directory {path_to_cifar10} from TFDS should have been copied to CI for this test")
+        output = run_train(
+            self, "--weight-updates-per-epoch", "1", "--dataset-path", "/localdata/datasets/", "--training", "False"
+        )
+        self.assertIn("loss:", output)
+        self.assertIn("validation_accuracy:", output)
 
     def test_empty_checkpoint_directory(self):
-        path_to_cifar10 = '/localdata/datasets/cifar10'
+        path_to_cifar10 = "/localdata/datasets/cifar10"
         if not os.path.exists(path_to_cifar10):
-            raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
+            raise NameError(f"Directory {path_to_cifar10} from TFDS should have been copied to CI for this test")
 
-        checkpoint_dir = '/tmp/checkpoint_test_empty_dir'
+        checkpoint_dir = "/tmp/checkpoint_test_empty_dir"
 
-        output = run_train(self, '--weight-updates-per-epoch', '1',
-                           '--dataset-path', '/localdata/datasets/',
-                           '--ckpts-per-epoch', '1',
-                           '--checkpoint-output-dir', checkpoint_dir,
-                           '--checkpoint-input-dir', checkpoint_dir,
-                           '--training', 'False')
+        output = run_train(
+            self,
+            "--weight-updates-per-epoch",
+            "1",
+            "--dataset-path",
+            "/localdata/datasets/",
+            "--ckpts-per-epoch",
+            "1",
+            "--checkpoint-output-dir",
+            checkpoint_dir,
+            "--checkpoint-input-dir",
+            checkpoint_dir,
+            "--training",
+            "False",
+        )
 
-        self.assertIn('loss:', output)
-        self.assertIn('validation_accuracy:', output)
+        self.assertIn("loss:", output)
+        self.assertIn("validation_accuracy:", output)
 
     def test_no_checkpoint(self):
-        path_to_cifar10 = '/localdata/datasets/cifar10'
+        path_to_cifar10 = "/localdata/datasets/cifar10"
         if not os.path.exists(path_to_cifar10):
-            raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
+            raise NameError(f"Directory {path_to_cifar10} from TFDS should have been copied to CI for this test")
 
-        output = run_train(self, '--weight-updates-per-epoch', '1',
-                           '--dataset-path', '/localdata/datasets/',
-                           '--ckpts-per-epoch', '0')
+        output = run_train(
+            self, "--weight-updates-per-epoch", "1", "--dataset-path", "/localdata/datasets/", "--ckpts-per-epoch", "0"
+        )
 
-        self.assertIn('loss:', output)
-        self.assertIn('validation_accuracy:', output)
+        self.assertIn("loss:", output)
+        self.assertIn("validation_accuracy:", output)
 
 
-@pytest.mark.skip(reason='use of external data (T68092)')
+@pytest.mark.skip(reason="use of external data (T68092)")
 class Checkpoint(SubProcessChecker):
     def test_validation_on_ckpt(self):
-        path_to_cifar10 = '/localdata/datasets/cifar10'
-        checkpoint_dir = '/tmp/checkpoint_test_validation'
+        path_to_cifar10 = "/localdata/datasets/cifar10"
+        checkpoint_dir = "/tmp/checkpoint_test_validation"
         if not os.path.exists(path_to_cifar10):
-            raise NameError(f'Directory {path_to_cifar10} from TFDS should have been copied to CI for this test')
-        output = run_train(self, '--weight-updates-per-epoch', '1',
-                           '--dataset-path', '/localdata/datasets/',
-                           '--ckpts-per-epoch', '1',
-                           '--checkpoint-output-dir', checkpoint_dir,
-                           '--checkpoint-input-dir', checkpoint_dir,
-                           '--clean-dir', 'False')
-        self.assertIn('loss:', output)
-        self.assertIn('validation_accuracy:', output)
-        list_ckpt = glob.glob(os.path.join(checkpoint_dir, '*.h5'))
-        assert(len(list_ckpt) == 1)
-        output = run_train(self, '--weight-updates-per-epoch', '1',
-                           '--dataset-path', '/localdata/datasets/',
-                           '--ckpts-per-epoch', '1',
-                           '--checkpoint-output-dir', checkpoint_dir,
-                           '--checkpoint-input-dir', checkpoint_dir,
-                           '--training', 'False')
-        self.assertIn('loss:', output)
-        self.assertIn('validation_accuracy:', output)
+            raise NameError(f"Directory {path_to_cifar10} from TFDS should have been copied to CI for this test")
+        output = run_train(
+            self,
+            "--weight-updates-per-epoch",
+            "1",
+            "--dataset-path",
+            "/localdata/datasets/",
+            "--ckpts-per-epoch",
+            "1",
+            "--checkpoint-output-dir",
+            checkpoint_dir,
+            "--checkpoint-input-dir",
+            checkpoint_dir,
+            "--clean-dir",
+            "False",
+        )
+        self.assertIn("loss:", output)
+        self.assertIn("validation_accuracy:", output)
+        list_ckpt = glob.glob(os.path.join(checkpoint_dir, "*.h5"))
+        assert len(list_ckpt) == 1
+        output = run_train(
+            self,
+            "--weight-updates-per-epoch",
+            "1",
+            "--dataset-path",
+            "/localdata/datasets/",
+            "--ckpts-per-epoch",
+            "1",
+            "--checkpoint-output-dir",
+            checkpoint_dir,
+            "--checkpoint-input-dir",
+            checkpoint_dir,
+            "--training",
+            "False",
+        )
+        self.assertIn("loss:", output)
+        self.assertIn("validation_accuracy:", output)
 
 
-@pytest.mark.skip(reason='use of external data (T68092)')
+@pytest.mark.skip(reason="use of external data (T68092)")
 class Resnet50(SubProcessChecker):
     def test_mixed_precision_resnet50(self):
-        path_to_imagenet = '/localdata/datasets/imagenet-data'
+        path_to_imagenet = "/localdata/datasets/imagenet-data"
         if not os.path.exists(path_to_imagenet):
-            raise NameError(f'Directory {path_to_imagenet} should have been copied to CI for this test')
+            raise NameError(f"Directory {path_to_imagenet} should have been copied to CI for this test")
 
-        output = run_train(self, '--config', 'resnet50_16ipus_16k_bn_pipeline',
-                           '--training', 'False', '--num-replicas', '1')
+        output = run_train(
+            self, "--config", "resnet50_16ipus_16k_bn_pipeline", "--training", "False", "--num-replicas", "1"
+        )
 
-        self.assertIn('loss:', output)
-        self.assertIn('validation_accuracy:', output)
+        self.assertIn("loss:", output)
+        self.assertIn("validation_accuracy:", output)

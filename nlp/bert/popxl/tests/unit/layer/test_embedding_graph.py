@@ -14,24 +14,21 @@ def test_embedding_graph(test_config: BertConfig):
     ir = popxl.Ir()
     main = ir.main_graph
 
-    input_shape = (
-        test_config.execution.micro_batch_size * test_config.model.sequence_length,)
+    input_shape = (test_config.execution.micro_batch_size * test_config.model.sequence_length,)
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(np.zeros(input_shape),
-                             popxl.uint32, name="words"),
-            addons.host_load(np.zeros(input_shape),
-                             popxl.uint32, name="positions"),
-            addons.host_load(np.zeros(input_shape),
-                             popxl.uint32, name="token_type"),
-        ])
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(np.zeros(input_shape), popxl.uint32, name="words"),
+                addons.host_load(np.zeros(input_shape), popxl.uint32, name="positions"),
+                addons.host_load(np.zeros(input_shape), popxl.uint32, name="token_type"),
+            ]
+        )
         words, positions, token_type = inputs_tensors
-        args, embed_graph = BertEmbeddings(
-            test_config).create_graph(words, positions, token_type)
+        args, embed_graph = BertEmbeddings(test_config).create_graph(words, positions, token_type)
 
         embed = embed_graph.bind(args.init())
-        act, = embed.call(words, positions, token_type)
+        (act,) = embed.call(words, positions, token_type)
 
     variables = [t for t in main.tensors if isinstance(t, Variable)]
     assert len(variables) == 5

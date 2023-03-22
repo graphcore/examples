@@ -26,22 +26,27 @@ def build_ipu_config(args, seed=1234, gradient_accmulation=128, availble_memory_
     ipu_config.outputMode(poptorch.OutputMode.All)
     ipu_config.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
     ipu_config.Precision.enableStochasticRounding(True)
-    ipu_config._Popart.set('autoRecomputation', 3)
-    ipu_config._Popart.set('disableGradAccumulationTensorStreams', True)
-    ipu_config._Popart.set('outlineThreshold', 10.0)
+    ipu_config._Popart.set("autoRecomputation", 3)
+    ipu_config._Popart.set("disableGradAccumulationTensorStreams", True)
+    ipu_config._Popart.set("outlineThreshold", 10.0)
     ipu_config.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
-    ipu_config._Popart.set('accumulateOuterFragmentSettings.schedule', int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
-    ipu_config._Popart.set('accumulateOuterFragmentSettings.excludedVirtualGraphs', ['0'])
-    ipu_config.setAvailableMemoryProportion({f'IPU{i}': availble_memory_proportion for i in range(args.replication_factor * 2)})
-    ipu_config._Popart.set('scheduleNonWeightUpdateGradientConsumersEarly', True)
-    ipu_config._Popart.setPatterns({'TiedGather': True, 'TiedGatherAccumulate': True, 'UpdateInplacePrioritiesForIpu': True})
-    ipu_config.enableExecutableCaching('exec')
+    ipu_config._Popart.set(
+        "accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized)
+    )
+    ipu_config._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
+    ipu_config.setAvailableMemoryProportion(
+        {f"IPU{i}": availble_memory_proportion for i in range(args.replication_factor * 2)}
+    )
+    ipu_config._Popart.set("scheduleNonWeightUpdateGradientConsumersEarly", True)
+    ipu_config._Popart.setPatterns(
+        {"TiedGather": True, "TiedGatherAccumulate": True, "UpdateInplacePrioritiesForIpu": True}
+    )
+    ipu_config.enableExecutableCaching("exec")
     ipu_config.replicationFactor(args.replication_factor)
     ipu_config.TensorLocations.setOptimizerLocation(
         poptorch.TensorLocationSettings()
         .useOnChipStorage(not args.optimizer_state_offchip)
         .useReplicatedTensorSharding(args.replication_factor > 1)
     )
-
 
     return ipu_config

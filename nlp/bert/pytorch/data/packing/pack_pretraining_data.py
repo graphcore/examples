@@ -25,12 +25,14 @@ from itertools import chain, islice, repeat
 from functools import lru_cache, partial
 from collections import defaultdict
 from concurrent.futures import as_completed, ProcessPoolExecutor
+
 try:
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     import tensorflow as tf
 except ImportError:
-    raise ImportError("TensorFlow is required to generate data for this application. "
-                      "Please install with: 'pip install tensorflow'")
+    raise ImportError(
+        "TensorFlow is required to generate data for this application. " "Please install with: 'pip install tensorflow'"
+    )
 from pretraining_data import TFRecordPretrainingDataset, _WorkerInit
 from poptorch import DataLoader
 from poptorch.enums import DataLoaderMode
@@ -39,7 +41,8 @@ from ipu_options import get_options
 from args import parse_bert_args
 from tqdm import tqdm
 import torch.multiprocessing
-torch.multiprocessing.set_sharing_strategy('file_system')
+
+torch.multiprocessing.set_sharing_strategy("file_system")
 
 
 @lru_cache(maxsize=None)
@@ -62,7 +65,7 @@ def get_packing_strategies(start_length, minimum_increment, target_length, depth
     ----------
     start_length:int
       The current cumulative number of tokens in the pack.
-      Typically initalized to 0.
+      Typically initialized to 0.
     minimum_increment:int
       The minimum length of the next sequence can be added to the pack.
       Typically initialized to 1.
@@ -104,11 +107,11 @@ def get_packing_matrix(strategy_set, sequence_length):
     """Construct a packing matrix from a set of packing strategies.
 
     The packing matrix "A" is of shape [sequence_length, len(strategy_set)].
-    Each column of the matrix corresponds to a strategy and each row corrsponds
+    Each column of the matrix corresponds to a strategy and each row corresponds
     to the usage of a particular sequence length across all strategies.
 
     This matrix is typically very sparse. For instance for packing depth 3,
-    each strategy uses at most 3 sequences leading to 3 non-zero entires in
+    each strategy uses at most 3 sequences leading to 3 non-zero entries in
     that strategy's column in A. The density of the matrix is then only
     3/sequence_length. This sparsity can be exploited to further speed-up the
     packing algorithm.
@@ -176,10 +179,12 @@ def get_packing_recipe(args, sequence_lengths, drop_unused_strategies=False):
     # List all unique ways of packing to the desired maximum sequence length
     strategy_set = get_packing_strategies(0, 1, args.sequence_length, args.max_sequences_per_pack)
     for strategy in strategy_set:
-        assert(sum(strategy) == args.sequence_length)
+        assert sum(strategy) == args.sequence_length
     num_strategies = len(strategy_set)
-    print(f"Packing will involve {num_strategies} unique packing strategies.",
-          f"at a maximum {args.max_sequences_per_pack} sequences per pack.")
+    print(
+        f"Packing will involve {num_strategies} unique packing strategies.",
+        f"at a maximum {args.max_sequences_per_pack} sequences per pack.",
+    )
 
     # Get the packing matrix corresponding to this list of packing strategies
     A = get_packing_matrix(strategy_set, args.sequence_length)
@@ -216,10 +221,13 @@ def get_packing_recipe(args, sequence_lengths, drop_unused_strategies=False):
     # Compute the residuals
     residual = histogram - A @ mixture
     rounding_residual = abs(residual_float - residual).sum()
-    print(f"Total residual of packing mixture: {abs(residual).sum():3.1f}",
-          f"Total residual introduced by rounding mixture to int: {rounding_residual:3.2f}",
-          f"Residual on first 8 categories: {np.around(residual[:8], 4)}",
-          f"Residual on last 8 categories:  {np.around(residual[-8:], 4)}", sep="\n")
+    print(
+        f"Total residual of packing mixture: {abs(residual).sum():3.1f}",
+        f"Total residual introduced by rounding mixture to int: {rounding_residual:3.2f}",
+        f"Residual on first 8 categories: {np.around(residual[:8], 4)}",
+        f"Residual on last 8 categories:  {np.around(residual[-8:], 4)}",
+        sep="\n",
+    )
 
     # Optionally add additional mixture entries for leftover sequences
     if not args.drop_unpacked_remainder:
@@ -231,7 +239,7 @@ def get_packing_recipe(args, sequence_lengths, drop_unused_strategies=False):
             # Get the depth 1 strategy
             strategy = sorted([l, args.sequence_length - l])
             strategy_index = strategy_set.index(strategy)
-            mixture[strategy_index] += unpacked[l-1]
+            mixture[strategy_index] += unpacked[l - 1]
 
         # Recompute the residual for the mixture (should be < 0)
         residual = histogram - A @ mixture
@@ -247,17 +255,20 @@ def get_packing_recipe(args, sequence_lengths, drop_unused_strategies=False):
     num_padding_tokens_packed = (np.arange(1, args.sequence_length + 1) * padding).sum()
     speedup_upper_bound = 1.0 / (1 - ((1 - sequence_lengths / args.sequence_length).mean()))
     avg_sequences_per_sample = ((A.sum(0) * mixture).sum() - padding.sum()) / new_number_of_samples
-    efficiency = 1 - num_padding_tokens_packed/(new_number_of_samples*args.sequence_length)
-    print(f"Done solving for packing mixture".center(80, "_"),
-          f"Packing efficiency (fraction of real tokens): {efficiency:3.4f}",
-          f"Added {num_padding_tokens_packed:3.2e} padding tokens. Original dataset used {num_padding_tokens_original:3.2e} padding tokens",
-          f"New number of samples: {new_number_of_samples}, original {len(sequence_lengths)}. A compression ratio of {compression:3.3f}",
-          f"Average sequences/sample {avg_sequences_per_sample:3.5f}",
-          f"Theoretical upper bound on speed-up: {speedup_upper_bound:3.3f}",
-          f"The achieved speed-up from packing: {1/(1-compression):3.3f}",
-          f"Number of strategies utilized: {np.count_nonzero(mixture)}",
-          f"Number of sequences dropped:  {samples_dropped}",
-          f"Top 8 strategies:", sep="\n")
+    efficiency = 1 - num_padding_tokens_packed / (new_number_of_samples * args.sequence_length)
+    print(
+        f"Done solving for packing mixture".center(80, "_"),
+        f"Packing efficiency (fraction of real tokens): {efficiency:3.4f}",
+        f"Added {num_padding_tokens_packed:3.2e} padding tokens. Original dataset used {num_padding_tokens_original:3.2e} padding tokens",
+        f"New number of samples: {new_number_of_samples}, original {len(sequence_lengths)}. A compression ratio of {compression:3.3f}",
+        f"Average sequences/sample {avg_sequences_per_sample:3.5f}",
+        f"Theoretical upper bound on speed-up: {speedup_upper_bound:3.3f}",
+        f"The achieved speed-up from packing: {1/(1-compression):3.3f}",
+        f"Number of strategies utilized: {np.count_nonzero(mixture)}",
+        f"Number of sequences dropped:  {samples_dropped}",
+        f"Top 8 strategies:",
+        sep="\n",
+    )
     for i in np.argsort(-mixture)[:8]:
         print(f"\tstrategy {strategy_set[i]} which is used {int(mixture[i])} times")
     print("".center(80, "_"))
@@ -308,7 +319,7 @@ def slice_examples(examples_by_length, strategy_set, mixture):
         # examples by length
         feasible_repeat_count = target_repeat_count
         for k in set(strategy):
-            feasible_repeat_count = min(feasible_repeat_count, len(examples_by_length[k])//strategy.count(k))
+            feasible_repeat_count = min(feasible_repeat_count, len(examples_by_length[k]) // strategy.count(k))
 
         # IF nothing to do
         if feasible_repeat_count == 0:
@@ -359,7 +370,9 @@ def submit_example_slices_for_packing(args, executor, example_slices):
     # Shuffle to make the distribution of lengths of packs across packing workers more uniform.
     random.shuffle(example_slices)
     futures = []
-    packs_per_worker = len(example_slices) // args.num_packing_workers + (len(example_slices) % args.num_packing_workers > 0)
+    packs_per_worker = len(example_slices) // args.num_packing_workers + (
+        len(example_slices) % args.num_packing_workers > 0
+    )
     chunksize = max(1, packs_per_worker // args.chunks_per_packing_worker)
     work = example_slices, repeat(args.mask_tokens), repeat(args.sequence_length), repeat(args.max_sequences_per_pack)
     for chunk in get_chunks(zip(*work), chunksize=chunksize):
@@ -455,7 +468,9 @@ def create_multi_sequence_example(multi_sequence, mask_tokens, sequence_length, 
             # Very rarely, (1/10M) it can occur that a multi-sequence has more than the allowed
             # number of cumulative mask_tokens, such multi-sequences are thrown away
             try:
-                packed_masked_lm_positions[mlm_offset:max_mlm] = masked_lm_positions[:mask_tokens_mask_idx] - 1 + seq_offset
+                packed_masked_lm_positions[mlm_offset:max_mlm] = (
+                    masked_lm_positions[:mask_tokens_mask_idx] - 1 + seq_offset
+                )
             except ValueError:
                 return b"", False
 
@@ -503,32 +518,65 @@ def create_int_feature(values):
 
 def get_dataloader(config, opts):
     dataset = TFRecordPretrainingDataset(config.input_files)
-    loader = DataLoader(opts,
-                        dataset,
-                        batch_size=config.micro_batch_size,
-                        num_workers=config.dataloader_workers,
-                        drop_last=False,
-                        worker_init_fn=_WorkerInit(config.random_seed),
-                        mode=DataLoaderMode.AsyncRebatched if config.async_dataloader else DataLoaderMode.Sync)
+    loader = DataLoader(
+        opts,
+        dataset,
+        batch_size=config.micro_batch_size,
+        num_workers=config.dataloader_workers,
+        drop_last=False,
+        worker_init_fn=_WorkerInit(config.random_seed),
+        mode=DataLoaderMode.AsyncRebatched if config.async_dataloader else DataLoaderMode.Sync,
+    )
     return loader
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input-files", help="A glob expression for the input files to read in and pack", required=True, type=str)
+    parser.add_argument(
+        "--input-files", help="A glob expression for the input files to read in and pack", required=True, type=str
+    )
     parser.add_argument("--output-dir", help="The destination folder for the output files", required=True)
     parser.add_argument("--random-seed", help="For shuffling the data", default=12345)
-    parser.add_argument("--drop-unpacked-remainder", help="Whether to drop sequences that failed to pack", default=False, type=eval)
-    parser.add_argument("--unpacked-dataset-duplication-factor",
-                        help="The duplication factor with which create_pretraining_data.py was run to create the un-packed dataset. " +
-                        "The output dataset will always have duplication factor 1", default=1, type=int)
+    parser.add_argument(
+        "--drop-unpacked-remainder", help="Whether to drop sequences that failed to pack", default=False, type=eval
+    )
+    parser.add_argument(
+        "--unpacked-dataset-duplication-factor",
+        help="The duplication factor with which create_pretraining_data.py was run to create the un-packed dataset. "
+        + "The output dataset will always have duplication factor 1",
+        default=1,
+        type=int,
+    )
     parser.add_argument("--sequence-length", help="The maximum number of tokens in an example", default=128, type=int)
-    parser.add_argument("--mask-tokens", help="The maximum number of masked tokens in an un-packed example", default=20, type=int)
-    parser.add_argument("--max-sequences-per-pack", help="The maximum number of sequences per packed example.", choices=[2, 3], default=3, type=int)
-    parser.add_argument("--load-batch-size", help="The number of sequences to load at a time, set it to 1 to avoid"
-                        " dropping any sequences when loading the dataset (for eval)", default=1, type=int)
-    parser.add_argument("--num-packing-workers", help="Max number of worker subprocesses to be used for packing sequences", default=16, type=int)
-    parser.add_argument("--chunks-per-packing-worker", help="Approximate number of chunks to be packed by each packing subprocess", default=8, type=int)
+    parser.add_argument(
+        "--mask-tokens", help="The maximum number of masked tokens in an un-packed example", default=20, type=int
+    )
+    parser.add_argument(
+        "--max-sequences-per-pack",
+        help="The maximum number of sequences per packed example.",
+        choices=[2, 3],
+        default=3,
+        type=int,
+    )
+    parser.add_argument(
+        "--load-batch-size",
+        help="The number of sequences to load at a time, set it to 1 to avoid"
+        " dropping any sequences when loading the dataset (for eval)",
+        default=1,
+        type=int,
+    )
+    parser.add_argument(
+        "--num-packing-workers",
+        help="Max number of worker subprocesses to be used for packing sequences",
+        default=16,
+        type=int,
+    )
+    parser.add_argument(
+        "--chunks-per-packing-worker",
+        help="Approximate number of chunks to be packed by each packing subprocess",
+        default=8,
+        type=int,
+    )
     args = parser.parse_args()
     random.seed(args.random_seed)
 
@@ -558,7 +606,9 @@ if __name__ == "__main__":
         real_tokens = (data[1] != 0).sum(1).tolist()
         sequence_lengths.extend(real_tokens)
 
-    print(f"Done looping through dataset. Took {time.time() - start:3.3f} seconds to read {len(sequence_lengths)} sequences")
+    print(
+        f"Done looping through dataset. Took {time.time() - start:3.3f} seconds to read {len(sequence_lengths)} sequences"
+    )
 
     # Use the strategy_set and mixture to pack the dataset
     print(f"\nPacked dataset will be written to {args.output_dir}.")
@@ -610,7 +660,9 @@ if __name__ == "__main__":
             # Shuffle the data
             for key in examples_by_length:
                 random.shuffle(examples_by_length[key])
-            example_slices, strategies, mixture, total_packs_to_be_written = slice_examples(examples_by_length, strategy_set, mixture)
+            example_slices, strategies, mixture, total_packs_to_be_written = slice_examples(
+                examples_by_length, strategy_set, mixture
+            )
             for example_slice in example_slices:
                 example_slices_buffer.extend(zip(*example_slice))
 
@@ -619,7 +671,10 @@ if __name__ == "__main__":
                 packs_buffer.extend(realise_futures(packs_futures))
                 packs_futures = []
 
-            example_slices_to_pack, example_slices_buffer = example_slices_buffer[:PACKS_PER_FILE], example_slices_buffer[PACKS_PER_FILE:]
+            example_slices_to_pack, example_slices_buffer = (
+                example_slices_buffer[:PACKS_PER_FILE],
+                example_slices_buffer[PACKS_PER_FILE:],
+            )
             force_pack = force_pack and len(example_slices_buffer) > 0
             packs_futures = submit_example_slices_for_packing(args, packing_executor, example_slices_to_pack)
             del example_slices_to_pack
@@ -651,7 +706,6 @@ if __name__ == "__main__":
     packing_executor.shutdown(wait=True)
 
     print(f"\n-----------------------------------------------------------")
-    print(f"Packing took: {time.time() - start:3.2f} seconds.",
-          f"{mixture.sum()} packs left to fill.\n")
+    print(f"Packing took: {time.time() - start:3.2f} seconds.", f"{mixture.sum()} packs left to fill.\n")
 
     assert target_num_sequences == write_count, (target_num_sequences, write_count)

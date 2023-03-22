@@ -12,14 +12,14 @@ import pandas as pd
 import poptorch
 import torch
 from PIL import Image, ImageFile
-from torchvision.transforms import (CenterCrop, Compose, Normalize,
-                                    RandomResizedCrop, Resize, ToTensor)
+from torchvision.transforms import CenterCrop, Compose, Normalize, RandomResizedCrop, Resize, ToTensor
 from tqdm import tqdm
 
 from .simple_tokenizer import SimpleTokenizer
 
 try:
     from torchvision.transforms import InterpolationMode
+
     BICUBIC = InterpolationMode.BICUBIC
 except ImportError:
     BICUBIC = Image.BICUBIC
@@ -54,9 +54,9 @@ class CLIPDataset(torch.utils.data.Dataset):
 
         image = Image.open(f"{self.config.image_path}/{self.image_filenames[idx]}")
         image = self.transforms(image)
-        item['image'] = image.half()
+        item["image"] = image.half()
 
-        return item['image'], item['input_ids']
+        return item["image"], item["input_ids"]
 
     def __len__(self):
         return len(self.image_filenames)
@@ -69,35 +69,39 @@ def _convert_image_to_rgb(image):
 def get_transforms(n_px=224, is_train=True):
 
     if is_train:
-        return Compose([
-            RandomResizedCrop(n_px, scale=(0.9, 1.0), interpolation=BICUBIC),
-            _convert_image_to_rgb,
-            ToTensor(),
-            Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-        ])
+        return Compose(
+            [
+                RandomResizedCrop(n_px, scale=(0.9, 1.0), interpolation=BICUBIC),
+                _convert_image_to_rgb,
+                ToTensor(),
+                Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+            ]
+        )
     else:
-        return Compose([
-            Resize(n_px, interpolation=BICUBIC),
-            CenterCrop(n_px),
-            _convert_image_to_rgb,
-            ToTensor(),
-            Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-        ])
+        return Compose(
+            [
+                Resize(n_px, interpolation=BICUBIC),
+                CenterCrop(n_px),
+                _convert_image_to_rgb,
+                ToTensor(),
+                Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+            ]
+        )
 
 
 def make_train_valid_dfs(config):
     image_names = []
     image_captions = []
-    with open(config.captions_path, "r", encoding='utf-8') as f:
+    with open(config.captions_path, "r", encoding="utf-8") as f:
         all_lines = f.read().splitlines()
         print("reading the csv file...")
         for line in tqdm(all_lines):
-            image_name, image_caption = line.split('\t')
+            image_name, image_caption = line.split("\t")
             image_names.append(image_name)
             image_captions.append(image_caption)
     max_id = len(image_names)
     image_ids = np.arange(0, max_id)
-    dataframe = pd.DataFrame({"id": image_ids, "image": image_names[: max_id], "caption": image_captions[: max_id]})
+    dataframe = pd.DataFrame({"id": image_ids, "image": image_names[:max_id], "caption": image_captions[:max_id]})
 
     return dataframe
 
@@ -117,6 +121,7 @@ class DatasetRebatch:
     """
     Wrapper for DataLoader to hide multiple non-complete batches and combine them to full batches.
     """
+
     def __init__(self, dataloader, batch_size, total_samples, drop_last=True):
         self.dataloader = dataloader
         self.batch_size = batch_size
@@ -147,7 +152,7 @@ class DatasetRebatch:
                 tensor = next(self.iterable_dataloader)
             except StopIteration:
                 self.end_iter = True
-                if not(self.remaining is None) and self.remaining[0].size()[0] > 0 and not self.drop_last:
+                if not (self.remaining is None) and self.remaining[0].size()[0] > 0 and not self.drop_last:
                     return self.remaining
                 else:
                     raise StopIteration
@@ -158,10 +163,12 @@ class DatasetRebatch:
                 if self.remaining is None:
                     self.remaining = tensor
                 else:
-                    self.remaining = [torch.cat([buffer, current], dim=0) for buffer, current in zip(self.remaining, tensor)]
+                    self.remaining = [
+                        torch.cat([buffer, current], dim=0) for buffer, current in zip(self.remaining, tensor)
+                    ]
                     if self.remaining[0].size()[0] >= self.batch_size:
-                        returning_tensor = [buffer[:self.batch_size] for buffer in self.remaining]
-                        self.remaining = [buffer[self.batch_size:] for buffer in self.remaining]
+                        returning_tensor = [buffer[: self.batch_size] for buffer in self.remaining]
+                        self.remaining = [buffer[self.batch_size :] for buffer in self.remaining]
                         return returning_tensor
 
     def terminate(self):
@@ -170,10 +177,18 @@ class DatasetRebatch:
 
 def build_loaders(config, opts, async_dataloader, return_remaining=False):
     rebatch_size = getattr(config, "dataloader_rebatch_size", None)
-    rebatch_size = rebatch_size if rebatch_size is not None else min(1024, config.global_batch_size) // opts.Distributed.numProcesses
+    rebatch_size = (
+        rebatch_size
+        if rebatch_size is not None
+        else min(1024, config.global_batch_size) // opts.Distributed.numProcesses
+    )
     rebatch_size = min(rebatch_size, config.global_batch_size)
     dataset_mode = poptorch.DataLoaderMode.AsyncRebatched if async_dataloader else poptorch.DataLoaderMode.Sync
-    worker_initialization = _WorkerInit(config.random_seed, opts.Distributed.processId, config.dataloader_workers) if hasattr(config, 'random_seed') else None
+    worker_initialization = (
+        _WorkerInit(config.random_seed, opts.Distributed.processId, config.dataloader_workers)
+        if hasattr(config, "random_seed")
+        else None
+    )
 
     if config.host_generate_data or config.ipu_generate_data:
         train_dataset = GeneratedDataset()
@@ -181,36 +196,42 @@ def build_loaders(config, opts, async_dataloader, return_remaining=False):
         transforms = get_transforms(n_px=config.image_resolution)
 
         dataframe = make_train_valid_dfs(config)
-        encoded_captions = tokenize(list(dataframe["caption"].values), config.bpe_vocab_path, context_length=config.context_length, truncate=config.truncate)
+        encoded_captions = tokenize(
+            list(dataframe["caption"].values),
+            config.bpe_vocab_path,
+            context_length=config.context_length,
+            truncate=config.truncate,
+        )
         image_values = dataframe["image"].values
 
-        train_dataset = CLIPDataset(
-            image_values,
-            encoded_captions,
-            transforms=transforms,
-            config=config
-        )
+        train_dataset = CLIPDataset(image_values, encoded_captions, transforms=transforms, config=config)
 
-    train_dataloader = poptorch.DataLoader(opts,
-                                           train_dataset,
-                                           batch_size=config.batch_size,
-                                           num_workers=config.dataloader_workers,
-                                           shuffle=not (isinstance(train_dataset, torch.utils.data.IterableDataset)),
-                                           drop_last=not (isinstance(train_dataset, torch.utils.data.IterableDataset)),
-                                           persistent_workers=not (isinstance(train_dataset, torch.utils.data.IterableDataset)),
-                                           auto_distributed_partitioning=not (isinstance(train_dataset, torch.utils.data.IterableDataset)),
-                                           worker_init_fn=worker_initialization,
-                                           mode=dataset_mode,
-                                           rebatched_worker_size=rebatch_size,
-                                           async_options={'load_indefinitely': True, "buffer_size": 8})
+    train_dataloader = poptorch.DataLoader(
+        opts,
+        train_dataset,
+        batch_size=config.batch_size,
+        num_workers=config.dataloader_workers,
+        shuffle=not (isinstance(train_dataset, torch.utils.data.IterableDataset)),
+        drop_last=not (isinstance(train_dataset, torch.utils.data.IterableDataset)),
+        persistent_workers=not (isinstance(train_dataset, torch.utils.data.IterableDataset)),
+        auto_distributed_partitioning=not (isinstance(train_dataset, torch.utils.data.IterableDataset)),
+        worker_init_fn=worker_initialization,
+        mode=dataset_mode,
+        rebatched_worker_size=rebatch_size,
+        async_options={"load_indefinitely": True, "buffer_size": 8},
+    )
 
     if isinstance(train_dataset, torch.utils.data.IterableDataset):
-        train_dataloader = DatasetRebatch(train_dataloader, config.global_batch_size, len(train_dataset), not(return_remaining))
+        train_dataloader = DatasetRebatch(
+            train_dataloader, config.global_batch_size, len(train_dataset), not (return_remaining)
+        )
 
     return train_dataloader
 
 
-def tokenize(texts: Union[str, List[str]], bpe_vocab_path: str, context_length: int = 77, truncate: bool = False) -> torch.LongTensor:
+def tokenize(
+    texts: Union[str, List[str]], bpe_vocab_path: str, context_length: int = 77, truncate: bool = False
+) -> torch.LongTensor:
     """
     Returns the tokenized representation of given input string(s)
     Parameters
@@ -241,6 +262,6 @@ def tokenize(texts: Union[str, List[str]], bpe_vocab_path: str, context_length: 
                 tokens[-1] = eot_token
             else:
                 raise RuntimeError(f"Input {texts[i]} is too long for context length {context_length}")
-        result[i, :len(tokens)] = torch.tensor(tokens)
+        result[i, : len(tokens)] = torch.tensor(tokens)
 
     return result

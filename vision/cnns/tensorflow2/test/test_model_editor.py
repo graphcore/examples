@@ -13,10 +13,9 @@ from model.model_editor import edit_functional_model
 
 
 class CopyModelWeightsTest(unittest.TestCase):
-    
     @staticmethod
     def get_resnet_model():
-        return keras.applications.resnet50.ResNet50(weights='imagenet', input_shape=(224, 224, 3), classes=1000)
+        return keras.applications.resnet50.ResNet50(weights="imagenet", input_shape=(224, 224, 3), classes=1000)
 
     def test_copy_model_with_weights(self):
         initial_model = self.get_resnet_model()
@@ -25,8 +24,8 @@ class CopyModelWeightsTest(unittest.TestCase):
         np.random.seed(0)
         image_0 = np.zeros((1, 224, 224, 3))
         image_1 = np.random.random((1, 224, 224, 3)) * 10
-        assert((initial_model.predict(image_0) == copied_model.predict(image_0)).all())
-        assert((initial_model.predict(image_1) == copied_model.predict(image_1)).all())
+        assert (initial_model.predict(image_0) == copied_model.predict(image_0)).all()
+        assert (initial_model.predict(image_1) == copied_model.predict(image_1)).all()
 
     def test_copy_not_all_weights(self):
         # test for copy weights when some of the layers has changed
@@ -47,21 +46,19 @@ class CopyModelWeightsTest(unittest.TestCase):
         np.random.seed(0)
         image_0 = np.zeros((1, 224, 224, 3))
         image_1 = np.random.random((1, 224, 224, 3)) * 10
-        assert(len(copied_model.layers) == len(initial_model.layers) + 2)
-        assert((initial_model.predict(image_0) == copied_model.predict(image_0)).all())
-        assert((initial_model.predict(image_1) == copied_model.predict(image_1)).all())
+        assert len(copied_model.layers) == len(initial_model.layers) + 2
+        assert (initial_model.predict(image_0) == copied_model.predict(image_0)).all()
+        assert (initial_model.predict(image_1) == copied_model.predict(image_1)).all()
 
 
 class ReplaceInputTest(unittest.TestCase):
-
     def test_preappend_layers(self):
-
         def preappend_layers_fn(current_layer, sub_input):
             if isinstance(current_layer, keras.layers.InputLayer):
-                sub_output = keras.layers.MaxPooling2D(name='added1')(sub_input)
-                sub_output_1 = keras.layers.Conv2D(filters=32, kernel_size=3, name='added2')(sub_output)
-                sub_output_2 = keras.layers.Conv2D(filters=32, kernel_size=3, name='added3')(sub_output)
-                sub_output = keras.layers.Add(name='added4')([sub_output_1, sub_output_2])
+                sub_output = keras.layers.MaxPooling2D(name="added1")(sub_input)
+                sub_output_1 = keras.layers.Conv2D(filters=32, kernel_size=3, name="added2")(sub_output)
+                sub_output_2 = keras.layers.Conv2D(filters=32, kernel_size=3, name="added3")(sub_output)
+                sub_output = keras.layers.Add(name="added4")([sub_output_1, sub_output_2])
                 return sub_output
 
         initial_model = initial_model_1()
@@ -72,9 +69,7 @@ class ReplaceInputTest(unittest.TestCase):
 
 
 class ReplaceMiddleLayersTest(unittest.TestCase):
-
     def test_replace_layers_by_name(self):
-
         def middle_layers_fn(current_layer, sub_input):
             if isinstance(current_layer, keras.layers.MaxPooling2D):
                 sub_output = keras.layers.BatchNormalization()(sub_input)
@@ -92,7 +87,6 @@ class ReplaceMiddleLayersTest(unittest.TestCase):
 
 
 class ReplaceLastLayerTest(unittest.TestCase):
-
     def test_append_layer(self):
         initial_model = initial_model_1()
 
@@ -110,7 +104,6 @@ class ReplaceLastLayerTest(unittest.TestCase):
 
 
 class EdgeCasesTest(unittest.TestCase):
-
     def test_layer_with_two_outputs(self):
         initial_model = initial_model_2()
         modified_model = edit_functional_model(initial_model, user_fn=full_copy_fn)
@@ -128,13 +121,19 @@ class EdgeCasesTest(unittest.TestCase):
 
 def assert_same_config(self, modified_model, expected_model):
     # assert that model have the same configuration
-    self.assertEqual(len(modified_model.layers), len(expected_model.layers),
-                     'number of layers in modified model is not the same as in expected model')
+    self.assertEqual(
+        len(modified_model.layers),
+        len(expected_model.layers),
+        "number of layers in modified model is not the same as in expected model",
+    )
     for modified_layer, expected_layer in zip(modified_model.layers, expected_model.layers):
         modified_config, expected_config = modified_layer.get_config(), expected_layer.get_config()
-        modified_config.pop('name'), expected_config.pop('name')
-        self.assertEqual(modified_config, expected_config,
-                         f'failed on the following layers: {modified_layer.name} != {expected_layer.name}')
+        modified_config.pop("name"), expected_config.pop("name")
+        self.assertEqual(
+            modified_config,
+            expected_config,
+            f"failed on the following layers: {modified_layer.name} != {expected_layer.name}",
+        )
 
 
 class DummyLayer(keras.layers.Layer):
@@ -157,7 +156,8 @@ class MyTwoOutputLayer(keras.layers.Layer):
         return tf.nn.relu(x1), tf.nn.relu(x2)
 
 
-def full_copy_fn(current_layer, layer_inputs): return None
+def full_copy_fn(current_layer, layer_inputs):
+    return None
 
 
 def initial_model_1():

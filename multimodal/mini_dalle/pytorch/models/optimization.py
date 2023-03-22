@@ -8,20 +8,20 @@ import horovod.torch as hvd
 def warmup_multi_step(step, warmup_step, total_step):
     # Multi step schedule with warmup strategy
     if step < warmup_step:
-        return (1+step) / (1+warmup_step)
-    elif (step-warmup_step) < (total_step-warmup_step) / 2:
+        return (1 + step) / (1 + warmup_step)
+    elif (step - warmup_step) < (total_step - warmup_step) / 2:
         return 1
     else:
         return 1e-1
 
 
 def get_lr_sched(global_step, scheduler, num_train_steps, warmup_ratio=0.2):
-    warmup_steps = int(warmup_ratio*num_train_steps)
+    warmup_steps = int(warmup_ratio * num_train_steps)
     if scheduler == "multi_step":
         lr_ratio = warmup_multi_step(global_step, warmup_steps, num_train_steps)
     elif scheduler == "constant":
         if global_step < warmup_steps:
-            lr_ratio = (1+global_step) / (1+warmup_steps)
+            lr_ratio = (1 + global_step) / (1 + warmup_steps)
         else:
             lr_ratio = 1.0
     return lr_ratio
@@ -40,30 +40,34 @@ def get_optimizer(config, model):
 
     params = [
         {"params": regularized_params, "weight_decay": config.weight_decay},
-        {"params": non_regularized_params, "weight_decay": 0}
+        {"params": non_regularized_params, "weight_decay": 0},
     ]
 
     first_order_type = float16 if config.enable_half_first_order_momentum else float32
 
     if config.optimizer == "AdamW":
-        optimizer = AdamW(params,
-                          lr=config.learning_rate,
-                          weight_decay=0,
-                          eps=1e-6,
-                          bias_correction=False,
-                          loss_scaling=config.loss_scaling,
-                          accum_type=float16,
-                          first_order_momentum_accum_type=first_order_type,
-                          second_order_momentum_accum_type=float32)
+        optimizer = AdamW(
+            params,
+            lr=config.learning_rate,
+            weight_decay=0,
+            eps=1e-6,
+            bias_correction=False,
+            loss_scaling=config.loss_scaling,
+            accum_type=float16,
+            first_order_momentum_accum_type=first_order_type,
+            second_order_momentum_accum_type=float32,
+        )
     elif config.optimizer == "Adam":
-        optimizer = Adam(params,
-                         lr=config.learning_rate,
-                         weight_decay=0,
-                         eps=1e-6,
-                         loss_scaling=config.loss_scaling,
-                         accum_type=float16,
-                         first_order_momentum_accum_type=first_order_type,
-                         second_order_momentum_accum_type=float32)
+        optimizer = Adam(
+            params,
+            lr=config.learning_rate,
+            weight_decay=0,
+            eps=1e-6,
+            loss_scaling=config.loss_scaling,
+            accum_type=float16,
+            first_order_momentum_accum_type=first_order_type,
+            second_order_momentum_accum_type=float32,
+        )
     else:
         raise ValueError("Unknown Optimizer:", config.optimizer)
 

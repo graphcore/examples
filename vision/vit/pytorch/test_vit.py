@@ -32,39 +32,61 @@ from models import VisionTransformer
 
 
 cmd_finetune = [
-    "python", "finetune.py",
-    "--config", "b16_cifar10",
-    "--training-steps", "150",
-    "--replication-factor", "2",
-    "--warmup-steps", "20"]
+    "python",
+    "finetune.py",
+    "--config",
+    "b16_cifar10",
+    "--training-steps",
+    "150",
+    "--replication-factor",
+    "2",
+    "--warmup-steps",
+    "20",
+]
 
 
 cmd_finetune_als = [
-    "python", "finetune.py",
-    "--config", "b16_cifar10",
-    "--training-steps", "150",
-    "--replication-factor", "2",
-    "--warmup-steps", "20",
-    "--auto-loss-scaling", "True"]
+    "python",
+    "finetune.py",
+    "--config",
+    "b16_cifar10",
+    "--training-steps",
+    "150",
+    "--replication-factor",
+    "2",
+    "--warmup-steps",
+    "20",
+    "--auto-loss-scaling",
+    "True",
+]
 
 
 cmd_pretrain = [
-    "python", "pretrain.py",
-    "--micro-batch-size", "8",
-    "--config", "b16_in1k_pretrain",
-    "--gradient-accumulation", "8",
-    "--training-steps", "5",
-    "--epochs", "0",
-    "--replication-factor", "2",
-    "--iterations", "2",
-    "--dataset", "generated"]
+    "python",
+    "pretrain.py",
+    "--micro-batch-size",
+    "8",
+    "--config",
+    "b16_in1k_pretrain",
+    "--gradient-accumulation",
+    "8",
+    "--training-steps",
+    "5",
+    "--epochs",
+    "0",
+    "--replication-factor",
+    "2",
+    "--iterations",
+    "2",
+    "--dataset",
+    "generated",
+]
 
 
 def run_vit(cmd):
     cwd = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))
     try:
-        out = subprocess.check_output(
-            cmd, cwd=cwd, stderr=subprocess.PIPE).decode("utf-8")
+        out = subprocess.check_output(cmd, cwd=cwd, stderr=subprocess.PIPE).decode("utf-8")
     except subprocess.CalledProcessError as e:
         print(f"TEST FAILED")
         print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
@@ -80,7 +102,6 @@ def extract_step_metrics(line):
 
 
 class TestViT(unittest.TestCase):
-
     @pytest.mark.ipus(8)
     def test_finetuning_loss(self):
         # Run default configuration
@@ -120,25 +141,26 @@ class TestViT(unittest.TestCase):
 
 
 class TestViTModel(unittest.TestCase):
-
     def setUp(self):
-        self.url = 'http://images.cocodataset.org/val2017/000000039769.jpg'
-        self.config = AttrDict({
-            'loss': 'CELoss',
-            'hidden_size': 768,
-            'representation_size': None,
-            'attention_probs_dropout_prob': 0.1,
-            'hidden_dropout_prob': 0.1,
-            'drop_path_rate': 0,
-            'num_attention_heads': 12,
-            'num_hidden_layers': 12,
-            'mlp_dim': 3072,
-            'num_labels': 1000,
-            'patches_size': 16,
-            'mixup': False,
-            'recompute_mid_layers': [1, 4, 7, 10],
-            'byteio': False
-        })
+        self.url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+        self.config = AttrDict(
+            {
+                "loss": "CELoss",
+                "hidden_size": 768,
+                "representation_size": None,
+                "attention_probs_dropout_prob": 0.1,
+                "hidden_dropout_prob": 0.1,
+                "drop_path_rate": 0,
+                "num_attention_heads": 12,
+                "num_hidden_layers": 12,
+                "mlp_dim": 3072,
+                "num_labels": 1000,
+                "patches_size": 16,
+                "mixup": False,
+                "recompute_mid_layers": [1, 4, 7, 10],
+                "byteio": False,
+            }
+        )
         self.pattern = {
             "patch_embeddings.projection": "patch_embeddings",
             "attention.attention": "attn",
@@ -149,16 +171,12 @@ class TestViTModel(unittest.TestCase):
             "layernorm_after": "ffn_norm",
             "layernorm.weight": "encoder.encoder_norm.weight",
             "layernorm.bias": "encoder.encoder_norm.bias",
-            "classifier": "head"
+            "classifier": "head",
         }
 
         self.inputs = self.prepare_inputs()
-        self.model_ref = ViTForImageClassification.from_pretrained(
-            'google/vit-base-patch16-224')
-        self.model = VisionTransformer(self.config,
-                                       img_size=224,
-                                       num_labels=1000,
-                                       representation_size=None)
+        self.model_ref = ViTForImageClassification.from_pretrained("google/vit-base-patch16-224")
+        self.model = VisionTransformer(self.config, img_size=224, num_labels=1000, representation_size=None)
         self.model.eval()
 
     def find_matched_key(self, src):
@@ -170,8 +188,7 @@ class TestViTModel(unittest.TestCase):
 
     def prepare_inputs(self):
         image = Image.open(requests.get(self.url, stream=True).raw)
-        feature_extractor = ViTFeatureExtractor.from_pretrained(
-            'google/vit-base-patch16-224')
+        feature_extractor = ViTFeatureExtractor.from_pretrained("google/vit-base-patch16-224")
         inputs = feature_extractor(images=image, return_tensors="pt")
         return inputs
 
@@ -189,7 +206,7 @@ class TestViTModel(unittest.TestCase):
             dname = self.find_matched_key(sname)
             dst[dname].data.copy_(sparam)
 
-        outputs = self.model(self.inputs['pixel_values'])
+        outputs = self.model(self.inputs["pixel_values"])
         return outputs[0][:3]
 
     def test_inference(self):

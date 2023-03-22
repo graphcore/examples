@@ -43,16 +43,17 @@ class BertSquadLossAndGrad(addons.Module):
     def build(self, x: popxl.Tensor, labels: popxl.Tensor) -> Tuple[popxl.Tensor, popxl.Tensor]:
         args, graph = BertSquadHead(self.config).create_graph(x)
         dargs, dgraph = addons.transforms.autodiff_with_accumulation(
-            graph, graph.args.tensors, grads_required=[graph.graph.inputs[0]])
+            graph, graph.args.tensors, grads_required=[graph.graph.inputs[0]]
+        )
 
         fwd_info = graph.bind(self.add_variable_inputs("fwd", args)).call_with_info(x)
         x = fwd_info.parent_output(0)
 
         loss, dx = self.loss(x, labels)
 
-        dx, = dgraph.bind(self.add_variable_inputs("grad", dargs)).call(
-            dx,
-            args=dgraph.grad_graph_info.inputs_dict(fwd_info))
+        (dx,) = dgraph.bind(self.add_variable_inputs("grad", dargs)).call(
+            dx, args=dgraph.grad_graph_info.inputs_dict(fwd_info)
+        )
 
         return loss, dx
 
@@ -65,17 +66,17 @@ class BertSquadLossAndGrad(addons.Module):
             ops.squeeze(starts, [-1]),
             ops.squeeze(start_labels, [-1]),
             loss_scaling=self.config.execution.loss_scaling / 2,
-            ignore_index=self.config.model.sequence_length)
+            ignore_index=self.config.model.sequence_length,
+        )
 
         end_loss, end_dx = addons.cross_entropy_with_grad(
             ops.squeeze(ends, [-1]),
             ops.squeeze(end_labels, [-1]),
             loss_scaling=self.config.execution.loss_scaling / 2,
-            ignore_index=self.config.model.sequence_length)
+            ignore_index=self.config.model.sequence_length,
+        )
 
         loss = (start_loss + end_loss) / 2
-        dx = ops.concat_(
-            (start_dx.reshape((-1, 1)), end_dx.reshape_((-1, 1))),
-            axis=-1)
+        dx = ops.concat_((start_dx.reshape((-1, 1)), end_dx.reshape_((-1, 1))), axis=-1)
 
         return loss, dx

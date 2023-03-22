@@ -1,0 +1,78 @@
+# -------- Models --------
+"gptj_6B_1024": &gptj_6B_1024
+  model:
+    sequence_length: 1024
+    layers: 28
+    hidden_size: 4096
+    dropout_prob: 0.0
+    attention:
+      heads: 16
+      rotary_positional_embeddings_base: 10000
+      rotary_dim: 64
+    embedding:
+      vocab_size: 50400
+  training:
+    global_batch_size: 128
+    steps: 500
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 5e-06
+        warmup_proportion: 0.005995
+      weight_decay: 0.0
+
+tiny: &tiny
+  model:
+    sequence_length: 8
+    embedding:
+      vocab_size: 128
+    hidden_size: 64
+    layers: 2
+    attention:
+      heads: 4
+      rotary_dim: 16
+  training:
+    global_batch_size: 16
+    steps: 100000
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.00001
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+
+# -------------------------
+
+
+# ------- Execution -------
+release:
+  "gptj_6B_1024_pod64":
+    <<: *gptj_6B_1024
+    execution:
+      micro_batch_size: 1
+      loss_scaling: 4096
+      io_tiles: 128
+      data_parallel: 4
+      tensor_parallel: 16
+      available_memory_proportion: [ 0.2 ]
+      attention_serialisation: 2
+
+  "gptj_6B_1024_pod16":
+    <<: *gptj_6B_1024
+    execution:
+      micro_batch_size: 1
+      loss_scaling: 4096
+      io_tiles: 128
+      data_parallel: 1
+      tensor_parallel: 16
+      available_memory_proportion: [ 0.2 ]
+      attention_serialisation: 2
+
+  tiny:
+    <<: *tiny
+    execution:
+      io_tiles: 64
+      micro_batch_size: 1
+      data_parallel: 2
+      tensor_parallel: 4
+      attention_serialisation: 2

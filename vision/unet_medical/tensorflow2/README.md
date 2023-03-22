@@ -1,9 +1,9 @@
 # U-Net - Medical
 U-Net for medical image segmentation, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| TensorFlow2 | Vision | EfficientDet | ISBI Challenge 2012 | Object detection | ✅ | ✅ | ['U-Net: Convolutional Networks for Biomedical Image Segmentation'](https://arxiv.org/abs/1505.04597) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| TensorFlow 2 | Vision | EfficientDet | ISBI Challenge 2012 | Object detection | <p style="text-align: center;">✅ <br> Min. 4 IPUs (POD4) required | <p style="text-align: center;">✅ <br> Min. 4 IPUs (POD4) required | ['U-Net: Convolutional Networks for Biomedical Image Segmentation'](https://arxiv.org/abs/1505.04597) |
 
 
 ## Instructions summary
@@ -25,18 +25,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -50,7 +50,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -76,6 +76,8 @@ pip3 install -r requirements.txt
 make
 ```
 
+
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
 
 ## Dataset setup
 
@@ -114,7 +116,7 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Custom training
 
 ### Manual training
 Sample command to train the model on 4 IPUs:
@@ -132,6 +134,20 @@ The 5-fold cross validation accuracy reached 0.8917 on average with this command
 python main.py --nb-ipus-per-replica 4 --micro-batch-size 1 --gradient-accumulation-count 24 --num-epochs 2100 --train --augment --learning-rate 0.0024 --eval --kfold 5 --eval-freq 10
 ```
 
+## Custom inference
+
+### Running inference
+The inference model can fit on 1 IPU. The following command runs an inference benchmark with host generated random data on 1 IPU:
+```bash
+python main.py --nb-ipus-per-replica 1 --micro-batch-size 2 --steps-per-execution 400 --infer --host-generated-data --benchmark
+```
+By using [data-parallelism](https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html?highlight=replication#data-parallelism), we can improve throughput by replicating the graph over the 4 IPUs in an M2000. The following command shows this:
+```bash
+python main.py --nb-ipus-per-replica 1 --micro-batch-size 2 --steps-per-execution 400 --infer --host-generated-data --replicas 4 --benchmark
+```
+
+## Other features
+
 ### Losses
 We used the [BCE-Dice loss](https://www.kaggle.com/bigironsphere/loss-function-library-keras-pytorch) that combines the dice loss and binary crossentropy loss.
 
@@ -147,16 +163,6 @@ First, for any TensorFlow 2 Keras model, we need to add the following elements t
 * Create an IPU strategy. This works as a context manager: creating variables and Keras models within the scope of the `IPUStrategy` will ensure that they are placed on the IPU.
 * Run the Keras model within the IPU strategy scope.
 
-### Running inference
-The inference model can fit on 1 IPU. The following command runs an inference benchmark with host generated random data on 1 IPU:
-```bash
-python main.py --nb-ipus-per-replica 1 --micro-batch-size 2 --steps-per-execution 400 --infer --host-generated-data --benchmark
-```
-By using [data-parallelism](https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html?highlight=replication#data-parallelism), we can improve throughput by replicating the graph over the 4 IPUs in an M2000. The following command shows this:
-```bash
-python main.py --nb-ipus-per-replica 1 --micro-batch-size 2 --steps-per-execution 400 --infer --host-generated-data --replicas 4 --benchmark
-```
-
 ### Optimising U-Net for the IPU
 We take advantage of a number of memory optimisation techniques in order to train on 512x512 sized images. These are reviewed below.
 
@@ -171,7 +177,7 @@ The splits are shown in the `set_pipeline_stages(model)` in `model_utils.py`. Al
 Finding the optimal pipeline split can be an empirical process as you find that some splits give better distribution of memory over IPUs than others. When memory allows, a good pipelining split also needs to balance compute to reduce latency. [Popvision](https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/profiler.html) is a useful tool to visualise the memory distribution and execution trace. The pipeline split of this UNet model is shown in the figure below.![picture](pipelined_UNet.png)
 
 #### 2. Reduced precision
-We train in 16 bit floating point precision (FP16) to reduce the memory needed for parameters and activations. We set the datatype using `keras.backend.set_floatx(args.dtype)`. 
+We train in 16 bit floating point precision (FP16) to reduce the memory needed for parameters and activations. We set the datatype using `keras.backend.set_floatx(args.dtype)`.
 
 If using FP16, you may find that the loss and accuracy for large images go out of the representable range of FP16. The loss evaluates the class predictions for each pixel vector individually and then averages over all pixels. The accuracy is defined as the percentage of pixels in an image that are classified correctly. For both calculations, we need to divide by the total number of pixels in the image, which can often be out of the representable range for FP16. Therefore the datatype for the loss and accuracy is explicitly set to FP32.
 
@@ -181,7 +187,7 @@ Partials are the results of intermediate calculations in convolution and matrix 
 To mitigate against very small gradient updates that cannot be represented in FP16 (and instead underflow to become zero), we use loss scaling with a fixed value. This means that the loss is multiplied by a constant (in this case, 128) which scales the gradient updates by the same factor, pushing them into the representable range. After backpropagating, before the weight update, the gradients are correspondingly scaled by 1/128. We use the loss scaling that is native to tf.keras: `tf.keras.mixed_precision.LossScaleOptimizer()`.
 
 #### 4. Recomputation
-Tensors are stored in memory (referred to as "live") as long as they are required. By default, we need to store the activations in the forward pass until they are consumed during backpropagation. In the case of pipelining, tensors can be kept live for quite a long time. We can reduce this liveness by recomputing the activations. 
+Tensors are stored in memory (referred to as "live") as long as they are required. By default, we need to store the activations in the forward pass until they are consumed during backpropagation. In the case of pipelining, tensors can be kept live for quite a long time. We can reduce this liveness by recomputing the activations.
 
 Rather than storing all the activations within a pipeline stage, we retain only the activations that feed the input of the stage (called a "stash"). The other internal activations within the stage are calculated from the stashes just before they are needed in the backward pass for a given micro batch. The stash size is equivalent to the number of pipeline stages, as that reflects the number of micro batches being processed in parallel. Hence as you increase the number of stages in a pipeline, the stash overhead also increases accordingly.
 

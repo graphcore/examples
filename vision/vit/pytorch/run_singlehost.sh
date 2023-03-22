@@ -26,7 +26,7 @@ fi
 
 echo "Training on a single host using POD16."
 
-export IPUOF_VIPU_API_HOST=$server  
+export IPUOF_VIPU_API_HOST=$server
 export IPUOF_VIPU_API_PARTITION_ID=$partition
 
 time=$(date "+%Y%m%d%H%M%S")

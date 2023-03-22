@@ -37,7 +37,7 @@ def get_options(config):
     https://docs.graphcore.ai/en/latest/
     """
 
-    # Poptorch options
+    # PopTorch options
     opts = create_options(config)
     opts.autoRoundNumIPUs(True)
     opts.deviceIterations(config.device_iterations)
@@ -48,14 +48,11 @@ def get_options(config):
     opts.Training.gradientAccumulation(config.gradient_accumulation)
 
     if config.reduction_type == "sum":
-        opts.Training.accumulationAndReplicationReductionType(
-            poptorch.ReductionType.Sum)
+        opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Sum)
     elif config.reduction_type == "mean":
-        opts.Training.accumulationAndReplicationReductionType(
-            poptorch.ReductionType.Mean)
+        opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
     else:
-        raise ValueError(
-            "Expected reduction type to be 'sum' or 'mean', but got %s" % config.reduction_type)
+        raise ValueError("Expected reduction type to be 'sum' or 'mean', but got %s" % config.reduction_type)
 
     # Enable automatic loss scaling
     # Note that it expects accumulationAndReplicationReductionType to be set
@@ -78,17 +75,14 @@ def get_options(config):
         # Optimizer state lives on-chip
         .useOnChipStorage(not config.optimizer_state_offchip)
         # Shard optimizer state between replicas with zero-redundancy
-        .useReplicatedTensorSharding(config.enable_rts))
+        .useReplicatedTensorSharding(config.enable_rts)
+    )
 
     # Use Pipelined Execution
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
 
     # Set available Transient Memory For matmuls and convolutions operations
-    mem_prop = {
-        f'IPU{i}': config.matmul_proportion[i]
-        for i in range(config.ipus_per_replica)
-    }
+    mem_prop = {f"IPU{i}": config.matmul_proportion[i] for i in range(config.ipus_per_replica)}
     opts.setAvailableMemoryProportion(mem_prop)
 
     if config.synthetic_data:
@@ -108,13 +102,13 @@ def get_options(config):
     # PopART performance options
     # Only stream needed tensors back to host
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
-    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
-                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
+    opts._Popart.set(
+        "accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized)
+    )
 
     if config.prefetch_depth > 1:
         # How many batches to prefetch onto the IPU
-        opts._Popart.set("defaultPrefetchBufferingDepth",
-                         config.prefetch_depth)
+        opts._Popart.set("defaultPrefetchBufferingDepth", config.prefetch_depth)
 
     # Options for profiling with Popvision
     engine_options = {
@@ -129,19 +123,18 @@ def get_options(config):
                 "autoReport.directory": config.profile_dir,
                 "profiler.format": "v3",
                 "autoReport.all": "true",
-            }
+            },
         }
     opts._Popart.set("engineOptions", engine_options)
 
     # Parallelize optimizer step update across IPUs
-    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
-                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
     opts._Popart.set(
-        "accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
+        "accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized)
+    )
+    opts._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
 
     # Enable patterns for better throughput and memory reduction
-    opts._Popart.set("subgraphCopyingStrategy", int(
-        popart.SubgraphCopyingStrategy.JustInTime))
+    opts._Popart.set("subgraphCopyingStrategy", int(popart.SubgraphCopyingStrategy.JustInTime))
     opts._Popart.set("scheduleNonWeightUpdateGradientConsumersEarly", True)
 
     return opts

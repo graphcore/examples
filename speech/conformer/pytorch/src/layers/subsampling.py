@@ -13,7 +13,7 @@
 #
 # This file has been modified by Graphcore Ltd.
 # limitations under the License.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/transformer/subsampling.py
@@ -21,7 +21,7 @@ This script has been adapted from some of the original EspNet found here:
 Main change:
     remove the TooShortUttError class, Conv2dSubsampling6 class and Conv2dSubsampling8.
 
-'''
+"""
 
 import torch
 
@@ -46,10 +46,7 @@ class Conv2dSubsampling(torch.nn.Module):
             torch.nn.Conv2d(odim, odim, 3, 2),
             torch.nn.ReLU(),
         )
-        self.out = torch.nn.Sequential(
-            torch.nn.Linear(odim * (((idim - 1) // 2 - 1) // 2), odim),
-            pos_enc
-        )
+        self.out = torch.nn.Sequential(torch.nn.Linear(odim * (((idim - 1) // 2 - 1) // 2), odim), pos_enc)
 
     def forward(self, x, x_mask):
         """Subsample x.

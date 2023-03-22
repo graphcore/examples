@@ -8,15 +8,17 @@ from keras_extensions.callbacks.periodic_metrics import PeriodicMetrics
 
 
 LOGGING_ONE_OFF_METRICS = ["Compilation Time"]
-LOGGING_EXCLUDE_METRICS = ["nsp___cls_loss",
-                           "mlm___cls_loss",
-                           "nsp___cls_pretrain_acc",
-                           "mlm___cls_pretrain_acc",
-                           "loss",
-                           "num_samples",
-                           "learning_rate",
-                           "classification_acc",
-                           "start_positions_end_positions_sparse_categorical_accuracy"]
+LOGGING_EXCLUDE_METRICS = [
+    "nsp___cls_loss",
+    "mlm___cls_loss",
+    "nsp___cls_pretrain_acc",
+    "mlm___cls_pretrain_acc",
+    "loss",
+    "num_samples",
+    "learning_rate",
+    "classification_acc",
+    "start_positions_end_positions_sparse_categorical_accuracy",
+]
 units = {
     "throughput": "samples/sec",
     "Compilation Time": "s",

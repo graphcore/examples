@@ -26,7 +26,6 @@
 # *****************************************************************************
 
 
-
 import torch
 
 
@@ -46,7 +45,6 @@ class WaveGlowLoss(torch.nn.Module):
                 log_s_total = log_s_total + torch.sum(log_s)
                 log_det_W_total += log_det_W_list[i]
 
-        loss = torch.sum(
-            z * z) / (2 * self.sigma * self.sigma) - log_s_total - log_det_W_total  # noqa: E501
+        loss = torch.sum(z * z) / (2 * self.sigma * self.sigma) - log_s_total - log_det_W_total  # noqa: E501
         meta = {}
         return loss / (z.size(0) * z.size(1) * z.size(2)), meta

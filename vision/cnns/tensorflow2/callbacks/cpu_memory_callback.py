@@ -5,7 +5,6 @@ import psutil
 
 
 class CPUMemoryCallback(tf.keras.callbacks.Callback):
-
     def on_train_begin(self, logs=None):
         pass
 
@@ -17,8 +16,8 @@ class CPUMemoryCallback(tf.keras.callbacks.Callback):
 
     def on_train_batch_end(self, batch, logs=None):
         if logs is not None:
-            logs['%CPU memory'] = psutil.virtual_memory().percent
+            logs["%CPU memory"] = psutil.virtual_memory().percent
 
     def on_test_batch_end(self, batch, logs=None):
         if logs is not None:
-            logs['%CPU memory'] = psutil.virtual_memory().percent
+            logs["%CPU memory"] = psutil.virtual_memory().percent

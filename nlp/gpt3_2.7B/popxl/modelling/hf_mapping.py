@@ -14,10 +14,10 @@ from modelling.gpt_model import GPTModelTP
 from modelling.gpt_lm import GPTLMHeadModelTP
 
 
-def hf_mapping_lm_tp(config: GPTConfig, session: TaskSession,
-                     pretrained: HFLMHeadModel
-                     ) -> Dict[popxl.Tensor, np.ndarray]:
-    """"
+def hf_mapping_lm_tp(
+    config: GPTConfig, session: TaskSession, pretrained: HFLMHeadModel
+) -> Dict[popxl.Tensor, np.ndarray]:
+    """ "
     Session naming for gpt with lm head variables:
         transformer
             embeddings
@@ -40,8 +40,7 @@ def hf_mapping_lm_tp(config: GPTConfig, session: TaskSession,
     return weights
 
 
-def hf_mapping_TP(config: GPTConfig, session: TaskSession,
-                  pretrained: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
+def hf_mapping_TP(config: GPTConfig, session: TaskSession, pretrained: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
     """
     Session naming for gpt variables:
         embeddings

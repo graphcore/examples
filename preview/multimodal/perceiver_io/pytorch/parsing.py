@@ -14,7 +14,7 @@ from configs.hparams import DatasetArguments, ModelArguments, PerceiverTrainingA
 def _yaml_to_string_list(config: dict) -> List[str]:
     s_list = []
     for arg, value in config.items():
-        s_list += [f'--{arg}']
+        s_list += [f"--{arg}"]
         if type(value) == list:
             s_list += [str(element) for element in value]
         else:
@@ -26,12 +26,9 @@ def parse_arguments():
     DataClass = NewType("DataClass", Any)
 
     class ExtendedArgumentParser(HfArgumentParser):
-
         def parse_args_into_dataclasses(self) -> Tuple[DataClass, ...]:
             # parse args from a terminal
-            terminal_args = self.parse_args(
-                args=sys.argv[1:] + ['--output_dir', '/tmp/perceiver-io/']
-            )
+            terminal_args = self.parse_args(args=sys.argv[1:] + ["--output_dir", "/tmp/perceiver-io/"])
             # load args from a file
             if terminal_args.config is not None:
                 fargs = json.loads(Path(terminal_args.config).read_text())
@@ -55,8 +52,7 @@ def parse_arguments():
             else:
                 if remaining_args:
                     raise ValueError(
-                        f'Some specified arguments are not used '
-                        f'by the HfArgumentParser: {remaining_args}'
+                        f"Some specified arguments are not used " f"by the HfArgumentParser: {remaining_args}"
                     )
                 return (*outputs,)
 

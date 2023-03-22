@@ -27,12 +27,14 @@ def get_layer_ipu(layers_per_ipu):
 
 def recomputation_checkpoint(module: nn.Module) -> torch.utils.hooks.RemovableHandle:
     """Annotates the output of a module to be checkpointed instead of
-        recomputed"""
+    recomputed"""
+
     def recompute_outputs(module, inputs, outputs):
         if type(outputs) is tuple:
             return tuple(poptorch.recomputationCheckpoint(y) for y in outputs)
         else:
             return poptorch.recomputationCheckpoint(outputs)
+
     return module.register_forward_hook(recompute_outputs)
 
 
@@ -42,7 +44,7 @@ def weight_init(m):
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)
     elif isinstance(m, nn.Conv2d):
-        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
     elif isinstance(m, nn.BatchNorm2d):
         nn.init.constant_(m.weight, 1)
         nn.init.constant_(m.bias, 0)

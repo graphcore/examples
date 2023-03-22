@@ -77,12 +77,12 @@ import pytest
 
 
 def check_dimensions(config, tokens, attn_mask, token_types, mask_lm_positions, labels, nsp):
-    assert (tokens.shape == (config.sequence_length, ))
-    assert (attn_mask.shape == (config.sequence_length, ))
-    assert (token_types.shape == (config.sequence_length, ))
-    assert (mask_lm_positions.shape == (config.mask_tokens, ))
-    assert (labels.shape == (config.mask_tokens, ))
-    assert (nsp.shape == (1, ))
+    assert tokens.shape == (config.sequence_length,)
+    assert attn_mask.shape == (config.sequence_length,)
+    assert token_types.shape == (config.sequence_length,)
+    assert mask_lm_positions.shape == (config.mask_tokens,)
+    assert labels.shape == (config.mask_tokens,)
+    assert nsp.shape == (1,)
 
 
 def check_tokens(config, tokens, mask_lm_position, labels):
@@ -102,7 +102,7 @@ def check_tokens(config, tokens, mask_lm_position, labels):
 
     # After second 102 [SEP] it should be all padding
     indices_102 = np.where(tokens_nomask == 102)[0]
-    assert np.all(tokens_nomask[indices_102[1] + 1:] == 0)
+    assert np.all(tokens_nomask[indices_102[1] + 1 :] == 0)
 
     # The unmasked tokens in the sentences minus special characters
     # have values between 999 and vocab_size
@@ -115,10 +115,8 @@ def check_tokens(config, tokens, mask_lm_position, labels):
     normal_tokens_0 = sentence_0[~np.in1d(sentence_0, special_tokens)]
     normal_tokens_1 = sentence_1[~np.in1d(sentence_1, special_tokens)]
 
-    assert np.all((normal_tokens_0 >= 999) &
-                  (normal_tokens_0 < config.vocab_size))
-    assert np.all((normal_tokens_1 >= 999) &
-                  (normal_tokens_1 < config.vocab_size))
+    assert np.all((normal_tokens_0 >= 999) & (normal_tokens_0 < config.vocab_size))
+    assert np.all((normal_tokens_1 >= 999) & (normal_tokens_1 < config.vocab_size))
 
 
 def check_attention_mask(attn_mask, tokens):
@@ -198,8 +196,7 @@ def mask_type_count(tokens, mask_lm_positions, labels):
     mask_types = Counter({"103": 0, "same": 0, "random": 0})
     mask_types["103"] += np.where(masked_tokens == 103)[0].shape[0]
     mask_types["same"] += np.where(masked_tokens == true_tokens)[0].shape[0]
-    mask_types["random"] += np.where(
-        (masked_tokens != 103) & (masked_tokens != true_tokens))[0].shape[0]
+    mask_types["random"] += np.where((masked_tokens != 103) & (masked_tokens != true_tokens))[0].shape[0]
 
     assert sum(mask_types.values()) == masked_tokens.shape[0]
     return mask_types
@@ -249,7 +246,7 @@ def test_wikipedia_dataset():
     for k in replacement_counts:
         replacement_counts[k] /= total
 
-    assert (0.79 < replacement_counts["103"] < 0.81)
-    assert (0.09 < replacement_counts["same"] < 0.11)
-    assert (0.09 < replacement_counts["random"] < 0.11)
-    assert (0.14 < total / num_tokens < 0.16)  # should be ~0.15
+    assert 0.79 < replacement_counts["103"] < 0.81
+    assert 0.09 < replacement_counts["same"] < 0.11
+    assert 0.09 < replacement_counts["random"] < 0.11
+    assert 0.14 < total / num_tokens < 0.16  # should be ~0.15

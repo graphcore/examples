@@ -21,10 +21,8 @@ def mpi_reduce(output, average=True):
     Perform MPI reduction across MPI instances
     """
     if type(output) in [int, float]:
-        output = float(hvd.allreduce(
-            torch.Tensor([output]), average=average).item())
+        output = float(hvd.allreduce(torch.Tensor([output]), average=average).item())
     else:
-        raise NotImplementedError(
-            f'parameter output has type: {type(output)} which is not supported')
+        raise NotImplementedError(f"parameter output has type: {type(output)} which is not supported")
 
     return output

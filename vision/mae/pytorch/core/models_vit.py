@@ -23,22 +23,15 @@ from util.log import logger
 
 
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
-    """ Vision Transformer with support for global average pooling
-    """
+    """Vision Transformer with support for global average pooling"""
 
-    def __init__(
-            self,
-            global_pool=False,
-            pipeline=None,
-            criterion=None,
-            act_layer=nn.GELU,
-            **kwargs):
+    def __init__(self, global_pool=False, pipeline=None, criterion=None, act_layer=nn.GELU, **kwargs):
         super(VisionTransformer, self).__init__(**kwargs)
 
         self.global_pool = global_pool
         if self.global_pool:
-            norm_layer = kwargs['norm_layer']
-            embed_dim = kwargs['embed_dim']
+            norm_layer = kwargs["norm_layer"]
+            embed_dim = kwargs["embed_dim"]
             self.pipeline = pipeline
             self.criterion = criterion
             self.fc_norm = norm_layer(embed_dim)
@@ -56,22 +49,21 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         return layer_ipu
 
     def _set_vit(self, embed, blocks, norm, layer_ipu, first_id, block_count):
-        embed = poptorch.BeginBlock(embed, f'ipu{first_id}', ipu_id=first_id)
-        logger.info(f'embed on ipu {first_id}')
+        embed = poptorch.BeginBlock(embed, f"ipu{first_id}", ipu_id=first_id)
+        logger.info(f"embed on ipu {first_id}")
         for i, block in enumerate(blocks):
             index = block_count + i
             ipu = layer_ipu[index]
-            logger.info(f'begin block at ({i}) on ipu:{ipu}')
-            blocks[i] = poptorch.BeginBlock(block, f'ipu{ipu}', ipu_id=ipu)
-        norm = poptorch.BeginBlock(norm, f'ipu{ipu}', ipu_id=ipu)
-        logger.info(f'norm on ipu {ipu}')
+            logger.info(f"begin block at ({i}) on ipu:{ipu}")
+            blocks[i] = poptorch.BeginBlock(block, f"ipu{ipu}", ipu_id=ipu)
+        norm = poptorch.BeginBlock(norm, f"ipu{ipu}", ipu_id=ipu)
+        logger.info(f"norm on ipu {ipu}")
         return ipu, index + 1
 
     def _set_pipeline(self):
         layer_ipu = self._get_layer_ipu(self.pipeline)
-        last_id, block_count = self._set_vit(
-            self.patch_embed, self.blocks, self.fc_norm, layer_ipu, 0, 0)
-        self.head = poptorch.BeginBlock(self.head, f'ipu{last_id}', ipu_id=last_id)
+        last_id, block_count = self._set_vit(self.patch_embed, self.blocks, self.fc_norm, layer_ipu, 0, 0)
+        self.head = poptorch.BeginBlock(self.head, f"ipu{last_id}", ipu_id=last_id)
 
     def forward_features(self, x):
         B = x.shape[0]
@@ -101,7 +93,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             return x
         else:
             loss = self.criterion(x, targets)
-            return x, poptorch.identity_loss(loss, reduction='mean')
+            return x, poptorch.identity_loss(loss, reduction="mean")
 
 
 def vit_base_patch16(criterion, pipeline=None, **kwargs):
@@ -112,12 +104,11 @@ def vit_base_patch16(criterion, pipeline=None, **kwargs):
         num_heads=12,
         mlp_ratio=4,
         qkv_bias=True,
-        norm_layer=partial(
-            nn.LayerNorm,
-            eps=1e-6),
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
         criterion=criterion,
         pipeline=pipeline,
-        **kwargs)
+        **kwargs,
+    )
     return model
 
 
@@ -129,10 +120,9 @@ def vit_large_patch16(**kwargs):
         num_heads=16,
         mlp_ratio=4,
         qkv_bias=True,
-        norm_layer=partial(
-            nn.LayerNorm,
-            eps=1e-6),
-        **kwargs)
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        **kwargs,
+    )
     return model
 
 
@@ -144,8 +134,7 @@ def vit_huge_patch14(**kwargs):
         num_heads=16,
         mlp_ratio=4,
         qkv_bias=True,
-        norm_layer=partial(
-            nn.LayerNorm,
-            eps=1e-6),
-        **kwargs)
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        **kwargs,
+    )
     return model

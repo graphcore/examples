@@ -16,13 +16,14 @@ def data_manager_fixture():
     function, we abstract that part into this fixture, and pass it
     to the functions instead which allows us to access the data.
     """
+
     class DataManager:
         def __init__(self):
             self.img1 = np.random.randint(0, 256, [64, 64, 3])
             self.img2 = np.ones([64, 64, 3]) * 255
             self.img3 = np.random.randint(0, 256, [64, 32, 3])
             # We use the same labels for both the images
-            self.labels = np.array([[23.0,  0.77,  0.49,  0.34,  0.46]])
+            self.labels = np.array([[23.0, 0.77, 0.49, 0.34, 0.46]])
 
     return DataManager()
 
@@ -43,8 +44,10 @@ class TestPreprocessing:
         assert np.array_equal(augmented_label, np.empty((0, 5)))
 
     def test_hsv(self, data_manager):
-        hsv = HSV(h_gain=.5, s_gain=.5, v_gain=.5)
-        augmented_img, augmented_label = hsv((Image.fromarray(np.uint8(data_manager.img2)).convert('RGB'), np.copy(data_manager.labels)))
+        hsv = HSV(h_gain=0.5, s_gain=0.5, v_gain=0.5)
+        augmented_img, augmented_label = hsv(
+            (Image.fromarray(np.uint8(data_manager.img2)).convert("RGB"), np.copy(data_manager.labels))
+        )
         augmented_img = np.ascontiguousarray(augmented_img)
 
         assert np.array_equal(augmented_label, data_manager.labels)
@@ -53,7 +56,9 @@ class TestPreprocessing:
 
     def test_horizontal_flip(self, data_manager):
         horizontal_flip = HorizontalFlip()
-        augmented_img, augmented_label = horizontal_flip((Image.fromarray(np.uint8(data_manager.img1)).convert('RGB'), np.copy(data_manager.labels)))
+        augmented_img, augmented_label = horizontal_flip(
+            (Image.fromarray(np.uint8(data_manager.img1)).convert("RGB"), np.copy(data_manager.labels))
+        )
         augmented_img = np.ascontiguousarray(augmented_img)
 
         assert np.array_equal(augmented_img, np.fliplr(data_manager.img1))
@@ -62,7 +67,9 @@ class TestPreprocessing:
 
     def test_vertical_flip(self, data_manager):
         vertical_flip = VerticalFlip()
-        augmented_img, augmented_label = vertical_flip((Image.fromarray(np.uint8(data_manager.img1)).convert('RGB'), np.copy(data_manager.labels)))
+        augmented_img, augmented_label = vertical_flip(
+            (Image.fromarray(np.uint8(data_manager.img1)).convert("RGB"), np.copy(data_manager.labels))
+        )
         augmented_img = np.ascontiguousarray(augmented_img)
 
         assert np.array_equal(augmented_img, np.flipud(data_manager.img1))
@@ -73,31 +80,46 @@ class TestPreprocessing:
         to_tensor = ToTensor(max_bbox_per_scale=90, image_type="half")
         augmented_img, augmented_label = to_tensor((np.copy(data_manager.img1), np.copy(data_manager.labels)))
 
-        assert (type(augmented_img) == torch.Tensor)
-        assert (type(augmented_label) == torch.Tensor)
+        assert type(augmented_img) == torch.Tensor
+        assert type(augmented_label) == torch.Tensor
 
     def test_pad(self, data_manager):
         image_size = 128
         pad = Pad(image_size)
-        augmented_img, augmented_label = pad((Image.fromarray(np.uint8(data_manager.img1)).convert('RGB'), np.copy(data_manager.labels)))
+        augmented_img, augmented_label = pad(
+            (Image.fromarray(np.uint8(data_manager.img1)).convert("RGB"), np.copy(data_manager.labels))
+        )
         augmented_img = np.ascontiguousarray(augmented_img)
 
-        pad_w = int(np.round(abs(image_size-data_manager.img1.shape[1])/2))
-        pad_h = int(np.round(abs(image_size-data_manager.img1.shape[0])/2))
+        pad_w = int(np.round(abs(image_size - data_manager.img1.shape[1]) / 2))
+        pad_h = int(np.round(abs(image_size - data_manager.img1.shape[0]) / 2))
 
-        padded_img = np.pad(data_manager.img1, ((pad_h, pad_h), (pad_w, pad_w), (0, 0)), 'constant', constant_values=114)
+        padded_img = np.pad(
+            data_manager.img1, ((pad_h, pad_h), (pad_w, pad_w), (0, 0)), "constant", constant_values=114
+        )
 
         assert np.array_equal(augmented_img, padded_img)
         assert np.array_equal(augmented_label[:, 0], data_manager.labels[:, 0])
-        assert np.array_equal(augmented_label[:, 1], (data_manager.labels[:, 1] * data_manager.img1.shape[1] + pad_w) / image_size)
-        assert np.array_equal(augmented_label[:, 2], (data_manager.labels[:, 2] * data_manager.img1.shape[0] + pad_h) / image_size)
-        assert np.array_equal(augmented_label[:, [3, 4]], data_manager.labels[:, [3, 4]] * np.array([[data_manager.img1.shape[1], data_manager.img1.shape[0]]]) / image_size)
+        assert np.array_equal(
+            augmented_label[:, 1], (data_manager.labels[:, 1] * data_manager.img1.shape[1] + pad_w) / image_size
+        )
+        assert np.array_equal(
+            augmented_label[:, 2], (data_manager.labels[:, 2] * data_manager.img1.shape[0] + pad_h) / image_size
+        )
+        assert np.array_equal(
+            augmented_label[:, [3, 4]],
+            data_manager.labels[:, [3, 4]]
+            * np.array([[data_manager.img1.shape[1], data_manager.img1.shape[0]]])
+            / image_size,
+        )
 
     def test_resize_image(self, data_manager):
         image_size = 128
         resize_image = ResizeImage(image_size)
-        augmented_img, augmented_label = resize_image((Image.fromarray(np.uint8(data_manager.img3)).convert('RGB'), np.copy(data_manager.labels)))
+        augmented_img, augmented_label = resize_image(
+            (Image.fromarray(np.uint8(data_manager.img3)).convert("RGB"), np.copy(data_manager.labels))
+        )
         augmented_img = np.ascontiguousarray(augmented_img)
 
-        assert (image_size in augmented_img.shape)
+        assert image_size in augmented_img.shape
         assert np.array_equal(augmented_label, data_manager.labels)

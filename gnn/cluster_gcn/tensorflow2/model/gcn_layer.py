@@ -22,14 +22,14 @@ class GcnLayer(tf.keras.layers.Layer):
     """
 
     def __init__(
-            self,
-            dropout_rate,
-            out_dim,
-            activation_fn=tf.keras.activations.relu,
-            do_norm=True,
-            first_layer_precalculation=False,
-            use_ipu_layers=True,
-            **args
+        self,
+        dropout_rate,
+        out_dim,
+        activation_fn=tf.keras.activations.relu,
+        do_norm=True,
+        first_layer_precalculation=False,
+        use_ipu_layers=True,
+        **args
     ):
         """
         Graph Convolution Network layer.
@@ -65,10 +65,9 @@ class GcnLayer(tf.keras.layers.Layer):
         if self.first_layer_precalculation:
             ax_x = features
         else:
-            ax = tf.keras.layers.Lambda(
-                lambda x: mat_ops.sp_dense_matmul(x[0], x[1]),
-                name="sparse_dense_matmul"
-            )((adjacency, features))
+            ax = tf.keras.layers.Lambda(lambda x: mat_ops.sp_dense_matmul(x[0], x[1]), name="sparse_dense_matmul")(
+                (adjacency, features)
+            )
             ax_x = self.concatenate([ax, features])
 
         ax_x_drop = self.dropout(ax_x)

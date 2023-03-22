@@ -29,12 +29,7 @@ import json
 
 
 def get_compile_datum(args, opts, dataset, collate_fn=None):
-    loader = poptorch.DataLoader(
-        options=opts,
-        dataset=dataset,
-        batch_size=args.batch_size,
-        collate_fn=collate_fn
-    )
+    loader = poptorch.DataLoader(options=opts, dataset=dataset, batch_size=args.batch_size, collate_fn=collate_fn)
     loader_iter = iter(loader)
     datum = next(loader_iter)
     return datum
@@ -44,10 +39,16 @@ class GeneratedData(object):
     def __init__(self, input_size, use_half, image_transform, pretrain=False):
         self.pretrain = pretrain
         self.image_transform = image_transform
-        self.ids_shuffle, self.ids_restore, self.keep_mat, self.restore_mat, self.mask = ImageFolder.generate_mask_patches(
-            use_half)
-        self.image = transforms.ToPILImage(mode="RGB")(torch.randint(
-            low=0, high=255, size=(3, 250, 250), dtype=torch.uint8))
+        (
+            self.ids_shuffle,
+            self.ids_restore,
+            self.keep_mat,
+            self.restore_mat,
+            self.mask,
+        ) = ImageFolder.generate_mask_patches(use_half)
+        self.image = transforms.ToPILImage(mode="RGB")(
+            torch.randint(low=0, high=255, size=(3, 250, 250), dtype=torch.uint8)
+        )
         self.target = 0
 
     def __len__(self):
@@ -65,15 +66,10 @@ def build_dataset(is_train, args):
     transform = build_transform(is_train, args)
 
     if not args.generated_data:
-        root = os.path.join(args.data_path,
-                            'train' if is_train else 'validation')
+        root = os.path.join(args.data_path, "train" if is_train else "validation")
         dataset = datasets.ImageFolder(root, transform=transform)
     else:
-        dataset = GeneratedData(
-            args.input_size,
-            args.half,
-            transform,
-            args.pretrain)
+        dataset = GeneratedData(args.input_size, args.half, transform, args.pretrain)
 
     return dataset
 
@@ -89,7 +85,7 @@ def build_transform(is_train, args):
             is_training=True,
             color_jitter=args.color_jitter,
             auto_augment=args.aa,
-            interpolation='bicubic',
+            interpolation="bicubic",
             re_prob=args.reprob,
             re_mode=args.remode,
             re_count=args.recount,
@@ -125,16 +121,7 @@ def default_loader(path: str) -> Any:
         return pil_loader(path)
 
 
-IMG_EXTENSIONS = (
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".ppm",
-    ".bmp",
-    ".pgm",
-    ".tif",
-    ".tiff",
-    ".webp")
+IMG_EXTENSIONS = (".jpg", ".jpeg", ".png", ".ppm", ".bmp", ".pgm", ".tif", ".tiff", ".webp")
 
 
 class ImageFolder(DatasetFolder):
@@ -158,19 +145,17 @@ class ImageFolder(DatasetFolder):
         self.use_half = use_half
         self.is_initialized = False
         classes, class_to_idx = self.find_classes(self.root)
-        samples = self.read_samples_with_cache(
-            class_to_idx, IMG_EXTENSIONS, is_valid_file)
+        samples = self.read_samples_with_cache(class_to_idx, IMG_EXTENSIONS, is_valid_file)
 
     def read_samples_with_cache(self, class_to_idx, extensions, is_valid_file):
         start_write_time = time.time()
-        samples = self.make_dataset(
-            self.root, class_to_idx, extensions, is_valid_file)
+        samples = self.make_dataset(self.root, class_to_idx, extensions, is_valid_file)
         Scan_samples_time = time.time() - start_write_time
-        logger.info(f'Scan samples time: {Scan_samples_time}')
-        logger.info(f'Writing cache...')
-        with open("./dataset_cache", 'w') as f:
+        logger.info(f"Scan samples time: {Scan_samples_time}")
+        logger.info(f"Writing cache...")
+        with open("./dataset_cache", "w") as f:
             json.dump(samples, f)
-        logger.info(f'Writing done')
+        logger.info(f"Writing done")
         return samples
 
     @staticmethod
@@ -203,7 +188,7 @@ class ImageFolder(DatasetFolder):
     def real_init(self):
         classes, class_to_idx = self.find_classes(self.root)
         start_load_time = time.time()
-        f = open("./dataset_cache", 'r')
+        f = open("./dataset_cache", "r")
         samples = json.load(f)
         self.classes = classes
         self.class_to_idx = class_to_idx
@@ -222,17 +207,13 @@ class ImageFolder(DatasetFolder):
             self.real_init()
         path, target = self.samples[index]
 
-        with open(path, 'rb') as jpeg_file:
+        with open(path, "rb") as jpeg_file:
             img = jpeg_file.read()
         try:
-            image = Image.fromarray(
-                simplejpeg.decode_jpeg(
-                    img, colorspace='RGB'))
+            image = Image.fromarray(simplejpeg.decode_jpeg(img, colorspace="RGB"))
         except BaseException:
             image = Image.open(io.BytesIO(img))
             image = image.convert("RGB")
 
-        ids_shuffle, ids_restore, keep_mat, restore_mat, mask = self.generate_mask_patches(
-            self.use_half)
-        return self.transform(
-            image), ids_shuffle, ids_restore, keep_mat, restore_mat, mask
+        ids_shuffle, ids_restore, keep_mat, restore_mat, mask = self.generate_mask_patches(self.use_half)
+        return self.transform(image), ids_shuffle, ids_restore, keep_mat, restore_mat, mask

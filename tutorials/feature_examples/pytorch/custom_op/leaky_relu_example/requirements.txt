@@ -1,0 +1,4 @@
+numpy>=1.19.0
+filelock==3.0.12
+pytest-forked~=1.4
+pytest-xdist~=2.5

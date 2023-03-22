@@ -148,7 +148,9 @@ def prepare_validation_features(examples):
 
 # `postprocess_qa_predictions` comes unmodified from
 # https://github.com/huggingface/notebooks/blob/master/examples/question_answering.ipynb
-def postprocess_qa_predictions(examples, features, raw_predictions, n_best_size=20, max_answer_length=30, squad_v2=False):
+def postprocess_qa_predictions(
+    examples, features, raw_predictions, n_best_size=20, max_answer_length=30, squad_v2=False
+):
     all_start_logits, all_end_logits = raw_predictions
     # Build a map example to its corresponding features.
     example_id_to_index = {k: i for i, k in enumerate(examples["id"])}
@@ -187,18 +189,20 @@ def postprocess_qa_predictions(examples, features, raw_predictions, n_best_size=
                 min_null_score = feature_null_score
 
             # Go through all possibilities for the `n_best_size` greater start and end logits.
-            start_indexes = np.argsort(start_logits)[-1: -n_best_size - 1: -1].tolist()
-            end_indexes = np.argsort(end_logits)[-1: -n_best_size - 1: -1].tolist()
+            start_indexes = np.argsort(start_logits)[-1 : -n_best_size - 1 : -1].tolist()
+            end_indexes = np.argsort(end_logits)[-1 : -n_best_size - 1 : -1].tolist()
             for start_index in start_indexes:
                 for end_index in end_indexes:
                     # Don't consider out-of-scope answers, either because the indices are out of bounds or correspond
                     # to part of the input_ids that are not in the context.
-                    if start_index >= len(offset_mapping) \
-                       or end_index >= len(offset_mapping) \
-                       or offset_mapping[start_index] is None \
-                       or offset_mapping[end_index] is None \
-                       or offset_mapping[start_index] == [] \
-                       or offset_mapping[end_index] == []:
+                    if (
+                        start_index >= len(offset_mapping)
+                        or end_index >= len(offset_mapping)
+                        or offset_mapping[start_index] is None
+                        or offset_mapping[end_index] is None
+                        or offset_mapping[start_index] == []
+                        or offset_mapping[end_index] == []
+                    ):
                         continue
                     # Don't consider answers with a length that is either < 0 or > max_answer_length.
                     if end_index < start_index or end_index - start_index + 1 > max_answer_length:
@@ -209,7 +213,7 @@ def postprocess_qa_predictions(examples, features, raw_predictions, n_best_size=
                     valid_answers.append(
                         {
                             "score": start_logits[start_index] + end_logits[end_index],
-                            "text": context[start_char: end_char]
+                            "text": context[start_char:end_char],
                         }
                     )
 
@@ -234,6 +238,7 @@ class PadCollate:
     """
     Collate into a batch and pad the batch up to a fixed size.
     """
+
     def __init__(self, batch_size, padding_val_dict=None):
         self.batch_size = batch_size
         self.padding_val_dict = padding_val_dict
@@ -241,7 +246,7 @@ class PadCollate:
     def pad_tensor(self, x, val):
         pad_size = list(x.shape)
         pad_size[0] = self.batch_size - x.size(0)
-        return torch.cat([x, val*torch.ones(*pad_size, dtype=x.dtype)], dim=0)
+        return torch.cat([x, val * torch.ones(*pad_size, dtype=x.dtype)], dim=0)
 
     def __call__(self, items):
         batch = default_data_collator(items)

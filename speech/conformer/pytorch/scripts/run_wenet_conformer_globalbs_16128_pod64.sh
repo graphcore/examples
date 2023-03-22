@@ -8,7 +8,7 @@ poprun
     --reset-partition=no  \
     --vipu-server-timeout 3000  \
     --vipu-server-host "$IPUOF_VIPU_API_HOST"  \
-    --vipu-cluster=$VIPU_CLUSTER_ID  \
+    --vipu-allocation=$VIPU_ALLOCATION_ID  \
     --vipu-partition=$PARTITION  \
     --num-replicas=16  \
     --ipus-per-replica=4  \

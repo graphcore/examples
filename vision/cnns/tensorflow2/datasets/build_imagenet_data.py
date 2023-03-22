@@ -99,7 +99,7 @@ import numpy as np
 import tensorflow as tf
 
 
-'''
+"""
 tf.app.flags.DEFINE_string('train_directory', '/tmp/',
                            'Training data directory')
 tf.app.flags.DEFINE_string('validation_directory', '/tmp/',
@@ -114,7 +114,7 @@ tf.app.flags.DEFINE_integer('validation_shards', 128,
 
 tf.app.flags.DEFINE_integer('num_threads', 8,
                             'Number of threads to preprocess the images.')
-'''
+"""
 
 # The labels file contains a list of valid labels are held in this file.
 # Assumes that the file contains entries as such:
@@ -151,7 +151,7 @@ tf.app.flags.DEFINE_integer('num_threads', 8,
 #
 #   <JPEG file name>, <xmin>, <ymin>, <xmax>, <ymax>
 #
-# Note that there might exist mulitple bounding box annotations associated
+# Note that there might exist multiple bounding box annotations associated
 # with an image file.
 # tf.app.flags.DEFINE_string('bounding_box_file',
 #                           './imagenet_2012_bounding_boxes.csv',
@@ -184,8 +184,7 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def _convert_to_example(filename, image_buffer, label, synset, human, bbox,
-                        height, width):
+def _convert_to_example(filename, image_buffer, label, synset, human, bbox, height, width):
     """Build an Example proto for an example.
 
     Args:
@@ -212,26 +211,31 @@ def _convert_to_example(filename, image_buffer, label, synset, human, bbox,
         [l.append(point) for l, point in zip([xmin, ymin, xmax, ymax], b)]
         # pylint: enable=expression-not-assigned
 
-    colorspace = 'RGB'
+    colorspace = "RGB"
     channels = 3
-    image_format = 'JPEG'
+    image_format = "JPEG"
 
-    example = tf.train.Example(features=tf.train.Features(feature={
-        'image/height': _int64_feature(height),
-        'image/width': _int64_feature(width),
-        'image/colorspace': _bytes_feature(colorspace.encode()),
-        'image/channels': _int64_feature(channels),
-        'image/class/label': _int64_feature(label),
-        'image/class/synset': _bytes_feature(synset.encode()),
-        'image/class/text': _bytes_feature(human.encode()),
-        'image/object/bbox/xmin': _float_feature(xmin),
-        'image/object/bbox/xmax': _float_feature(xmax),
-        'image/object/bbox/ymin': _float_feature(ymin),
-        'image/object/bbox/ymax': _float_feature(ymax),
-        'image/object/bbox/label': _int64_feature([label] * len(xmin)),
-        'image/format': _bytes_feature(image_format.encode()),
-        'image/filename': _bytes_feature(os.path.basename(filename).encode()),
-        'image/encoded': _bytes_feature(image_buffer)}))
+    example = tf.train.Example(
+        features=tf.train.Features(
+            feature={
+                "image/height": _int64_feature(height),
+                "image/width": _int64_feature(width),
+                "image/colorspace": _bytes_feature(colorspace.encode()),
+                "image/channels": _int64_feature(channels),
+                "image/class/label": _int64_feature(label),
+                "image/class/synset": _bytes_feature(synset.encode()),
+                "image/class/text": _bytes_feature(human.encode()),
+                "image/object/bbox/xmin": _float_feature(xmin),
+                "image/object/bbox/xmax": _float_feature(xmax),
+                "image/object/bbox/ymin": _float_feature(ymin),
+                "image/object/bbox/ymax": _float_feature(ymax),
+                "image/object/bbox/label": _int64_feature([label] * len(xmin)),
+                "image/format": _bytes_feature(image_format.encode()),
+                "image/filename": _bytes_feature(os.path.basename(filename).encode()),
+                "image/encoded": _bytes_feature(image_buffer),
+            }
+        )
+    )
     return example
 
 
@@ -240,11 +244,11 @@ class ImageCoder(object):
 
     def png_to_jpeg(self, image_data):
         image_data = tf.io.decode_png(image_data, channels=3)
-        return tf.io.encode_jpeg(image_data, format='rgb', quality=100)
+        return tf.io.encode_jpeg(image_data, format="rgb", quality=100)
 
     def cmyk_to_rgb(self, image_data):
         image_data = tf.io.decode_jpeg(image_data, channels=0)
-        return tf.io.encode_jpeg(image_data, format='rgb', quality=100)
+        return tf.io.encode_jpeg(image_data, format="rgb", quality=100)
 
     def decode_jpeg(self, image_data):
         image = tf.io.decode_jpeg(image_data, channels=3)
@@ -266,7 +270,7 @@ def _is_png(filename):
     """
     # File list from:
     # https://groups.google.com/forum/embed/?place=forum/torch7#!topic/torch7/fOSTXHIESSU
-    return 'n02105855_2933.JPEG' in filename
+    return "n02105855_2933.JPEG" in filename
 
 
 def _is_cmyk(filename):
@@ -280,18 +284,31 @@ def _is_cmyk(filename):
     """
     # File list from:
     # https://github.com/cytsai/ilsvrc-cmyk-image-list
-    blacklist = ['n01739381_1309.JPEG', 'n02077923_14822.JPEG',
-                 'n02447366_23489.JPEG', 'n02492035_15739.JPEG',
-                 'n02747177_10752.JPEG', 'n03018349_4028.JPEG',
-                 'n03062245_4620.JPEG', 'n03347037_9675.JPEG',
-                 'n03467068_12171.JPEG', 'n03529860_11437.JPEG',
-                 'n03544143_17228.JPEG', 'n03633091_5218.JPEG',
-                 'n03710637_5125.JPEG', 'n03961711_5286.JPEG',
-                 'n04033995_2932.JPEG', 'n04258138_17003.JPEG',
-                 'n04264628_27969.JPEG', 'n04336792_7448.JPEG',
-                 'n04371774_5854.JPEG', 'n04596742_4225.JPEG',
-                 'n07583066_647.JPEG', 'n13037406_4650.JPEG']
-    return filename.split('/')[-1] in blacklist
+    blacklist = [
+        "n01739381_1309.JPEG",
+        "n02077923_14822.JPEG",
+        "n02447366_23489.JPEG",
+        "n02492035_15739.JPEG",
+        "n02747177_10752.JPEG",
+        "n03018349_4028.JPEG",
+        "n03062245_4620.JPEG",
+        "n03347037_9675.JPEG",
+        "n03467068_12171.JPEG",
+        "n03529860_11437.JPEG",
+        "n03544143_17228.JPEG",
+        "n03633091_5218.JPEG",
+        "n03710637_5125.JPEG",
+        "n03961711_5286.JPEG",
+        "n04033995_2932.JPEG",
+        "n04258138_17003.JPEG",
+        "n04264628_27969.JPEG",
+        "n04336792_7448.JPEG",
+        "n04371774_5854.JPEG",
+        "n04596742_4225.JPEG",
+        "n07583066_647.JPEG",
+        "n13037406_4650.JPEG",
+    ]
+    return filename.split("/")[-1] in blacklist
 
 
 def _process_image(filename, coder):
@@ -306,17 +323,17 @@ def _process_image(filename, coder):
       width: integer, image width in pixels.
     """
     # Read the image file.
-    with tf.io.gfile.GFile(filename, 'rb') as f:
+    with tf.io.gfile.GFile(filename, "rb") as f:
         image_data = f.read()
 
     # Clean the dirty data.
     if _is_png(filename):
         # 1 image is a PNG.
-        print('Converting PNG to JPEG for %s' % filename)
+        print("Converting PNG to JPEG for %s" % filename)
         image_data = coder.png_to_jpeg(image_data)
     elif _is_cmyk(filename):
         # 22 JPEG images are in CMYK colorspace.
-        print('Converting CMYK to RGB for %s' % filename)
+        print("Converting CMYK to RGB for %s" % filename)
         image_data = coder.cmyk_to_rgb(image_data)
 
     # Decode the RGB JPEG.
@@ -331,8 +348,9 @@ def _process_image(filename, coder):
     return image_data, height, width
 
 
-def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
-                               synsets, labels, humans, bboxes, num_shards, output_directory):
+def _process_image_files_batch(
+    coder, thread_index, ranges, name, filenames, synsets, labels, humans, bboxes, num_shards, output_directory
+):
     """Processes and saves list of images as TFRecord in 1 thread.
 
     Args:
@@ -357,16 +375,14 @@ def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
     assert not num_shards % num_threads
     num_shards_per_batch = int(num_shards / num_threads)
 
-    shard_ranges = np.linspace(ranges[thread_index][0],
-                               ranges[thread_index][1],
-                               num_shards_per_batch + 1).astype(int)
+    shard_ranges = np.linspace(ranges[thread_index][0], ranges[thread_index][1], num_shards_per_batch + 1).astype(int)
     num_files_in_thread = ranges[thread_index][1] - ranges[thread_index][0]
 
     counter = 0
     for s in range(num_shards_per_batch):
         # Generate a sharded version of the file name, e.g. 'train-00002-of-00010'
         shard = thread_index * num_shards_per_batch + s
-        output_filename = '%s-%.5d-of-%.5d' % (name, shard, num_shards)
+        output_filename = "%s-%.5d-of-%.5d" % (name, shard, num_shards)
 
         output_file = os.path.join(output_directory, output_filename)
         writer = tf.io.TFRecordWriter(output_file)
@@ -382,30 +398,29 @@ def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
 
             image_buffer, height, width = _process_image(filename, coder)
 
-            example = _convert_to_example(filename, image_buffer, label,
-                                          synset, human, bbox,
-                                          height, width)
+            example = _convert_to_example(filename, image_buffer, label, synset, human, bbox, height, width)
             writer.write(example.SerializeToString())
             shard_counter += 1
             counter += 1
 
             if not counter % 1000:
-                print('%s [thread %d]: Processed %d of %d images in thread batch.' %
-                      (datetime.now(), thread_index, counter, num_files_in_thread))
+                print(
+                    "%s [thread %d]: Processed %d of %d images in thread batch."
+                    % (datetime.now(), thread_index, counter, num_files_in_thread)
+                )
                 sys.stdout.flush()
 
         writer.close()
-        print('%s [thread %d]: Wrote %d images to %s' %
-              (datetime.now(), thread_index, shard_counter, output_file))
+        print("%s [thread %d]: Wrote %d images to %s" % (datetime.now(), thread_index, shard_counter, output_file))
         sys.stdout.flush()
         shard_counter = 0
-    print('%s [thread %d]: Wrote %d images to %d shards.' %
-          (datetime.now(), thread_index, counter, num_files_in_thread))
+    print(
+        "%s [thread %d]: Wrote %d images to %d shards." % (datetime.now(), thread_index, counter, num_files_in_thread)
+    )
     sys.stdout.flush()
 
 
-def _process_image_files(name, filenames, synsets, labels, humans,
-                         bboxes, num_shards, num_threads, output_directory):
+def _process_image_files(name, filenames, synsets, labels, humans, bboxes, num_shards, num_threads, output_directory):
     """Process and save list of images as TFRecord of Example protos.
 
     Args:
@@ -432,7 +447,7 @@ def _process_image_files(name, filenames, synsets, labels, humans,
         ranges.append([spacing[i], spacing[i + 1]])
 
     # Launch a thread for each batch.
-    print('Launching %d threads for spacings: %s' % (num_threads, ranges))
+    print("Launching %d threads for spacings: %s" % (num_threads, ranges))
     sys.stdout.flush()
 
     # Create a mechanism for monitoring when all threads are finished.
@@ -443,16 +458,26 @@ def _process_image_files(name, filenames, synsets, labels, humans,
 
     threads = []
     for thread_index in range(len(ranges)):
-        args = (coder, thread_index, ranges, name, filenames,
-                synsets, labels, humans, bboxes, num_shards, output_directory)
+        args = (
+            coder,
+            thread_index,
+            ranges,
+            name,
+            filenames,
+            synsets,
+            labels,
+            humans,
+            bboxes,
+            num_shards,
+            output_directory,
+        )
         t = threading.Thread(target=_process_image_files_batch, args=args)
         t.start()
         threads.append(t)
 
     # Wait for all the threads to terminate.
     coord.join(threads)
-    print('%s: Finished writing all %d images in data set.' %
-          (datetime.now(), len(filenames)))
+    print("%s: Finished writing all %d images in data set." % (datetime.now(), len(filenames)))
     sys.stdout.flush()
 
 
@@ -490,7 +515,7 @@ def _find_image_files(data_dir):
       synsets: list of strings; each string is a unique WordNet ID.
       labels: list of integer; each integer identifies the ground truth.
     """
-    print('Determining list of input files and labels from %s.' % data_dir)
+    print("Determining list of input files and labels from %s." % data_dir)
     challenge_synsets = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
 
     labels = []
@@ -502,7 +527,7 @@ def _find_image_files(data_dir):
 
     # Construct the list of JPEG files and labels.
     for synset in challenge_synsets:
-        jpeg_file_path = '%s/%s/*.JPEG' % (data_dir, synset)
+        jpeg_file_path = "%s/%s/*.JPEG" % (data_dir, synset)
         matching_files = tf.io.gfile.glob(jpeg_file_path)
 
         labels.extend([label_index] * len(matching_files))
@@ -510,8 +535,7 @@ def _find_image_files(data_dir):
         filenames.extend(matching_files)
 
         if not label_index % 100:
-            print('Finished finding files in %d of %d classes.' % (
-                label_index, len(challenge_synsets)))
+            print("Finished finding files in %d of %d classes." % (label_index, len(challenge_synsets)))
         label_index += 1
 
     # Shuffle the ordering of all image files in order to guarantee
@@ -525,8 +549,7 @@ def _find_image_files(data_dir):
     synsets = [synsets[i] for i in shuffled_index]
     labels = [labels[i] for i in shuffled_index]
 
-    print('Found %d JPEG files across %d labels inside %s.' %
-          (len(filenames), len(challenge_synsets), data_dir))
+    print("Found %d JPEG files across %d labels inside %s." % (len(filenames), len(challenge_synsets), data_dir))
     return filenames, synsets, labels
 
 
@@ -543,7 +566,7 @@ def _find_human_readable_labels(synsets, synset_to_human):
     """
     humans = []
     for s in synsets:
-        assert s in synset_to_human, ('Failed to find: %s' % s)
+        assert s in synset_to_human, "Failed to find: %s" % s
         humans.append(synset_to_human[s])
     return humans
 
@@ -569,13 +592,11 @@ def _find_image_bounding_boxes(filenames, image_to_bboxes):
             num_image_bbox += 1
         else:
             bboxes.append([])
-    print('Found %d images with bboxes out of %d images' % (
-        num_image_bbox, len(filenames)))
+    print("Found %d images with bboxes out of %d images" % (num_image_bbox, len(filenames)))
     return bboxes
 
 
-def _process_dataset(name, directory, num_shards, num_threads, synset_to_human,
-                     image_to_bboxes, output_directory):
+def _process_dataset(name, directory, num_shards, num_threads, synset_to_human, image_to_bboxes, output_directory):
     """Process a complete data set and save it as a TFRecord.
 
     Args:
@@ -588,12 +609,11 @@ def _process_dataset(name, directory, num_shards, num_threads, synset_to_human,
         bounding boxes. This list contains 0+ bounding boxes.
     """
     if num_shards % num_threads:
-        raise ValueError(f'num_shards {num_shards} should be a multiple of num_threads {num_threads}')
+        raise ValueError(f"num_shards {num_shards} should be a multiple of num_threads {num_threads}")
     filenames, synsets, labels = _find_image_files(directory)
     humans = _find_human_readable_labels(synsets, synset_to_human)
     bboxes = _find_image_bounding_boxes(filenames, image_to_bboxes)
-    _process_image_files(name, filenames, synsets, labels,
-                         humans, bboxes, num_shards, num_threads, output_directory)
+    _process_image_files(name, filenames, synsets, labels, humans, bboxes, num_shards, num_threads, output_directory)
 
 
 def _build_synset_lookup(imagenet_metadata_file):
@@ -616,11 +636,11 @@ def _build_synset_lookup(imagenet_metadata_file):
       Dictionary of synset to human labels, such as:
         'n02119022' --> 'red fox, Vulpes vulpes'
     """
-    lines = tf.io.gfile.GFile(imagenet_metadata_file, 'r').readlines()
+    lines = tf.io.gfile.GFile(imagenet_metadata_file, "r").readlines()
     synset_to_human = {}
     for l in lines:
         if l:
-            parts = l.strip().split('\t')
+            parts = l.strip().split("\t")
             assert len(parts) == 2
             synset = parts[0]
             human = parts[1]
@@ -643,21 +663,21 @@ def _build_bounding_box_lookup(bounding_box_file):
 
           <JPEG file name>, <xmin>, <ymin>, <xmax>, <ymax>
 
-        Note that there might exist mulitple bounding box annotations associated
+        Note that there might exist multiple bounding box annotations associated
         with an image file. This file is the output of process_bounding_boxes.py.
 
     Returns:
       Dictionary mapping image file names to a list of bounding boxes. This list
       contains 0+ bounding boxes.
     """
-    lines = tf.io.gfile.GFile(bounding_box_file, 'r').readlines()
+    lines = tf.io.gfile.GFile(bounding_box_file, "r").readlines()
     images_to_bboxes = {}
     num_bbox = 0
     num_image = 0
     for l in lines:
         if l:
-            parts = l.split(',')
-            assert len(parts) == 5, ('Failed to parse: %s' % l)
+            parts = l.split(",")
+            assert len(parts) == 5, "Failed to parse: %s" % l
             filename = parts[0]
             xmin = float(parts[1])
             ymin = float(parts[2])
@@ -671,12 +691,11 @@ def _build_bounding_box_lookup(bounding_box_file):
             images_to_bboxes[filename].append(box)
             num_bbox += 1
 
-    print('Successfully read %d bounding boxes '
-          'across %d images.' % (num_bbox, num_image))
+    print("Successfully read %d bounding boxes " "across %d images." % (num_bbox, num_image))
     return images_to_bboxes
 
 
-'''
+"""
 def main(unused_argv):
   assert not FLAGS.train_shards % FLAGS.num_threads, (
       'Please make the FLAGS.num_threads commensurate with FLAGS.train_shards')
@@ -698,4 +717,4 @@ def main(unused_argv):
 
 if __name__ == '__main__':
   tf.app.run()
-'''
+"""

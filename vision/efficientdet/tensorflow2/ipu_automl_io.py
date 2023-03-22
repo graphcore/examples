@@ -30,15 +30,17 @@ from tf2 import label_util, postprocess
 from visualize import vis_utils
 
 
-def visualize_image(image,
-                    boxes,
-                    classes,
-                    scores,
-                    label_map=None,
-                    min_score_thresh=0.01,
-                    max_boxes_to_draw=1000,
-                    line_thickness=2,
-                    **kwargs):
+def visualize_image(
+    image,
+    boxes,
+    classes,
+    scores,
+    label_map=None,
+    min_score_thresh=0.01,
+    max_boxes_to_draw=1000,
+    line_thickness=2,
+    **kwargs,
+):
     """Visualizes a given image.
 
     Original implementation in tf2/inference.py
@@ -58,8 +60,8 @@ def visualize_image(image,
     Returns:
       output_image: an output image with annotated boxes and classes.
     """
-    label_map = label_util.get_label_map(label_map or 'coco')
-    category_index = {k: {'id': k, 'name': label_map[k]} for k in label_map}
+    label_map = label_util.get_label_map(label_map or "coco")
+    category_index = {k: {"id": k, "name": label_map[k]} for k in label_map}
     img = np.array(image)
     vis_utils.visualize_boxes_and_labels_on_image_array(
         img,
@@ -70,7 +72,8 @@ def visualize_image(image,
         min_score_thresh=min_score_thresh,
         max_boxes_to_draw=max_boxes_to_draw,
         line_thickness=line_thickness,
-        **kwargs)
+        **kwargs,
+    )
     return img
 
 
@@ -116,7 +119,7 @@ def preprocess_normalize_image(img: tf.Tensor, img_dtype: tf.DType):
     return img
 
 
-def postprocess_predictions(config, cls_outputs, box_outputs, scales, mode='global'):
+def postprocess_predictions(config, cls_outputs, box_outputs, scales, mode="global"):
     """Postprocess class and box predictions.
     Modified from the original implementation: keras/efficientdet_keras.py: EfficientDetModel._postprocessing."""
     if not mode:
@@ -126,13 +129,11 @@ def postprocess_predictions(config, cls_outputs, box_outputs, scales, mode='glob
     cls_outputs = [tf.cast(i, tf.float32) for i in cls_outputs]
     box_outputs = [tf.cast(i, tf.float32) for i in box_outputs]
 
-    if mode == 'global':
-        return postprocess.postprocess_global(config.as_dict(), cls_outputs,
-                                              box_outputs, scales)
-    if mode == 'per_class':
-        return postprocess.postprocess_per_class(config.as_dict(),
-                                                 cls_outputs, box_outputs, scales)
-    raise ValueError('Unsupported postprocess mode {}'.format(mode))
+    if mode == "global":
+        return postprocess.postprocess_global(config.as_dict(), cls_outputs, box_outputs, scales)
+    if mode == "per_class":
+        return postprocess.postprocess_per_class(config.as_dict(), cls_outputs, box_outputs, scales)
+    raise ValueError("Unsupported postprocess mode {}".format(mode))
 
 
 def visualise_detections(args, config, imgs, inputs, det_outputs, batch_num=0):
@@ -152,13 +153,13 @@ def visualise_detections(args, config, imgs, inputs, det_outputs, batch_num=0):
             scores[i].numpy()[:length],
             label_map=config.label_map,
             min_score_thresh=config.nms_configs.score_thresh,
-            max_boxes_to_draw=config.nms_configs.max_output_size)
+            max_boxes_to_draw=config.nms_configs.max_output_size,
+        )
 
-        def get_filename(x): return os.path.join(
-            args.output_dir, f"{args.model_name}_{config.image_size}_{x}_b{batch_num}_img{i}.jpg")
+        def get_filename(x):
+            return os.path.join(args.output_dir, f"{args.model_name}_{config.image_size}_{x}_b{batch_num}_img{i}.jpg")
 
         Image.fromarray(img.astype(np.uint8)).save(get_filename("output"))
         if inputs is not None:
-            Image.fromarray(inputs[i].numpy().astype(
-                np.uint8)).save(get_filename("input"))
+            Image.fromarray(inputs[i].numpy().astype(np.uint8)).save(get_filename("input"))
         print(f"Writing annotated image to {get_filename('output')}")

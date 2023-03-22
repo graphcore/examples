@@ -6,11 +6,11 @@ import poptorch
 
 
 def get_options(config):
-    '''
+    """
     Set ipu specific options for the model, see documentation:
     https://docs.graphcore.ai/en/latest/
-    '''
-    # Poptorch options
+    """
+    # PopTorch options
     opts = poptorch.Options()
 
     # Fix the random seeds
@@ -40,7 +40,7 @@ def get_options(config):
         .useOnChipStorage(config.state_onchip)
         # Shard optimizer state between replicas with zero-redundancy
         .useReplicatedTensorSharding(config.enable_rts)
-        )
+    )
 
     opts.Precision.halfFloatCasting(poptorch.HalfFloatCastingBehavior.HalfUpcastToFloat)
 
@@ -49,16 +49,11 @@ def get_options(config):
         opts.enableExecutableCaching(config.executable_cache_dir)
 
     # Use pipeline execution
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
 
     # Set available transient memory for matmuls and convolutions operations
-    mem_prop = {
-        f'IPU{i}': config.matmul_proportion[i]
-        for i in range(config.ipus_per_replica)
-    }
+    mem_prop = {f"IPU{i}": config.matmul_proportion[i] for i in range(config.ipus_per_replica)}
     opts.setAvailableMemoryProportion(mem_prop)
-
 
     # PopART options
     # Enable stochastic rounding (recommended for training with FP16)
@@ -69,25 +64,23 @@ def get_options(config):
     opts._Popart.set("enableGradientAccumulation", True)
     opts._Popart.set("enableOutlining", True)
     opts._Popart.set("outlineThreshold", 10.0)
-    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
-                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
+    opts._Popart.set(
+        "accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized)
+    )
     opts._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
     # Set the prefetch depth
     opts._Popart.set("defaultPrefetchBufferingDepth", 4)
-
 
     opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Pipeline))
     opts._Popart.set("decomposeGradSum", True)
     opts._Popart.set("batchSerializationSettings.batchSchedule", int(popart.BatchSerializationBatchSchedule.Isomorphic))
 
-
     # Half precision partials for matmuls and convolutions
     if config.enable_half_partials:
         opts._Popart.set("partialsTypeMatMuls", "half")
-        opts._Popart.set("convolutionOptions", {'partialsType': "half"})
+        opts._Popart.set("convolutionOptions", {"partialsType": "half"})
 
-    engine_options = {"target.syncReplicasIndependently": "true",
-                      "opt.maxComputeSetsPerLoweredCopy": "6"}
+    engine_options = {"target.syncReplicasIndependently": "true", "opt.maxComputeSetsPerLoweredCopy": "6"}
 
     opts._Popart.set("engineOptions", engine_options)
 

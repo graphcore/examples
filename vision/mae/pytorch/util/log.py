@@ -20,20 +20,21 @@ import wandb
 
 
 class WandbLog(object):
-
     def __init__(self, meters):
         self.meters = meters
 
     def log(self):
-        wandb.log({
-            m.name: m.val for m in self.meters
-        })
+        log_dict = {}
+        for m in self.meters:
+            log_dict[m.name] = m.val
+            log_dict[m.name + "_avg"] = m.avg
+        wandb.log(log_dict)
 
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
-    def __init__(self, name, fmt=':f'):
+    def __init__(self, name, fmt=":f"):
         self.name = name
         self.fmt = fmt
         self.reset()
@@ -51,7 +52,7 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
     def __str__(self):
-        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+        fmtstr = "{name} {val" + self.fmt + "} ({avg" + self.fmt + "})"
         return fmtstr.format(**self.__dict__)
 
 
@@ -64,13 +65,13 @@ class ProgressMeter(object):
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        info = '\t'.join(entries)
+        info = "\t".join(entries)
         return info
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
-        fmt = '{:' + str(num_digits) + 'd}'
-        return '[' + fmt + '/' + fmt.format(num_batches) + ']'
+        fmt = "{:" + str(num_digits) + "d}"
+        return "[" + fmt + "/" + fmt.format(num_batches) + "]"
 
 
 class Singleton(type):
@@ -78,9 +79,7 @@ class Singleton(type):
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
-            cls._instances[cls] = super(
-                Singleton, cls).__call__(
-                *args, **kwargs)
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
 
@@ -88,8 +87,7 @@ class Logger(metaclass=Singleton):
     # Predefined log level includes, from highest to lowest severity:
     # CRITICAL, ERROR, WARNING, INFO, DEBUG
 
-    def __init__(self, level='INFO', when='D', backCount=3,
-                 fmt='[%(asctime)s] %(message)s'):
+    def __init__(self, level="INFO", when="D", backCount=3, fmt="[%(asctime)s] %(message)s"):
         self.logger = logging.getLogger()
         format_str = logging.Formatter(fmt)
         self.logger.setLevel(logging.getLevelName(level))
@@ -101,4 +99,4 @@ class Logger(metaclass=Singleton):
         # self.logger.addHandler(fileHandler)
 
 
-logger = Logger(level='INFO').logger
+logger = Logger(level="INFO").logger

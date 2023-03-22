@@ -38,40 +38,27 @@ def test_read_ppi_dataset(mocker):
         "3": [0, 1, 1, 0, 0],
         "4": [1, 0, 0, 0, 0],
     }
-    mock_features = np.array([[1, 2, 3],
-                              [4, 5, 6],
-                              [7, 8, 9],
-                              [10, 11, 12],
-                              [13, 14, 15]])
+    mock_features = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]])
 
     mocker.patch("builtins.open", mocker.mock_open(read_data=""))
-    mocker.patch(
-        "json.load",
-        side_effect=(mock_graph, mock_id_map, mock_label_map)
-    )
+    mocker.patch("json.load", side_effect=(mock_graph, mock_id_map, mock_label_map))
     mocker.patch("numpy.load", return_value=mock_features)
 
-    expected_edges = np.array([[0, 4],
-                               [0, 3],
-                               [0, 1],
-                               [3, 4],
-                               [1, 2]])
-    expected_labels = np.array([[0., 0., 1., 0., 0.],
-                                [0., 0., 1., 1., 0.],
-                                [0., 0., 0., 0., 1.],
-                                [0., 1., 1., 0., 0.],
-                                [1., 0., 0., 0., 0.]])
-    expected_features = np.array([[1., 2., 3.],
-                                  [4., 5., 6.],
-                                  [7., 8., 9.],
-                                  [10., 11., 12.],
-                                  [13., 14., 15.]])
+    expected_edges = np.array([[0, 4], [0, 3], [0, 1], [3, 4], [1, 2]])
+    expected_labels = np.array(
+        [
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+        ]
+    )
+    expected_features = np.array(
+        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [10.0, 11.0, 12.0], [13.0, 14.0, 15.0]]
+    )
 
-    (num_data,
-     edges,
-     features,
-     labels,
-     dataset_splits) = load_graphsage_data(".", "ppi")
+    (num_data, edges, features, labels, dataset_splits) = load_graphsage_data(".", "ppi")
 
     np.testing.assert_array_equal(edges, expected_edges)
     np.testing.assert_array_equal(labels, expected_labels)
@@ -79,9 +66,7 @@ def test_read_ppi_dataset(mocker):
 
     assert num_data == len(features)
     assert num_data == len(labels)
-    assert num_data == (len(dataset_splits["train"]) +
-                        len(dataset_splits["validation"]) +
-                        len(dataset_splits["test"]))
+    assert num_data == (len(dataset_splits["train"]) + len(dataset_splits["validation"]) + len(dataset_splits["test"]))
 
 
 def test_read_reddit_dataset(mocker):
@@ -103,13 +88,7 @@ def test_read_reddit_dataset(mocker):
             {"source": 1, "target": 2},
         ],
     }
-    mock_label_map = {
-        "ee": 1,
-        "aa": 0,
-        "bb": 3,
-        "cc": 4,
-        "dd": 2
-    }
+    mock_label_map = {"ee": 1, "aa": 0, "bb": 3, "cc": 4, "dd": 2}
     mock_id_map = {
         "aa": 0,
         "cc": 1,
@@ -117,40 +96,19 @@ def test_read_reddit_dataset(mocker):
         "bb": 3,
         "ee": 2,
     }
-    mock_features = np.array([[1, 2, 3],
-                              [4, 5, 6],
-                              [7, 8, 9],
-                              [10, 11, 12],
-                              [13, 14, 15]])
+    mock_features = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]])
 
     mocker.patch("builtins.open", mocker.mock_open(read_data=""))
-    mocker.patch(
-        "json.load",
-        side_effect=(mock_graph, mock_id_map, mock_label_map)
-    )
+    mocker.patch("json.load", side_effect=(mock_graph, mock_id_map, mock_label_map))
     mocker.patch("numpy.load", return_value=mock_features)
 
-    expected_edges = np.array([[2, 4],
-                               [2, 1],
-                               [2, 0],
-                               [1, 4],
-                               [0, 3]])
-    expected_labels = np.array([[0.],
-                                [4.],
-                                [1.],
-                                [3.],
-                                [2.]])
-    expected_features = np.array([[1., 2., 3.],
-                                  [4., 5., 6.],
-                                  [7., 8., 9.],
-                                  [10., 11., 12.],
-                                  [13., 14., 15.]])
+    expected_edges = np.array([[2, 4], [2, 1], [2, 0], [1, 4], [0, 3]])
+    expected_labels = np.array([[0.0], [4.0], [1.0], [3.0], [2.0]])
+    expected_features = np.array(
+        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [10.0, 11.0, 12.0], [13.0, 14.0, 15.0]]
+    )
 
-    (num_data,
-     edges,
-     features,
-     labels,
-     dataset_splits) = load_graphsage_data(".", "reddit")
+    (num_data, edges, features, labels, dataset_splits) = load_graphsage_data(".", "reddit")
 
     np.testing.assert_array_equal(edges, expected_edges)
     np.testing.assert_array_equal(labels, expected_labels)
@@ -158,6 +116,4 @@ def test_read_reddit_dataset(mocker):
 
     assert num_data == len(features)
     assert num_data == len(labels)
-    assert num_data == (len(dataset_splits["train"]) +
-                        len(dataset_splits["validation"]) +
-                        len(dataset_splits["test"]))
+    assert num_data == (len(dataset_splits["train"]) + len(dataset_splits["validation"]) + len(dataset_splits["test"]))

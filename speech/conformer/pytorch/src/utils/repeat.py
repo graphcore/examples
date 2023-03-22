@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/transformer/repeat.py
 ]
-'''
+"""
 
 import torch
 

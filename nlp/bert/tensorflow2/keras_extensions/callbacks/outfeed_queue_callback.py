@@ -5,7 +5,6 @@ import tensorflow as tf
 
 
 class OutFeedQueueCallback(tf.keras.callbacks.Callback):
-
     def __init__(self, queue):
         self._queue = queue
 

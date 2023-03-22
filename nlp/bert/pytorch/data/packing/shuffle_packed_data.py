@@ -21,12 +21,14 @@ import math
 import argparse
 import psutil
 from concurrent.futures import ProcessPoolExecutor
+
 try:
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     import tensorflow as tf
 except ImportError:
-    raise ImportError("TensorFlow is required to generate data for this application. "
-                      "Please install with: 'pip install tensorflow'")
+    raise ImportError(
+        "TensorFlow is required to generate data for this application. " "Please install with: 'pip install tensorflow'"
+    )
 from pretraining_data import TFRecordPretrainingDataset, _WorkerInit
 from poptorch import DataLoader
 from poptorch.enums import DataLoaderMode
@@ -36,7 +38,8 @@ from args import parse_bert_args
 from tqdm import tqdm
 import numpy as np
 import torch.multiprocessing
-torch.multiprocessing.set_sharing_strategy('file_system')
+
+torch.multiprocessing.set_sharing_strategy("file_system")
 
 
 def create_tf_example(packed_sequence):
@@ -125,23 +128,37 @@ def write_to_file(args, executor, writer, packed_sequences):
 
 def get_dataloader(config, opts):
     dataset = TFRecordPretrainingDataset(config.input_files, packed_data=config.packed_data)
-    loader = DataLoader(opts,
-                        dataset,
-                        batch_size=config.micro_batch_size,
-                        num_workers=config.dataloader_workers,
-                        drop_last=False,
-                        worker_init_fn=_WorkerInit(config.random_seed),
-                        mode=DataLoaderMode.AsyncRebatched if config.async_dataloader else DataLoaderMode.Sync)
+    loader = DataLoader(
+        opts,
+        dataset,
+        batch_size=config.micro_batch_size,
+        num_workers=config.dataloader_workers,
+        drop_last=False,
+        worker_init_fn=_WorkerInit(config.random_seed),
+        mode=DataLoaderMode.AsyncRebatched if config.async_dataloader else DataLoaderMode.Sync,
+    )
     return loader
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input-files", help="A glob expression for the input files to read in and pack", required=True, type=str)
+    parser.add_argument(
+        "--input-files", help="A glob expression for the input files to read in and pack", required=True, type=str
+    )
     parser.add_argument("--output-dir", help="The destination folder for the output files", required=True)
     parser.add_argument("--random-seed", help="For shuffling the data", default=12345)
-    parser.add_argument("--num-workers", help="Max number of worker subprocesses to be used for converting sequences", default=16, type=int)
-    parser.add_argument("--chunks-per-worker", help="Approximate number of chunks to be handled by each conversion subprocess", default=8, type=int)
+    parser.add_argument(
+        "--num-workers",
+        help="Max number of worker subprocesses to be used for converting sequences",
+        default=16,
+        type=int,
+    )
+    parser.add_argument(
+        "--chunks-per-worker",
+        help="Approximate number of chunks to be handled by each conversion subprocess",
+        default=8,
+        type=int,
+    )
     args = parser.parse_args()
     random.seed(args.random_seed)
 

@@ -39,7 +39,7 @@ fi
 
 echo "Training on a single host using POD16."
 
-export IPUOF_VIPU_API_HOST=$server  
+export IPUOF_VIPU_API_HOST=$server
 export IPUOF_VIPU_API_PARTITION_ID=$partition
 time=$(date "+%Y%m%d%H%M%S")
 python main_pretrain.py --config vit_base_pod16 --data_path /path/to/imagenet1k 2>&1 | tee mae_pod16_$time.log

@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/transformer/attention.py
@@ -21,7 +21,7 @@ Main changes:
     remove the LegacyRelPositionMultiHeadedAttention class
     Modified MultiHeadedAttention's forward function to forward_attention, and modified masked_fill function
 
-'''
+"""
 
 
 import math
@@ -101,9 +101,7 @@ class MultiHeadedAttention(nn.Module):
 
         p_attn = self.dropout(self.attn)
         x = torch.matmul(p_attn, value)
-        x = (
-            x.transpose(1, 2).contiguous().view(n_batch, -1, self.h * self.d_k)
-        )
+        x = x.transpose(1, 2).contiguous().view(n_batch, -1, self.h * self.d_k)
         return self.linear_out(x)
 
     def forward(self, query, key, value, mask):
@@ -165,9 +163,7 @@ class RelPositionMultiHeadedAttention(MultiHeadedAttention):
         x_padded = torch.cat([zero_pad, x], dim=-1)
 
         x_padded = x_padded.view(*x.size()[:2], x.size(3) + 1, x.size(2))
-        x = x_padded[:, :, 1:].view(*x.size())[
-            :, :, :, : x.size(-1) // 2 + 1
-        ]
+        x = x_padded[:, :, 1:].view(*x.size())[:, :, :, : x.size(-1) // 2 + 1]
 
         if self.zero_triu:
             ones = torch.ones((x.size(2), x.size(3)))
@@ -205,8 +201,6 @@ class RelPositionMultiHeadedAttention(MultiHeadedAttention):
 
         matrix_ac = torch.matmul(q_with_bias_u, k.transpose(-2, -1))
         matrix_bd = torch.matmul(q_with_bias_v, p.transpose(-2, -1))
-        scores = (matrix_ac + matrix_bd) / math.sqrt(
-            self.d_k
-        )
+        scores = (matrix_ac + matrix_bd) / math.sqrt(self.d_k)
 
         return self.forward_attention(v, scores, mask)

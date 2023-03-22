@@ -1,0 +1,129 @@
+"gpt3_175B": &gpt3_175B
+  model:
+    sequence_length: 2048
+    layers: 96
+    hidden_size: 12288
+    dropout_prob: 0.1
+    attention:
+      heads: 96
+    embedding:
+      vocab_size: 50257
+      max_positional_length: 2048
+  training:
+    global_batch_size: 128
+    steps: 286000
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 5e-06
+        warmup_proportion: 0.005995
+      weight_decay: 0.0
+
+"gpt3_2-7B": &gpt3_2-7B
+  model:
+    sequence_length: 2048
+    layers: 32
+    hidden_size: 2560
+    dropout_prob: 0.1
+    attention:
+      heads: 32
+    embedding:
+      vocab_size: 50257
+      max_positional_length: 2048
+  training:
+    global_batch_size: 512
+    steps: 286000
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 5e-06
+        warmup_proportion: 0.005995
+      weight_decay: 0.0
+
+tiny: &tiny
+  model:
+    sequence_length: 8
+    embedding:
+      vocab_size: 128
+      max_positional_length: 8
+    hidden_size: 64
+    layers: 2
+    attention:
+      heads: 4
+  training:
+    global_batch_size: 16
+    steps: 100000
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.00001
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+
+test: &test  # BERT sized model
+  model:
+    sequence_length: 128
+    embedding:
+      vocab_size: 50257
+      max_positional_length: 128
+    hidden_size: 768
+    layers: 12
+    attention:
+      heads: 12
+  training:
+    global_batch_size: 32
+    steps: 100000
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.00001
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+
+# -------------------------
+
+
+# ------- Execution -------
+release:
+  "gpt3_175B_pod256":
+    <<: *gpt3_175B
+    execution:
+      micro_batch_size: 1
+      loss_scaling: 4096
+      io_tiles: 128
+      available_memory_proportion: [ 0.1 ]
+      attention_serialisation: 8
+      data_parallel: 4
+      tensor_parallel_1: 8
+      tensor_parallel_2: 8
+
+  "gpt3_2.7B_pod64":
+    <<: *gpt3_2-7B
+    execution:
+      micro_batch_size: 1
+      loss_scaling: 2048
+      io_tiles: 128
+      available_memory_proportion: [ 0.2 ]
+      data_parallel: 4
+      tensor_parallel_1: 4
+      tensor_parallel_2: 4
+
+  tiny:
+    <<: *tiny
+    execution:
+      io_tiles: 64
+      micro_batch_size: 1
+      attention_serialisation: 2
+      data_parallel: 2
+      tensor_parallel_1: 2
+      tensor_parallel_2: 2
+
+  test:
+    <<: *test
+    execution:
+      io_tiles: 64
+      micro_batch_size: 1
+      attention_serialisation: 2
+      data_parallel: 4
+      tensor_parallel_1: 2
+      tensor_parallel_2: 2

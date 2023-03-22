@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------------
-vit_base_pod16: 
+vit_base_pod16:
 
   # Execution
   half: True
@@ -19,7 +19,7 @@ vit_base_pod16:
   rebatched_worker_size: 1032
   norm_pix_loss: True
   resume: False
-  
+
 
   # Model
   model: mae_vit_base_patch16
@@ -41,7 +41,7 @@ vit_base_pod16:
 # ----------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------
-vit_base_pod64: 
+vit_base_pod64:
 
   # Execution
   half: True
@@ -61,7 +61,7 @@ vit_base_pod64:
   rebatched_worker_size: 1032
   norm_pix_loss: True
   resume: False
-  
+
 
   # Model
   model: mae_vit_base_patch16
@@ -83,7 +83,7 @@ vit_base_pod64:
 # ----------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------
-vit_base_finetune: 
+vit_base_finetune:
 
   # Execution
   half: True

@@ -1,9 +1,9 @@
 # YOLOv4-P5
 YOLOv4-P5 (object detection reference application), based on [this repository](https://github.com/WongKinYiu/ScaledYOLOv4), optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| Pytorch | Vision | YOLOv4-P5 | COCO 2017 | Object detection | ❌ | ✅ | [Scaled-YOLOv4: Scaling Cross Stage Partial Network](https://arxiv.org/abs/2011.08036) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | Vision | YOLOv4-P5 | COCO 2017 | Object detection | <p style="text-align: center;">❌ | <p style="text-align: center;">✅ <br> Min. 4 IPUs (POD4) required | [Scaled-YOLOv4: Scaling Cross Stage Partial Network](https://arxiv.org/abs/2011.08036) |
 
 
 ## Instructions summary
@@ -24,18 +24,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -49,7 +49,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -67,6 +67,8 @@ pip3 install -r requirements.txt
 make
 ```
 
+
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup
 
@@ -118,7 +120,7 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Custom inference
 
 ### Inference with pre-trained weights
 To download the pretrained weights, run the following commands:
@@ -142,7 +144,7 @@ python run.py
 ```
 `run.py` will use the default config defined in `configs/inference-yolov4p5.yaml` which can be overridden by various arguments (`python run.py --help` for more info)
 
-### Evalution
+### Evaluation
 
 To compute evaluation metrics run:
 ```bash
@@ -156,4 +158,4 @@ You can use the `--verbose` flag if you want to print the metrics per class. Her
 |  GPU  | 896        | FP16 | all     | 0.44997   | 0.7663 | 0.68663 | 0.49037     |
 |  IPU  | 896        | FP16 | all     | 0.45032   | 0.7674 | 0.68674 | 0.49159     |
 
-We generate the numbers for the GPU by re-running the Scaled-YOLOv4 repo code on an AWS instance. Please note that these numbers are slightly different from what they report in their repo. This is attributed to the `rect` parameter. In their inference, this is set to be `True`. The IPU currently can not support different sized images, and therefore, we set this to `False` in their evaluation in order to draw a fair comparison. In that regard, we do perform at par with SOTA. 
+We generate the numbers for the GPU by re-running the Scaled-YOLOv4 repo code on an AWS instance. Please note that these numbers are slightly different from what they report in their repo. This is attributed to the `rect` parameter. In their inference, this is set to be `True`. The IPU currently can not support different sized images, and therefore, we set this to `False` in their evaluation in order to draw a fair comparison. In that regard, we do perform at par with SOTA.

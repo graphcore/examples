@@ -41,7 +41,7 @@
             "warmup_frac": 0.28
         }
     },
-    "seed": 1984, 
+    "seed": 1984,
     "global_batches_per_log": 1,
     "enable_wandb": true,
     "wandb_tags": ["debugging", "pretraining"]

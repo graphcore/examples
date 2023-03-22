@@ -5,14 +5,12 @@ import math
 import torch
 import torch.nn.functional as F
 from torch import nn
-from transformers.models.distilbert.modeling_distilbert import \
-    MultiHeadSelfAttention
+from transformers.models.distilbert.modeling_distilbert import MultiHeadSelfAttention
 
 
 def fix_global_eps_layer_normal_forword(self, input: torch.Tensor) -> torch.Tensor:
     global_eps = 1e-6
-    return F.layer_norm(
-        input, self.normalized_shape, self.weight, self.bias, global_eps)
+    return F.layer_norm(input, self.normalized_shape, self.weight, self.bias, global_eps)
 
 
 def multi_head_self_attention_forward(self, query, key, value, mask, head_mask=None, output_attentions=False):

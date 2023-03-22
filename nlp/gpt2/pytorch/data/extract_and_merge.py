@@ -46,7 +46,7 @@ if __name__ == "__main__":
     xz_files = os.listdir(openwebtext_dir)
     p = multiprocessing.Pool(8)
     for i in range(0, len(xz_files), 1000):
-        p.apply_async(func=extract, args=(xz_files[i:i+1000],))
+        p.apply_async(func=extract, args=(xz_files[i : i + 1000],))
     p.close()
     p.join()
     print("merging files...")

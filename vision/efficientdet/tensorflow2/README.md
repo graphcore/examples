@@ -1,9 +1,9 @@
 # EfficientDet
 Efficient Object Detection, based on the [AutoML EfficientDet code](https://github.com/google/automl/tree/master/efficientdet), optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| TensorFlow2 | Vision | EfficientDet | N/A | Object detection | ❌ | ✅ | | ['EfficientDet: Scalable and Efficient Object Detection'](https://arxiv.org/abs/1911.09070) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| TensorFlow 2 | Vision | EfficientDet | N/A | Object detection | <p style="text-align: center;">❌ | <p style="text-align: center;">✅ <br> Min. 4 IPUs (POD4) required | ['EfficientDet: Scalable and Efficient Object Detection'](https://arxiv.org/abs/1911.09070) |
 
 ![EfficientDet](docs/efficientdet-model.jpg)
 Image reproduced from the above paper.
@@ -25,12 +25,12 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 ## Environment setup
 To prepare your environment, follow these steps:
@@ -43,7 +43,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -70,8 +70,10 @@ make
 ```
 
 
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
+
 ## Dataset setup
-There are no datasets required for running this inference example, any images can be used. 
+There are no datasets required for running this inference example, any images can be used.
 
 
 ## Running and benchmarking
@@ -93,7 +95,7 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom inference and other features
+## Custom inference
 
 ### Downloading weights and AutoML test image.
 
@@ -160,6 +162,9 @@ The `ipu_embedded_inference.py` script supports most of the arguments that can b
 
 The embedded application runtime is currently supported in TF1, so to use the Keras model from AutoML we use TF2 in compatibility mode.
 
+
+## Other features
+
 ### Input datasets
 There are several types of input dataset that have be configured for this application, which can be chosen using the `--dataset-type` flag.
 
@@ -184,7 +189,7 @@ To save the bounding boxes and class annotations to a file, use the `--output-pr
 
 ### Post-processing
 
-It is standard practice to run Non-Maximum Suppression (NMS) on the detections that come out of the model, as there are likely to be many overlapping bounding box candidates for the same class. The output tensors here reflect the 5 scales of the feature maps, the number of classes and the number of box candidate regions. These output tensors are relatively large; in the case of D0: 
+It is standard practice to run Non-Maximum Suppression (NMS) on the detections that come out of the model, as there are likely to be many overlapping bounding box candidates for the same class. The output tensors here reflect the 5 scales of the feature maps, the number of classes and the number of box candidate regions. These output tensors are relatively large; in the case of D0:
 
 ```
 (micro_batch_size, 64, 64, 810),  // Feature map 3 class scores per anchor
@@ -201,7 +206,7 @@ It is standard practice to run Non-Maximum Suppression (NMS) on the detections t
 
 In half-precision, this equates to a total size of 8.8 MB for batch-size 1. At 5.5GB/s bandwidth back to the host, via the gateway, this gives a total transmission latency of 3.1ms, against a compute time of about 1ms.
 
-We can reduce this cost substantially by performing NMS on the IPU, then only passing back valid bounding box candidates. Since the IPU requires the nunber of boxes to be static, we cap this at a sensible number (e.g. 100), and then our output tensors become:
+We can reduce this cost substantially by performing NMS on the IPU, then only passing back valid bounding box candidates. Since the IPU requires the number of boxes to be static, we cap this at a sensible number (e.g. 100), and then our output tensors become:
 
 ```
 (micro_batch_size, 100, 4),  // Bounding box coordinates

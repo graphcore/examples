@@ -44,7 +44,9 @@ def benchmark(inference_model, test_data, args):
             instance_info = f"[instance{args.popdist_rank + 1}/{args.popdist_size}]"
         else:
             instance_info = ""
-        logging.info(f"{instance_info} Throughput: {sample_size / elapsed_time} imgs/sec; Latency range: {min_latency}..{max_latency} ms")
+        logging.info(
+            f"{instance_info} Throughput: {sample_size / elapsed_time} imgs/sec; Latency range: {min_latency}..{max_latency} ms"
+        )
 
         if args.profile:
             return
@@ -83,7 +85,9 @@ def benchmark(inference_model, test_data, args):
     logging.info(f"\n\tdata_mode: {args.data}")
     logging.info(f"\n\tdata_type: {result.data.dtype}")
     logging.info(f"\n\tnum_ipus: {num_instances * args.replicas * (len(args.pipeline_splits) + 1)}")
-    logging.info(f"\n\tthroughput: {np.mean(throughputs)} samples/sec (mean) (min: {np.min(throughputs)}, max: {np.max(throughputs)}, std: {np.std(throughputs)})")
+    logging.info(
+        f"\n\tthroughput: {np.mean(throughputs)} samples/sec (mean) (min: {np.min(throughputs)}, max: {np.max(throughputs)}, std: {np.std(throughputs)})"
+    )
     logging.info(f"\n\tlatency avg: {avg_latency} ms (mean) (min: {min_latency}, max: {max_latency})")
     if args.data == "synthetic":
         logging.info(f"\n\tNOTE: Using synthetic data, ignore these latency values.")
@@ -91,33 +95,39 @@ def benchmark(inference_model, test_data, args):
 
 def parse_arguments():
     common_parser = utils.get_common_parser()
-    parser = argparse.ArgumentParser(parents=[common_parser], description='CNN inference in PopTorch')
-    parser.add_argument('--data', choices=['real', 'synthetic', 'generated'], default='real', help="Choose data")
-    parser.add_argument('--precision', choices=['16.16', '32.32'], default='16.16', help="Precision of Ops(weights/activations/gradients) and Master data types: 16.16, 32.32")
-    parser.add_argument('--random-weights', action='store_true', help="When true, weights of the model are initialized randomly")
+    parser = argparse.ArgumentParser(parents=[common_parser], description="CNN inference in PopTorch")
+    parser.add_argument("--data", choices=["real", "synthetic", "generated"], default="real", help="Choose data")
+    parser.add_argument(
+        "--precision",
+        choices=["16.16", "32.32"],
+        default="16.16",
+        help="Precision of Ops(weights/activations/gradients) and Master data types: 16.16, 32.32",
+    )
+    parser.add_argument(
+        "--random-weights", action="store_true", help="When true, weights of the model are initialized randomly"
+    )
     args = utils.parse_with_config(parser, Path(__file__).parent.absolute().joinpath("configs.yml"))
-    if args.eight_bit_io and args.normalization_location == 'host':
+    if args.eight_bit_io and args.normalization_location == "host":
         logging.warning("for eight-bit input, please use IPU-side normalisation, setting normalisation to IPU")
-        args.normalization_location = 'ipu'
+        args.normalization_location = "ipu"
     utils.handle_distributed_settings(args)
     return args
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_arguments()
     utils.Logger.setup_logging_folder(args)
     if args.use_popdist:
-        opts = popdist.poptorch.Options(
-            ipus_per_replica=len(args.pipeline_splits) + 1)
+        opts = popdist.poptorch.Options(ipus_per_replica=len(args.pipeline_splits) + 1)
     else:
         opts = poptorch.Options()
         opts.replicationFactor(args.replicas)
     opts.deviceIterations(args.device_iterations)
 
-    dataloader = datasets.get_data(
-        args, opts, train=False, async_dataloader=False)
+    dataloader = datasets.get_data(args, opts, train=False, async_dataloader=False)
     model = models.get_model(
-        args, datasets.datasets_info[args.data], pretrained=not args.random_weights, inference_mode=True)
+        args, datasets.datasets_info[args.data], pretrained=not args.random_weights, inference_mode=True
+    )
 
     opts = utils.inference_settings(args, copy.deepcopy(opts))
     inference_model = poptorch.inferenceModel(model, opts)

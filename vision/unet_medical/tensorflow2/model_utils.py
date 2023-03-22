@@ -19,7 +19,7 @@ from CentralCropIpu import CentralCropIpu
 
 
 def crop(inputs, output_size, nb_ipus_per_replica):
-    """ Perform a central crop"""
+    """Perform a central crop"""
     if nb_ipus_per_replica > 1:
         # Used in pipelined model on multiple IPUs to reduce the activation size to transfer between IPUs
         cropped = CentralCropIpu(output_size)(inputs)
@@ -30,20 +30,20 @@ def crop(inputs, output_size, nb_ipus_per_replica):
 
 
 def double_conv_layer(filter_size, x, dtype, name):
-    x = Conv2D(filter_size, 3, activation='relu',
-               kernel_initializer='he_normal', dtype=dtype, name=name+'_conv_0')(x)
-    x = Conv2D(filter_size, 3, activation='relu',
-               kernel_initializer='he_normal', dtype=dtype, name=name+'_conv_1')(x)
+    x = Conv2D(filter_size, 3, activation="relu", kernel_initializer="he_normal", dtype=dtype, name=name + "_conv_0")(x)
+    x = Conv2D(filter_size, 3, activation="relu", kernel_initializer="he_normal", dtype=dtype, name=name + "_conv_1")(x)
     return x
 
 
 def up_conv(filter_size, x, name):
-    x = Conv2DTranspose(filters=filter_size,
-                        kernel_size=(2, 2),
-                        strides=(2, 2),
-                        padding='same',
-                        activation=tf.nn.relu,
-                        name=name+'_transpose')(x)
+    x = Conv2DTranspose(
+        filters=filter_size,
+        kernel_size=(2, 2),
+        strides=(2, 2),
+        padding="same",
+        activation=tf.nn.relu,
+        name=name + "_transpose",
+    )(x)
     return x
 
 
@@ -78,12 +78,16 @@ def get_pipeline_stage_options(available_memory_proportion, nb_stages):
         return None
     elif len_amp != nb_stages:
         raise ValueError(
-            f"The number of available memory proportion values ({len_amp}) needs to be the same as the number of pipeline stages ({nb_stages})")
+            f"The number of available memory proportion values ({len_amp}) needs to be the same as the number of pipeline stages ({nb_stages})"
+        )
     else:
         options = []
         for amp in available_memory_proportion:
-            options.append(ipu.pipelining_ops.PipelineStageOptions({"availableMemoryProportion": str(amp)},
-                                                                   {"availableMemoryProportion": str(amp)}))
+            options.append(
+                ipu.pipelining_ops.PipelineStageOptions(
+                    {"availableMemoryProportion": str(amp)}, {"availableMemoryProportion": str(amp)}
+                )
+            )
         return options
 
 
@@ -99,9 +103,11 @@ def set_pipeline_options(model, args):
     # We assume one stage per IPU in this example
     options = get_pipeline_stage_options(args.available_memory_proportion, nb_stages=args.nb_ipus_per_replica)
     pipeline_scheduler = get_pipeline_scheduler(args.pipeline_scheduler)
-    model.set_pipelining_options(gradient_accumulation_steps_per_replica=args.gradient_accumulation_count,
-                                 recomputation_mode=ipu.ops.pipelining_ops.RecomputationMode.Auto,
-                                 pipeline_schedule=pipeline_scheduler,
-                                 forward_propagation_stages_poplar_options=options,
-                                 backward_propagation_stages_poplar_options=options,
-                                 offload_weight_update_variables=False)
+    model.set_pipelining_options(
+        gradient_accumulation_steps_per_replica=args.gradient_accumulation_count,
+        recomputation_mode=ipu.ops.pipelining_ops.RecomputationMode.Auto,
+        pipeline_schedule=pipeline_scheduler,
+        forward_propagation_stages_poplar_options=options,
+        backward_propagation_stages_poplar_options=options,
+        offload_weight_update_variables=False,
+    )

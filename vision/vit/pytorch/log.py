@@ -23,8 +23,7 @@ class Singleton(type):
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
-            cls._instances[cls] = super(
-                Singleton, cls).__call__(*args, **kwargs)
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
 
@@ -32,8 +31,7 @@ class Logger(metaclass=Singleton):
     # Predefined log level includes, from highest to lowest severity:
     # CRITICAL, ERROR, WARNING, INFO, DEBUG
 
-    def __init__(self, level='INFO', when='D', backCount=3,
-                 fmt='[%(asctime)s] %(message)s'):
+    def __init__(self, level="INFO", when="D", backCount=3, fmt="[%(asctime)s] %(message)s"):
         self.logger = logging.getLogger()
         format_str = logging.Formatter(fmt)
         self.logger.setLevel(logging.getLevelName(level))
@@ -42,4 +40,4 @@ class Logger(metaclass=Singleton):
         self.logger.addHandler(sh)
 
 
-logger = Logger(level='INFO').logger
+logger = Logger(level="INFO").logger

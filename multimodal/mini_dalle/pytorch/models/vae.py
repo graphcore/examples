@@ -27,8 +27,8 @@ from einops import rearrange
 
 CACHE_PATH = os.path.expanduser("~/.cache/dalle")
 
-VQGAN_VAE_PATH = 'https://heibox.uni-heidelberg.de/f/140747ba53464f49b476/?dl=1'
-VQGAN_VAE_CONFIG_PATH = 'https://heibox.uni-heidelberg.de/f/6ecf2af6c658432c8298/?dl=1'
+VQGAN_VAE_PATH = "https://heibox.uni-heidelberg.de/f/140747ba53464f49b476/?dl=1"
+VQGAN_VAE_CONFIG_PATH = "https://heibox.uni-heidelberg.de/f/6ecf2af6c658432c8298/?dl=1"
 
 # helpers methods
 
@@ -42,24 +42,24 @@ def default(val, d):
 
 
 def load_model(path):
-    with open(path, 'rb') as f:
-        return torch.load(f, map_location = torch.device('cpu'))
+    with open(path, "rb") as f:
+        return torch.load(f, map_location=torch.device("cpu"))
 
 
-def map_pixels(x, eps = 0.1):
+def map_pixels(x, eps=0.1):
     return (1 - 2 * eps) * x + eps
 
 
-def unmap_pixels(x, eps = 0.1):
+def unmap_pixels(x, eps=0.1):
     return torch.clamp((x - eps) / (1 - 2 * eps), 0, 1)
 
 
-def download(url, filename = None, root = CACHE_PATH):
-    os.makedirs(root, exist_ok = True)
+def download(url, filename=None, root=CACHE_PATH):
+    os.makedirs(root, exist_ok=True)
     filename = default(filename, os.path.basename(url))
 
     download_target = os.path.join(root, filename)
-    download_target_tmp = os.path.join(root, f'tmp.{filename}')
+    download_target_tmp = os.path.join(root, f"tmp.{filename}")
 
     if os.path.exists(download_target) and not os.path.isfile(download_target):
         raise RuntimeError(f"{download_target} exists and is not a regular file")
@@ -79,6 +79,7 @@ def download(url, filename = None, root = CACHE_PATH):
 
     os.rename(download_target_tmp, download_target)
     return download_target
+
 
 # VQGAN from Taming Transformers paper
 # https://arxiv.org/abs/2012.09841
@@ -103,8 +104,8 @@ class VQGanVAE(nn.Module):
         super().__init__()
 
         if vqgan_model_path is None:
-            model_filename = 'vqgan.1024.model.ckpt'
-            config_filename = 'vqgan.1024.config.yml'
+            model_filename = "vqgan.1024.model.ckpt"
+            config_filename = "vqgan.1024.config.yml"
             download(VQGAN_VAE_CONFIG_PATH, config_filename)
             download(VQGAN_VAE_PATH, model_filename)
             config_path = str(Path(CACHE_PATH) / config_filename)
@@ -117,8 +118,8 @@ class VQGanVAE(nn.Module):
 
         model = instantiate_from_config(config["model"])
 
-        state = torch.load(model_path, map_location = 'cpu')['state_dict']
-        model.load_state_dict(state, strict = False)
+        state = torch.load(model_path, map_location="cpu")["state_dict"]
+        model.load_state_dict(state, strict=False)
 
         print(f"Loaded VQGAN from {model_path} and {config_path}")
 
@@ -126,7 +127,7 @@ class VQGanVAE(nn.Module):
 
         # f as used in https://github.com/CompVis/taming-transformers#overview-of-pretrained-models
         f = config.model.params.ddconfig.resolution / config.model.params.ddconfig.attn_resolutions[0]
-        self.num_layers = int(log(f)/log(2))
+        self.num_layers = int(log(f) / log(2))
         self.image_size = 256
         self.num_tokens = config.model.params.n_embed
         self.is_gumbel = isinstance(self.model, GumbelVQ)
@@ -137,19 +138,22 @@ class VQGanVAE(nn.Module):
         img = (2 * img) - 1
         _, _, [_, _, indices] = self.model.encode(img)
         if self.is_gumbel:
-            return rearrange(indices, 'b h w -> b (h w)', b=b)
-        return rearrange(indices, '(b n) -> b n', b = b)
+            return rearrange(indices, "b h w -> b (h w)", b=b)
+        return rearrange(indices, "(b n) -> b n", b=b)
 
     def decode(self, img_seq):
         b, n = img_seq.shape
-        one_hot_indices = F.one_hot(img_seq, num_classes = self.num_tokens).float()
-        z = one_hot_indices @ self.model.quantize.embed.weight if self.is_gumbel \
+        one_hot_indices = F.one_hot(img_seq, num_classes=self.num_tokens).float()
+        z = (
+            one_hot_indices @ self.model.quantize.embed.weight
+            if self.is_gumbel
             else (one_hot_indices @ self.model.quantize.embedding.weight)
+        )
 
-        z = rearrange(z, 'b (h w) c -> b c h w', h = int(sqrt(n)))
+        z = rearrange(z, "b (h w) c -> b c h w", h=int(sqrt(n)))
         img = self.model.decode(z)
 
-        img = (img.clamp(-1., 1.) + 1) * 0.5
+        img = (img.clamp(-1.0, 1.0) + 1) * 0.5
         return img
 
     def forward(self, img):

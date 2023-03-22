@@ -26,11 +26,9 @@
 # *****************************************************************************
 
 
-
 import torch
 
-from fastpitch.data_function import (TextMelAliCollate, TextMelAliLoader,
-                                     batch_to_gpu as batch_to_gpu_fastpitch)
+from fastpitch.data_function import TextMelAliCollate, TextMelAliLoader, batch_to_gpu as batch_to_gpu_fastpitch
 from tacotron2.data_function import batch_to_gpu as batch_to_gpu_tacotron2
 from tacotron2.data_function import TextMelCollate, TextMelLoader
 from waveglow.data_function import batch_to_gpu as batch_to_gpu_waveglow
@@ -38,18 +36,20 @@ from waveglow.data_function import MelAudioLoader
 
 
 def get_collate_function(model_name):
-    return {'Tacotron2': lambda _: TextMelCollate(n_frames_per_step=1),
-            'WaveGlow': lambda _: torch.utils.data.dataloader.default_collate,
-            'FastPitch': TextMelAliCollate}[model_name]()
+    return {
+        "Tacotron2": lambda _: TextMelCollate(n_frames_per_step=1),
+        "WaveGlow": lambda _: torch.utils.data.dataloader.default_collate,
+        "FastPitch": TextMelAliCollate,
+    }[model_name]()
 
 
 def get_data_loader(model_name, **args):
-    return {'Tacotron2': TextMelLoader,
-            'WaveGlow': MelAudioLoader,
-            'FastPitch': TextMelAliLoader}[model_name](**args)
+    return {"Tacotron2": TextMelLoader, "WaveGlow": MelAudioLoader, "FastPitch": TextMelAliLoader}[model_name](**args)
 
 
 def get_batch_to_gpu(model_name):
-    return {'Tacotron2': batch_to_gpu_tacotron2,
-            'WaveGlow': batch_to_gpu_waveglow,
-            'FastPitch': batch_to_gpu_fastpitch}[model_name]
+    return {
+        "Tacotron2": batch_to_gpu_tacotron2,
+        "WaveGlow": batch_to_gpu_waveglow,
+        "FastPitch": batch_to_gpu_fastpitch,
+    }[model_name]

@@ -1,9 +1,9 @@
 # Neural Image Fields
 Neural image fields
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| TensorFlow2 | Vision | Neural Image Fields | Images (see below) |  | ✅ | ✅ | [NERF](https://arxiv.org/abs/2003.08934), [Fourier Features Let Networks Learn High Frequency Functions in Low Dimensional Domains](https://arxiv.org/abs/2006.10739) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| TensorFlow 2 | Vision | Neural Image Fields | Images (see below) |  | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required | [NERF](https://arxiv.org/abs/2003.08934), [Fourier Features Let Networks Learn High Frequency Functions in Low Dimensional Domains](https://arxiv.org/abs/2006.10739) |
 
 
 ## Instructions summary
@@ -25,18 +25,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -50,7 +50,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -70,6 +70,8 @@ sudo apt install $(<required_apt_packages.txt)
 pip3 install -r requirements.txt
 ```
 
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
+
 ## Running this example
 Train a neural radiance field from the provided example image, then reconstruct the image from the trained function approximator:
 
@@ -88,7 +90,7 @@ tensorboard --logdir ./logs
 ```
 
 
-##  Custom training/inference and other features
+##  Other features
 
 ### Graphcore: Neural Image Fields
 Neural image fields are a simplified version of neural radiance fields: [NERF](https://arxiv.org/abs/2003.08934).
@@ -98,7 +100,7 @@ a function approximator to learn a (relatively) low dimensaional function (x, y,
 In this example we instead learn an even lower dimensional function (u, v) -> (r, g, b) where (u,v) are input
 image coordinates and the output is the red, green, blue colour value at that (sub-)pixel coordinate: a trained NIF can
 therefore be used to reconstruct point samples from the original image. Although the function is simpler, the
-neural network architecture (MLP/relu-networks) and the embedding of low dimensional input co-ordinates into a
+neural network architecture (MLP/relu-networks) and the embedding of low dimensional input coordinates into a
 higher dimensional "position encoding" (using fourier features) is almost identical in both cases. With careful
 selection of hyper-parameters it is possible to use this as a form of neural image compression.
 
@@ -127,7 +129,7 @@ choosing the `--callback-period` appropriately.
 
 ### Data Parallel Training
 
-The program can also utilise 
+The program can also utilise
 [IPU Keras automatic data-parallelism](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/keras_tf2.html#automatic-data-parallelism)
 by setting `--replicas` to the number of IPUs you wish to use. Be sure to increase `--gradient-accumulation-count` accordingly (larger counts reduce the
 frequency of inter-IPU reduction of gradients to improve throughput).

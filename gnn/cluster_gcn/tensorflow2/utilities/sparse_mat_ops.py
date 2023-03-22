@@ -10,13 +10,11 @@ SPARSE_TENSOR_TYPES = (tf.SparseTensor, SparseKerasTensor)
 
 
 def assert_sparse_tensor(x):
-    assert isinstance(x, tf.sparse.SparseTensor), \
-        f"Expected type to be SparseTensor, but provided {type(x)}."
+    assert isinstance(x, tf.sparse.SparseTensor), f"Expected type to be SparseTensor, but provided {type(x)}."
 
 
 def assert_sparse_tuple(x):
-    assert isinstance(x, tuple), \
-        f"Expected type to be a tuple, but provided {type(x)}."
+    assert isinstance(x, tuple), f"Expected type to be a tuple, but provided {type(x)}."
     assert len(x) == 3, f"Expected 3 elements, but provided {len(x)}."
 
 
@@ -58,6 +56,7 @@ def values_(x):
 # to tf.SparseTensor by consumer function if needed.
 # ===========================================================
 
+
 def sparse_diag(diag_vec):
     """
     Returns sparse diagonal matrix in tuple form, with entries given by the input vector.
@@ -85,11 +84,7 @@ def sparse_diag_part(sp_x):
     mask = sp_x.indices[:, 0] == sp_x.indices[:, 1]
     diag_indices = sp_x.indices[mask][:, 0]
     diag_values = sp_x.values[mask]
-    return tf.scatter_nd(
-        tf.reshape(diag_indices, (-1, 1)),
-        diag_values,
-        (sp_x.shape[0],)
-    )
+    return tf.scatter_nd(tf.reshape(diag_indices, (-1, 1)), diag_values, (sp_x.shape[0],))
 
 
 def sparse_tuple_diag_part(sp_x):
@@ -114,6 +109,7 @@ def sparse_tuple_diag_part(sp_x):
 # represented as a SparseTuple.
 # ===========================================================
 
+
 def sparse_tuple_add_diag(sp_a, sp_diag):
     """
     Returns sp_a + sp_diag, where sp_a is a sparse matrix and
@@ -137,9 +133,7 @@ def sparse_tuple_add_diag(sp_a, sp_diag):
     # Scatter the values of the diagonal matrix in the positions of
     # the self-edges.
     diagvalues_ = tf.scatter_nd(
-        tf.expand_dims(diag_indices[:shape_(sp_diag)[0]], axis=1),
-        values_(sp_diag),
-        (num_edges,)
+        tf.expand_dims(diag_indices[: shape_(sp_diag)[0]], axis=1), values_(sp_diag), (num_edges,)
     )
     # Add the values of the diagonal matrix.
     new_values = values_(sp_a) + diagvalues_
@@ -179,15 +173,12 @@ def sparse_tuple_sum_rows(sp_a):
     in tuple form.
     """
     assert_sparse_tuple(sp_a)
-    return tf.math.unsorted_segment_sum(
-        values_(sp_a),
-        indices_(sp_a)[:, 0],
-        num_segments=shape_(sp_a)[0]
-    )
+    return tf.math.unsorted_segment_sum(values_(sp_a), indices_(sp_a)[:, 0], num_segments=shape_(sp_a)[0])
 
 
 # High level ops that switch between dense and sparse ops.
 # =================================================================
+
 
 def add(a, b):
     """Computes the sum of one matrix and a diagonal one."""

@@ -15,6 +15,7 @@ from tests.test_tools import get_image_and_label, prepare_model, get_cfg, post_p
 
 class TestLoss:
     """Tests for end-to-end training and infernece of Yolov4P5."""
+
     cfg = get_cfg()
 
     def test_loss_components(self):
@@ -22,9 +23,9 @@ class TestLoss:
         cfg.model.image_size = 128
         cfg.model.ipu = False
         loss = Yolov4_loss(cfg)
-        base_path = os.environ['PYTORCH_APPS_DETECTION_PATH']
-        predictions = torch.load(base_path + '/tests/yolo_loss_input/pred_1268_128.pt', map_location='cpu')
-        y = torch.load(base_path + '/tests/yolo_loss_input/target_1268_128.pt')
+        base_path = os.environ["PYTORCH_APPS_DETECTION_PATH"]
+        predictions = torch.load(base_path + "/tests/yolo_loss_input/pred_1268_128.pt", map_location="cpu")
+        y = torch.load(base_path + "/tests/yolo_loss_input/target_1268_128.pt")
 
         labels = torch.zeros(1, 1800, 5)
         labels[:, :11, 1:] = y[:, 2:]
@@ -37,8 +38,8 @@ class TestLoss:
         assert abs(lobj - 0.425976) <= 1e-3
         assert abs(total_loss - 0.576092) <= 1e-3
 
-        predictions = torch.load(base_path + '/tests/yolo_loss_input/pred_285_128.pt', map_location='cpu')
-        y = torch.load(base_path + '/tests/yolo_loss_input/target_285_128.pt')
+        predictions = torch.load(base_path + "/tests/yolo_loss_input/pred_285_128.pt", map_location="cpu")
+        y = torch.load(base_path + "/tests/yolo_loss_input/target_285_128.pt")
 
         labels = torch.zeros(1, 1800, 5)
         labels[:, :1, 1:] = y[:, 2:]
@@ -56,8 +57,12 @@ class TestLoss:
     def test_loss_standalone(self):
         cfg = get_cfg()
         cfg.inference.nms = False
-        cfg.model.mode = 'train'
-        cfg.model.pipeline_splits = ['backbone.cspdark3.csp.res_modules.0', 'backbone.cspdark5.downsample', 'neck.cspUp2.bneck_csp.conv2']
+        cfg.model.mode = "train"
+        cfg.model.pipeline_splits = [
+            "backbone.cspdark3.csp.res_modules.0",
+            "backbone.cspdark5.downsample",
+            "neck.cspUp2.bneck_csp.conv2",
+        ]
         cfg.ipuopts.gradient_accumulation = 7
         ipu_training_model = prepare_model(cfg)
 
@@ -68,9 +73,10 @@ class TestLoss:
         transformed_images = transformed_images.repeat([cfg.ipuopts.gradient_accumulation, 1, 1, 1])
         transformed_labels = transformed_labels.repeat([cfg.ipuopts.gradient_accumulation, 1, 1])
 
-        ipu_predictions, (ipu_total_loss, ipu_lbox, ipu_lobj, ipu_lcls) = ipu_training_model(transformed_images, transformed_labels)
+        ipu_predictions, (ipu_total_loss, ipu_lbox, ipu_lobj, ipu_lcls) = ipu_training_model(
+            transformed_images, transformed_labels
+        )
         cpu_total_loss, cpu_lbox, cpu_lobj, cpu_lcls = cpu_training_model.loss(ipu_predictions, transformed_labels)
-
 
         assert abs(cpu_total_loss - ipu_total_loss) <= 1e-3
         assert abs(cpu_lbox - ipu_lbox) <= 1e-3
@@ -80,7 +86,7 @@ class TestLoss:
     def test_weight_update(self):
         cfg = get_cfg()
         cfg.inference.nms = False
-        cfg.model.mode = 'train'
+        cfg.model.mode = "train"
         cfg.model.ipu = False
         cfg.model.image_size = 416
         cfg.model.max_nlabels_p3 = 500
@@ -112,4 +118,4 @@ class TestLoss:
 
         for k, model_1_val in training_model_1.state_dict().items():
             model_2_val = training_model_2.state_dict()[k]
-            assert(torch.abs(model_1_val - model_2_val).max() <= 6e-4)
+            assert torch.abs(model_1_val - model_2_val).max() <= 6e-4

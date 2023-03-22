@@ -26,13 +26,8 @@ from transformers.models.bert.modeling_tf_bert import BertConfig, shape_list
 
 class IpuTFBertSelfAttention(tf.keras.layers.Layer):
     """Modified TFBertSelfAttention object with the options of using merged QKV or disabled biases to improve memory."""
-    def __init__(
-            self,
-            config: BertConfig,
-            use_qkv_bias=False,
-            use_qkv_split=False,
-            **kwargs
-    ):
+
+    def __init__(self, config: BertConfig, use_qkv_bias=False, use_qkv_split=False, **kwargs):
         super().__init__(**kwargs)
 
         if config.hidden_size % config.num_attention_heads != 0:
@@ -57,7 +52,6 @@ class IpuTFBertSelfAttention(tf.keras.layers.Layer):
         # Transpose the tensor from [batch_size, seq_length, num_attention_heads, attention_head_size] to [batch_size, num_attention_heads, seq_length, attention_head_size]
         return tf.transpose(tensor, perm=[0, 2, 1, 3])
 
-
     def build(self, input_shape: tf.TensorShape):
         # Build these layers here so they are accessible when copying
         # the weights
@@ -65,21 +59,27 @@ class IpuTFBertSelfAttention(tf.keras.layers.Layer):
             with tf.name_scope("qkv"):
                 self.qkv_weight = self.add_weight(
                     name="qkv_weight",
-                    shape=[self.all_head_size, self.all_head_size*3],
+                    shape=[self.all_head_size, self.all_head_size * 3],
                     initializer=get_initializer(self.config.initializer_range),
                 )
         else:
             self.query = tf.keras.layers.Dense(
-                units=self.all_head_size, kernel_initializer=get_initializer(self.config.initializer_range),
-                use_bias=self.use_qkv_bias, name="query"
+                units=self.all_head_size,
+                kernel_initializer=get_initializer(self.config.initializer_range),
+                use_bias=self.use_qkv_bias,
+                name="query",
             )
             self.key = tf.keras.layers.Dense(
-                units=self.all_head_size, kernel_initializer=get_initializer(self.config.initializer_range),
-                use_bias=self.use_qkv_bias, name="key"
+                units=self.all_head_size,
+                kernel_initializer=get_initializer(self.config.initializer_range),
+                use_bias=self.use_qkv_bias,
+                name="key",
             )
             self.value = tf.keras.layers.Dense(
-                units=self.all_head_size, kernel_initializer=get_initializer(self.config.initializer_range),
-                use_bias=self.use_qkv_bias, name="value"
+                units=self.all_head_size,
+                kernel_initializer=get_initializer(self.config.initializer_range),
+                use_bias=self.use_qkv_bias,
+                name="value",
             )
             self.query.build(input_shape)
             self.key.build(input_shape)
@@ -119,7 +119,7 @@ class IpuTFBertSelfAttention(tf.keras.layers.Layer):
         # (batch size, num_heads, seq_len_q, seq_len_k)
         attention_scores = tf.matmul(query_layer, key_layer, transpose_b=True)
         dk = tf.cast(self.sqrt_att_head_size, dtype=attention_scores.dtype)
-        attention_scores = tf.multiply(attention_scores, 1.0/dk)
+        attention_scores = tf.multiply(attention_scores, 1.0 / dk)
 
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in TFBertModel call() function)

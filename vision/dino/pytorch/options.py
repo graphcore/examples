@@ -33,17 +33,14 @@ def alignment_options():
 def get_options(ga, pipeline=None, precision=Precision.FP32, replica=1):
     opts = poptorch.Options()
     ipu_list = [0] if pipeline is None else pipeline
-    mem_prop = {f'IPU{i}': 0.15 for i, _ in enumerate(ipu_list)}
+    mem_prop = {f"IPU{i}": 0.15 for i, _ in enumerate(ipu_list)}
     opts.randomSeed(42)
     opts.autoRoundNumIPUs(True)
     opts.Training.gradientAccumulation(ga)
-    opts.Training.accumulationAndReplicationReductionType(
-        poptorch.ReductionType.Sum)
+    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Sum)
     opts.deviceIterations(1)
     opts.replicationFactor(1)
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(
-            poptorch.AutoStage.SameAsIpu))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
     opts.setAvailableMemoryProportion(mem_prop)
     if precision is not Precision.FP32:
         opts.Precision.enableStochasticRounding(True)
@@ -54,17 +51,18 @@ def get_options(ga, pipeline=None, precision=Precision.FP32, replica=1):
 
 
 def train_options(
-        use_popdist=False,
-        ipu_per_replica=8,
-        pipeline=None,
-        ga=16,
-        replica=1,
-        di=1,
-        synthetic_data=False,
-        precision=Precision.FP32,
-        use_rts=True,
-        output_mode='final',
-        cachedir='./cachedir'):
+    use_popdist=False,
+    ipu_per_replica=8,
+    pipeline=None,
+    ga=16,
+    replica=1,
+    di=1,
+    synthetic_data=False,
+    precision=Precision.FP32,
+    use_rts=True,
+    output_mode="final",
+    cachedir="./cachedir",
+):
     if use_popdist:
         opts = popdist.poptorch.Options(ipu_per_replica)
     else:
@@ -72,17 +70,14 @@ def train_options(
         opts.replicationFactor(replica)
     opts.enableExecutableCaching(cachedir)
     ipu_list = [0] if pipeline is None else pipeline
-    mem_prop = {f'IPU{i}': 0.15 for i, _ in enumerate(ipu_list)}
+    mem_prop = {f"IPU{i}": 0.15 for i, _ in enumerate(ipu_list)}
     opts.autoRoundNumIPUs(True)
     opts.Training.gradientAccumulation(ga)
-    opts.Training.accumulationAndReplicationReductionType(
-        poptorch.ReductionType.Mean)
+    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
     opts.deviceIterations(di)
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(
-            poptorch.AutoStage.SameAsIpu))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
     opts.setAvailableMemoryProportion(mem_prop)
-    if output_mode == 'all':
+    if output_mode == "all":
         opts.outputMode(poptorch.OutputMode.All)
     opts.randomSeed(0)
     opts.Precision.enableFloatingPointExceptions(True)
@@ -94,8 +89,9 @@ def train_options(
     if use_rts:
         # rts
         opts.TensorLocations.setOptimizerLocation(
-            poptorch.TensorLocationSettings().useReplicatedTensorSharding(
-                True).minElementsForReplicatedTensorSharding(len(pipeline))
+            poptorch.TensorLocationSettings()
+            .useReplicatedTensorSharding(True)
+            .minElementsForReplicatedTensorSharding(len(pipeline))
         )
     # Enable synthetic random data generated on device (so with no I/O)
     if synthetic_data:

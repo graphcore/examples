@@ -29,9 +29,7 @@ def has_file_allowed_extension(filename: str, extensions: Union[str, Tuple[str, 
     Returns:
         bool: True if the filename ends with one of given extensions
     """
-    return filename.lower().endswith(
-        extensions if isinstance(
-            extensions, str) else tuple(extensions))
+    return filename.lower().endswith(extensions if isinstance(extensions, str) else tuple(extensions))
 
 
 def is_image_file(filename: str) -> bool:
@@ -48,8 +46,7 @@ def find_classes(directory: str) -> Tuple[List[str], Dict[str, int]]:
     """Finds the class folders in a dataset.
     See :class:`DatasetFolder` for details.
     """
-    classes = sorted(entry.name for entry in os.scandir(
-        directory) if entry.is_dir())
+    classes = sorted(entry.name for entry in os.scandir(directory) if entry.is_dir())
     if not classes:
         raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
 
@@ -58,10 +55,10 @@ def find_classes(directory: str) -> Tuple[List[str], Dict[str, int]]:
 
 
 def make_dataset(
-        directory: str,
-        class_to_idx: Optional[Dict[str, int]] = None,
-        extensions: Optional[Union[str, Tuple[str, ...]]] = None,
-        is_valid_file: Optional[Callable[[str], bool]] = None,
+    directory: str,
+    class_to_idx: Optional[Dict[str, int]] = None,
+    extensions: Optional[Union[str, Tuple[str, ...]]] = None,
+    is_valid_file: Optional[Callable[[str], bool]] = None,
 ) -> List[Tuple[str, int]]:
     """Generates a list of samples of a form (path_to_sample, class).
     See :class:`DatasetFolder` for details.
@@ -73,19 +70,17 @@ def make_dataset(
     if class_to_idx is None:
         _, class_to_idx = find_classes(directory)
     elif not class_to_idx:
-        raise ValueError(
-            "'class_to_index' must have at least one entry to collect any samples.")
+        raise ValueError("'class_to_index' must have at least one entry to collect any samples.")
 
     both_none = extensions is None and is_valid_file is None
     both_something = extensions is not None and is_valid_file is not None
     if both_none or both_something:
-        raise ValueError(
-            "Both extensions and is_valid_file cannot be None or not None at the same time")
+        raise ValueError("Both extensions and is_valid_file cannot be None or not None at the same time")
 
     if extensions is not None:
+
         def is_valid_file(x: str) -> bool:
-            return has_file_allowed_extension(
-                x, extensions)  # type: ignore[arg-type]
+            return has_file_allowed_extension(x, extensions)  # type: ignore[arg-type]
 
     is_valid_file = cast(Callable[[str], bool], is_valid_file)
 
@@ -141,18 +136,17 @@ class DatasetFolder(VisionDataset):
     """
 
     def __init__(
-            self,
-            root: str,
-            loader: Callable[[str], Any],
-            extensions: Optional[Tuple[str, ...]] = None,
-            transform: Optional[Callable] = None,
-            target_transform: Optional[Callable] = None,
-            is_valid_file: Optional[Callable[[str], bool]] = None,
+        self,
+        root: str,
+        loader: Callable[[str], Any],
+        extensions: Optional[Tuple[str, ...]] = None,
+        transform: Optional[Callable] = None,
+        target_transform: Optional[Callable] = None,
+        is_valid_file: Optional[Callable[[str], bool]] = None,
     ) -> None:
         super().__init__(root, transform=transform, target_transform=target_transform)
         classes, class_to_idx = self.find_classes(self.root)
-        samples = self.read_samples_with_cache(
-            class_to_idx, extensions, is_valid_file)
+        samples = self.read_samples_with_cache(class_to_idx, extensions, is_valid_file)
 
         self.length = len(samples)
 
@@ -162,11 +156,10 @@ class DatasetFolder(VisionDataset):
 
     def read_samples_with_cache(self, class_to_idx, extensions, is_valid_file):
         start_write_time = time.time()
-        samples = self.make_dataset(
-            self.root, class_to_idx, extensions, is_valid_file)
+        samples = self.make_dataset(self.root, class_to_idx, extensions, is_valid_file)
         print("Scan samples time: ", time.time() - start_write_time)
         print("Writing cache...")
-        with open("./dataset_cache", 'w') as f:
+        with open("./dataset_cache", "w") as f:
             json.dump(samples, f)
         print("Writing done")
         return samples
@@ -175,7 +168,7 @@ class DatasetFolder(VisionDataset):
         classes, class_to_idx = self.find_classes(self.root)
         print("Loading cache...")
         start_load_time = time.time()
-        f = open("./dataset_cache", 'r')
+        f = open("./dataset_cache", "r")
         samples = json.load(f)
         print("loading done, time:", time.time() - start_load_time)
         self.classes = classes
@@ -186,10 +179,10 @@ class DatasetFolder(VisionDataset):
 
     @staticmethod
     def make_dataset(
-            directory: str,
-            class_to_idx: Dict[str, int],
-            extensions: Optional[Tuple[str, ...]] = None,
-            is_valid_file: Optional[Callable[[str], bool]] = None,
+        directory: str,
+        class_to_idx: Dict[str, int],
+        extensions: Optional[Tuple[str, ...]] = None,
+        is_valid_file: Optional[Callable[[str], bool]] = None,
     ) -> List[Tuple[str, int]]:
         """Generates a list of samples of a form (path_to_sample, class).
         This can be overridden to e.g. read files from a compressed zip file instead of from the disk.
@@ -214,11 +207,7 @@ class DatasetFolder(VisionDataset):
             # find_classes() function, instead of using that of the find_classes() method, which
             # is potentially overridden and thus could have a different logic.
             raise ValueError("The class_to_idx parameter cannot be None.")
-        return make_dataset(
-            directory,
-            class_to_idx,
-            extensions=extensions,
-            is_valid_file=is_valid_file)
+        return make_dataset(directory, class_to_idx, extensions=extensions, is_valid_file=is_valid_file)
 
     def find_classes(self, directory: str) -> Tuple[List[str], Dict[str, int]]:
         """Find the class folders in a dataset structured as follows::
@@ -255,7 +244,7 @@ class DatasetFolder(VisionDataset):
         if not self.is_initialized:
             self.real_init()
         path, target = self.samples[index]
-        with open(path, 'rb') as jpeg_file:
+        with open(path, "rb") as jpeg_file:
             img = jpeg_file.read()
         if self.transform is not None:
             sample = self.transform(img)
@@ -268,16 +257,7 @@ class DatasetFolder(VisionDataset):
         return self.length
 
 
-IMG_EXTENSIONS = (
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".ppm",
-    ".bmp",
-    ".pgm",
-    ".tif",
-    ".tiff",
-    ".webp")
+IMG_EXTENSIONS = (".jpg", ".jpeg", ".png", ".ppm", ".bmp", ".pgm", ".tif", ".tiff", ".webp")
 
 
 def pil_loader(path: str) -> Image.Image:
@@ -334,12 +314,12 @@ class ImageFolder(DatasetFolder):
     """
 
     def __init__(
-            self,
-            root: str,
-            transform: Optional[Callable] = None,
-            target_transform: Optional[Callable] = None,
-            loader: Callable[[str], Any] = default_loader,
-            is_valid_file: Optional[Callable[[str], bool]] = None,
+        self,
+        root: str,
+        transform: Optional[Callable] = None,
+        target_transform: Optional[Callable] = None,
+        loader: Callable[[str], Any] = default_loader,
+        is_valid_file: Optional[Callable[[str], bool]] = None,
     ):
         super().__init__(
             root,

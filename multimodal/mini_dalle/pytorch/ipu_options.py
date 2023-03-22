@@ -20,15 +20,15 @@ import torch
 
 
 def get_options(config):
-    '''
+    """
     Set ipu specific options for the model, see documentation:
     https://docs.graphcore.ai/en/latest/
-    '''
+    """
 
     # Numpy options
     np.random.seed(config.random_seed)
 
-    # Poptorch options
+    # PopTorch options
     if config.use_popdist:
         # Use popdist.poptorch options if running in distributed mode
         opts = popdist.poptorch.Options(ipus_per_replica=config.ipus_per_replica)
@@ -60,24 +60,21 @@ def get_options(config):
         # Optimizer state lives on-chip
         .useOnChipStorage(not config.optimizer_state_offchip)
         # Shard optimizer state between replicas with zero-redundancy
-        .useReplicatedTensorSharding(config.enable_rts))
+        .useReplicatedTensorSharding(config.enable_rts)
+    )
 
     # Disable warnings of unexpected optimizer attributes
     opts.relaxOptimizerAttributesChecks()
 
     # Use Pipelined Execution
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
 
     # Compile offline (no IPUs required)
     if config.compile_only:
         opts.useOfflineIpuTarget()
 
     # Set available Transient Memory For matmuls and convolutions operations
-    mem_prop = {
-        f'IPU{i}': config.matmul_proportion[i]
-        for i in range(config.ipus_per_replica)
-    }
+    mem_prop = {f"IPU{i}": config.matmul_proportion[i] for i in range(config.ipus_per_replica)}
     opts.setAvailableMemoryProportion(mem_prop)
 
     # Enable stochastic rounding (recommended for training with FP16)
@@ -111,7 +108,7 @@ def get_options(config):
                 "autoReport.directory": config.profile_dir,
                 "profiler.format": "v3",
                 "autoReport.all": "true",
-            }
+            },
         }
     opts._Popart.set("engineOptions", engine_options)
 

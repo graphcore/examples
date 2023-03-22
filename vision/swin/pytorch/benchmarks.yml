@@ -13,44 +13,55 @@ common_options: &common_options
 
 config_options: &config_options
   requirements_path: requirements.txt
-  pre_run_commands: [make clean, make all] 
+  pre_run_commands: [make clean, make all]
 
 pytorch_swin_tiny_train_real_pod16:
   <<: [*common_options, *config_options]
-  description: Pytorch Sliding window transformer throughput benchmark using real data.
+  description: PyTorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
       --cfg SWIN_TINY
       --data-path $DATASETS_DIR/imagenet-raw-dataset/
-      --output ./output/swin_tiny_224/
+      --checkpoint-output-dir ./output/swin_tiny_224/
       --training-steps 10
 
 pytorch_swin_base_384_train_real_pod16:
   <<: [*common_options, *config_options]
-  description: Pytorch Sliding window transformer throughput benchmark using real data.
+  description: PyTorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
       --cfg SWIN_BASE_384
       --data-path $DATASETS_DIR/imagenet-raw-dataset/
-      --output ./output/swin_base_384/
+      --checkpoint-output-dir ./output/swin_base_384/
       --training-steps 10
 
 pytorch_swin_base_linear_train_real_pod16:
   <<: [*common_options, *config_options]
-  description: Pytorch Sliding window transformer throughput benchmark using real data.
+  description: PyTorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
       --cfg SWIN_BASE_LINEAR
       --data-path $DATASETS_DIR/imagenet-raw-dataset/
-      --output ./output/swin_base_linear/
+      --checkpoint-output-dir ./output/swin_base_linear/
       --training-steps 10
 
 pytorch_swin_large_train_real_pod16:
   <<: [*common_options, *config_options]
-  description: Pytorch Sliding window transformer throughput benchmark using real data.
+  description: PyTorch Sliding window transformer throughput benchmark using real data.
   cmd: >-
     python train_swin.py
       --cfg SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16
       --data-path $DATASETS_DIR/imagenet-raw-dataset/
-      --output ./output/swin_large/
+      --checkpoint-output-dir ./output/swin_large/
       --training-steps 10
+
+pytorch_swin_large_finetune_real_pod16_conv:
+  <<: [*common_options, *config_options]
+  description: PyTorch Sliding window transformer throughput benchmark using real data.
+  cmd: >-
+    python train_swin.py
+      --cfg SWIN_LARGE_224_22K_FINETUNE_1K_FP16_POD16
+      --data-path $DATASETS_DIR/imagenet-raw-dataset/
+      --checkpoint-output-dir ./output/swin_large/
+      --pretrained-model $DATASETS_DIR/ckpts/swin_large_patch4_window7_224_22k.pth
+      --wandb

@@ -15,7 +15,7 @@ from transformers.models.bert.modeling_tf_bert import (
     TFBertMainLayer,
     TFBertOutput,
     TFBertSelfAttention,
-    TFBertSelfOutput
+    TFBertSelfOutput,
 )
 
 from keras_extensions.model_transformations import (
@@ -24,7 +24,7 @@ from keras_extensions.model_transformations import (
     ModelExpansion,
     ModelOptimization,
     ModelOutlining,
-    ModelReplacing
+    ModelReplacing,
 )
 from model.ipu_self_output import IpuTFBertSelfOutput
 from model.ipu_custom_keras_layers import IpuDropoutCustom
@@ -55,19 +55,19 @@ def post_process_bert_input_layer(input_layer, layer_name, input_layers_of, inpu
     :param input_names_of: Dict of names of layers that are input to every layer ({layer_name: input layer names}}.
     :return: Symbolic tensor that should be the input of the layer being processed.
     """
-    if layer_name == 'gather_masked_outputs':
-        last_hidden_state = input_layer[0].__dict__['last_hidden_state']
+    if layer_name == "gather_masked_outputs":
+        last_hidden_state = input_layer[0].__dict__["last_hidden_state"]
         masked_lm_positions = input_layer[1]
         return last_hidden_state, masked_lm_positions
 
     if is_any_of_input_layers_of_class(input_layers_of[layer_name], TFBertMainLayer):
-        if layer_name in ['mlm___cls', 'predictions', 'qa_outputs']:
-            return input_layer.__dict__['last_hidden_state']
+        if layer_name in ["mlm___cls", "predictions", "qa_outputs"]:
+            return input_layer.__dict__["last_hidden_state"]
         else:
-            return input_layer.__dict__['pooler_output']
+            return input_layer.__dict__["pooler_output"]
 
     if is_any_of_input_layers_of_class(input_layers_of[layer_name], TFBertEncoder):
-        return input_layer.__dict__['last_hidden_state']
+        return input_layer.__dict__["last_hidden_state"]
 
     return input_layer
 
@@ -79,14 +79,7 @@ def copy_weights_layer_with_input_shape_hidden_states_func(layer, new_layer, bat
     new_layer.set_weights(layer.get_weights())
 
 
-def copy_lm_prediction_head_weights_func(
-        layer,
-        new_layer,
-        batch_size,
-        seq_length,
-        use_cls_layer,
-        use_prediction_bias
-):
+def copy_lm_prediction_head_weights_func(layer, new_layer, batch_size, seq_length, use_cls_layer, use_prediction_bias):
     # Copy weights if the input_shape of the layer is hidden_states:
     # [batch_size, sequence_length, hidden_size]
     # Note the order of the weights in TFBertLMPredictionHead is as follows,
@@ -147,19 +140,19 @@ def copy_self_attention_weights_func(layer, new_layer, use_qkv_bias, use_qkv_spl
 
 
 def convert_tf_bert_model(
-        hf_model,
-        dataset,
-        post_process_input_fn,
-        replace_layers=True,
-        use_outlining=True,
-        enable_recomputation=True,
-        embedding_serialization_factor=1,
-        rename_outputs=None,
-        use_prediction_bias=False,
-        use_cls_layer=False,
-        use_qkv_bias=False,
-        use_qkv_split=False,
-        use_projection_bias=False
+    hf_model,
+    dataset,
+    post_process_input_fn,
+    replace_layers=True,
+    use_outlining=True,
+    enable_recomputation=True,
+    embedding_serialization_factor=1,
+    rename_outputs=None,
+    use_prediction_bias=False,
+    use_cls_layer=False,
+    use_qkv_bias=False,
+    use_qkv_split=False,
+    use_projection_bias=False,
 ):
     """
     Convert original subclass model to a functional one and transform it to optimise performance.
@@ -182,19 +175,14 @@ def convert_tf_bert_model(
     """
     model = convert_to_functional(hf_model, dataset)
     model.summary(print_fn=logging.info)
-    batch_size, seq_length = model.get_layer('bert').input_shape
+    batch_size, seq_length = model.get_layer("bert").input_shape
 
     def copy_weights_layer_with_input_shape_hidden_states(layer, new_layer):
         copy_weights_layer_with_input_shape_hidden_states_func(layer, new_layer, batch_size, seq_length)
 
     def copy_lm_prediction_head_weights(layer, new_layer):
         copy_lm_prediction_head_weights_func(
-            layer,
-            new_layer,
-            batch_size,
-            seq_length,
-            use_cls_layer,
-            use_prediction_bias
+            layer, new_layer, batch_size, seq_length, use_cls_layer, use_prediction_bias
         )
 
     def copy_self_attention_weights(layer, new_layer):
@@ -204,51 +192,53 @@ def convert_tf_bert_model(
         copy_self_output_weights_func(layer, new_layer, batch_size, seq_length, use_projection_bias)
 
     to_replace = [
-        {TFBertEmbeddings: {
-            "new_class": IpuTFBertEmbeddings,
-            "new_params": {
-                "config": deepcopy(hf_model.config),
-                "serialization_factor": embedding_serialization_factor,
-            },
-            "copy_weights": True,
-            "copy_weights_func": copy_weights_layer_with_input_shape_hidden_states
-        }},
-        {TFBertLMPredictionHead: {
-            "new_class": IpuTFBertLMPredictionHead,
-            "new_params": {
-                "config": deepcopy(hf_model.config),
-                "input_embeddings": lambda: model.get_layer("bert").embeddings,
-                "use_cls_layer": use_cls_layer,
-                "use_prediction_bias": use_prediction_bias,
-                "serialization_factor": embedding_serialization_factor,
-            },
-            "copy_weights": True,
-            "copy_weights_func": copy_lm_prediction_head_weights
-        }},
-        {TFBertSelfAttention: {
-            "new_class": IpuTFBertSelfAttention,
-            "new_params": {
-                "config": deepcopy(hf_model.config),
-                "use_qkv_bias": use_qkv_bias,
-                "use_qkv_split": use_qkv_split
-            },
-            "copy_weights": True,
-            "copy_weights_func": copy_self_attention_weights
-        }},
-        {TFBertSelfOutput: {
-            "new_class": IpuTFBertSelfOutput,
-            "new_params": {
-                "config": deepcopy(hf_model.config),
-                "use_projection_bias": use_projection_bias
-            },
-            "copy_weights": True,
-            "copy_weights_func": copy_self_output_weights
-        }},
+        {
+            TFBertEmbeddings: {
+                "new_class": IpuTFBertEmbeddings,
+                "new_params": {
+                    "config": deepcopy(hf_model.config),
+                    "serialization_factor": embedding_serialization_factor,
+                },
+                "copy_weights": True,
+                "copy_weights_func": copy_weights_layer_with_input_shape_hidden_states,
+            }
+        },
+        {
+            TFBertLMPredictionHead: {
+                "new_class": IpuTFBertLMPredictionHead,
+                "new_params": {
+                    "config": deepcopy(hf_model.config),
+                    "input_embeddings": lambda: model.get_layer("bert").embeddings,
+                    "use_cls_layer": use_cls_layer,
+                    "use_prediction_bias": use_prediction_bias,
+                    "serialization_factor": embedding_serialization_factor,
+                },
+                "copy_weights": True,
+                "copy_weights_func": copy_lm_prediction_head_weights,
+            }
+        },
+        {
+            TFBertSelfAttention: {
+                "new_class": IpuTFBertSelfAttention,
+                "new_params": {
+                    "config": deepcopy(hf_model.config),
+                    "use_qkv_bias": use_qkv_bias,
+                    "use_qkv_split": use_qkv_split,
+                },
+                "copy_weights": True,
+                "copy_weights_func": copy_self_attention_weights,
+            }
+        },
+        {
+            TFBertSelfOutput: {
+                "new_class": IpuTFBertSelfOutput,
+                "new_params": {"config": deepcopy(hf_model.config), "use_projection_bias": use_projection_bias},
+                "copy_weights": True,
+                "copy_weights_func": copy_self_output_weights,
+            }
+        },
         {Dropout: {"new_class": IpuDropoutCustom}},
-        {LayerNormalization: {
-            "new_class": IpuLayerNormalization,
-            "copy_weights": True
-        }}
+        {LayerNormalization: {"new_class": IpuLayerNormalization, "copy_weights": True}},
     ]
 
     to_outline = {
@@ -273,14 +263,15 @@ def convert_tf_bert_model(
         # within the layers that have been replaced.
         for to_replace_dict in to_replace:
             logging.info(f"Attempting to replace layer: {to_replace_dict.keys()}")
-            model = ModelReplacing(to_replace_dict).process_model('all', model, post_process_input_fn)
+            model = ModelReplacing(to_replace_dict).process_model("all", model, post_process_input_fn)
     if use_outlining:
         logging.info(f"Attempting to outline layers: {to_outline}")
-        model = ModelOutlining(to_outline).process_model('all', model, post_process_input_fn)
+        model = ModelOutlining(to_outline).process_model("all", model, post_process_input_fn)
     if enable_recomputation:
         logging.info(f"Attempting to add recomputation checkpoints after layers: {add_recomputation_checkpoints_after}")
         model = ModelAddRecomputationCheckpoints(add_recomputation_checkpoints_after).process_model(
-            'all', model, post_process_input_fn)
+            "all", model, post_process_input_fn
+        )
     for layer_id in to_expand:
         logging.info(f"Attempting to expand layers: {to_expand}")
         model = ModelExpansion().process_model(layer_id, model, post_process_input_fn)

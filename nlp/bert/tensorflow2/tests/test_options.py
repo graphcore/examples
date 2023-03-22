@@ -3,13 +3,11 @@
 from argparse import Namespace
 
 from tests.utils import get_app_root_dir
-from utilities.argparser import (combine_config_file_with_args,
-                                 merge_args_with_options)
+from utilities.argparser import combine_config_file_with_args, merge_args_with_options
 from utilities.options import GLUEOptions, PretrainingOptions, SQuADOptions
 
 
 class TestConfigs:
-
     @classmethod
     def setup_class(cls):
         cls.app_dir = get_app_root_dir()
@@ -30,8 +28,7 @@ class TestConfigs:
 
         for config in pretrain_configs + test_pretrain_configs:
             print(f"Testing config: {config}")
-            combine_config_file_with_args(Namespace(config=config),
-                                          PretrainingOptions)
+            combine_config_file_with_args(Namespace(config=config), PretrainingOptions)
 
     def test_squad_configs_contain_required_options(self):
         match_str = "squad"
@@ -42,8 +39,7 @@ class TestConfigs:
 
         for config in squad_configs + test_squad_configs:
             print(f"Testing config: {config}")
-            combine_config_file_with_args(Namespace(config=config),
-                                          SQuADOptions)
+            combine_config_file_with_args(Namespace(config=config), SQuADOptions)
 
     def test_glue_configs_contain_required_options(self):
         match_str = "glue"
@@ -54,21 +50,12 @@ class TestConfigs:
 
         for config in glue_configs + test_glue_configs:
             print(f"Testing config: {config}")
-            combine_config_file_with_args(Namespace(config=config),
-                                          GLUEOptions)
+            combine_config_file_with_args(Namespace(config=config), GLUEOptions)
 
 
 def test_merge_args_with_options():
-    args = {"a.b.c": 5,
-            "d": 3,
-            "e.f": "."}
-    config = {"a": {"b": {"c": 6}},
-              "d": 4,
-              "e": {"g": 2},
-              "h": 3}
-    expected_merged_options = {"a": {"b": {"c": 5}},
-                               "d": 3,
-                               "e": {"g": 2, "f": "."},
-                               "h": 3}
+    args = {"a.b.c": 5, "d": 3, "e.f": "."}
+    config = {"a": {"b": {"c": 6}}, "d": 4, "e": {"g": 2}, "h": 3}
+    expected_merged_options = {"a": {"b": {"c": 5}}, "d": 3, "e": {"g": 2, "f": "."}, "h": 3}
     merged_options = merge_args_with_options(args, config)
     assert expected_merged_options == merged_options

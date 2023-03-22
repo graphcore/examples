@@ -13,129 +13,121 @@
 #include "TileMappingCommon.hpp"
 #include <string.h>
 
-SplitChannelInfo splitChannelByGroup(size_t   channel_cnt, 
-                                     size_t   group_size, 
-                                     size_t   num_tiles,
-                                     size_t   tiles_per_ipu)
-{
-  size_t               tile_idx_last    = 0xFFFFFFFF;
-  std::vector<size_t>  tile_start(num_tiles, 0);
-  std::vector<size_t>  tile_count(num_tiles, 0);
-  size_t               regroup_channel  = (channel_cnt / group_size);
-  if(((regroup_channel*group_size) != channel_cnt))
-  {
-    group_size      = 1;
+SplitChannelInfo splitChannelByGroup(size_t channel_cnt, size_t group_size,
+                                     size_t num_tiles, size_t tiles_per_ipu) {
+  size_t tile_idx_last = 0xFFFFFFFF;
+  std::vector<size_t> tile_start(num_tiles, 0);
+  std::vector<size_t> tile_count(num_tiles, 0);
+  size_t regroup_channel = (channel_cnt / group_size);
+  if (((regroup_channel * group_size) != channel_cnt)) {
+    group_size = 1;
     regroup_channel = channel_cnt;
-    for (size_t i = 0; i < channel_cnt; ++i)
-    {
-      size_t idx = ((unsigned long long)i * (unsigned long long)num_tiles) / ((unsigned long long)channel_cnt);
-      if(tile_idx_last != idx)
+    for (size_t i = 0; i < channel_cnt; ++i) {
+      size_t idx = ((unsigned long long)i * (unsigned long long)num_tiles) /
+                   ((unsigned long long)channel_cnt);
+      if (tile_idx_last != idx)
         tile_start[idx] = i;
       tile_count[idx] += 1;
-      tile_idx_last    = idx;
+      tile_idx_last = idx;
     }
-  }
-  else
-  {
-    size_t               ipu_num          = num_tiles / tiles_per_ipu;
-    size_t               channels_per_ipu = ((regroup_channel + (ipu_num - 1)) / ipu_num) * group_size;
-    std::vector<size_t>  ipuChannels(ipu_num, 0);
-    size_t               ipuReainChannels = channel_cnt;
-    for(size_t i = 0 ; i < ipu_num ; i ++){
-      ipuChannels[i]    = ipuReainChannels < channel_cnt ? ipuReainChannels : channels_per_ipu;
+  } else {
+    size_t ipu_num = num_tiles / tiles_per_ipu;
+    size_t channels_per_ipu =
+        ((regroup_channel + (ipu_num - 1)) / ipu_num) * group_size;
+    std::vector<size_t> ipuChannels(ipu_num, 0);
+    size_t ipuReainChannels = channel_cnt;
+    for (size_t i = 0; i < ipu_num; i++) {
+      ipuChannels[i] =
+          ipuReainChannels < channel_cnt ? ipuReainChannels : channels_per_ipu;
       ipuReainChannels -= ipuChannels[i];
     }
 
-    size_t  channel_ofs = 0;
-    for(size_t i = 0 ; i < ipu_num ; i ++){
-      size_t   channel_per_tile = (((ipuChannels[i]/group_size) + (tiles_per_ipu - 1)) / tiles_per_ipu) * group_size;
-      size_t   remain_channel   = ipuChannels[i];
-      size_t   tile_idx         = i * tiles_per_ipu;
-      while(remain_channel > 0)
-      {
+    size_t channel_ofs = 0;
+    for (size_t i = 0; i < ipu_num; i++) {
+      size_t channel_per_tile =
+          (((ipuChannels[i] / group_size) + (tiles_per_ipu - 1)) /
+           tiles_per_ipu) *
+          group_size;
+      size_t remain_channel = ipuChannels[i];
+      size_t tile_idx = i * tiles_per_ipu;
+      while (remain_channel > 0) {
         tile_start[tile_idx] = channel_ofs;
-        tile_count[tile_idx] = remain_channel < channel_per_tile ? remain_channel : channel_per_tile;
-        channel_ofs        += channel_per_tile;
-        remain_channel     -= tile_count[tile_idx];
-        tile_idx ++;
+        tile_count[tile_idx] = remain_channel < channel_per_tile
+                                   ? remain_channel
+                                   : channel_per_tile;
+        channel_ofs += channel_per_tile;
+        remain_channel -= tile_count[tile_idx];
+        tile_idx++;
       }
     }
   }
 
-  return { tile_start, tile_count, group_size };
+  return {tile_start, tile_count, group_size};
 }
 
-SplitWorker1DInfo  split_worker_1dvector(int channel_cnt, 
-                                         int inner_size, 
-                                         int work_num)
-{
-  std::vector<int>  splits_size(work_num, 0);
-  std::vector<int>  splits_ofs(work_num, 0);
+SplitWorker1DInfo split_worker_1dvector(int channel_cnt, int inner_size,
+                                        int work_num) {
+  std::vector<int> splits_size(work_num, 0);
+  std::vector<int> splits_ofs(work_num, 0);
 
-  int*  worker_start    = new int[work_num];
-  int*  worker_cnt      = new int[work_num];
-  int   worker_idx_last = -1;
+  int *worker_start = new int[work_num];
+  int *worker_cnt = new int[work_num];
+  int worker_idx_last = -1;
   memset(worker_start, 0, work_num * sizeof(int));
   memset(worker_cnt, 0, work_num * sizeof(int));
-  for (int i = 0; i < channel_cnt; ++i)
-  {
+  for (int i = 0; i < channel_cnt; ++i) {
     int idx = ((long long)i * (long long)work_num) / ((long long)channel_cnt);
-    if(worker_idx_last != idx)
+    if (worker_idx_last != idx)
       worker_start[idx] = i;
     worker_cnt[idx] += 1;
-    worker_idx_last   = idx;
+    worker_idx_last = idx;
   }
 
   int idx = 0;
-  for (int i = 0; i < work_num; ++i)
-  {
-    if(0 == worker_cnt[i])
+  for (int i = 0; i < work_num; ++i) {
+    if (0 == worker_cnt[i])
       continue;
 
     splits_size[idx] = worker_cnt[i];
-    splits_ofs[idx]  = worker_start[i] * inner_size;
+    splits_ofs[idx] = worker_start[i] * inner_size;
 
-    idx ++;
+    idx++;
   }
 
   delete[] worker_cnt;
   delete[] worker_start;
 
-  return { splits_size, splits_ofs };
+  return {splits_size, splits_ofs};
 }
 
-SplitWorkerInfo  split_worker_vector(int channel_cnt, 
-                                     int inner_size, 
-                                     int work_num)
-{
-  std::vector<int>  splits_size(work_num, 0);
-  std::vector<int>  splits_channel_ofs(work_num, 0);
-  std::vector<int>  splits_data_ofs(work_num, 0);
+SplitWorkerInfo split_worker_vector(int channel_cnt, int inner_size,
+                                    int work_num) {
+  std::vector<int> splits_size(work_num, 0);
+  std::vector<int> splits_channel_ofs(work_num, 0);
+  std::vector<int> splits_data_ofs(work_num, 0);
 
-  std::vector<int>  worker_start(work_num, 0);
-  std::vector<int>  worker_cnt(work_num, 0);
-  int               worker_idx_last = -1;
-  for (int i = 0; i < channel_cnt; ++i)
-  {
+  std::vector<int> worker_start(work_num, 0);
+  std::vector<int> worker_cnt(work_num, 0);
+  int worker_idx_last = -1;
+  for (int i = 0; i < channel_cnt; ++i) {
     int idx = ((long long)i * (long long)work_num) / ((long long)channel_cnt);
-    if(worker_idx_last != idx)
+    if (worker_idx_last != idx)
       worker_start[idx] = i;
     worker_cnt[idx] += 1;
-    worker_idx_last   = idx;
+    worker_idx_last = idx;
   }
 
   int idx = 0;
-  for (int i = 0; i < work_num; ++i)
-  {
-    if(0 == worker_cnt[i])
+  for (int i = 0; i < work_num; ++i) {
+    if (0 == worker_cnt[i])
       continue;
 
-    splits_size[idx]        = worker_cnt[i];
+    splits_size[idx] = worker_cnt[i];
     splits_channel_ofs[idx] = worker_start[i];
-    splits_data_ofs[idx]    = worker_start[i] * inner_size;
+    splits_data_ofs[idx] = worker_start[i] * inner_size;
 
-    idx ++;
+    idx++;
   }
 
-  return { splits_size, splits_channel_ofs, splits_data_ofs };
+  return {splits_size, splits_channel_ofs, splits_data_ofs};
 }

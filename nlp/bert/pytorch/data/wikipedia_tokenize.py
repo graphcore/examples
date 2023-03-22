@@ -35,10 +35,13 @@ if __name__ == "__main__":
     out_files_factor = 5
     file_index_size = len(str(len(input_files) * out_files_factor))
     for offset in range(0, len(input_files), args.group_files):
-        grouped_files = ','.join(input_files[offset:offset+args.group_files])
-        out_range_to = len(input_files[offset:offset+args.group_files]) * out_files_factor
-        output_files = [os.path.join(args.output_dir, ("wiki_{:0"+str(file_index_size)+"d}.tfrecord").format(out_index)) for out_index in range(output_index, output_index + out_range_to)]
-        grouped_output_files = ','.join(output_files)
+        grouped_files = ",".join(input_files[offset : offset + args.group_files])
+        out_range_to = len(input_files[offset : offset + args.group_files]) * out_files_factor
+        output_files = [
+            os.path.join(args.output_dir, ("wiki_{:0" + str(file_index_size) + "d}.tfrecord").format(out_index))
+            for out_index in range(output_index, output_index + out_range_to)
+        ]
+        grouped_output_files = ",".join(output_files)
         subprocess.run(
             "python3 third_party/create_pretraining_data.py "
             f"--input-file {grouped_files} "
@@ -49,5 +52,6 @@ if __name__ == "__main__":
             "--do-lower-case "
             "--model bert-base-uncased",
             stderr=subprocess.STDOUT,
-            shell=True)
+            shell=True,
+        )
         output_index += out_range_to

@@ -11,7 +11,7 @@ import os
 from ipu_tensorflow_addons.keras.optimizers import AdamIpuOptimizer
 from skimage import color, metrics
 
-if tf.__version__[0] != '2':
+if tf.__version__[0] != "2":
     raise ImportError("TensorFlow 2 is required")
 
 
@@ -21,15 +21,19 @@ def parse_args():
     parser.add_argument("--model", type=str, default="./saved_model/", help="Input path to load a trained NIF model.")
     parser.add_argument("--width", type=int, default=0, help="Width of generated image.")
     parser.add_argument("--height", type=int, default=0, help="Height of generated image.")
-    parser.add_argument("--original", type=str, default="",
-                        help="If an original reference image is specified then an error "
-                        "metric will be computed between it and the reconstruction.")
+    parser.add_argument(
+        "--original",
+        type=str,
+        default="",
+        help="If an original reference image is specified then an error "
+        "metric will be computed between it and the reconstruction.",
+    )
     parser.add_argument("--no-ipu", action="store_true", help="Set this flag to disable IPU specific code paths.")
     args = parser.parse_args()
     return args
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
 
     metadata_path = nif.metadata_path_from_keras_model_path(args.model)
@@ -55,7 +59,7 @@ if __name__ == '__main__':
     with strategy.scope():
         # Upstream Keras format does not support mixed precision optimiser slots so we load the H5 inference model:
         h5_model_path = os.path.join(args.model, "assets.extra", "converted.hdf5")
-        model = keras.models.load_model(h5_model_path, custom_objects={'AdamIpuOptimizer': AdamIpuOptimizer})
+        model = keras.models.load_model(h5_model_path, custom_objects={"AdamIpuOptimizer": AdamIpuOptimizer})
         model.summary()
 
         # Reconstruct the entire image from the trained NIF:
@@ -63,9 +67,13 @@ if __name__ == '__main__':
         prediction_batch_size = max(width, height)
         prediction_batches = output_sample_count // prediction_batch_size
         print(f"Required samples: {output_sample_count} and batches: {prediction_batches}")
-        eval_ds, pixel_coords = nif.make_prediction_dataset(width, height, prediction_batch_size, embedding_dimension, embedding_sigma)
+        eval_ds, pixel_coords = nif.make_prediction_dataset(
+            width, height, prediction_batch_size, embedding_dimension, embedding_sigma
+        )
         result = model.predict(x=eval_ds, batch_size=prediction_batch_size, steps=prediction_batches)
-        reconstructed = nif.decode_samples(img_shape, pixel_coords[0:output_sample_count].astype(np.int32), result, encode_params)
+        reconstructed = nif.decode_samples(
+            img_shape, pixel_coords[0:output_sample_count].astype(np.int32), result, encode_params
+        )
         cv2.imwrite(args.output, reconstructed)
         print(f"Saved image.")
 

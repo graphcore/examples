@@ -15,7 +15,7 @@ NMS_TARGET = $(BUILD_DIR)/nms_custom_op.so
 all: create_build_dir copy_custom_op nms_custom_op
 
 .PHONY: create_build_dir
-create_build_dir: 
+create_build_dir:
 	mkdir -p $(BUILD_DIR)
 
 copy_custom_op: $(COPY_SOURCE)

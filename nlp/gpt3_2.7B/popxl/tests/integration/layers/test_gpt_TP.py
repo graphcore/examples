@@ -36,8 +36,7 @@ def test_gpt_TP_cmp_huggingface(test_config: GPTConfig):
     hf_model = GPT2Model(config).eval()
 
     # HF forward
-    input_t = torch.randint(0, test_config.model.embedding.vocab_size,
-                            (batch_size, test_config.model.sequence_length))
+    input_t = torch.randint(0, test_config.model.embedding.vocab_size, (batch_size, test_config.model.sequence_length))
     output_HF = hf_model(input_ids=input_t)[0]
     # HF backward
     grad_wrt = torch.rand(output_HF.shape)
@@ -52,8 +51,7 @@ def test_gpt_TP_cmp_huggingface(test_config: GPTConfig):
     test_config.execution.tensor_parallel = tp
 
     # Offset inputs
-    words_offsetted, pos_offsetted = GPTEmbeddingsTP.offset_inputs(
-        test_config, to_numpy(input_t))
+    words_offsetted, pos_offsetted = GPTEmbeddingsTP.offset_inputs(test_config, to_numpy(input_t))
     pos_offsetted = pos_offsetted.reshape(words_offsetted.shape)
 
     # popxl
@@ -63,11 +61,13 @@ def test_gpt_TP_cmp_huggingface(test_config: GPTConfig):
     main = ir.main_graph
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[addons.host_load(words_offsetted[0],
-                                                                                popxl.int32, name="words"), ])
-        words, = inputs_tensors
-        pos = popxl.variable(pos_offsetted, words.dtype,
-                             name="positions", replica_grouping=replica_grouping)
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(words_offsetted[0], popxl.int32, name="words"),
+            ]
+        )
+        (words,) = inputs_tensors
+        pos = popxl.variable(pos_offsetted, words.dtype, name="positions", replica_grouping=replica_grouping)
 
         facts, graph = GPTModelTP(test_config).create_graph(words, pos)
 
@@ -76,23 +76,18 @@ def test_gpt_TP_cmp_huggingface(test_config: GPTConfig):
         call_info = gpt.call_with_info(words, pos)
         act, *_ = call_info.outputs
         act_stream = addons.host_store(act)
-        gradient = popxl.constant(grad_wrt.reshape(act.shape).numpy(
-        ).copy(), act.dtype, "gradient")
+        gradient = popxl.constant(grad_wrt.reshape(act.shape).numpy().copy(), act.dtype, "gradient")
 
         # Backwards
         grad_graph = addons.autodiff(graph, grads_required=graph.args.tensors)
 
-        grad_call_info = grad_graph.call_with_info(
-            gradient, args=grad_graph.grad_graph_info.inputs_dict(call_info))
+        grad_call_info = grad_graph.call_with_info(gradient, args=grad_graph.grad_graph_info.inputs_dict(call_info))
 
-        tensor_to_grad_tensor = grad_graph.grad_graph_info.fwd_graph_ins_to_grad_parent_outs(
-            grad_call_info)
-        words_grad_d2h = addons.host_store(
-            tensor_to_grad_tensor[graph.args.embeddings.word.weight])
-        pos_grad_d2h = addons.host_store(
-            tensor_to_grad_tensor[graph.args.embeddings.positional.weight])
+        tensor_to_grad_tensor = grad_graph.grad_graph_info.fwd_graph_ins_to_grad_parent_outs(grad_call_info)
+        words_grad_d2h = addons.host_store(tensor_to_grad_tensor[graph.args.embeddings.word.weight])
+        pos_grad_d2h = addons.host_store(tensor_to_grad_tensor[graph.args.embeddings.positional.weight])
 
-    apply_pre_alias_patterns(ir, level='default')
+    apply_pre_alias_patterns(ir, level="default")
 
     # Map weights from huggingface
     weights = GPTModelTP.hf_mapping(test_config, vars, hf_model)
@@ -114,14 +109,11 @@ def test_gpt_TP_cmp_huggingface(test_config: GPTConfig):
     for i in range(1, tp):
         np.testing.assert_equal(fwd_data[0], fwd_data[i])
 
-    np.testing.assert_almost_equal(
-        output_HF, fwd_data[0].reshape(output_HF.shape), 3)
+    np.testing.assert_almost_equal(output_HF, fwd_data[0].reshape(output_HF.shape), 3)
 
     # Grad outputs
-    grad_data_words = outs[words_grad_d2h].reshape(
-        -1, hidden_size)[:test_config.model.embedding.vocab_size, :]
-    grad_data_pos = outs[pos_grad_d2h].reshape(
-        -1, hidden_size)[:test_config.model.embedding.max_positional_length, :]
+    grad_data_words = outs[words_grad_d2h].reshape(-1, hidden_size)[: test_config.model.embedding.vocab_size, :]
+    grad_data_pos = outs[pos_grad_d2h].reshape(-1, hidden_size)[: test_config.model.embedding.max_positional_length, :]
 
     np.testing.assert_almost_equal(words_grad_HF, grad_data_words, 3)
     np.testing.assert_almost_equal(positions_grad_HF, grad_data_pos, 3)

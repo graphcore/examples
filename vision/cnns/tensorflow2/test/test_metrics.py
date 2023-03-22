@@ -7,6 +7,7 @@ import unittest
 import logging
 import sys
 from pathlib import Path
+
 sys.path.append(str(Path(__file__).absolute().parent.parent))
 from losses import loss_enqueuer
 from metrics import metric_enqueuer
@@ -16,8 +17,9 @@ from callbacks import outfeed_queue_callback, logging_callback
 class ValidationMetricsTest(unittest.TestCase):
     def get_model(self):
         input_layer = tf.keras.Input(shape=1)
-        x = tf.keras.layers.Dense(1, kernel_initializer='zeros', use_bias=False,
-                                  trainable=False, name='dense')(input_layer)
+        x = tf.keras.layers.Dense(1, kernel_initializer="zeros", use_bias=False, trainable=False, name="dense")(
+            input_layer
+        )
         return tf.keras.Model(input_layer, x)
 
     def metric_prog(self, steps_per_execution, num_replicas):
@@ -27,7 +29,6 @@ class ValidationMetricsTest(unittest.TestCase):
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = num_replicas
         cfg.device_connection.enable_remote_buffers = True
-        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
 
         xs = [1.0, 2.0, 3.0, 4.0]
@@ -73,13 +74,11 @@ class ValidationMetricsTest(unittest.TestCase):
 
 
 class TrainMetricsTest(unittest.TestCase):
-
     def metric_prog(self, num_elements, micro_batch_size, num_replicas, gradient_accumulation, steps_per_execution):
 
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = num_replicas
         cfg.device_connection.enable_remote_buffers = True
-        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
 
         xs = list(range(num_elements))
@@ -91,66 +90,56 @@ class TrainMetricsTest(unittest.TestCase):
         strategy = ipu.ipu_strategy.IPUStrategy()
         with strategy.scope():
             input_layer = tf.keras.Input(shape=1)
-            x = tf.keras.layers.Dense(1, kernel_initializer='zeros', use_bias=False,
-                                      name='dense')(input_layer)
+            x = tf.keras.layers.Dense(1, kernel_initializer="zeros", use_bias=False, name="dense")(input_layer)
             model = tf.keras.Model(input_layer, x)
             model.build(input_shape=(micro_batch_size, 1))
             optimizer = tf.keras.optimizers.SGD(learning_rate=1.0)
             model.compile(optimizer=optimizer, loss=tf.keras.metrics.MSE, steps_per_execution=steps_per_execution)
             model.set_gradient_accumulation_options(gradient_accumulation_steps_per_replica=gradient_accumulation)
-            history = model.fit(ds, steps_per_epoch=num_elements//micro_batch_size)
+            history = model.fit(ds, steps_per_epoch=num_elements // micro_batch_size)
 
         return history
 
     def test_4micro_batch_size_1_step_per_execution(self):
 
-        history = self.metric_prog(num_elements=4,
-                                   micro_batch_size=4,
-                                   num_replicas=1,
-                                   gradient_accumulation=1,
-                                   steps_per_execution=1)
+        history = self.metric_prog(
+            num_elements=4, micro_batch_size=4, num_replicas=1, gradient_accumulation=1, steps_per_execution=1
+        )
 
-        self.assertEqual(history.history['loss'][0], 3.5)
+        self.assertEqual(history.history["loss"][0], 3.5)
 
     def test_1micro_batch_size_4_replicas(self):
 
-        history = self.metric_prog(num_elements=4,
-                                   micro_batch_size=1,
-                                   num_replicas=4,
-                                   gradient_accumulation=1,
-                                   steps_per_execution=1)
+        history = self.metric_prog(
+            num_elements=4, micro_batch_size=1, num_replicas=4, gradient_accumulation=1, steps_per_execution=1
+        )
 
         # Note that it should be equal, but it is currently bugged.
         # When this test fails then the bug was fixed
-        self.assertNotEqual(history.history['loss'][0], 3.5)
+        self.assertNotEqual(history.history["loss"][0], 3.5)
 
     def test_1micro_batch_size_4_gradient_accumulation(self):
 
-        history = self.metric_prog(num_elements=4,
-                                   micro_batch_size=1,
-                                   num_replicas=1,
-                                   gradient_accumulation=4,
-                                   steps_per_execution=4)
+        history = self.metric_prog(
+            num_elements=4, micro_batch_size=1, num_replicas=1, gradient_accumulation=4, steps_per_execution=4
+        )
 
         # Note that it should be equal, but it is currently bugged.
         # When this test fails then the bug was fixed
-        self.assertNotEqual(history.history['loss'][0], 3.5)
+        self.assertNotEqual(history.history["loss"][0], 3.5)
 
     def test_1micro_batch_size_2_replicas_2_gradient_accumulation(self):
 
-        history = self.metric_prog(num_elements=4,
-                                   micro_batch_size=1,
-                                   num_replicas=2,
-                                   gradient_accumulation=2,
-                                   steps_per_execution=2)
+        history = self.metric_prog(
+            num_elements=4, micro_batch_size=1, num_replicas=2, gradient_accumulation=2, steps_per_execution=2
+        )
 
         # Note that it should be equal, but it is currently bugged.
         # When this test fails then the bug was fixed
-        self.assertNotEqual(history.history['loss'][0], 3.5)
+        self.assertNotEqual(history.history["loss"][0], 3.5)
 
 
 class EnqueuedLossTest(unittest.TestCase):
-
     def ipu_prog(self, num_elements, micro_batch_size, num_replicas, gradient_accumulation, steps_per_execution):
 
         # configure logger
@@ -159,7 +148,6 @@ class EnqueuedLossTest(unittest.TestCase):
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = num_replicas
         cfg.device_connection.enable_remote_buffers = True
-        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
 
         xs = list(range(num_elements))
@@ -171,8 +159,7 @@ class EnqueuedLossTest(unittest.TestCase):
         strategy = ipu.ipu_strategy.IPUStrategy()
         with strategy.scope():
             input_layer = tf.keras.Input(shape=1)
-            x = tf.keras.layers.Dense(1, kernel_initializer='zeros', use_bias=False,
-                                      name='dense')(input_layer)
+            x = tf.keras.layers.Dense(1, kernel_initializer="zeros", use_bias=False, name="dense")(input_layer)
             model = tf.keras.Model(input_layer, x)
             model.build(input_shape=(micro_batch_size, 1))
             optimizer = tf.keras.optimizers.SGD(learning_rate=1.0)
@@ -182,65 +169,55 @@ class EnqueuedLossTest(unittest.TestCase):
             loss = loss_class()
             model.compile(optimizer=optimizer, loss=loss, steps_per_execution=steps_per_execution)
             model.set_gradient_accumulation_options(gradient_accumulation_steps_per_replica=gradient_accumulation)
-            callbacks = [outfeed_queue_callback.OutFeedQueueCallback(loss_outfeed_queue, 'average loss'),
-                         logging_callback.LoggingCallback(gradient_accumulation)]
-            model.fit(ds, steps_per_epoch=num_elements//micro_batch_size, callbacks=callbacks)
-
+            callbacks = [
+                outfeed_queue_callback.OutFeedQueueCallback(loss_outfeed_queue, "average loss"),
+                logging_callback.LoggingCallback(gradient_accumulation),
+            ]
+            model.fit(ds, steps_per_epoch=num_elements // micro_batch_size, callbacks=callbacks)
 
     def test_4micro_batch_size_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=4,
-                          num_replicas=1,
-                          gradient_accumulation=1,
-                          steps_per_execution=1)
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=4, num_replicas=1, gradient_accumulation=1, steps_per_execution=1
+            )
             print(test_log.output)
-            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
+            self.assertIn("average loss: 3.5", " ".join(test_log.output))
 
     def test_2micro_batch_size_2replicas_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=2,
-                          num_replicas=2,
-                          gradient_accumulation=1,
-                          steps_per_execution=1)
-            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=2, num_replicas=2, gradient_accumulation=1, steps_per_execution=1
+            )
+            self.assertIn("average loss: 3.5", " ".join(test_log.output))
 
     def test_1micro_batch_size_4replicas_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=1,
-                          num_replicas=4,
-                          gradient_accumulation=1,
-                          steps_per_execution=1)
-            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=1, num_replicas=4, gradient_accumulation=1, steps_per_execution=1
+            )
+            self.assertIn("average loss: 3.5", " ".join(test_log.output))
 
     def test_1micro_batch_size_4gradientacc_4step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=1,
-                          num_replicas=1,
-                          gradient_accumulation=4,
-                          steps_per_execution=4)
-            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=1, num_replicas=1, gradient_accumulation=4, steps_per_execution=4
+            )
+            self.assertIn("average loss: 3.5", " ".join(test_log.output))
 
     def test_1micro_batch_size_2replicas_2gradientacc_2step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=1,
-                          num_replicas=2,
-                          gradient_accumulation=2,
-                          steps_per_execution=2)
-            self.assertIn('average loss: 3.5', ' '.join(test_log.output))
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=1, num_replicas=2, gradient_accumulation=2, steps_per_execution=2
+            )
+            self.assertIn("average loss: 3.5", " ".join(test_log.output))
 
 
 class EnqueuedMetricTest(unittest.TestCase):
-
     def ipu_prog(self, num_elements, micro_batch_size, num_replicas, gradient_accumulation, steps_per_execution):
 
         # configure logger
@@ -249,7 +226,6 @@ class EnqueuedMetricTest(unittest.TestCase):
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = num_replicas
         cfg.device_connection.enable_remote_buffers = True
-        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
 
         xs = list(range(num_elements))
@@ -261,8 +237,7 @@ class EnqueuedMetricTest(unittest.TestCase):
         strategy = ipu.ipu_strategy.IPUStrategy()
         with strategy.scope():
             input_layer = tf.keras.Input(shape=1)
-            x = tf.keras.layers.Dense(1, kernel_initializer='zeros', use_bias=False,
-                                      name='dense')(input_layer)
+            x = tf.keras.layers.Dense(1, kernel_initializer="zeros", use_bias=False, name="dense")(input_layer)
             model = tf.keras.Model(input_layer, x)
             model.build(input_shape=(micro_batch_size, 1))
             optimizer = tf.keras.optimizers.SGD(learning_rate=1.0)
@@ -273,57 +248,49 @@ class EnqueuedMetricTest(unittest.TestCase):
             metric = metric_class()
             model.compile(optimizer=optimizer, loss=loss, metrics=[metric], steps_per_execution=steps_per_execution)
             model.set_gradient_accumulation_options(gradient_accumulation_steps_per_replica=gradient_accumulation)
-            callbacks = [outfeed_queue_callback.OutFeedQueueCallback(metric_outfeed_queue, 'average metric'),
-                         logging_callback.LoggingCallback(steps_per_execution)]
-            model.fit(ds, steps_per_epoch=num_elements//micro_batch_size, callbacks=callbacks)
+            callbacks = [
+                outfeed_queue_callback.OutFeedQueueCallback(metric_outfeed_queue, "average metric"),
+                logging_callback.LoggingCallback(steps_per_execution),
+            ]
+            model.fit(ds, steps_per_epoch=num_elements // micro_batch_size, callbacks=callbacks)
 
     def test_4micro_batch_size_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=4,
-                          num_replicas=1,
-                          gradient_accumulation=1,
-                          steps_per_execution=1)
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=4, num_replicas=1, gradient_accumulation=1, steps_per_execution=1
+            )
             print(test_log.output)
-            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
+            self.assertIn("average metric: 3.5", " ".join(test_log.output))
 
     def test_2micro_batch_size_2replicas_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=2,
-                          num_replicas=2,
-                          gradient_accumulation=1,
-                          steps_per_execution=1)
-            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=2, num_replicas=2, gradient_accumulation=1, steps_per_execution=1
+            )
+            self.assertIn("average metric: 3.5", " ".join(test_log.output))
 
     def test_1micro_batch_size_4replicas_1step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=1,
-                          num_replicas=4,
-                          gradient_accumulation=1,
-                          steps_per_execution=1)
-            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=1, num_replicas=4, gradient_accumulation=1, steps_per_execution=1
+            )
+            self.assertIn("average metric: 3.5", " ".join(test_log.output))
 
     def test_1micro_batch_size_4gradientacc_4step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=1,
-                          num_replicas=1,
-                          gradient_accumulation=4,
-                          steps_per_execution=4)
-            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=1, num_replicas=1, gradient_accumulation=4, steps_per_execution=4
+            )
+            self.assertIn("average metric: 3.5", " ".join(test_log.output))
 
     def test_1micro_batch_size_2replicas_2gradientacc_2step_per_execution(self):
 
         with self.assertLogs() as test_log:
-            self.ipu_prog(num_elements=4,
-                          micro_batch_size=1,
-                          num_replicas=2,
-                          gradient_accumulation=2,
-                          steps_per_execution=2)
-            self.assertIn('average metric: 3.5', ' '.join(test_log.output))
+            self.ipu_prog(
+                num_elements=4, micro_batch_size=1, num_replicas=2, gradient_accumulation=2, steps_per_execution=2
+            )
+            self.assertIn("average metric: 3.5", " ".join(test_log.output))

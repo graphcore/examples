@@ -16,16 +16,18 @@ class GeneratedGraphData:
       real performance
     """
 
-    def __init__(self,
-                 micro_batch_size,
-                 latent_size=256,
-                 dtype=np.float16,
-                 nodes_per_graph=24,
-                 edges_per_graph=50,
-                 n_graphs_per_pack=1,
-                 n_node_feats=9,
-                 n_edge_feats=3,
-                 batches_per_epoch=2048):
+    def __init__(
+        self,
+        micro_batch_size,
+        latent_size=256,
+        dtype=np.float16,
+        nodes_per_graph=24,
+        edges_per_graph=50,
+        n_graphs_per_pack=1,
+        n_node_feats=9,
+        n_edge_feats=3,
+        batches_per_epoch=2048,
+    ):
         self.micro_batch_size = micro_batch_size
         self.latent_size = latent_size
         self.dtype = dtype
@@ -49,18 +51,23 @@ class GeneratedGraphData:
 
         np.random.seed(23)
         self.data = {
-            'nodes': np.random.randint(size=(self.n_examples, self.nodes_per_graph * self.n_graphs_per_pack,
-                                             len(atom_feature_dims)),
-                                       low=np.zeros_like(atom_feature_dims),
-                                       high=atom_feature_dims, dtype=np.int32),
-            'edges': np.random.randint(size=(self.n_examples, self.edges_per_graph * self.n_graphs_per_pack,
-                                             len(bond_feature_dims)),
-                                       low=np.zeros_like(bond_feature_dims),
-                                       high=bond_feature_dims, dtype=np.int32),
-            'edge_idx': np.stack(
-                [self.get_random_edge_idx() for _ in range(self.n_examples)]).astype(np.int32),
+            "nodes": np.random.randint(
+                size=(self.n_examples, self.nodes_per_graph * self.n_graphs_per_pack, len(atom_feature_dims)),
+                low=np.zeros_like(atom_feature_dims),
+                high=atom_feature_dims,
+                dtype=np.int32,
+            ),
+            "edges": np.random.randint(
+                size=(self.n_examples, self.edges_per_graph * self.n_graphs_per_pack, len(bond_feature_dims)),
+                low=np.zeros_like(bond_feature_dims),
+                high=bond_feature_dims,
+                dtype=np.int32,
+            ),
+            "edge_idx": np.stack([self.get_random_edge_idx() for _ in range(self.n_examples)]).astype(np.int32),
             # binary ground truth
-            'ground_truth': np.random.uniform(low=0, high=2, size=(self.n_examples, self.n_graphs_per_pack)).astype(self.label_dtype)
+            "ground_truth": np.random.uniform(low=0, high=2, size=(self.n_examples, self.n_graphs_per_pack)).astype(
+                self.label_dtype
+            ),
         }
 
     def get_random_edge_idx(self):
@@ -81,7 +88,7 @@ class GeneratedGraphData:
 
             random_connections = np.random.permutation(upper_right_coords)
 
-            for i, j in random_connections[:(self.edges_per_graph - len(edge_idx)) // 2]:
+            for i, j in random_connections[: (self.edges_per_graph - len(edge_idx)) // 2]:
                 edge_idx.extend([[i, j], [j, i]])
 
             # offset the adjacency matrices
@@ -92,9 +99,9 @@ class GeneratedGraphData:
     def batch_to_outputs(self, batch):
         # defensive copy
         batch = batch.copy()
-        nodes = batch.pop('nodes')
-        edges = batch.pop('edges')
-        edge_idx = batch.pop('edge_idx')
+        nodes = batch.pop("nodes")
+        edges = batch.pop("edges")
+        edge_idx = batch.pop("edge_idx")
         receivers, senders = edge_idx[..., 0], edge_idx[..., 1]
 
         # each synthetic graph has the same number of nodes/edges as the others
@@ -103,13 +110,13 @@ class GeneratedGraphData:
 
         edge_graph_idx = tf.repeat(tf.range(self.n_graphs_per_pack), self.edges_per_graph)
         edge_graph_idx = tf.tile(edge_graph_idx[None, :], [self.micro_batch_size, 1])
-        ground_truth = batch.pop('ground_truth')
+        ground_truth = batch.pop("ground_truth")
         assert not batch, "all fields of the batch must be used"
 
         nodes = tf.reshape(nodes, [self.micro_batch_size, -1, self.n_node_feats])
         edges = tf.reshape(edges, [self.micro_batch_size, -1, self.n_edge_feats])
 
-        if FLAGS.gather_scatter == 'dense':
+        if FLAGS.gather_scatter == "dense":
             receivers = tf.one_hot(receivers, depth=self.nodes_per_graph * self.n_graphs_per_pack)
             senders = tf.one_hot(senders, depth=self.nodes_per_graph * self.n_graphs_per_pack)
             # note: this would have to be different for doing multiple graphs per pack...
@@ -124,8 +131,7 @@ class GeneratedGraphData:
 
     def get_tf_dataset(self):
         ds = tf.data.Dataset.from_tensor_slices(self.data)
-        ds = ds.take(self.n_examples).cache().repeat().shuffle(1000).batch(
-            self.micro_batch_size, drop_remainder=True)
+        ds = ds.take(self.n_examples).cache().repeat().shuffle(1000).batch(self.micro_batch_size, drop_remainder=True)
         ds = ds.map(lambda b: self.batch_to_outputs(b))
         bs = FLAGS.global_batch_size or self.micro_batch_size
         # prefetch ALL the needed data, to ensure it isn't a bottleneck
@@ -134,5 +140,5 @@ class GeneratedGraphData:
 
     def get_ground_truth_and_masks(self):
         ground_truths = self.data["ground_truth"]
-        include_sample_mask = ground_truths != -1.
+        include_sample_mask = ground_truths != -1.0
         return ground_truths, include_sample_mask

@@ -10,15 +10,17 @@ LINK_REGEX = r"(https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{
 # command to collect possible link candidates in readme and python files
 GREP_CMD = "grep -REinH '(http|https)://' --include *.py --include=*.md"
 # Large files, slow response or not fitting into the pattern.
-EXCLUDED_LINKS = {"https://datashare.is.ed.ac.uk/bitstream/handle/10283/3443/VCTK-Corpus-0.92.zip",
-                  "https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block",
-                  "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/lite/efficientnet-litex.tar.gz",
-                  "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/ckptsaug/efficientnet-bx.tar.gz",
-                  "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientdet/coco/",
-                  "https://github.com/graphcore/examples/tree/master/nlp/bert/pytorch/",
-                  "http://www.cmake.org"}
+EXCLUDED_LINKS = {
+    "https://datashare.is.ed.ac.uk/bitstream/handle/10283/3443/VCTK-Corpus-0.92.zip",
+    "https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block",
+    "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/lite/efficientnet-litex.tar.gz",
+    "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/ckptsaug/efficientnet-bx.tar.gz",
+    "https://storage.googleapis.com/cloud-tpu-checkpoints/efficientdet/coco/",
+    "https://github.com/graphcore/examples/tree/master/nlp/bert/pytorch/",
+    "http://www.cmake.org",
+}
 EXCLUDED_PATTERNS = {
-    # popxl-addons is not publically available yet.
+    # popxl-addons is not publicly available yet.
     r"https:\/\/github\.com\/graphcore\/popxl-addons.*"
 }
 

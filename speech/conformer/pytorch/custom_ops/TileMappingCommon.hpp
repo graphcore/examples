@@ -12,26 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef  __TILE_MAPPING_COMMON_HPP__
-#define  __TILE_MAPPING_COMMON_HPP__
+#ifndef __TILE_MAPPING_COMMON_HPP__
+#define __TILE_MAPPING_COMMON_HPP__
 
-#include <vector>
 #include <tuple>
+#include <vector>
 
-using SplitChannelInfo  = std::tuple<std::vector<size_t>, std::vector<size_t>, size_t>;
+using SplitChannelInfo =
+    std::tuple<std::vector<size_t>, std::vector<size_t>, size_t>;
 using SplitWorker1DInfo = std::pair<std::vector<int>, std::vector<int>>;
-using SplitWorkerInfo   = std::tuple<std::vector<int>, std::vector<int>, std::vector<int>>;
-SplitChannelInfo  splitChannelByGroup(size_t   channel_cnt, 
-                                      size_t   group_size, 
-                                      size_t   num_tiles,
-                                      size_t   tiles_per_ipu);
+using SplitWorkerInfo =
+    std::tuple<std::vector<int>, std::vector<int>, std::vector<int>>;
+SplitChannelInfo splitChannelByGroup(size_t channel_cnt, size_t group_size,
+                                     size_t num_tiles, size_t tiles_per_ipu);
 
-SplitWorker1DInfo split_worker_1dvector(int channel_cnt, 
-                                       int inner_size, 
-                                       int work_num);
+SplitWorker1DInfo split_worker_1dvector(int channel_cnt, int inner_size,
+                                        int work_num);
 
-SplitWorkerInfo  split_worker_vector(int channel_cnt, 
-                                     int inner_size, 
-                                     int work_num);
+SplitWorkerInfo split_worker_vector(int channel_cnt, int inner_size,
+                                    int work_num);
 
 #endif

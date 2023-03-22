@@ -14,8 +14,8 @@ index d780dc25..64bcf281 100644
 +++ b/turbojpeg.c
 @@ -1276,6 +1276,98 @@ DLLEXPORT tjscalingfactor *tjGetScalingFactors(int *numscalingfactors)
  }
- 
- 
+
+
 +DLLEXPORT int tjCropDecompress2(tjhandle handle, const unsigned char *jpegBuf,
 +                                unsigned long jpegSize, unsigned char *dstBuf,
 +                                int width, int pitch, int height, int pixelFormat,

@@ -49,9 +49,7 @@ class CreateModelTest(unittest.TestCase):
         image0 = np.zeros((1, 32, 32, 3))
         image1 = np.ones((1, 32, 32, 3)) * 10
 
-        model = ModelFactory.create_model(model_name=model_name,
-                                          input_shape=(32, 32, 3),
-                                          classes=2)
+        model = ModelFactory.create_model(model_name=model_name, input_shape=(32, 32, 3), classes=2)
         image0_preds = model.predict(image0)[0]
         image1_preds = model.predict(image1)[0]
 
@@ -61,36 +59,36 @@ class CreateModelTest(unittest.TestCase):
         return (image0_preds, image1_preds)
 
     def test_cifar_resnet8_output(self):
-        image0_preds, image1_preds = self.get_predictions_for_model(model_name='cifar_resnet8')
+        image0_preds, image1_preds = self.get_predictions_for_model(model_name="cifar_resnet8")
         expected_image0_preds = np.allclose(image0_preds, [0.5, 0.5])
         expected_image1_preds = np.allclose(image1_preds, [0.00017077064, 0.99982917])
-        self.assertTrue(expected_image0_preds, f'{image0_preds} != [0.5, 0.5]')
-        self.assertTrue(expected_image1_preds, f'{image1_preds} != [0.00017077064, 0.99982917]')
+        self.assertTrue(expected_image0_preds, f"{image0_preds} != [0.5, 0.5]")
+        self.assertTrue(expected_image1_preds, f"{image1_preds} != [0.00017077064, 0.99982917]")
 
     def test_cifar_resnet20_output(self):
-        image0_preds, image1_preds = self.get_predictions_for_model(model_name='cifar_resnet20')
+        image0_preds, image1_preds = self.get_predictions_for_model(model_name="cifar_resnet20")
         expected_image0_preds = np.array_equal(image0_preds, [0.5, 0.5])
         expected_image1_preds = np.allclose(image1_preds, [0, 1])
-        self.assertTrue(expected_image0_preds, f'{image0_preds} != [0.5, 0.5]')
-        self.assertTrue(expected_image1_preds, f'{image1_preds} != [0.10094339, 0.8990566]')
+        self.assertTrue(expected_image0_preds, f"{image0_preds} != [0.5, 0.5]")
+        self.assertTrue(expected_image1_preds, f"{image1_preds} != [0.10094339, 0.8990566]")
 
     def test_cifar_resnet32_output(self):
-        image0_preds, image1_preds = self.get_predictions_for_model(model_name='cifar_resnet32')
+        image0_preds, image1_preds = self.get_predictions_for_model(model_name="cifar_resnet32")
         expected_image0_preds = np.array_equal(image0_preds, [0.5, 0.5])
         expected_image1_preds = np.allclose(image1_preds, [1, 0])
-        self.assertTrue(expected_image0_preds, f'{image0_preds} != [0.5, 0.5]')
-        self.assertTrue(expected_image1_preds, f'{image1_preds} != [1, 0]')
+        self.assertTrue(expected_image0_preds, f"{image0_preds} != [0.5, 0.5]")
+        self.assertTrue(expected_image1_preds, f"{image1_preds} != [1, 0]")
 
     def test_cifar_resnet44_output(self):
-        image0_preds, image1_preds = self.get_predictions_for_model(model_name='cifar_resnet44')
+        image0_preds, image1_preds = self.get_predictions_for_model(model_name="cifar_resnet44")
         expected_image0_preds = np.array_equal(image0_preds, [0.5, 0.5])
         expected_image1_preds = np.allclose(image1_preds, [1.0, 0.0])
-        self.assertTrue(expected_image0_preds, f'{image0_preds} != [0.5, 0.5]')
-        self.assertTrue(expected_image1_preds, f'{image1_preds} != [1.0, 0.0]')
+        self.assertTrue(expected_image0_preds, f"{image0_preds} != [0.5, 0.5]")
+        self.assertTrue(expected_image1_preds, f"{image1_preds} != [1.0, 0.0]")
 
     def test_cifar_resnet56_output(self):
-        image0_preds, image1_preds = self.get_predictions_for_model(model_name='cifar_resnet56')
+        image0_preds, image1_preds = self.get_predictions_for_model(model_name="cifar_resnet56")
         expected_image0_preds = np.array_equal(image0_preds, [0.5, 0.5])
         expected_image1_preds = np.allclose(image1_preds, [1.0, 0.0])
-        self.assertTrue(expected_image0_preds, f'{image0_preds} != [0.5, 0.5]')
-        self.assertTrue(expected_image1_preds, f'{image1_preds} != [1.0, 0.0]')
+        self.assertTrue(expected_image0_preds, f"{image0_preds} != [0.5, 0.5]")
+        self.assertTrue(expected_image1_preds, f"{image1_preds} != [1.0, 0.0]")

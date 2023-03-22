@@ -34,10 +34,10 @@ from utils.weight_avg import average_model_weights
 
 
 path_to_detection = Path(__file__).parent.resolve()
-os.environ['PYTORCH_APPS_DETECTION_PATH'] = str(path_to_detection)
+os.environ["PYTORCH_APPS_DETECTION_PATH"] = str(path_to_detection)
 
-logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
-logger = logging.getLogger('Detector')
+logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
+logger = logging.getLogger("Detector")
 
 
 def ipu_options(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode, model: Detector, mode: str):
@@ -70,31 +70,30 @@ def ipu_options(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode, model: D
     if cfg.ipuopts.available_memory_proportion:
         amp = cfg.ipuopts.available_memory_proportion
         if isinstance(amp, float):
-            amp_dict = {f'IPU{i}': amp for i in range(cfg.system.num_ipus)}
+            amp_dict = {f"IPU{i}": amp for i in range(cfg.system.num_ipus)}
         elif isinstance(cfg.ipuopts.available_memory_proportion, list):
             assert len(amp) == len(cfg.model.pipeline_splits) + 1
-            amp_dict = {f'IPU{i}': value for i, value in enumerate(amp)}
+            amp_dict = {f"IPU{i}": value for i, value in enumerate(amp)}
         else:
-            raise TypeError('Wrong type of cfg.ipuopts.available_memory_proportion. '
-                            'Use either float or list.')
+            raise TypeError("Wrong type of cfg.ipuopts.available_memory_proportion. " "Use either float or list.")
         ipu_opts.setAvailableMemoryProportion(amp_dict)
 
     if opt.benchmark:
         ipu_opts.Distributed.disable()
 
-    if cfg.model.precision == 'half':
+    if cfg.model.precision == "half":
         ipu_opts.Precision.setPartialsType(torch.float16)
         model.half()
-    elif cfg.model.precision == 'mixed':
+    elif cfg.model.precision == "mixed":
         ipu_opts.Precision.setPartialsType(torch.float16)
         model.half()
         model.headp3 = model.headp3.float()
         model.headp4 = model.headp4.float()
         model.headp5 = model.headp5.float()
-    elif cfg.model.precision != 'single':
+    elif cfg.model.precision != "single":
         raise ValueError("Only supoprt half, mixed or single precision")
 
-    if mode == 'train':
+    if mode == "train":
         ipu_opts.Training.gradientAccumulation(cfg.ipuopts.gradient_accumulation)
         ipu_opts.outputMode(poptorch.OutputMode.Sum)
         ipu_opts.Training.setAutomaticLossScaling(enabled=cfg.training.auto_loss_scaling)
@@ -122,12 +121,14 @@ def get_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode, ipu_opts:
     shuffle = mode == "train"
     # Creates a loader using the dataset
     if cfg.model.ipu:
-        loader = DataLoader(ipu_opts,
-                            dataset,
-                            batch_size=cfg.model.micro_batch_size,
-                            shuffle=shuffle,
-                            num_workers=cfg.system.num_workers,
-                            mode=DataLoaderMode.Async)
+        loader = DataLoader(
+            ipu_opts,
+            dataset,
+            batch_size=cfg.model.micro_batch_size,
+            shuffle=shuffle,
+            num_workers=cfg.system.num_workers,
+            mode=DataLoaderMode.Async,
+        )
     else:
         loader = torchDataLoader(dataset, batch_size=cfg.model.micro_batch_size, shuffle=shuffle)
 
@@ -143,23 +144,32 @@ def get_optimizer(cfg: yacs.config.CfgNode, model: Detector):
         optimizer: a torch/poptorch optimizer
     """
     nominal_batch_size = 64
-    weight_decay = cfg.training.weight_decay * cfg.model.micro_batch_size * cfg.ipuopts.gradient_accumulation / nominal_batch_size
+    weight_decay = (
+        cfg.training.weight_decay * cfg.model.micro_batch_size * cfg.ipuopts.gradient_accumulation / nominal_batch_size
+    )
     param_group0, param_group1, param_group2 = [], [], []
     for k, v in model.named_parameters():
         v.requires_grad = True
-        if '.bias' in k:
+        if ".bias" in k:
             param_group2.append(v)
-        elif '.weight' in k and '.norm' not in k:
+        elif ".weight" in k and ".norm" not in k:
             param_group1.append(v)
         else:
             param_group0.append(v)
     if cfg.model.ipu:
-        optimizer = SGD(param_group0, lr=cfg.training.initial_lr, momentum=cfg.training.momentum, loss_scaling=cfg.training.loss_scaling, use_combined_accum=True, dampening=0)
+        optimizer = SGD(
+            param_group0,
+            lr=cfg.training.initial_lr,
+            momentum=cfg.training.momentum,
+            loss_scaling=cfg.training.loss_scaling,
+            use_combined_accum=True,
+            dampening=0,
+        )
     else:
         optimizer = SGD(param_group0, lr=cfg.training.initial_lr, momentum=cfg.training.momentum)
 
-    optimizer.add_param_group({'params': param_group1, 'weight_decay': weight_decay})
-    optimizer.add_param_group({'params': param_group2})
+    optimizer.add_param_group({"params": param_group1, "weight_decay": weight_decay})
+    optimizer.add_param_group({"params": param_group2})
     return optimizer
 
 
@@ -181,7 +191,7 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode,
     if cfg.model.pipeline_splits:
         named_layers = {name: layer for name, layer in model.named_modules()}
         for ipu_idx, split in enumerate(cfg.model.pipeline_splits):
-            named_layers[split] = poptorch.BeginBlock(ipu_id=ipu_idx+1, layer_to_call=named_layers[split])
+            named_layers[split] = poptorch.BeginBlock(ipu_id=ipu_idx + 1, layer_to_call=named_layers[split])
 
     if len(cfg.model.recomputation_ckpts):
         for name, layer in model.named_modules():
@@ -189,7 +199,7 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode,
                 recomputation_checkpoint(layer)
 
     # Load weights and fuses some batch normalizations with some convolutions
-    if cfg.model.normalization == 'batch':
+    if cfg.model.normalization == "batch":
         if opt.weights:
             print("loading pretrained weights")
             model = load_and_fuse_pretrained_weights(model, opt.weights, mode != "train")
@@ -201,8 +211,16 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode,
         model.eval()
 
     if opt.print_summary:
-        summary(model, input_size=(cfg.model.micro_batch_size, cfg.model.input_channels, cfg.model.image_size, cfg.model.image_size))
-        print('listing all layers by names')
+        summary(
+            model,
+            input_size=(
+                cfg.model.micro_batch_size,
+                cfg.model.input_channels,
+                cfg.model.image_size,
+                cfg.model.image_size,
+            ),
+        )
+        print("listing all layers by names")
         named_layers = {name: layer for name, layer in model.named_modules()}
         for layer in named_layers:
             print(layer)
@@ -230,12 +248,19 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode,
     return model, loader
 
 
-def set_warmup_lr_and_momentum(optimizer: Optimizer, num_warmup: int, batch_idx: int, lr_lambda: Callable[[int], float], epoch: int, momentum: float):
+def set_warmup_lr_and_momentum(
+    optimizer: Optimizer,
+    num_warmup: int,
+    batch_idx: int,
+    lr_lambda: Callable[[int], float],
+    epoch: int,
+    momentum: float,
+):
     xi = [0, num_warmup]
     for j, x in enumerate(optimizer.param_groups):
-        x['lr'] = np.interp(batch_idx, xi, [0.1 if j == 2 else 0.0, x['initial_lr'] * lr_lambda(epoch + 1)])
-        if 'momentum' in x:
-            x['momentum'] = np.interp(batch_idx, xi, [0.9, momentum])
+        x["lr"] = np.interp(batch_idx, xi, [0.1 if j == 2 else 0.0, x["initial_lr"] * lr_lambda(epoch + 1)])
+        if "momentum" in x:
+            x["momentum"] = np.interp(batch_idx, xi, [0.9, momentum])
     return optimizer
 
 
@@ -245,7 +270,7 @@ def inference(
     model: Union[Detector, poptorch.PoplarExecutor],
     loader: Union[torchDataLoader, DataLoader],
     stat_recorder: StatRecorder,
-    run_coco_eval: bool = False
+    run_coco_eval: bool = False,
 ):
     inference_progress = tqdm(loader)
     inference_progress.set_description("Running inference")
@@ -255,14 +280,18 @@ def inference(
         y = model(transformed_images)
         inference_step_time = time.time() - start_time
 
-        inference_round_trip_time = model.getLatency() if cfg.model.ipu else (inference_step_time,) * 3  # returns (min, max, avg) latency
+        inference_round_trip_time = (
+            model.getLatency() if cfg.model.ipu else (inference_step_time,) * 3
+        )  # returns (min, max, avg) latency
 
         processed_batch = post_processing(cfg, y, image_sizes, transformed_labels)
 
         stat_recorder.record_inference_stats(inference_round_trip_time, inference_step_time)
 
         if cfg.inference.plot_output and batch_idx % cfg.inference.plot_step == 0:
-            img_paths = plotting_tool(cfg, processed_batch[0], [loader.dataset.get_image(img_idx) for img_idx in image_indxs])
+            img_paths = plotting_tool(
+                cfg, processed_batch[0], [loader.dataset.get_image(img_idx) for img_idx in image_indxs]
+            )
             if opt.wandb:
                 wandb.log({"inference_batch_{}".format(batch_idx): [wandb.Image(path) for path in img_paths]})
 
@@ -273,18 +302,23 @@ def inference(
         processed_labels_batch = processed_batch[1]
         if cfg.eval.metrics:
             for idx, (pruned_preds, processed_labels) in enumerate(zip(pruned_preds_batch, processed_labels_batch)):
-                stat_recorder.record_eval_stats(processed_labels, pruned_preds, image_sizes[idx], loader.dataset.images_id[image_indxs[idx]], run_coco_eval)
+                stat_recorder.record_eval_stats(
+                    processed_labels,
+                    pruned_preds,
+                    image_sizes[idx],
+                    loader.dataset.images_id[image_indxs[idx]],
+                    run_coco_eval,
+                )
 
     stat_recorder.logging(print, run_coco_eval)
 
 
 if __name__ == "__main__":
     opt = parse_args()
-    if len(opt.data) > 0. and opt.data[-1] != '/':
-        opt.data += '/'
+    if len(opt.data) > 0.0 and opt.data[-1] != "/":
+        opt.data += "/"
 
     cfg = get_cfg_defaults()
-
 
     cfg.merge_from_file(opt.config)
     cfg = override_cfg(opt, cfg)
@@ -303,7 +337,7 @@ if __name__ == "__main__":
         logger.info("Model successfully compiled. Exiting now as '--compile-only' argument was passed.")
         sys.exit(0)
 
-    if cfg.model.mode == 'train':
+    if cfg.model.mode == "train":
         logger.error("Training to be implemented!")
     else:
         run_coco_eval = cfg.eval.metrics and not opt.benchmark

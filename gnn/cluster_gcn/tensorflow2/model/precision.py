@@ -6,7 +6,6 @@ from utilities.options import ALLOWED_PRECISION_TYPE
 
 
 class Precision:
-
     def __init__(self, precision_str):
         if precision_str == "fp16":
             self.policy = tf.keras.mixed_precision.Policy("float16")
@@ -33,5 +32,6 @@ class Precision:
             self.features_precision = tf.float32
             self.labels_precision = tf.int32
         else:
-            raise ValueError(f"Unrecognised precision type: `{precision_str}`."
-                             f" Choose one of {ALLOWED_PRECISION_TYPE}")
+            raise ValueError(
+                f"Unrecognised precision type: `{precision_str}`." f" Choose one of {ALLOWED_PRECISION_TYPE}"
+            )

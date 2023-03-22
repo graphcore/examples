@@ -35,4 +35,3 @@ yolov4_4_ipu_inference_throughput_latency:
     - [NMS max detections, "max_detections"]
     - [samples/sec, "throughput"]
     - [latency(ms), "latency"]
-

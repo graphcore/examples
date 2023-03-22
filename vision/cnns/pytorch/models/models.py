@@ -4,8 +4,16 @@ import poptorch
 import logging
 import import_helper
 from models.factory import create_model
-from models.model_manipulator import ModelManipulator, get_norm_layer, name_match, type_match, \
-                                     get_module_from_node, replace_module, get_node_name, insert_after
+from models.model_manipulator import (
+    ModelManipulator,
+    get_norm_layer,
+    name_match,
+    type_match,
+    get_module_from_node,
+    replace_module,
+    get_node_name,
+    insert_after,
+)
 from models.model_wrappers import NormalizeInputModel, OverlapModel
 from models.implementations.optimisation import PaddedConv
 from models.loss import LabelSmoothing, TrainingModelWithLoss, weighted_nll_loss
@@ -14,7 +22,15 @@ import datasets.augmentations as augmentations
 import utils
 
 
-def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use_cutmix: bool=False, with_loss: bool=False, inference_mode: bool=False) -> torch.nn.Module:
+def get_model(
+    args,
+    data_info,
+    pretrained: bool = True,
+    use_mixup: bool = False,
+    use_cutmix: bool = False,
+    with_loss: bool = False,
+    inference_mode: bool = False,
+) -> torch.nn.Module:
     """
     params:
     args: contains the user defined command line parameters
@@ -25,25 +41,41 @@ def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use
     inference_mode: create model in 'eval' model or 'train' mode
     """
     logging.info("Creating the model")
-    model = create_model(args.model, args, num_classes=data_info["out"], pretrained=pretrained, inference_mode=inference_mode)
+    model = create_model(
+        args.model, args, num_classes=data_info["out"], pretrained=pretrained, inference_mode=inference_mode
+    )
 
     model_manipulator = ModelManipulator(model)
     # Set norm layers
     if not args.norm_type == "batch":
-        model = model_manipulator.transform(type_match(torch.nn.BatchNorm2d),
-                                            replace_module(lambda node: get_norm_layer(args)(get_module_from_node(node).num_features)),
-                                            "NORMLAYER REPLACE")
+        model = model_manipulator.transform(
+            type_match(torch.nn.BatchNorm2d),
+            replace_module(lambda node: get_norm_layer(args)(get_module_from_node(node).num_features)),
+            "NORMLAYER REPLACE",
+        )
     # Insert recompute checkpoints
-    model = model_manipulator.transform(name_match(getattr(args, "recompute_checkpoints", [])),
-                                        insert_after(lambda node: poptorch.recomputationCheckpoint), "RECOMPUTE CHECKPOINT")
+    model = model_manipulator.transform(
+        name_match(getattr(args, "recompute_checkpoints", [])),
+        insert_after(lambda node: poptorch.recomputationCheckpoint),
+        "RECOMPUTE CHECKPOINT",
+    )
 
     # Handle pipelining
-    model = model_manipulator.transform(name_match(args.pipeline_splits),
-                                        replace_module(lambda node: poptorch.BeginBlock(ipu_id=1+args.pipeline_splits.index(get_node_name(node)),
-                                                                                        layer_to_call=get_module_from_node(node))), "PIPELINE")
+    model = model_manipulator.transform(
+        name_match(args.pipeline_splits),
+        replace_module(
+            lambda node: poptorch.BeginBlock(
+                ipu_id=1 + args.pipeline_splits.index(get_node_name(node)), layer_to_call=get_module_from_node(node)
+            )
+        ),
+        "PIPELINE",
+    )
     if hasattr(args, "input_image_padding") and args.input_image_padding:
-        model = model_manipulator.transform(ModelManipulator.first_match(type_match(torch.nn.Conv2d)),
-                                            replace_module(lambda node: PaddedConv(get_module_from_node(node))), "INPUT PADDING")
+        model = model_manipulator.transform(
+            ModelManipulator.first_match(type_match(torch.nn.Conv2d)),
+            replace_module(lambda node: PaddedConv(get_module_from_node(node))),
+            "INPUT PADDING",
+        )
 
     # Convert the model to half after all model manipulations have been made
     if args.precision[-3:] == ".16":
@@ -53,10 +85,7 @@ def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use
     if args.normalization_location == "ipu":
         cast = "half" if args.precision[:3] == "16." else "full"
         model = NormalizeInputModel(
-            model,
-            datasets.normalization_parameters["mean"],
-            datasets.normalization_parameters["std"],
-            output_cast=cast
+            model, datasets.normalization_parameters["mean"], datasets.normalization_parameters["std"], output_cast=cast
         )
     if use_mixup or use_cutmix:
         model = augmentations.AugmentationModel(model, use_mixup, use_cutmix, args)
@@ -64,6 +93,7 @@ def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use
     model_summary(model)
     if with_loss:
         if use_mixup or use_cutmix:
+
             def mix_classification_loss(output, labels):
                 inner_model = model
                 # Find AugmentationModel
@@ -72,9 +102,12 @@ def get_model(args, data_info, pretrained: bool=True, use_mixup: bool=False, use
                 log_preds, coeffs = output
                 all_labels, weights = inner_model.mix_labels(labels, coeffs)
                 return weighted_nll_loss(log_preds, all_labels, weights)
+
             losses = LabelSmoothing(mix_classification_loss, label_smoothing=args.label_smoothing).get_losses_list()
         else:
-            losses = LabelSmoothing(torch.nn.NLLLoss(reduction='mean'), label_smoothing=args.label_smoothing).get_losses_list()
+            losses = LabelSmoothing(
+                torch.nn.NLLLoss(reduction="mean"), label_smoothing=args.label_smoothing
+            ).get_losses_list()
         model = TrainingModelWithLoss(model, losses, [utils.accuracy])
     name_scope_hook(model)  # Use human readable names for each layer
 

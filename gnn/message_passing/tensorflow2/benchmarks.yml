@@ -18,7 +18,7 @@ train_options: &train_options
 tf2_message_passing_graph_isomorphism_train_gen_4ipu:
   <<: *train_options
   description: |
-    This benchmark measures the throughput of 
+    This benchmark measures the throughput of
     Graph Isomorphism MPNN training
     on a generated dataset.
   cmd: >-
@@ -43,7 +43,7 @@ tf2_message_passing_graph_isomorphism_train_gen_4ipu:
 tf2_message_passing_interaction_network_train_gen_1ipu:
   <<: *train_options
   description: |
-    This benchmark measures the throughput of 
+    This benchmark measures the throughput of
     Interaction Network MPNN training
     on a generated dataset.
   cmd: >-
@@ -66,7 +66,7 @@ tf2_message_passing_interaction_network_train_gen_1ipu:
 tf2_message_passing_graph_network_train_gen_1ipu:
   <<: *train_options
   description: |
-    This benchmark measures the throughput of 
+    This benchmark measures the throughput of
     Graph Network MPNN training
     on a generated dataset.
   cmd: >-

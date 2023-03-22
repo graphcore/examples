@@ -27,15 +27,17 @@ class BatchConfig:
     phase1_samples = 460849152
     phase2_samples = 34239360
 
-    def __init__(self,
-                 micro_batch_size: int = 1,
-                 num_replicas: int = 1,
-                 gradient_accumulation_count: int = 1,
-                 num_pipeline_stages: int = 1,
-                 dataset_size: int = 1,
-                 global_batches_per_log: int = 1,
-                 total_num_train_samples: Optional[int] = None,
-                 task: Task = Task.PRETRAIN_PHASE_ONE):
+    def __init__(
+        self,
+        micro_batch_size: int = 1,
+        num_replicas: int = 1,
+        gradient_accumulation_count: int = 1,
+        num_pipeline_stages: int = 1,
+        dataset_size: int = 1,
+        global_batches_per_log: int = 1,
+        total_num_train_samples: Optional[int] = None,
+        task: Task = Task.PRETRAIN_PHASE_ONE,
+    ):
 
         self.logger = logging.getLogger("batch_config")
 
@@ -48,14 +50,15 @@ class BatchConfig:
         assert gradient_accumulation_count > 0, "gradient_accumulation_count must be greater than 0"
         self.gradient_accumulation_count = gradient_accumulation_count
 
-        if (self.gradient_accumulation_count % (num_pipeline_stages * 2) != 0 and
-                num_pipeline_stages > 1):
-            raise ValueError("Gradient accumulation steps per replica"
-                             f" ({self.gradient_accumulation_count}) must be"
-                             " divisible by 2 times the number of pipeline"
-                             f" stages ({num_pipeline_stages}). Try adjusting"
-                             " the gradient accumulation steps per replica to"
-                             " achieve this.")
+        if self.gradient_accumulation_count % (num_pipeline_stages * 2) != 0 and num_pipeline_stages > 1:
+            raise ValueError(
+                "Gradient accumulation steps per replica"
+                f" ({self.gradient_accumulation_count}) must be"
+                " divisible by 2 times the number of pipeline"
+                f" stages ({num_pipeline_stages}). Try adjusting"
+                " the gradient accumulation steps per replica to"
+                " achieve this."
+            )
 
         assert dataset_size > 0, "dataset_size must be greater than 0"
         self.dataset_size = dataset_size
@@ -66,9 +69,9 @@ class BatchConfig:
 
         if total_num_train_samples is None:
             if self.task == Task.OTHER:
-                raise ValueError("If not pretraining phase 1 or phase 2"
-                                 " then the total_num_train_samples must"
-                                 " be specified")
+                raise ValueError(
+                    "If not pretraining phase 1 or phase 2" " then the total_num_train_samples must" " be specified"
+                )
             else:
                 self.total_num_train_samples = self.get_num_training_samples_pretraining(self.task)
         else:
@@ -81,45 +84,54 @@ class BatchConfig:
         self.steps_per_execution = self.gradient_accumulation_count * global_batches_per_log
 
         if self.steps_per_execution == 0:
-            raise ValueError("Steps per execution is zero, try increasing"
-                             " the total_num_train_samples or the dataset size")
+            raise ValueError(
+                "Steps per execution is zero, try increasing" " the total_num_train_samples or the dataset size"
+            )
 
         all_replicas_steps_per_execution = self.steps_per_execution * self.num_replicas
 
         if self.num_micro_batches_per_epoch % all_replicas_steps_per_execution != 0:
             new_num_micro_batches_per_epoch = self.round_down_to_multiple(
-                self.num_micro_batches_per_epoch,
-                all_replicas_steps_per_execution)
-            self.logger.warning("Steps per execution across all replicas"
-                                ", steps_per_execution * num_replicas, "
-                                f" (set to {all_replicas_steps_per_execution})"
-                                " must be a factor of number of micro batches per epoch"
-                                f" {self.num_micro_batches_per_epoch}. Truncating number"
-                                f" of micro batches per epoch to {new_num_micro_batches_per_epoch}.")
+                self.num_micro_batches_per_epoch, all_replicas_steps_per_execution
+            )
+            self.logger.warning(
+                "Steps per execution across all replicas"
+                ", steps_per_execution * num_replicas, "
+                f" (set to {all_replicas_steps_per_execution})"
+                " must be a factor of number of micro batches per epoch"
+                f" {self.num_micro_batches_per_epoch}. Truncating number"
+                f" of micro batches per epoch to {new_num_micro_batches_per_epoch}."
+            )
             self.num_micro_batches_per_epoch = new_num_micro_batches_per_epoch
 
         if all_replicas_steps_per_execution > self.num_micro_batches_per_epoch:
-            self.logger.warning("Steps per execution across all replicas"
-                                ", steps_per_execution * num_replicas,"
-                                f" (set to {all_replicas_steps_per_execution})"
-                                f" is too large. Decreasing to number of micro batches"
-                                f" per epoch {self.num_micro_batches_per_epoch}.")
+            self.logger.warning(
+                "Steps per execution across all replicas"
+                ", steps_per_execution * num_replicas,"
+                f" (set to {all_replicas_steps_per_execution})"
+                f" is too large. Decreasing to number of micro batches"
+                f" per epoch {self.num_micro_batches_per_epoch}."
+            )
             self.steps_per_execution = self.num_micro_batches_per_epoch // self.num_replicas
 
         if self.num_micro_batches_per_epoch == 0:
-            raise ValueError("Number of micro batches per epoch is zero, try increasing"
-                             " the total_num_train_samples or the dataset size")
+            raise ValueError(
+                "Number of micro batches per epoch is zero, try increasing"
+                " the total_num_train_samples or the dataset size"
+            )
 
         self.total_num_micro_batches = math.floor(self.num_micro_batches_per_epoch * self.epochs)
         self.total_num_micro_batches_per_instance = self.total_num_micro_batches // popdist.getNumInstances()
         self.total_num_micro_batches_per_instance = self.round_down_to_multiple(
-                self.total_num_micro_batches_per_instance,
-                all_replicas_steps_per_execution)
+            self.total_num_micro_batches_per_instance, all_replicas_steps_per_execution
+        )
         self.total_num_micro_batches = self.total_num_micro_batches_per_instance * popdist.getNumInstances()
 
         if self.total_num_micro_batches == 0:
-            raise ValueError("Total number of micro batches is zero, try increasing"
-                             " the total_num_train_samples or the dataset size")
+            raise ValueError(
+                "Total number of micro batches is zero, try increasing"
+                " the total_num_train_samples or the dataset size"
+            )
 
         # Update the number of training steps to actual number of steps
         # given the updates above.
@@ -146,17 +158,19 @@ class BatchConfig:
         return self.num_train_steps / (self.dataset_size / self.global_batch_size)
 
     def __str__(self):
-        return (f"\tMicro batch size: {self.micro_batch_size}\n\t"
-                f"Number of replicas: {self.num_replicas}\n\t"
-                f"Gradient accumulation count: {self.gradient_accumulation_count}\n\t"
-                f"Global batch size: {self.global_batch_size}\n\t"
-                f"Number of samples required to train: {self.total_num_train_samples}\n\t"
-                f"Number of training steps: {self.num_train_steps}\n\t"
-                f"Micro batches per epoch: {self.num_micro_batches_per_epoch}\n\t"
-                f"Total number of epochs: {self.epochs:.2f}\n\t"
-                f"Total number of micro batches: {self.total_num_micro_batches}\n\t"
-                f"Steps per execution: {self.steps_per_execution}\n\t"
-                f"Number of samples processed per execution: {self.num_samples_processed_per_execution}")
+        return (
+            f"\tMicro batch size: {self.micro_batch_size}\n\t"
+            f"Number of replicas: {self.num_replicas}\n\t"
+            f"Gradient accumulation count: {self.gradient_accumulation_count}\n\t"
+            f"Global batch size: {self.global_batch_size}\n\t"
+            f"Number of samples required to train: {self.total_num_train_samples}\n\t"
+            f"Number of training steps: {self.num_train_steps}\n\t"
+            f"Micro batches per epoch: {self.num_micro_batches_per_epoch}\n\t"
+            f"Total number of epochs: {self.epochs:.2f}\n\t"
+            f"Total number of micro batches: {self.total_num_micro_batches}\n\t"
+            f"Steps per execution: {self.steps_per_execution}\n\t"
+            f"Number of samples processed per execution: {self.num_samples_processed_per_execution}"
+        )
 
     @classmethod
     def get_num_training_samples_pretraining(cls, task):

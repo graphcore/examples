@@ -24,6 +24,7 @@ class StatRecorder:
     """
     Records and prints the time stats and metrics of a model (latency and throughput)
     """
+
     def __init__(self, cfg: CfgNode, data_path: str, log_wandb: bool = False):
         """
         Collecting latency and evaluation stats for inference and post processing
@@ -40,9 +41,11 @@ class StatRecorder:
         self.bbox_summary = []
         self.image_count = cfg.model.micro_batch_size * cfg.ipuopts.device_iterations
         self.cfg = cfg
-        coco_metadata = yaml.safe_load(open(os.environ['PYTORCH_APPS_DETECTION_PATH'] + "/" + cfg.model.class_name_path))
-        self.class_names = coco_metadata['class_names']
-        self.coco_91_class = coco_metadata['coco_91_class']
+        coco_metadata = yaml.safe_load(
+            open(os.environ["PYTORCH_APPS_DETECTION_PATH"] + "/" + cfg.model.class_name_path)
+        )
+        self.class_names = coco_metadata["class_names"]
+        self.coco_91_class = coco_metadata["coco_91_class"]
         self.seen = 0
         self.iou_values = torch.linspace(0.5, 0.95, 10)
         self.num_ious = self.iou_values.numel()
@@ -50,14 +53,14 @@ class StatRecorder:
 
         # Training stat initialization
         self.log_wandb = log_wandb
-        self.loss_keys = ['mean_box', 'mean_obj', 'mean_cls', 'mean_total']
+        self.loss_keys = ["mean_box", "mean_obj", "mean_cls", "mean_total"]
         self.loss_items = torch.zeros(4)
         self.reset_train_stats()
         self.epoch = 0
 
         if self.log_wandb:
             wandb.init(project="pytorch-detection", config=dict(cfg))
-            if cfg.model.mode == 'train':
+            if cfg.model.mode == "train":
                 wandb.define_metric("epoch")
                 wandb.define_metric("epoch_total_loss", step_metric="epoch")
                 wandb.define_metric("epoch_total_obj_loss", step_metric="epoch")
@@ -67,7 +70,7 @@ class StatRecorder:
                 wandb.define_metric("recall", step_metric="epoch")
                 wandb.define_metric("m_ap", step_metric="epoch")
                 wandb.define_metric("m_ap50", step_metric="epoch")
-                wandb.save(os.environ['PYTORCH_APPS_DETECTION_PATH'] + "/models/loss.py")
+                wandb.save(os.environ["PYTORCH_APPS_DETECTION_PATH"] + "/models/loss.py")
 
     def reset_train_stats(self):
         self.sum_all_loss, self.sum_box_loss, self.sum_obj_loss, self.sum_cls_loss = 0.0, 0.0, 0.0, 0.0
@@ -79,7 +82,9 @@ class StatRecorder:
         self.seen = 0
         self.bbox_summary = []
 
-    def record_eval_stats(self, labels: np.array, predictions: np.array, image_size: torch.Tensor, image_id: str, run_coco_eval: bool):
+    def record_eval_stats(
+        self, labels: np.array, predictions: np.array, image_size: torch.Tensor, image_id: str, run_coco_eval: bool
+    ):
         """
         Records the statistics needed to compute the metrics
         Parameters:
@@ -94,7 +99,9 @@ class StatRecorder:
         # Handle case where we get no predictions
         if predictions is None:
             if num_labels:
-                self.eval_stats.append((torch.zeros(0, self.num_ious, dtype=torch.bool), torch.Tensor(), torch.Tensor(), target_cls))
+                self.eval_stats.append(
+                    (torch.zeros(0, self.num_ious, dtype=torch.bool), torch.Tensor(), torch.Tensor(), target_cls)
+                )
         else:
             bboxes = xywh_to_xyxy(predictions[:, :4]).detach()
             scores = predictions[:, 4].cpu().detach().numpy()
@@ -107,12 +114,14 @@ class StatRecorder:
                 for i, bbox in enumerate(bboxes):
                     width = bbox[2] - bbox[0]
                     height = bbox[3] - bbox[1]
-                    self.bbox_summary.append({
-                        "image_id": int(image_id),
-                        "category_id": self.coco_91_class[int(class_pred[i])],
-                        "bbox": [bbox[0].item(), bbox[1].item(), width.item(), height.item()],
-                        "score": scores[i].item()
-                    })
+                    self.bbox_summary.append(
+                        {
+                            "image_id": int(image_id),
+                            "category_id": self.coco_91_class[int(class_pred[i])],
+                            "bbox": [bbox[0].item(), bbox[1].item(), width.item(), height.item()],
+                            "score": scores[i].item(),
+                        }
+                    )
             # Assign all predictions as inccorect
             correct = torch.zeros(predictions.shape[0], self.num_ious, dtype=torch.bool)
 
@@ -131,7 +140,9 @@ class StatRecorder:
                     # Search for detections
                     if pred_indx.shape[0]:
                         # Prediction to target ious
-                        best_ious, best_indxs = iou(bboxes[pred_indx, :4], target_box[target_indx]).max(1)  # best ious, indices
+                        best_ious, best_indxs = iou(bboxes[pred_indx, :4], target_box[target_indx]).max(
+                            1
+                        )  # best ious, indices
                         # Appended detections
                         detected_set = set()
                         for iou_indx in (best_ious > self.iou_values[0]).nonzero(as_tuple=False):
@@ -149,8 +160,8 @@ class StatRecorder:
         """
         Computes and prints the evaluation metrics
         """
-        s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
-        precision, recall, f1, mean_precision, mean_recall, m_ap50, m_ap = 0., 0., 0., 0., 0., 0., 0.
+        s = ("%20s" + "%12s" * 6) % ("Class", "Images", "Targets", "P", "R", "mAP@.5", "mAP@.5:.95")
+        precision, recall, f1, mean_precision, mean_recall, m_ap50, m_ap = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         ap = []
         eval_stats = [np.concatenate(x, 0) for x in zip(*self.eval_stats)]
         valid_eval = len(eval_stats) and eval_stats[0].any()
@@ -158,17 +169,22 @@ class StatRecorder:
             precision, recall, ap, f1, ap_class = ap_per_class(*eval_stats)
             precision, recall, ap50, ap = precision[:, 0], recall[:, 0], ap[:, 0], ap.mean(1)
             mean_precision, mean_recall, m_ap50, m_ap = precision.mean(), recall.mean(), ap50.mean(), ap.mean()
-            nt = np.bincount(eval_stats[3].astype(np.int64), minlength=len(self.class_names))  # number of targets per class
+            nt = np.bincount(
+                eval_stats[3].astype(np.int64), minlength=len(self.class_names)
+            )  # number of targets per class
         else:
             nt = np.zeros(1)
 
-        pf = '%20s' + '%12.5g' * 6  # print format
+        pf = "%20s" + "%12.5g" * 6  # print format
         output_function("\n EVALUATION \n")
         output_function(s)
-        output_function(pf % ('all', self.seen, nt.sum(), mean_precision, mean_recall, m_ap50, m_ap))
+        output_function(pf % ("all", self.seen, nt.sum(), mean_precision, mean_recall, m_ap50, m_ap))
         if self.cfg.eval.verbose and valid_eval:
             for indx, cls in enumerate(ap_class):
-                output_function(pf % (self.class_names[cls], self.seen, nt[cls], precision[indx], recall[indx], ap50[indx], ap[indx]))
+                output_function(
+                    pf
+                    % (self.class_names[cls], self.seen, nt[cls], precision[indx], recall[indx], ap50[indx], ap[indx])
+                )
 
         return self.seen, nt.sum(), mean_precision, mean_recall, m_ap50, m_ap
 
@@ -176,11 +192,13 @@ class StatRecorder:
         temp_pred_file = "temp_detections_{}.json".format(datetime.now().strftime("%Y%m%d_%H%M%S.%f")[:-4])
         with open(temp_pred_file, "w") as f:
             json.dump(self.bbox_summary, f)
-        annotation_file = self.data_path + '/' + self.cfg.dataset.name + '/annotations/' + self.cfg.dataset.test.annotation
+        annotation_file = (
+            self.data_path + "/" + self.cfg.dataset.name + "/annotations/" + self.cfg.dataset.test.annotation
+        )
         try:
             ground_truth = COCO(annotation_file)
             predictions = ground_truth.loadRes(temp_pred_file)
-            coco_eval = COCOeval(ground_truth, predictions, iouType='bbox')
+            coco_eval = COCOeval(ground_truth, predictions, iouType="bbox")
             coco_eval.evaluate()
             coco_eval.accumulate()
             coco_eval.summarize()
@@ -190,19 +208,21 @@ class StatRecorder:
 
     def record_inference_stats(self, inference_round_trip_time: Tuple[float, float, float], inference_step_time: float):
         """Storages in the class the latency, inference time and postprocessing time of a model
-            Parameters:
-                inference_round_trip_time (Tuple): Latency tuple with (Min, Max, Avg) Latencies. This is the round trip time from host -> device -> host for a single batch
-                inference_step_time (float): Inference time of a step
-                nms_step_time (float): Postprocessing time of a step
+        Parameters:
+            inference_round_trip_time (Tuple): Latency tuple with (Min, Max, Avg) Latencies. This is the round trip time from host -> device -> host for a single batch
+            inference_step_time (float): Inference time of a step
+            nms_step_time (float): Postprocessing time of a step
         """
         # inference_round_trip_time is an average time needed for a step
         self.inference_times.append(inference_round_trip_time)
 
         # inference_step_time is the time taken to complete the step, and used to calculate the throughput
-        inference_throughput = self.image_count/inference_step_time
+        inference_throughput = self.image_count / inference_step_time
         self.inference_throughputs.append(inference_throughput)
 
-    def record_training_stats(self, box_loss, object_loss, class_loss, total_loss, step_idx, num_img_per_step, throughput=None):
+    def record_training_stats(
+        self, box_loss, object_loss, class_loss, total_loss, step_idx, num_img_per_step, throughput=None
+    ):
         box_loss = box_loss.mean().view(1)
         object_loss = object_loss.mean().view(1)
         class_loss = class_loss.mean().view(1)
@@ -215,7 +235,9 @@ class StatRecorder:
             self.throughput += throughput
             self.avg_throughput = self.throughput / (step_idx + 1)
 
-        self.loss_items = torch.cat((box_loss, object_loss, class_loss, total_loss)) / num_img_per_step  # normalize per image
+        self.loss_items = (
+            torch.cat((box_loss, object_loss, class_loss, total_loss)) / num_img_per_step
+        )  # normalize per image
         self.moving_avg_loss = (self.moving_avg_loss * step_idx + self.loss_items) / (step_idx + 1)
 
     def log_train_step(self, optimizer_state, step_idx, output_func):
@@ -225,23 +247,34 @@ class StatRecorder:
                 "box_loss": self.loss_items[0],
                 "obj_loss": self.loss_items[1],
                 "cls_loss": self.loss_items[2],
-                "pg0_lr": optimizer_state[0]['lr'],
-                "pg1_lr": optimizer_state[1]['lr'],
-                "pg2_lr": optimizer_state[2]['lr'],
-                "pg0_momentum": optimizer_state[0]['momentum'],
-                "pg1_momentum": optimizer_state[1]['momentum'],
-                "pg2_momentum": optimizer_state[2]['momentum'],
-                "pg1_weight_decay": optimizer_state[1]['weight_decay'],
+                "pg0_lr": optimizer_state[0]["lr"],
+                "pg1_lr": optimizer_state[1]["lr"],
+                "pg2_lr": optimizer_state[2]["lr"],
+                "pg0_momentum": optimizer_state[0]["momentum"],
+                "pg1_momentum": optimizer_state[1]["momentum"],
+                "pg2_momentum": optimizer_state[2]["momentum"],
+                "pg1_weight_decay": optimizer_state[1]["weight_decay"],
                 "throughput": self.avg_throughput,
             }
             mean_losses = {self.loss_keys[i]: self.moving_avg_loss.tolist()[i] for i in range(len(self.loss_keys))}
             wandb.log({**log_dict, **mean_losses})
-        output_func("step: ", step_idx, " total loss: ", self.loss_items[3].item(),
-                    " box loss: ", self.loss_items[0].item(),
-                    " obj loss: ", self.loss_items[1].item(),
-                    " cls loss: ", self.loss_items[2].item(),
-                    "moving avg loss: ", self.moving_avg_loss,
-                    " throughput: ", self.avg_throughput, "samples/sec")
+        output_func(
+            "step: ",
+            step_idx,
+            " total loss: ",
+            self.loss_items[3].item(),
+            " box loss: ",
+            self.loss_items[0].item(),
+            " obj loss: ",
+            self.loss_items[1].item(),
+            " cls loss: ",
+            self.loss_items[2].item(),
+            "moving avg loss: ",
+            self.moving_avg_loss,
+            " throughput: ",
+            self.avg_throughput,
+            "samples/sec",
+        )
 
     def log_train_epoch(self, output_func):
         if self.log_wandb:
@@ -250,30 +283,55 @@ class StatRecorder:
                 "epoch_total_box_loss": self.sum_box_loss,
                 "epoch_total_obj_loss": self.sum_obj_loss,
                 "epoch_total_cls_loss": self.sum_cls_loss,
-                "epoch": self.epoch
+                "epoch": self.epoch,
             }
             wandb.log(log_epoch)
-        output_func("Epoch ", self.epoch, ": total loss: ", self.sum_all_loss, " box loss: ", self.sum_box_loss, " obj loss: ", self.sum_obj_loss, " class loss: ", self.sum_cls_loss)
+        output_func(
+            "Epoch ",
+            self.epoch,
+            ": total loss: ",
+            self.sum_all_loss,
+            " box loss: ",
+            self.sum_box_loss,
+            " obj loss: ",
+            self.sum_obj_loss,
+            " class loss: ",
+            self.sum_cls_loss,
+        )
         self.epoch = self.epoch + 1
 
     def logging(self, output_function, run_coco_eval):
         """Prints using the "output_function" given the average of the times recorded during the call to record_inference_stats()
-            Parameters:
-                output_function (function): function used to print the stats recorded
+        Parameters:
+            output_function (function): function used to print the stats recorded
         """
         avg_min_latency = [x[0] for x in self.inference_times]
         avg_max_latency = [x[1] for x in self.inference_times]
         avg_latency = [x[2] for x in self.inference_times]
 
-        output_function("Inference stats: image size {}x{}, device iterations {}, batch size {}, {} steps".format(
-            self.cfg.model.image_size, self.cfg.model.image_size, self.cfg.ipuopts.device_iterations, self.cfg.model.micro_batch_size, len(self.total_times)
-        ))
+        output_function(
+            "Inference stats: image size {}x{}, device iterations {}, batch size {}, {} steps".format(
+                self.cfg.model.image_size,
+                self.cfg.model.image_size,
+                self.cfg.ipuopts.device_iterations,
+                self.cfg.model.micro_batch_size,
+                len(self.total_times),
+            )
+        )
         output_function("--------------------------------------------------")
         output_function("Inference")
-        output_function("Average Min Latency per Batch: {:.3f} ms".format(1000 * sum(avg_min_latency)/len(self.inference_times)))
-        output_function("Average Max Latency per Batch: {:.3f} ms".format(1000 * sum(avg_max_latency)/len(self.inference_times)))
-        output_function("Per-batch latency avg: {:.3f} ms".format(1000 * sum(avg_latency)/len(self.inference_times)))
-        output_function("Average Inference throughput: {:.3f} samples/sec".format(sum(self.inference_throughputs)/len(self.inference_throughputs)))
+        output_function(
+            "Average Min Latency per Batch: {:.3f} ms".format(1000 * sum(avg_min_latency) / len(self.inference_times))
+        )
+        output_function(
+            "Average Max Latency per Batch: {:.3f} ms".format(1000 * sum(avg_max_latency) / len(self.inference_times))
+        )
+        output_function("Per-batch latency avg: {:.3f} ms".format(1000 * sum(avg_latency) / len(self.inference_times)))
+        output_function(
+            "Average Inference throughput: {:.3f} samples/sec".format(
+                sum(self.inference_throughputs) / len(self.inference_throughputs)
+            )
+        )
         output_function("--------------------------------------------------")
 
         if self.cfg.eval.metrics:
@@ -284,7 +342,7 @@ class StatRecorder:
                     "recall": recall,
                     "m_ap": m_ap,
                     "m_ap50": m_ap50,
-                    "epoch": self.epoch
+                    "epoch": self.epoch,
                 }
                 wandb.log(eval_stats)
                 wandb.run.summary["seen"] = seen
@@ -298,13 +356,36 @@ class AutoAnchors:
     """
     Class to calculate the best set of anchors for a dataset with a given image size
     """
+
     def __init__(self, dataset, cfg, gen):
         self.dataset = dataset
         self.image_size = cfg.image_size
         self.anchor_threshold = cfg.anchor_threshold
-        self.anchors = torch.stack((torch.stack((torch.tensor(cfg.anchors.p3width, requires_grad=False), torch.tensor(cfg.anchors.p3height, requires_grad=False)), dim=1),
-                                    torch.stack((torch.tensor(cfg.anchors.p4width, requires_grad=False), torch.tensor(cfg.anchors.p4height, requires_grad=False)), dim=1),
-                                    torch.stack((torch.tensor(cfg.anchors.p5width, requires_grad=False), torch.tensor(cfg.anchors.p5height, requires_grad=False)), dim=1))).view(3 * 4, 2)
+        self.anchors = torch.stack(
+            (
+                torch.stack(
+                    (
+                        torch.tensor(cfg.anchors.p3width, requires_grad=False),
+                        torch.tensor(cfg.anchors.p3height, requires_grad=False),
+                    ),
+                    dim=1,
+                ),
+                torch.stack(
+                    (
+                        torch.tensor(cfg.anchors.p4width, requires_grad=False),
+                        torch.tensor(cfg.anchors.p4height, requires_grad=False),
+                    ),
+                    dim=1,
+                ),
+                torch.stack(
+                    (
+                        torch.tensor(cfg.anchors.p5width, requires_grad=False),
+                        torch.tensor(cfg.anchors.p5height, requires_grad=False),
+                    ),
+                    dim=1,
+                ),
+            )
+        ).view(3 * 4, 2)
         self.n_anchors = self.anchors.shape[0]
         self.n_generations = gen
 
@@ -320,7 +401,7 @@ class AutoAnchors:
         """
         k_points = torch.tensor(k_points).float()
         ratio = width_height[:, None] / k_points[None]
-        best_ratio_in_dim = torch.min(ratio, 1. / ratio).min(2)[0]
+        best_ratio_in_dim = torch.min(ratio, 1.0 / ratio).min(2)[0]
         best = best_ratio_in_dim.max(1)[0]
         return best_ratio_in_dim, best
 
@@ -336,8 +417,8 @@ class AutoAnchors:
         """
 
         best_ratio_in_dim, best = self.best_ratio_metric(k_points, width_height)
-        anchors_above_threshold = (best_ratio_in_dim > 1. / self.anchor_threshold).float().sum(1).mean()
-        best_possible_recall = (best > (1. / self.anchor_threshold)).float().mean()
+        anchors_above_threshold = (best_ratio_in_dim > 1.0 / self.anchor_threshold).float().sum(1).mean()
+        best_possible_recall = (best > (1.0 / self.anchor_threshold)).float().mean()
         return best_possible_recall, anchors_above_threshold
 
     def fitness(self, k_points: np.array, width_height: torch.Tensor):  # mutation fitness
@@ -350,7 +431,7 @@ class AutoAnchors:
             fitness
         """
         _, best = self.best_ratio_metric(k_points, width_height)
-        return (best * (best > (1. / self.anchor_threshold)).float()).mean()
+        return (best * (best > (1.0 / self.anchor_threshold)).float()).mean()
 
     def mutate(self, population: np.array, mutation_prob: float = 0.9, sigma: float = 0.1):
         """
@@ -363,7 +444,13 @@ class AutoAnchors:
             a new mutated population
         """
         while (population == 1).all():
-            population = ((np.random.random(population.shape) < mutation_prob) * np.random.random() * np.random.randn(*population.shape) * sigma + 1).clip(0.3, 3.0)
+            population = (
+                (np.random.random(population.shape) < mutation_prob)
+                * np.random.random()
+                * np.random.randn(*population.shape)
+                * sigma
+                + 1
+            ).clip(0.3, 3.0)
         return population
 
     def kmean_anchors(self, labels_wh: np.array):
@@ -394,7 +481,7 @@ class AutoAnchors:
         fitness_value = self.fitness(k_points, labels_wh_filtered)
         population_size = k_points.shape
 
-        pbar = tqdm(range(self.n_generations), desc='Evlolving anchors with Genetic Algorithm')
+        pbar = tqdm(range(self.n_generations), desc="Evlolving anchors with Genetic Algorithm")
         for _ in pbar:
             new_population = self.mutate(np.ones(population_size))
             possible_new_kpoints = (k_points.copy() * new_population).clip(min=2.0)
@@ -414,13 +501,15 @@ class AutoAnchors:
         images_shapes = np.asarray(self.dataset.images_shapes)
         shapes = self.image_size * images_shapes / images_shapes.max(1, keepdims=True)
         center, shift = 1.0, 0.1
-        scales = np.random.uniform(center-shift, center+shift, size=(shapes.shape[0], 1))
+        scales = np.random.uniform(center - shift, center + shift, size=(shapes.shape[0], 1))
         wh_array = np.concatenate([l[:, 3:5] * s for s, l in zip(shapes * scales, self.dataset.labels)])
         wh_tensor = torch.tensor(wh_array).float()
         wh = np.concatenate([l[:, 3:5] * s for s, l in zip(shapes, self.dataset.labels)])
 
         best_possible_recall, anchors_above_threshold = self.metric(self.anchors, wh_tensor)
-        print("Anchors/Target: {:.3f}, Best Possible Recall: {:.3f}".format(anchors_above_threshold, best_possible_recall))
+        print(
+            "Anchors/Target: {:.3f}, Best Possible Recall: {:.3f}".format(anchors_above_threshold, best_possible_recall)
+        )
 
         if best_possible_recall < 0.98:
             print("Attempting to generate improved anchors.")
@@ -431,19 +520,25 @@ class AutoAnchors:
             if new_best_possible_recall > best_possible_recall:
                 new_anchors = torch.from_numpy(new_anchors).int().view(3, -1, 2)
                 new_anchors.requires_grad = False
-                new_anchors = [AnchorBoxes(widths=new_anchors[0, :, 0], heights=new_anchors[0, :, 1]),
-                               AnchorBoxes(widths=new_anchors[1, :, 0], heights=new_anchors[1, :, 1]),
-                               AnchorBoxes(widths=new_anchors[2, :, 0], heights=new_anchors[2, :, 1])]
+                new_anchors = [
+                    AnchorBoxes(widths=new_anchors[0, :, 0], heights=new_anchors[0, :, 1]),
+                    AnchorBoxes(widths=new_anchors[1, :, 0], heights=new_anchors[1, :, 1]),
+                    AnchorBoxes(widths=new_anchors[2, :, 0], heights=new_anchors[2, :, 1]),
+                ]
             else:
-                print('Kmean was not able to find better anchors than the originals')
-                new_anchors = [AnchorBoxes(widths=self.anchors[0:4, 0], heights=self.anchors[0:4, 1]),
-                               AnchorBoxes(widths=self.anchors[4:8, 0], heights=self.anchors[4:8, 1]),
-                               AnchorBoxes(widths=self.anchors[8:12, 0], heights=self.anchors[8:12, 1])]
+                print("Kmean was not able to find better anchors than the originals")
+                new_anchors = [
+                    AnchorBoxes(widths=self.anchors[0:4, 0], heights=self.anchors[0:4, 1]),
+                    AnchorBoxes(widths=self.anchors[4:8, 0], heights=self.anchors[4:8, 1]),
+                    AnchorBoxes(widths=self.anchors[8:12, 0], heights=self.anchors[8:12, 1]),
+                ]
         else:
             print("Current anchors are good enough. Using the original anchors.")
-            new_anchors = [AnchorBoxes(widths=self.anchors[0:4, 0], heights=self.anchors[0:4, 1]),
-                           AnchorBoxes(widths=self.anchors[4:8, 0], heights=self.anchors[4:8, 1]),
-                           AnchorBoxes(widths=self.anchors[8:12, 0], heights=self.anchors[8:12, 1])]
+            new_anchors = [
+                AnchorBoxes(widths=self.anchors[0:4, 0], heights=self.anchors[0:4, 1]),
+                AnchorBoxes(widths=self.anchors[4:8, 0], heights=self.anchors[4:8, 1]),
+                AnchorBoxes(widths=self.anchors[8:12, 0], heights=self.anchors[8:12, 1]),
+            ]
 
         return new_anchors
 
@@ -456,12 +551,14 @@ def load_weights(weight_path: str) -> List[Tuple[str, torch.Tensor]]:
     Returns:
         A list of layer names and weights for the model
     """
-    model = torch.load(weight_path, map_location=torch.device('cpu'))
-    model_weight = [(k, v) for (k, v) in model.items() if 'anchor' not in k]
+    model = torch.load(weight_path, map_location=torch.device("cpu"))
+    model_weight = [(k, v) for (k, v) in model.items() if "anchor" not in k]
     return model_weight
 
 
-def map_key_names(scaled_yolo: List[Tuple[str, torch.Tensor]], our_model_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+def map_key_names(
+    scaled_yolo: List[Tuple[str, torch.Tensor]], our_model_dict: Dict[str, torch.Tensor]
+) -> Dict[str, torch.Tensor]:
     """
     Translate scaled yolov4 weights' keys to our model weights' key
     Parameters:
@@ -478,7 +575,9 @@ def map_key_names(scaled_yolo: List[Tuple[str, torch.Tensor]], our_model_dict: D
     return scaled_yolo_final
 
 
-def load_and_fuse_pretrained_weights(model: torch.nn.Module, weight_path: str, is_inference: bool = True) -> torch.nn.Module:
+def load_and_fuse_pretrained_weights(
+    model: torch.nn.Module, weight_path: str, is_inference: bool = True
+) -> torch.nn.Module:
     """
     Given a model, load pretrained weight and fuse conv layers
     Parameters:
@@ -508,7 +607,7 @@ def intersection(boxes1: np.array, boxes2: np.array) -> np.array:
     inter_coords = np.clip(
         np.minimum(boxes1[:, None, 2:], boxes2[:, 2:]) - np.maximum(boxes1[:, None, :2], boxes2[:, :2]),
         a_min=0,
-        a_max=None
+        a_max=None,
     )
 
     return np.prod(inter_coords, 2)
@@ -556,12 +655,14 @@ def iou(boxes1: torch.Tensor, boxes2: torch.Tensor):
     area1 = area(boxes1)
     area2 = area(boxes2)
 
-    inter = (torch.min(boxes1[:, None, 2:], boxes2[:, 2:]) - torch.max(boxes1[:, None, :2], boxes2[:, :2])).clamp(0).prod(2)
+    inter = (
+        (torch.min(boxes1[:, None, 2:], boxes2[:, 2:]) - torch.max(boxes1[:, None, :2], boxes2[:, :2])).clamp(0).prod(2)
+    )
     union = area1[:, None] + torch.finfo(torch.float32).eps + area2 - inter
     return inter / union
 
 
-def bbox_iou(predicted_boxes: torch.Tensor, target_boxes: torch.Tensor, is_xyxy: bool, special_iou_type: str ='ciou'):
+def bbox_iou(predicted_boxes: torch.Tensor, target_boxes: torch.Tensor, is_xyxy: bool, special_iou_type: str = "ciou"):
     """
     Calculate distance IoU (DIoU) or complete IoU (CIoU) between N pairs of predicted and target boxes,
     used specifically in the loss function.
@@ -587,7 +688,7 @@ def bbox_iou(predicted_boxes: torch.Tensor, target_boxes: torch.Tensor, is_xyxy:
     inter = inter_x * inter_y
 
     union = (width1 * height1 + torch.finfo(torch.float32).eps) + width2 * height2 - inter
-    iou_value = (inter / union)
+    iou_value = inter / union
 
     if not special_iou_type:
         return iou_value
@@ -597,9 +698,9 @@ def bbox_iou(predicted_boxes: torch.Tensor, target_boxes: torch.Tensor, is_xyxy:
     convex_diag_squared = convex_width * convex_width + convex_height * convex_height + torch.finfo(torch.float32).eps
     rho_squared = ((b2x1 + b2x2) - (b1x1 + b1x2)) ** 2 / 4 + ((b2y1 + b2y2) - (b1y1 + b1y2)) ** 2 / 4
 
-    if special_iou_type == 'diou':
+    if special_iou_type == "diou":
         return iou_value - rho_squared / convex_diag_squared
-    elif special_iou_type == 'ciou':
+    elif special_iou_type == "ciou":
         pi = torch.tensor([math.pi], dtype=torch.float32)
         atan1 = torch.atan(width1 / (height1 + torch.finfo(torch.float32).eps))
         atan2 = torch.atan(width2 / (height2 + torch.finfo(torch.float32).eps))
@@ -613,7 +714,7 @@ def bbox_iou(predicted_boxes: torch.Tensor, target_boxes: torch.Tensor, is_xyxy:
 
 
 def isclose(tensor1, tensor2):
-    return torch.abs(tensor1-tensor2) < 1e-6
+    return torch.abs(tensor1 - tensor2) < 1e-6
 
 
 def sparse_mean(x: torch.Tensor, excluded_value=torch.zeros(1).float()):
@@ -736,7 +837,10 @@ def ap_per_class(
 
     # Create PR curve and compute AP metric for each class
     pr_score = 0.1
-    metric_dim = [unique_classes.shape[0], tp.shape[1]]  # number class, number iou thresholds (i.e. 10 for mAP0.5...0.95)
+    metric_dim = [
+        unique_classes.shape[0],
+        tp.shape[1],
+    ]  # number class, number iou thresholds (i.e. 10 for mAP0.5...0.95)
     average_precision, precision_array, recall_array = np.zeros(metric_dim), np.zeros(metric_dim), np.zeros(metric_dim)
 
     for cls_indx, cls in enumerate(unique_classes):
@@ -753,7 +857,9 @@ def ap_per_class(
 
             # Recall
             recall = tp_count / (num_gt + 1e-16)
-            recall_array[cls_indx] = np.interp(-pr_score, -conf[pos_cls], recall[:, 0])  # r at pr_score, negative x, xp because xp decreases
+            recall_array[cls_indx] = np.interp(
+                -pr_score, -conf[pos_cls], recall[:, 0]
+            )  # r at pr_score, negative x, xp because xp decreases
 
             # Precision
             precision = tp_count / (tp_count + fp_count)  # precision curve
@@ -778,8 +884,8 @@ def compute_ap(recall: np.array, precision: np.array) -> np.array:
         np.array: The average precision
     """
     # Append sentinel values to beginning and end
-    mrec = np.concatenate(([0.], recall, [min(recall[-1] + 1E-3, 1.)]))
-    mpre = np.concatenate(([0.], precision, [0.]))
+    mrec = np.concatenate(([0.0], recall, [min(recall[-1] + 1e-3, 1.0)]))
+    mpre = np.concatenate(([0.0], precision, [0.0]))
 
     # Compute the precision envelope
     mpre = np.flip(np.maximum.accumulate(np.flip(mpre)))

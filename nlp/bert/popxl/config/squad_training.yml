@@ -70,7 +70,7 @@ phased:
       micro_batch_size: 4
       data_parallel: 16
       available_memory_proportion: [0.4]
-  
+
   base:
     <<: *base
     execution:

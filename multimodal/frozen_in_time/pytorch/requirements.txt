@@ -47,8 +47,8 @@ timm==0.5.4
 tokenizers==0.10.1
 --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 torch==1.10.0+cpu; python_version=='3.6'
-torch==1.13.0+cpu; python_version>'3.6'
-torchvision==0.14.0+cpu; python_version > '3.6'
+torch==1.13.1+cpu; python_version>'3.6'
+torchvision==0.14.1+cpu; python_version > '3.6'
 torchvision==0.11.0+cpu; python_version <= '3.6'
 tqdm==4.62.3
 transformers==4.11.3

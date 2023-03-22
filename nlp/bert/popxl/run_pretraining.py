@@ -26,7 +26,8 @@ def training(config: BertConfig, session: TaskSession, dataset: Dataset):
         drop_last=True,
         num_workers=64,
         worker_init_fn=WorkerInit(config.model.seed),
-        persistent_workers=True)
+        persistent_workers=True,
+    )
 
     step = 0
 
@@ -34,7 +35,8 @@ def training(config: BertConfig, session: TaskSession, dataset: Dataset):
         config.training.steps,
         1e-7,
         config.training.optimizer.learning_rate.maximum,
-        config.training.optimizer.learning_rate.warmup_proportion)
+        config.training.optimizer.learning_rate.warmup_proportion,
+    )
 
     # Attach to device
     with session:
@@ -45,24 +47,42 @@ def training(config: BertConfig, session: TaskSession, dataset: Dataset):
                 data_map = {}
 
                 # Validate data matches config
-                data_seq_len = data['input_ids'].shape[1]
+                data_seq_len = data["input_ids"].shape[1]
                 if data_seq_len != config.model.sequence_length:
-                    raise ValueError(f'Sequence length in config ({config.model.sequence_length}) does not match '
-                                     f"sequence length in input data ({data_seq_len})')")
-                data_mlm_mask_tokens = data['masked_lm_positions'].shape[1]
+                    raise ValueError(
+                        f"Sequence length in config ({config.model.sequence_length}) does not match "
+                        f"sequence length in input data ({data_seq_len})')"
+                    )
+                data_mlm_mask_tokens = data["masked_lm_positions"].shape[1]
                 if data_mlm_mask_tokens != config.model.mlm.mask_tokens:
-                    raise ValueError(f'MLM masked tokens in config ({config.model.mlm.mask_tokens}) does not match '
-                                     f"MLM masked tokens in input data ({data_mlm_mask_tokens})')")
+                    raise ValueError(
+                        f"MLM masked tokens in config ({config.model.mlm.mask_tokens}) does not match "
+                        f"MLM masked tokens in input data ({data_mlm_mask_tokens})')"
+                    )
 
-                for idx, key in enumerate(['input_ids', 'segment_ids', 'input_mask', 'masked_lm_positions', 'masked_lm_ids', 'next_sentence_labels']):
+                for idx, key in enumerate(
+                    [
+                        "input_ids",
+                        "segment_ids",
+                        "input_mask",
+                        "masked_lm_positions",
+                        "masked_lm_ids",
+                        "next_sentence_labels",
+                    ]
+                ):
                     h2d = session.inputs[idx]
-                    data_map[h2d] = data[key].numpy()\
-                        .astype(h2d.dtype.as_numpy())\
+                    data_map[h2d] = (
+                        data[key]
+                        .numpy()
+                        .astype(h2d.dtype.as_numpy())
                         .reshape(session.ir.num_host_transfers, config.execution.data_parallel, *h2d.shape)
+                    )
 
                 # # Add learning rate inputs
                 # # TODO: Allow accepting of smaller sized inputs.
-                data_map[session.inputs[len(data_map)]] = np.full((session.ir.num_host_transfers, config.execution.data_parallel, 1), lr_schedule[step]).astype(np.float32)
+                data_map[session.inputs[len(data_map)]] = np.full(
+                    (session.ir.num_host_transfers, config.execution.data_parallel, 1), lr_schedule[step]
+                ).astype(np.float32)
 
                 # Run program
                 outputs = session.run(data_map)
@@ -74,19 +94,19 @@ def training(config: BertConfig, session: TaskSession, dataset: Dataset):
                 start = time.perf_counter()
 
                 loss = np.mean(losses.astype(np.float32))
-                throughput = samples_per_step/duration
+                throughput = samples_per_step / duration
                 total_steps = config.execution.device_iterations * step
                 result_str = (
                     f"Step: {total_steps}/{config.training.steps} "
                     f"Loss: {loss:5.3f} "
                     f"Duration: {duration:6.4f} s "
-                    f"throughput: {throughput:6.1f} samples/sec ")
+                    f"throughput: {throughput:6.1f} samples/sec "
+                )
                 logging.info(result_str)
-                wandb.log({"Loss": loss,
-                           "LR": lr_schedule[step],
-                           "Throughput": throughput,
-                           "Grad Norm": grad_norm},
-                          step=total_steps)
+                wandb.log(
+                    {"Loss": loss, "LR": lr_schedule[step], "Throughput": throughput, "Grad Norm": grad_norm},
+                    step=total_steps,
+                )
                 step += 1
 
                 if total_steps >= config.training.steps:
@@ -95,13 +115,10 @@ def training(config: BertConfig, session: TaskSession, dataset: Dataset):
 
 def main():
     # Configuration
-    config, args = bert_pretraining_setup(
-        CONFIG_DIR / "pretraining.yml",
-        "phased",
-        "base_128")
+    config, args = bert_pretraining_setup(CONFIG_DIR / "pretraining.yml", "phased", "base_128")
 
     # Setup weights and biases
-    wandb_init(config, tags=['PE'], disable=args.wandb == 'False')
+    wandb_init(config, tags=["PE"], disable=args.wandb == "False")
 
     # Setup dataset
     if not config.data.input_files:

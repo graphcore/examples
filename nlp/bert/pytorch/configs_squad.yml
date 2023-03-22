@@ -33,7 +33,7 @@ defaults: &defaults
   layer_norm_eps: 0.001
   attention_probs_dropout_prob: 0.0
   mask_tokens: 20
-  dataset: squad 
+  dataset: squad
   sequence_length: 128
   num_epochs: 2
   packed_data: False
@@ -74,7 +74,7 @@ demo_tiny_128: &demo_tiny_128
 #----------------------------------------------------------------------------------
 squad_base_384: &squad_base_384
   <<: *defaults
-  
+
   # Execution
   micro_batch_size: 1
   num_epochs: 3
@@ -107,7 +107,7 @@ squad_base_384: &squad_base_384
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-# A 16IPU optimized squad_large configuration that relies on replicatedTensorSharding 
+# A 16IPU optimized squad_large configuration that relies on replicatedTensorSharding
 # to reduce the optimizer state such that it fits on chip.
 # NB This requires replication_factor=2 to fit.
 squad_large_384:

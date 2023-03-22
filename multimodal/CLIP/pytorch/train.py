@@ -10,8 +10,7 @@ import torch
 import wandb
 
 from args import parse_args
-from checkpoint import (load_checkpoint_passing_constraints,
-                        prepare_checkpoint_metrics, save_model)
+from checkpoint import load_checkpoint_passing_constraints, prepare_checkpoint_metrics, save_model
 from datasets import build_loaders
 from ipu_options import get_options
 from log import Logger
@@ -31,11 +30,11 @@ if __name__ == "__main__":
     abs_pathd = os.path.abspath(config.checkpoint_dir)
     os.makedirs(abs_pathd, exist_ok=True)
 
-    log = Logger("./output/"+datetime.datetime.now().strftime('%Y.%m.%d-%H:%M:%S')+'.log', level='info')
+    log = Logger("./output/" + datetime.datetime.now().strftime("%Y.%m.%d-%H:%M:%S") + ".log", level="info")
 
     # W&B
     if config.wandb:
-        wandb.init(project="CLIP", name=config.wandb_run_name, settings=wandb.Settings(console='off'))
+        wandb.init(project="torch-clip", name=config.wandb_run_name, settings=wandb.Settings(console="off"))
         wandb.config.update(vars(config))
 
     # Execution parameters
@@ -58,8 +57,7 @@ if __name__ == "__main__":
     training_steps = steps_per_epoch * epochs
     warmup_steps = steps_per_epoch * config.warmup_epochs
 
-    scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
-                                 warmup_steps, training_steps)
+    scheduler = get_lr_scheduler(optimizer, config.lr_schedule, warmup_steps, training_steps)
 
     # Restore model from checkpoint
     if config.restore:
@@ -75,7 +73,7 @@ if __name__ == "__main__":
 
     # Wrap the training model
     train_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
-    
+
     # Compile model
     log.logger.info("---------- Compilation Started ---------")
     start_compile = time.perf_counter()
@@ -103,30 +101,48 @@ if __name__ == "__main__":
             if step > 0 or epoch > 0:
                 total_compute_time += step_length
 
-            log.logger.info("Epoch: {:.2f}/{} Step: {}/{} Lr: {:.6f} loss: {:.3f} throughput: {:.2f} samples/sec"
-                            .format(epoch, epochs, current_step, training_steps, scheduler.get_last_lr()[0], losses.mean(), step_throughput))
+            log.logger.info(
+                "Epoch: {:.2f}/{} Step: {}/{} Lr: {:.6f} loss: {:.3f} throughput: {:.2f} samples/sec".format(
+                    epoch,
+                    epochs,
+                    current_step,
+                    training_steps,
+                    scheduler.get_last_lr()[0],
+                    losses.mean(),
+                    step_throughput,
+                )
+            )
             if config.wandb:
-                wandb.log({"LR": scheduler.get_last_lr()[0],
-                           "Throughput": step_throughput,
-                           "Loss": losses})
+                wandb.log({"LR": scheduler.get_last_lr()[0], "Throughput": step_throughput, "Loss": losses})
 
             if not config.ipu_generate_data and not config.host_generate_data:
                 if current_step % config.checkpoint_save_steps == 0 and (current_step + 1 != training_steps):
-                    log.logger.info("Save checkpoint path: {}".format(save_model(config, model, optimizer, epoch + 1,
-                                    metrics=prepare_checkpoint_metrics(losses, factor), scheduler=scheduler)))
+                    log.logger.info(
+                        "Save checkpoint path: {}".format(
+                            save_model(
+                                config,
+                                model,
+                                optimizer,
+                                epoch + 1,
+                                metrics=prepare_checkpoint_metrics(losses, factor),
+                                scheduler=scheduler,
+                            )
+                        )
+                    )
             start_step = time.perf_counter()
 
     # Checkpoint at end of run
     if not config.ipu_generate_data and not config.host_generate_data:
-        save_path = save_model(config, model, optimizer, epoch + 1,
-                               metrics=prepare_checkpoint_metrics(losses, factor), scheduler=scheduler)
+        save_path = save_model(
+            config, model, optimizer, epoch + 1, metrics=prepare_checkpoint_metrics(losses, factor), scheduler=scheduler
+        )
         log.logger.info("Save checkpoint path: {}".format(save_path))
     log.logger.info("---------------------------------------")
     log.logger.info("---------- Training Metrics -----------")
     log.logger.info(f"global_batch_size: {config.global_batch_size}")
     log.logger.info(f"device_iterations: {config.device_iterations}")
     log.logger.info(f"training_steps: {training_steps}")
-    num_samples = config.samples_per_step * (training_steps-1)
+    num_samples = config.samples_per_step * (training_steps - 1)
     log.logger.info(f"Training time: {total_compute_time:.3f} secs")
     log.logger.info("throughput: {:5f} samples/sec.".format(num_samples / total_compute_time))
     log.logger.info("---------------------------------------")

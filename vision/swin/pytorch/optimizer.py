@@ -40,38 +40,42 @@ def build_optimizer(config, model):
     """
     skip = {}
     skip_keywords = {}
-    if hasattr(model, 'no_weight_decay'):
+    if hasattr(model, "no_weight_decay"):
         skip = model.no_weight_decay()
-    if hasattr(model, 'no_weight_decay_keywords'):
+    if hasattr(model, "no_weight_decay_keywords"):
         skip_keywords = model.no_weight_decay_keywords()
     parameters = set_weight_decay(model, skip, skip_keywords)
 
     opt_lower = config.TRAIN.OPTIMIZER.NAME.lower()
     optimizer = None
-    if opt_lower == 'sgd':
-        optimizer = SGD(parameters,
-                        lr=config.TRAIN.BASE_LR,
-                        momentum=config.TRAIN.OPTIMIZER.MOMENTUM,
-                        weight_decay=config.TRAIN.WEIGHT_DECAY,
-                        loss_scaling=config.TRAIN.LOSS_SCALING,
-                        accum_type=torch.float16,
-                        use_combined_accum=True)
+    if opt_lower == "sgd":
+        optimizer = SGD(
+            parameters,
+            lr=config.TRAIN.BASE_LR,
+            momentum=config.TRAIN.OPTIMIZER.MOMENTUM,
+            weight_decay=config.TRAIN.WEIGHT_DECAY,
+            loss_scaling=config.TRAIN.LOSS_SCALING,
+            accum_type=torch.float16,
+            use_combined_accum=True,
+        )
 
-    elif opt_lower == 'adamw':
-        if config.PRECISION[0] == 'float':
+    elif opt_lower == "adamw":
+        if config.PRECISION[0] == "float":
             accum_type = torch.float32
         else:
             accum_type = torch.float16
-        optimizer = AdamW(parameters,
-                          lr=config.TRAIN.BASE_LR,
-                          betas=config.TRAIN.OPTIMIZER.BETAS,
-                          eps=config.TRAIN.OPTIMIZER.EPS,
-                          weight_decay=config.TRAIN.WEIGHT_DECAY,
-                          loss_scaling=config.TRAIN.LOSS_SCALING,
-                          accum_type=accum_type,
-                          first_order_momentum_accum_type=torch.float16,
-                          second_order_momentum_accum_type=torch.float32,
-                          max_grad_norm=config.TRAIN.CLIP_GRAD)
+        optimizer = AdamW(
+            parameters,
+            lr=config.TRAIN.BASE_LR,
+            betas=config.TRAIN.OPTIMIZER.BETAS,
+            eps=config.TRAIN.OPTIMIZER.EPS,
+            weight_decay=config.TRAIN.WEIGHT_DECAY,
+            loss_scaling=config.TRAIN.LOSS_SCALING,
+            accum_type=accum_type,
+            first_order_momentum_accum_type=torch.float16,
+            second_order_momentum_accum_type=torch.float32,
+            max_grad_norm=config.TRAIN.CLIP_GRAD,
+        )
     if popdist.isPopdistEnvSet():
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
     return optimizer
@@ -84,16 +88,16 @@ def set_weight_decay(model, skip_list=(), skip_keywords=()):
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue  # frozen weights
-        if len(
-                param.shape) == 1 or name.endswith(".bias") or (
-                name in skip_list) or check_keywords_in_name(
-                name,
-                skip_keywords):
+        if (
+            len(param.shape) == 1
+            or name.endswith(".bias")
+            or (name in skip_list)
+            or check_keywords_in_name(name, skip_keywords)
+        ):
             no_decay.append(param)
         else:
             has_decay.append(param)
-    return [{'params': has_decay},
-            {'params': no_decay, 'weight_decay': 0.}]
+    return [{"params": has_decay}, {"params": no_decay, "weight_decay": 0.0}]
 
 
 def check_keywords_in_name(name, keywords=()):

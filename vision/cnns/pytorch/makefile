@@ -3,10 +3,9 @@ all: install get-data install-turbojpeg
 install-turbojpeg: get-turbojpeg build-turbojpeg
 
 install:
-	pip3 install -r requirements.txt
+	pip3 install -r requirements.txt --no-cache-dir
 	pip3 uninstall pillow -y
 	CC="cc -mavx2" pip3 install --no-cache-dir -U --force-reinstall pillow-simd
-	HOROVOD_WITH_PYTORCH=1 pip3 install --no-cache-dir 'horovod==0.24.3'
 
 get-turbojpeg:
 	cd datasets && rm -rf libjpeg-turbo && git clone https://github.com/libjpeg-turbo/libjpeg-turbo.git
@@ -21,5 +20,4 @@ get-data:
 	cd datasets && ./get_images.sh
 
 test:
-	cd tests && python3 -m pytest -n 10 --forked
-	cd tests_serial && python3 -m pytest
+	python3 -m pytest -n 4 --forked --dist loadgroup tests

@@ -8,19 +8,19 @@ from keras_extensions.callbacks.periodic_metrics import PeriodicMetrics
 
 
 WANDB_ONE_OFF_METRICS = ["Compilation Time"]
-WANDB_EXCLUDE_METRICS = ["nsp___cls_loss",
-                         "mlm___cls_loss",
-                         "loss",
-                         "mlm___cls_accuracy",
-                         "nsp___cls_accuracy",
-                         "classification_acc",
-                         "start_positions_end_positions_sparse_categorical_accuracy"]
+WANDB_EXCLUDE_METRICS = [
+    "nsp___cls_loss",
+    "mlm___cls_loss",
+    "loss",
+    "mlm___cls_accuracy",
+    "nsp___cls_accuracy",
+    "classification_acc",
+    "start_positions_end_positions_sparse_categorical_accuracy",
+]
 
 
 class CustomWandbCallback(tf.keras.callbacks.Callback):
-    def __init__(self,
-                 log_period: int,
-                 model: tf.keras.Model):
+    def __init__(self, log_period: int, model: tf.keras.Model):
         self.log_period = log_period
         self.model = model
         self.__current_batch_operations = self.__first_batch_operations

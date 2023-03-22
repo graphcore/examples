@@ -12,6 +12,7 @@ config_options: &config_options
 
 pytorch_tgn_train_real_1ipu:
   <<: [*common_options, *config_options]
-  description: Pytorch TGN throughput benchmark using real data.
+  description: PyTorch TGN throughput benchmark using real data.
   cmd: >-
     python train.py
+      --data $DATASETS_DIR/JODIE

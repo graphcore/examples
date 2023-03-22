@@ -20,8 +20,25 @@ common_options: &common_options
 
 config_options: &config_options
   requirements_path: requirements.txt
-  required_apt_packages_path: required_apt_packages.txt 
+  required_apt_packages_path: required_apt_packages.txt
   pre_run_commands: [make install, make install-turbojpeg]
+
+pytorch_resnet50_train_real_pod4:
+  <<: [*common_options, *config_options]
+  description: ResNet training on 4 Mk2 IPUs, real data.
+  cmd: >-
+    poprun
+      -vv
+      --num-instances=2
+      --num-replicas=4
+      --executable-cache-path=$PYTORCH_CACHE_DIR
+    python3 train.py
+      --config resnet50-pod4
+      --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --epoch 2
+      --validation-mode none
+      --dataloader-worker 14
+      --dataloader-rebatch-size 256
 
 pytorch_resnet50_train_real_pod16:
   <<: [*common_options, *config_options]
@@ -39,6 +56,25 @@ pytorch_resnet50_train_real_pod16:
       --validation-mode none
       --dataloader-worker 14
       --dataloader-rebatch-size 256
+
+pytorch_resnet50_train_real_pod16_conv:
+  <<: [*common_options, *config_options]
+  description: ResNet training on 16 Mk2 IPUs, real data.
+    for convergence testing
+  cmd: >-
+    poprun
+      -vv
+      --num-instances=8
+      --num-replicas=16
+      --executable-cache-path=$PYTORCH_CACHE_DIR
+    python3 train.py
+      --config resnet50
+      --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --validation-mode none
+      --dataloader-worker 14
+      --dataloader-rebatch-size 256
+      --checkpoint-output-dir ./checkpoints
+      --checkpoint-save-freq 100
 
 pytorch_resnet50_train_real_1host_pod64_conv:
   <<: [*common_options, *config_options]
@@ -65,14 +101,15 @@ pytorch_resnet50_train_real_1host_pod64_conv:
       --dataloader-rebatch-size 256
       --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
       --checkpoint-output-dir ./checkpoints
+      --checkpoint-save-freq 100
       --wandb
       --validation-mode none
 
-pytorch_resnet50_train_real_4host_pod64_conv:
+pytorch_resnet50_train_real_pod64_conv:
   <<: [*common_options, *config_options]
   description: |
-    ResNet training on 64 Mk2 IPUs with real data
-    for convergence testing on 4 hosts.
+    ResNet training on 64 Mk2 IPUs with real data on 4 hosts
+    for convergence testing.
   cmd: >-
     poprun
       -vv
@@ -82,7 +119,7 @@ pytorch_resnet50_train_real_4host_pod64_conv:
       --host=$HOSTS
       --vipu-server-port 8090
       --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-      --vipu-cluster=$VIPU_CLUSTER_ID
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --update-partition=yes
       --remove-partition=yes
       --reset-partition=no
@@ -105,6 +142,7 @@ pytorch_resnet50_train_real_4host_pod64_conv:
       --dataloader-rebatch-size 256
       --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
       --checkpoint-output-dir ./checkpoints
+      --checkpoint-save-freq 100
       --wandb
       --validation-mode none
 

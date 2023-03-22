@@ -3,6 +3,6 @@
 import pytest
 import sys
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args_to_pytest = sys.argv[1:]
     pytest.main(args_to_pytest)

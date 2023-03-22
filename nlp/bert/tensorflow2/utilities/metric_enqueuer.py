@@ -20,13 +20,14 @@ def wrap_loss_in_enqueuer(loss_class, items):
 
     call_method = getattr(loss_class, "call", None)
     if not callable(call_method):
-        raise NameError(f"Class {loss_class} does not have an"
-                        " implemented call method and so is not"
-                        " suitable for wrapping in an outfeed"
-                        " enqueuer.")
+        raise NameError(
+            f"Class {loss_class} does not have an"
+            " implemented call method and so is not"
+            " suitable for wrapping in an outfeed"
+            " enqueuer."
+        )
 
     class OutfeedEnqueuer(loss_class):
-
         def __init__(self, *args, **kwargs):
             super(OutfeedEnqueuer, self).__init__(*args, **kwargs)
             self.outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
@@ -55,7 +56,6 @@ def wrap_loss_in_enqueuer(loss_class, items):
                 self.queue_buffer = dict()
             return value
 
-
     return OutfeedEnqueuer
 
 
@@ -73,12 +73,13 @@ def wrap_stateless_metric_in_enqueuer(metric_name, metric_fn, items):
         the provided classes `__call__` method onto an outfeed queue.
     """
     if not callable(metric_fn):
-        raise NameError(f"Provided metric function {metric_fn} is"
-                        " not callable and so is not suitable for"
-                        " wrapping in an outfeed enqueuer.")
+        raise NameError(
+            f"Provided metric function {metric_fn} is"
+            " not callable and so is not suitable for"
+            " wrapping in an outfeed enqueuer."
+        )
 
     class OutfeedEnqueuer:
-
         def __init__(self, *args, **kwargs):
             super(OutfeedEnqueuer, self).__init__(*args, **kwargs)
             self.name = metric_name
@@ -129,12 +130,13 @@ def wrap_stateful_metric_in_enqueuer(metric_class, items):
 
     call_method = getattr(metric_class, "update_state", None)
     if not callable(call_method):
-        raise NameError(f"Class {metric_class} does not have an"
-                        " implemented update_state method and so is not"
-                        " suitable for wrapping in an outfeed enqueuer.")
+        raise NameError(
+            f"Class {metric_class} does not have an"
+            " implemented update_state method and so is not"
+            " suitable for wrapping in an outfeed enqueuer."
+        )
 
     class OutfeedEnqueuer(metric_class):
-
         def __init__(self, *args, **kwargs):
             super(OutfeedEnqueuer, self).__init__(*args, **kwargs)
             self.outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
@@ -152,9 +154,9 @@ def wrap_stateful_metric_in_enqueuer(metric_class, items):
             """
             # This implementation doesn't handle using a sample_weight
             if sample_weight is not None:
-                raise ValueError("When using a metric enqueuer, the metric"
-                                 " should not be calculated with a sample"
-                                 " weight.")
+                raise ValueError(
+                    "When using a metric enqueuer, the metric" " should not be calculated with a sample" " weight."
+                )
             # Get the value
             value = self._fn(y_true, y_pred, **self._fn_kwargs)
             # Reduce value

@@ -1,13 +1,13 @@
-# BERT (Pytorch)
+# BERT (PyTorch)
 Bidirectional Encoder Representations from Transformers for NLP pre-training and fine-tuning tasks (SQuAD), using the [huggingface transformers library](https://huggingface.co/docs/transformers/index), optimised for Graphcore's IPU.
 
 Run our BERT-L Fine-tuning on SQuAD dataset on Paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3GTWwK7)
+[![Gradient](../../../gradient-badge.svg)](https://ipu.dev/3GTWwK7)
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| Pytorch | NLP | BERT | WIKI-103 | Next sentence prediction, Masked language modelling, Question/Answering | ✅  | ✅ | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | NLP | BERT | WIKI-103 | Next sentence prediction, Masked language modelling, Question/Answering | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) |
 
 
 ## Instructions summary
@@ -34,13 +34,13 @@ cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
+3. Additionally, enable PopART with:
 ```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -54,7 +54,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -72,6 +72,7 @@ sudo apt install $(< required_apt_packages.txt)
 pip3 install -r requirements.txt
 ```
 
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup
 The dataset used for pretraining is WIKI-103. It can be generated from a RAW dump of Wikipedia following a five step process.
@@ -254,7 +255,7 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Custom training
 
 ### Configurations
 
@@ -268,12 +269,6 @@ python3 run_pretraining.py --help
 python3 run_squad.py --help
 # or
 python3 run_benchmark_with_triton_server.py --help ./tests_serial/tritonserver/
-```
-
-### Running inference with Triton Server
-To run all tests with Triton Server:
-```bash
-python3 run_benchmark_with_triton_server.py -s ./tests_serial/tritonserver/
 ```
 
 ### Running pre-training with checkpointing
@@ -297,6 +292,18 @@ python3 run_squad.py --config squad_base_384
 For BERT-Large there is `squad_large_384`, which is a high performance large configuration that uses an 8 IPU pipeline, unlike the other configs that use 4.
 
 You will also need to specify a pre-trained checkpoint to fine-tune, which is specified with the `--checkpoint-input-dir <FILE-PATH/HF-model-hub-name>` flag.
+
+
+## Custom inference
+
+### Running inference with Triton Server
+To run all tests with Triton Server:
+```bash
+python3 run_benchmark_with_triton_server.py -s ./tests_serial/tritonserver/
+```
+
+
+## Other features
 
 ### Caching executables
 

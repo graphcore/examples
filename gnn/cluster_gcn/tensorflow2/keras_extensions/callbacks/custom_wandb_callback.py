@@ -9,11 +9,8 @@ VALIDATION_EXCLUDE_METRICS = ["throughput", "total_num_nodes_processed"]
 
 
 class CustomWandbCallback(tf.keras.callbacks.Callback):
-    def __init__(self,
-                 name: str,
-                 config: dict):
+    def __init__(self, name: str, config: dict):
         self.__current_batch_operations = self.__first_batch_operations
-
 
     def upload_to_wandb(self, batch, logs=None):
         self.__current_batch_operations(logs)
@@ -36,23 +33,25 @@ class CustomWandbCallback(tf.keras.callbacks.Callback):
 
 
 class TrainingCustomWandbCallback(CustomWandbCallback):
-
     def on_train_batch_end(self, batch, logs=None):
         self.upload_to_wandb(batch, logs)
 
     def on_train_end(self, logs=None):
         if logs is not None:
-            wandb.log({"mean_tput": logs.get("mean_throughput", "nan"),
-                       "STD_tput": logs.get("std_throughput", "nan"),
-                       "mean_real_tput": logs.get("mean_real_throughput", "nan")})
+            wandb.log(
+                {
+                    "mean_tput": logs.get("mean_throughput", "nan"),
+                    "STD_tput": logs.get("std_throughput", "nan"),
+                    "mean_real_tput": logs.get("mean_real_throughput", "nan"),
+                }
+            )
 
 
 class ValidationCustomWandbCallback(CustomWandbCallback):
-
     def on_test_batch_end(self, batch, logs=None):
-        val_logs = {k+"_validation": logs[k] for k in logs.keys()}
+        val_logs = {k + "_validation": logs[k] for k in logs.keys()}
         self.upload_to_wandb(batch, val_logs)
 
     def __first_batch_operations(self, logs):
-        logs = {k+"_validation": logs[k] for k in logs.keys() if k not in VALIDATION_EXCLUDE_METRICS}
+        logs = {k + "_validation": logs[k] for k in logs.keys() if k not in VALIDATION_EXCLUDE_METRICS}
         return super().__first_batch_operations(logs)

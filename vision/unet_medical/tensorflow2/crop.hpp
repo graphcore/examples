@@ -1,5 +1,5 @@
 // Copyright (c) 2021 Graphcore Ltd. All rights reserved.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the “License”);
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,14 +17,10 @@
 #include <poplar/Engine.hpp>
 #include <poplar/Graph.hpp>
 
-
-poplar::Tensor crop(poplar::Graph &graph,
-                    poplar::program::Sequence &prog,
+poplar::Tensor crop(poplar::Graph &graph, poplar::program::Sequence &prog,
                     const poplar::Tensor &input, float scale_factor,
                     const poplar::DebugContext &di = {});
 
-poplar::Tensor crop_grads(poplar::Graph &graph,
-                          poplar::program::Sequence &prog,
-                          const poplar::Tensor &grad_output,
-                          float scale_factor,
+poplar::Tensor crop_grads(poplar::Graph &graph, poplar::program::Sequence &prog,
+                          const poplar::Tensor &grad_output, float scale_factor,
                           const poplar::DebugContext &di = {});

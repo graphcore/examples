@@ -9,19 +9,20 @@ from ..layers import ResidualBlock, ConvNormAct, get_norm
 
 
 class CSPNeck(nn.Module):
-    def __init__(self, ch_in: int, ch_out: int, num_reps: int, activation: nn.Module, norm: str, num_groups: int = None):
+    def __init__(
+        self, ch_in: int, ch_out: int, num_reps: int, activation: nn.Module, norm: str, num_groups: int = None
+    ):
         super().__init__()
 
         self.bottleneck_conv1 = ConvNormAct(ch_in, ch_out, 1, 1, activation, norm, num_groups)
         self.conv1 = nn.Conv2d(ch_out, ch_out, 1, 1, bias=False)
         self.conv2 = ConvNormAct(2 * ch_out, ch_out, 1, 1, activation, norm, num_groups)
 
-        self.norm = get_norm(norm, ch_out*2, num_groups)
+        self.norm = get_norm(norm, ch_out * 2, num_groups)
         self.res_modules = nn.Sequential(
             *[ResidualBlock(ch_out, ch_out, activation, norm, num_groups, shortcut=False) for _ in range(num_reps)]
         )
         self.act = activation
-
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.bottleneck_conv1(x)
@@ -33,12 +34,14 @@ class CSPNeck(nn.Module):
 
 
 class CSPDown(nn.Module):
-    def __init__(self, ch_in: int, ch_out: int, num_reps: int, activation: nn.Module, norm: str, num_groups: int = None) -> None:
+    def __init__(
+        self, ch_in: int, ch_out: int, num_reps: int, activation: nn.Module, norm: str, num_groups: int = None
+    ) -> None:
         super().__init__()
 
-        hidden = int(ch_out/2)
+        hidden = int(ch_out / 2)
         self.bottleneck_conv = ConvNormAct(ch_in, hidden, 3, 2, activation, norm, num_groups)
-        self.csp_neck = CSPNeck(hidden*2, hidden, 3, activation, norm, num_groups)
+        self.csp_neck = CSPNeck(hidden * 2, hidden, 3, activation, norm, num_groups)
         self.conv = ConvNormAct(hidden, ch_out, 3, 1, activation, norm, num_groups)
 
     def forward(self, pan_connection_input: torch.Tensor, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -50,16 +53,25 @@ class CSPDown(nn.Module):
 
 
 class CSPUp(nn.Module):
-    def __init__(self, ch_in: int, ch_out: int, num_reps: int, activation: nn.Module, norm: str, num_groups: int = None, upsample: bool = True) -> None:
+    def __init__(
+        self,
+        ch_in: int,
+        ch_out: int,
+        num_reps: int,
+        activation: nn.Module,
+        norm: str,
+        num_groups: int = None,
+        upsample: bool = True,
+    ) -> None:
         super().__init__()
 
         self.conv1 = ConvNormAct(ch_in, ch_out, 1, 1, activation, norm, num_groups)
-        self.bneck_csp = CSPNeck(ch_out*2, ch_out, num_reps, activation, norm, num_groups)
+        self.bneck_csp = CSPNeck(ch_out * 2, ch_out, num_reps, activation, norm, num_groups)
         if upsample:
-            self.conv2 = ConvNormAct(ch_out, int(ch_out/2), 1, 1, activation, norm, num_groups)
-            self.upsample = nn.Upsample(size=None, scale_factor=2, mode='nearest')
+            self.conv2 = ConvNormAct(ch_out, int(ch_out / 2), 1, 1, activation, norm, num_groups)
+            self.upsample = nn.Upsample(size=None, scale_factor=2, mode="nearest")
         else:
-            self.conv2 = ConvNormAct(ch_out, ch_out*2, 3, 1, activation, norm, num_groups)
+            self.conv2 = ConvNormAct(ch_out, ch_out * 2, 3, 1, activation, norm, num_groups)
             self.upsample = None
 
     def forward(self, pan_connection_input: torch.Tensor, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -74,7 +86,17 @@ class CSPUp(nn.Module):
 
 class CSPSPP(nn.Module):
     """Spatial Pyramid Pooling using cross stage partial networks - https://arxiv.org/pdf/1903.08589.pdf"""
-    def __init__(self, ch_in: int, ch_out: int, num_reps: int, activation: nn.Module, norm: str, num_groups: int = None, maxp_kernel_size: Tuple[int, ...] = (5, 9, 13)):
+
+    def __init__(
+        self,
+        ch_in: int,
+        ch_out: int,
+        num_reps: int,
+        activation: nn.Module,
+        norm: str,
+        num_groups: int = None,
+        maxp_kernel_size: Tuple[int, ...] = (5, 9, 13),
+    ):
         super().__init__()
 
         self.conv_up2 = ConvNormAct(ch_in, ch_out, 1, 1, activation, norm, num_groups)
@@ -82,16 +104,18 @@ class CSPSPP(nn.Module):
         self.conv_up1 = nn.Conv2d(ch_in, ch_out, 1, 1, bias=False)
         self.conv1 = ConvNormAct(ch_out, ch_out, 3, 1, activation, norm, num_groups)
         self.conv2 = ConvNormAct(ch_out, ch_out, 1, 1, activation, norm, num_groups)
-        self.maxp_modules = nn.ModuleList([nn.MaxPool2d(kernel_size=kernel, stride=1, padding=(kernel // 2)) for kernel in maxp_kernel_size])
+        self.maxp_modules = nn.ModuleList(
+            [nn.MaxPool2d(kernel_size=kernel, stride=1, padding=(kernel // 2)) for kernel in maxp_kernel_size]
+        )
         self.maxp_bottleneck_conv = ConvNormAct(4 * ch_out, ch_out, 1, 1, activation, norm, num_groups)
         self.conv3 = ConvNormAct(ch_out, ch_out, 3, 1, activation, norm, num_groups)
 
         self.act = activation
-        self.norm = get_norm(norm, ch_out*2, num_groups)
+        self.norm = get_norm(norm, ch_out * 2, num_groups)
         self.cat_bottleneck = ConvNormAct(2 * ch_out, ch_out, 1, 1, activation, norm, num_groups)
 
-        self.convup = ConvNormAct(ch_out, int(ch_out/2), 1, 1, activation, norm, num_groups)
-        self.upsample = nn.Upsample(size=None, scale_factor=2, mode='nearest')
+        self.convup = ConvNormAct(ch_out, int(ch_out / 2), 1, 1, activation, norm, num_groups)
+        self.upsample = nn.Upsample(size=None, scale_factor=2, mode="nearest")
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         y2 = self.conv_up1(x)
@@ -114,6 +138,7 @@ class CSPSPP(nn.Module):
 
 class Yolov4P5Neck(nn.Module):
     """Yolov4-P5 neck as described in https://arxiv.org/abs/2011.08036"""
+
     def __init__(self, activation: nn.Module, norm: str = "group", number_groups: int = 2) -> None:
         super().__init__()
 
@@ -123,8 +148,9 @@ class Yolov4P5Neck(nn.Module):
         self.cspDown1 = CSPDown(128, 512, 3, activation, norm, number_groups)
         self.cspDown2 = CSPDown(256, 1024, 3, activation, norm, number_groups)
 
-
-    def forward(self, x: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], target: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, ...]:
+    def forward(
+        self, x: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], target: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, ...]:
         p5, p4, p3 = x
 
         p5, x = self.SPP(p5)

@@ -8,7 +8,7 @@ TARGET_LIB = $(BUILD_DIR)/nms_custom_op.so
 all: create_build_dir nms_custom_op codelet.gp
 
 .PHONY: create_build_dir
-create_build_dir: 
+create_build_dir:
 	mkdir -p $(BUILD_DIR)
 
 codelet.gp: ../codelet.cpp
@@ -21,4 +21,3 @@ nms_custom_op: nms_custom_op.cpp ../nms.cpp ../ipu_utils.cpp
 .PHONY: clean
 clean:
 	rm -rf  $(BUILD_DIR)
-

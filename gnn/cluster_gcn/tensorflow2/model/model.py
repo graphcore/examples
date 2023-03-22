@@ -9,15 +9,16 @@ from model.gcn_layer import GcnLayer
 
 
 def define_inputs_with_tensor_adjacency(
-        micro_batch_size,
-        max_nodes_per_batch,
-        adjacency_form,
-        inputs_dtype,
-        num_features,
+    micro_batch_size,
+    max_nodes_per_batch,
+    adjacency_form,
+    inputs_dtype,
+    num_features,
 ):
     assert micro_batch_size == 1, (
         f"A micro_batch_size of {micro_batch_size} has been provided,"
-        " but only a micro_batch_size of 1 is currently supported.")
+        " but only a micro_batch_size of 1 is currently supported."
+    )
 
     strategy = distribution_strategy_context.get_strategy()
 
@@ -27,23 +28,19 @@ def define_inputs_with_tensor_adjacency(
         batch_size=max_nodes_per_batch * strategy.num_replicas_in_sync,
         dtype=adj_dtype,
         sparse=adjacency_form == AdjacencyForm.SPARSE_TENSOR,
-        name="adjacency"
+        name="adjacency",
     )
     features = tf.keras.Input(
         num_features,
         batch_size=max_nodes_per_batch * strategy.num_replicas_in_sync,
         dtype=inputs_dtype,
-        name="features"
+        name="features",
     )
     return adjacency, features
 
 
 def define_inputs_with_tuple_adjacency(
-        micro_batch_size,
-        max_edges_per_batch,
-        inputs_dtype,
-        num_features,
-        max_nodes_per_batch
+    micro_batch_size, max_edges_per_batch, inputs_dtype, num_features, max_nodes_per_batch
 ):
     strategy = distribution_strategy_context.get_strategy()
 
@@ -51,13 +48,13 @@ def define_inputs_with_tuple_adjacency(
         shape=(max_edges_per_batch, 2),
         batch_size=micro_batch_size * strategy.num_replicas_in_sync,
         dtype=tf.int32,
-        name="adjacency_edges"
+        name="adjacency_edges",
     )
     adjacency_values = tf.keras.Input(
         shape=(max_edges_per_batch,),
         batch_size=micro_batch_size * strategy.num_replicas_in_sync,
         dtype=inputs_dtype,
-        name="adjacency_values"
+        name="adjacency_values",
     )
     adjacency = (adjacency_edges, adjacency_values)
 
@@ -65,7 +62,7 @@ def define_inputs_with_tuple_adjacency(
         (max_nodes_per_batch, num_features),
         batch_size=micro_batch_size * strategy.num_replicas_in_sync,
         dtype=inputs_dtype,
-        name="features"
+        name="features",
     )
 
     return adjacency, features
@@ -82,37 +79,29 @@ def squeeze_batch_dim(adjacency, features):
 
 
 def create_model(
-        micro_batch_size,
-        num_labels,
-        num_features,
-        max_nodes_per_batch,
-        max_edges_per_batch,
-        hidden_size,
-        num_layers,
-        dropout_rate,
-        adjacency_params,
-        cast_model_inputs_to_dtype=tf.float32,
-        first_layer_precalculation=False,
-        use_ipu_layers=True,
-        adjacency_form=AdjacencyForm.DENSE
+    micro_batch_size,
+    num_labels,
+    num_features,
+    max_nodes_per_batch,
+    max_edges_per_batch,
+    hidden_size,
+    num_layers,
+    dropout_rate,
+    adjacency_params,
+    cast_model_inputs_to_dtype=tf.float32,
+    first_layer_precalculation=False,
+    use_ipu_layers=True,
+    adjacency_form=AdjacencyForm.DENSE,
 ):
     """Create a GCN model."""
 
     if adjacency_form in [AdjacencyForm.DENSE, AdjacencyForm.SPARSE_TENSOR]:
         adjacency_input, features_input = define_inputs_with_tensor_adjacency(
-            micro_batch_size,
-            max_nodes_per_batch,
-            adjacency_form,
-            cast_model_inputs_to_dtype,
-            num_features
+            micro_batch_size, max_nodes_per_batch, adjacency_form, cast_model_inputs_to_dtype, num_features
         )
     elif adjacency_form == AdjacencyForm.SPARSE_TUPLE:
         adjacency_input, features_input = define_inputs_with_tuple_adjacency(
-            micro_batch_size,
-            max_edges_per_batch,
-            cast_model_inputs_to_dtype,
-            num_features,
-            max_nodes_per_batch
+            micro_batch_size, max_edges_per_batch, cast_model_inputs_to_dtype, num_features, max_nodes_per_batch
         )
 
     adjacency, hidden = squeeze_batch_dim(adjacency_input, features_input)
@@ -123,7 +112,7 @@ def create_model(
         **adjacency_params,
         adjacency_form=adjacency_form,
         adjacency_dtype=cast_model_inputs_to_dtype,
-        name="adjacency_processing"
+        name="adjacency_processing",
     )
     transformed_adjacency = adjacency_processing_layer(adjacency)
 

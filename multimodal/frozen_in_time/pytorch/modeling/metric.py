@@ -25,7 +25,7 @@ def cols2metrics(cols, num_queries):
     return metrics
 
 
-def t2v_metrics(sims, query_masks=None, break_ties = "optimistically"):
+def t2v_metrics(sims, query_masks=None, break_ties="optimistically"):
     """Compute retrieval metrics from a similarity matrix.
 
     Args:
@@ -45,9 +45,13 @@ def t2v_metrics(sims, query_masks=None, break_ties = "optimistically"):
     # The indices are computed such that they slice out the ground truth distances
     # from the psuedo-rectangular dist matrix
     queries_per_video = num_queries // num_vids
-    gt_idx = [[np.ravel_multi_index([ii, jj], (num_queries, num_vids))
-               for ii in range(jj * queries_per_video, (jj + 1) * queries_per_video)]
-              for jj in range(num_vids)]
+    gt_idx = [
+        [
+            np.ravel_multi_index([ii, jj], (num_queries, num_vids))
+            for ii in range(jj * queries_per_video, (jj + 1) * queries_per_video)
+        ]
+        for jj in range(num_vids)
+    ]
     gt_idx = np.array(gt_idx)
     gt_dists = dists.reshape(-1)[gt_idx.reshape(-1)]
     gt_dists = gt_dists[:, np.newaxis]
@@ -71,10 +75,8 @@ def t2v_metrics(sims, query_masks=None, break_ties = "optimistically"):
     #    Heidelberg, 2008.
     # http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.145.8892&rep=rep1&type=pdf
 
-
     if rows.size > num_queries:
-        assert np.unique(
-            rows).size == num_queries, "issue in metric evaluation"
+        assert np.unique(rows).size == num_queries, "issue in metric evaluation"
         if break_ties == "optimistically":
             _, idx = np.unique(rows, return_index=True)
             cols = cols[idx]
@@ -108,7 +110,7 @@ def t2v_metrics(sims, query_masks=None, break_ties = "optimistically"):
     return cols2metrics(cols, num_queries)
 
 
-def v2t_metrics(sims, query_masks=None, break_ties = "averaging"):
+def v2t_metrics(sims, query_masks=None, break_ties="averaging"):
     """Compute retrieval metrics from a similarity matrix.
 
     Args:
@@ -131,8 +133,7 @@ def v2t_metrics(sims, query_masks=None, break_ties = "averaging"):
     dists = -sims
     caps_per_video = num_caps // num_queries
 
-
-    MISSING_VAL = 1E8
+    MISSING_VAL = 1e8
     query_ranks = []
     for ii in range(num_queries):
         row_dists = dists[ii, :]

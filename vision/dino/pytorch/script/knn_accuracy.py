@@ -22,38 +22,21 @@ import poptorch
 
 
 def parse_option():
-    parser = argparse.ArgumentParser('knn')
-    parser.add_argument('--train', type=str)
-    parser.add_argument('--validation', type=str)
+    parser = argparse.ArgumentParser("knn")
+    parser.add_argument("--train", type=str)
+    parser.add_argument("--validation", type=str)
     parser.add_argument(
-        '--nb_knn',
-        default=[
-            10,
-            20],
-        nargs='+',
-        type=int,
-        help='Number of NN to use. 20 is usually working the best.')
-    parser.add_argument('--temperature', default=0.07, type=float,
-                        help='Temperature used in the voting coefficient')
+        "--nb_knn", default=[10, 20], nargs="+", type=int, help="Number of NN to use. 20 is usually working the best."
+    )
+    parser.add_argument("--temperature", default=0.07, type=float, help="Temperature used in the voting coefficient")
 
-    parser.add_argument(
-        '--di',
-        type=int,
-        default=128,
-        help='device iterations number')
+    parser.add_argument("--di", type=int, default=128, help="device iterations number")
 
     args = parser.parse_args()
     return args
 
 
-def knn_classifier(
-        train_features,
-        train_labels,
-        test_features,
-        test_labels,
-        k,
-        T,
-        num_classes=1000):
+def knn_classifier(train_features, train_labels, test_features, test_labels, k, T, num_classes=1000):
     top1, top5, total = 0.0, 0.0, 0
     train_features = train_features.t()
     num_test_images, num_chunks = test_labels.shape[0], 100
@@ -61,11 +44,8 @@ def knn_classifier(
     retrieval_one_hot = torch.zeros(k, num_classes).to(train_features.device)
     for idx in range(0, num_test_images, imgs_per_chunk):
         # get the features for test images
-        features = test_features[
-            idx: min((idx + imgs_per_chunk), num_test_images), :
-        ]
-        targets = test_labels[idx: min(
-            (idx + imgs_per_chunk), num_test_images)]
+        features = test_features[idx : min((idx + imgs_per_chunk), num_test_images), :]
+        targets = test_labels[idx : min((idx + imgs_per_chunk), num_test_images)]
         batch_size = targets.shape[0]
 
         # calculate the dot product and compute top-k neighbors
@@ -97,18 +77,16 @@ def knn_classifier(
     return top1, top5
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_option()
 
     train_data = torch.load(args.train)
     val_data = torch.load(args.validation)
-    train_features = train_data['features']
-    train_labels = train_data['labels']
-    test_features = val_data['features']
-    test_labels = val_data['labels']
+    train_features = train_data["features"]
+    train_labels = train_data["labels"]
+    test_features = val_data["features"]
+    test_labels = val_data["labels"]
 
     for k in args.nb_knn:
-        top1, top5 = knn_classifier(train_features, train_labels,
-                                    test_features, test_labels,
-                                    k, args.temperature)
+        top1, top5 = knn_classifier(train_features, train_labels, test_features, test_labels, k, args.temperature)
         print(f"{k}-NN classifier result: Top1: {top1}, Top5: {top5}")

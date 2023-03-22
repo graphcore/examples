@@ -25,17 +25,17 @@ def group_texts(config: GPTJConfig):
 
     def func(examples):
         # Concatenate all texts.
-        inputs = list(chain(*examples['input_ids']))
+        inputs = list(chain(*examples["input_ids"]))
         total_length = len(inputs)
         # We drop the small remainder instead of padding
         if total_length >= seq_len_1:
             total_length = (total_length // seq_len_1) * seq_len_1
         # Split by chunks of max_len.
-        data = [inputs[i: i + seq_len_1]
-                for i in range(0, total_length, seq_len_1)]
+        data = [inputs[i : i + seq_len_1] for i in range(0, total_length, seq_len_1)]
         result = {
-            'input_ids': [d[:-1] for d in data],
-            'labels': [d[1:] for d in data],
+            "input_ids": [d[:-1] for d in data],
+            "labels": [d[1:] for d in data],
         }
         return result
+
     return func

@@ -5,11 +5,7 @@ import os
 
 
 class CheckpointCallback(tf.keras.callbacks.Callback):
-
-    def __init__(self,
-                 ckpt_period: int,
-                 ckpt_phase: int,
-                 checkpoint_dir: str):
+    def __init__(self, ckpt_period: int, ckpt_phase: int, checkpoint_dir: str):
 
         self.ckpt_period = ckpt_period
         self.ckpt_phase = ckpt_phase
@@ -26,11 +22,10 @@ class CheckpointCallback(tf.keras.callbacks.Callback):
 
     def on_train_batch_end(self, batch, logs=None):
 
-        batches_between_calls = (batch+1) - self.prev_batch
-        self.prev_batch = (batch+1)
+        batches_between_calls = (batch + 1) - self.prev_batch
+        self.prev_batch = batch + 1
         self.batch_counter += batches_between_calls
         if (self.batch_counter) % self.ckpt_period == self.ckpt_phase:
-            epoch = logs['epoch'] if 'epoch' in logs else self.epoch_counter
-            filepath = os.path.join(self.checkpoint_dir, f'epoch_{epoch}.h5')
+            epoch = logs["epoch"] if "epoch" in logs else self.epoch_counter
+            filepath = os.path.join(self.checkpoint_dir, f"epoch_{epoch}.h5")
             self.model.save_weights(filepath)
-

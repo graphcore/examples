@@ -34,30 +34,31 @@ from common.utils import load_wav_to_torch, load_filepaths_and_text, to_gpu
 
 class MelAudioLoader(torch.utils.data.Dataset):
     """
-        1) loads audio,text pairs
-        2) computes mel-spectrograms from audio files.
+    1) loads audio,text pairs
+    2) computes mel-spectrograms from audio files.
     """
 
-    def __init__(self,
-                 dataset_path,
-                 audiopaths_and_text,
-                 segment_length,
-                 n_mel_channels,
-                 max_wav_value,
-                 sampling_rate,
-                 filter_length,
-                 hop_length,
-                 win_length,
-                 mel_fmin,
-                 mel_fmax,
-                 args):
+    def __init__(
+        self,
+        dataset_path,
+        audiopaths_and_text,
+        segment_length,
+        n_mel_channels,
+        max_wav_value,
+        sampling_rate,
+        filter_length,
+        hop_length,
+        win_length,
+        mel_fmin,
+        mel_fmax,
+        args,
+    ):
         self.audiopaths_and_text = load_filepaths_and_text(dataset_path, audiopaths_and_text)
         self.max_wav_value = max_wav_value
         self.sampling_rate = sampling_rate
         self.stft = layers.TacotronSTFT(
-            filter_length, hop_length, win_length,
-            n_mel_channels, sampling_rate, mel_fmin,
-            mel_fmax)
+            filter_length, hop_length, win_length, n_mel_channels, sampling_rate, mel_fmin, mel_fmax
+        )
         self.segment_length = segment_length
         random.seed(1234)
         random.shuffle(self.audiopaths_and_text)
@@ -66,17 +67,15 @@ class MelAudioLoader(torch.utils.data.Dataset):
         audio, sampling_rate = load_wav_to_torch(filename)
 
         if sampling_rate != self.stft.sampling_rate:
-            raise ValueError("{} {} SR doesn't match target {} SR".format(
-                sampling_rate, self.stft.sampling_rate))
+            raise ValueError("{} {} SR doesn't match target {} SR".format(sampling_rate, self.stft.sampling_rate))
 
         # Take segment
         if audio.size(0) >= self.segment_length:
             max_audio_start = audio.size(0) - self.segment_length
             audio_start = random.randint(0, max_audio_start)
-            audio = audio[audio_start:audio_start+self.segment_length]
+            audio = audio[audio_start : audio_start + self.segment_length]
         else:
-            audio = torch.nn.functional.pad(
-                audio, (0, self.segment_length - audio.size(0)), 'constant').data
+            audio = torch.nn.functional.pad(audio, (0, self.segment_length - audio.size(0)), "constant").data
 
         audio = audio / self.max_wav_value
         audio_norm = audio.unsqueeze(0)

@@ -9,7 +9,7 @@ TARGET = $(BUILD_DIR)/exp_avg_custom_op.so
 
 all: $(BUILD_DIR) $(TARGET)
 
-$(BUILD_DIR): 
+$(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 $(TARGET): $(SOURCES) $(MAKEFILE_LIST)

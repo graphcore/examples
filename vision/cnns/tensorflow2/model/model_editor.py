@@ -31,10 +31,7 @@ def edit_functional_model(model: keras.Model, user_fn: Callable, copy_weights: b
         input_tensors = prev_layer.input if isinstance(prev_layer.input, list) else [prev_layer.input]
 
         if not isinstance(prev_layer, keras.layers.InputLayer):
-            input_tensors = [
-                __get_tensor_from_layer(input_tensor)
-                for input_tensor in input_tensors
-            ]
+            input_tensors = [__get_tensor_from_layer(input_tensor) for input_tensor in input_tensors]
 
         new_output_tensors = __apply_fn(prev_layer, input_tensors)
         if isinstance(new_output_tensors, tuple):

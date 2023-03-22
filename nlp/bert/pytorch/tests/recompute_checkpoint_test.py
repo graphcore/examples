@@ -27,6 +27,7 @@ from pretraining_data import get_generated_datum
 @pytest.mark.ipus(2)
 def test_recompute_checkpoint_in_ir():
     import warnings
+
     warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
     # Config
@@ -53,20 +54,19 @@ def test_recompute_checkpoint_in_ir():
     poptorch_model.compile(*datum)
     ir = json.loads(poptorch_model._debugGetPopartIR())
 
-    assert any(["Checkpoint" in node["name"] for node in ir["maingraph"]
-                ]), ("Popart IR should contain a checkpoint")
+    assert any(["Checkpoint" in node["name"] for node in ir["maingraph"]]), "PopART IR should contain a checkpoint"
     # Stash: 5 inputs + 3 for the transformer layers
-    exp_num_stash = 5+3
+    exp_num_stash = 5 + 3
     print(sum(["Stash" in node["type"] for node in ir["maingraph"]]))
-    assert sum([
-        "Stash" in node["type"] for node in ir["maingraph"]
-    ]) == exp_num_stash, ("Both the graph input and the checkpoint(s) "
-                          "should be stashed")
+    assert sum(["Stash" in node["type"] for node in ir["maingraph"]]) == exp_num_stash, (
+        "Both the graph input and the checkpoint(s) " "should be stashed"
+    )
 
 
 @pytest.mark.ipus(2)
 def test_recompute_checkpoint_not_in_ir():
     import warnings
+
     warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
     # Config
@@ -92,13 +92,11 @@ def test_recompute_checkpoint_not_in_ir():
     datum = get_generated_datum(config)
     poptorch_model.compile(*datum)
     ir = json.loads(poptorch_model._debugGetPopartIR())
-    assert not any(["Checkpoint" in node["name"] for node in ir["maingraph"]
-                    ]), ("Popart IR should contain a checkpoint")
+    assert not any(["Checkpoint" in node["name"] for node in ir["maingraph"]]), "PopART IR should contain a checkpoint"
 
     # Stash: 5 inputs, and 1 stash for transformers on ipu1
     exp_num_stash = 5 + 1
-    assert sum([
-        "Stash" in node["type"] for node in ir["maingraph"]
-    ]) == exp_num_stash, ("Both the graph input and the checkpoint(s) "
-                          "should be stashed")
+    assert sum(["Stash" in node["type"] for node in ir["maingraph"]]) == exp_num_stash, (
+        "Both the graph input and the checkpoint(s) " "should be stashed"
+    )
     print(sum(["Stash" in node["type"] for node in ir["maingraph"]]))

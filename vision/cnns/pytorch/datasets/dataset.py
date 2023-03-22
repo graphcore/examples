@@ -31,6 +31,7 @@ class GeneratedDataset(Dataset):
     Generated dataset creates a random dataset with the given shape and precision.
     The size determines the number of items in the dataset.
     """
+
     def __init__(self, shape, size=60000, half_precision=False, eightbit=False):
         self.size = size
         self.half_precision = half_precision
@@ -56,13 +57,14 @@ class GeneratedDataset(Dataset):
 
 class SampleDataset(Dataset):
     """
-    Sample dataset for inference to use in conjuntion with a
+    Sample dataset for inference to use in conjunction with a
     DataLoader.
     """
+
     def __init__(self, img_dir, transform=None, size=2000):
         files = glob.glob("{}/*.jpg".format(img_dir))
         if len(files) == 0:
-            logging.error('No images found. Run get_images.sh script. Aborting...')
+            logging.error("No images found. Run get_images.sh script. Aborting...")
             sys.exit(1)
         self.images = []
         for filename in files:
@@ -93,21 +95,31 @@ def get_data(args, opts, train=True, async_dataloader=False, return_remaining=Fa
     use_bbox_info = getattr(args, "use_bbox_info", False)
 
     if args.data in ["real", "imagenet", "cifar10"]:
-        transform = get_preprocessing_pipeline(train, input_shape[-1],
-                                               half_precision, args.normalization_location == "host", eightbit = args.eight_bit_io,
-                                               use_bbox_info=use_bbox_info, fine_tuning=fine_tuning)
+        transform = get_preprocessing_pipeline(
+            train,
+            input_shape[-1],
+            half_precision,
+            args.normalization_location == "host",
+            eightbit=args.eight_bit_io,
+            use_bbox_info=use_bbox_info,
+            fine_tuning=fine_tuning,
+        )
     # Determine the size of the small datasets
     if hasattr(args, "iterations"):
-        dataset_size = args.micro_batch_size * \
-                       opts.device_iterations * \
-                       opts.replication_factor * \
-                       opts.Training.gradient_accumulation * \
-                       args.iterations
+        dataset_size = (
+            args.micro_batch_size
+            * opts.device_iterations
+            * opts.replication_factor
+            * opts.Training.gradient_accumulation
+            * args.iterations
+        )
 
     # Select the right dataset
     if args.data in ["synthetic", "generated"]:
         if hasattr(args, "iterations"):
-            dataset = GeneratedDataset(input_shape, size=dataset_size, half_precision=half_precision, eightbit=args.eight_bit_io)
+            dataset = GeneratedDataset(
+                input_shape, size=dataset_size, half_precision=half_precision, eightbit=args.eight_bit_io
+            )
         else:
             dataset = GeneratedDataset(input_shape, half_precision=half_precision, eightbit=args.eight_bit_io)
     elif args.data == "real":
@@ -119,14 +131,20 @@ def get_data(args, opts, train=True, async_dataloader=False, return_remaining=Fa
     elif args.data == "imagenet":
         assert os.path.exists(args.imagenet_data_path), f"{args.imagenet_data_path} does not exist!"
         # Original ImageNet format
-        data_folder = 'train' if train else 'validation'
+        data_folder = "train" if train else "validation"
         data_folder = os.path.join(args.imagenet_data_path, data_folder)
-        bboxes = os.path.join(args.imagenet_data_path, 'imagenet_2012_bounding_boxes.csv') if use_bbox_info and train else None   # use bboxes only for training
+        bboxes = (
+            os.path.join(args.imagenet_data_path, "imagenet_2012_bounding_boxes.csv")
+            if use_bbox_info and train
+            else None
+        )  # use bboxes only for training
         dataset = ImageNetDataset(data_folder, transform=transform, bbox_file=bboxes)
     elif args.data == "cifar10":
         data_path = Path(__file__).parent.parent.absolute().joinpath("data").joinpath("cifar10")
         dataset = torchvision.datasets.CIFAR10(root=data_path, train=train, download=True, transform=transform)
-    global_batch_size = args.micro_batch_size * opts.device_iterations * opts.replication_factor * opts.Training.gradient_accumulation
+    global_batch_size = (
+        args.micro_batch_size * opts.device_iterations * opts.replication_factor * opts.Training.gradient_accumulation
+    )
     if async_dataloader:
         if global_batch_size == 1:
             # Avoid rebatch overhead
@@ -135,23 +153,29 @@ def get_data(args, opts, train=True, async_dataloader=False, return_remaining=Fa
             mode = poptorch.DataLoaderMode.AsyncRebatched
     else:
         mode = poptorch.DataLoaderMode.Sync
-    worker_initialization = _WorkerInit(args.seed, opts.Distributed.processId, args.dataloader_worker) if hasattr(args, 'seed') else None
+    worker_initialization = (
+        _WorkerInit(args.seed, opts.Distributed.processId, args.dataloader_worker) if hasattr(args, "seed") else None
+    )
     rebatch_size = getattr(args, "dataloader_rebatch_size", None)
-    rebatch_size = rebatch_size if rebatch_size is not None else min(1024, global_batch_size) // opts.Distributed.numProcesses
+    rebatch_size = (
+        rebatch_size if rebatch_size is not None else min(1024, global_batch_size) // opts.Distributed.numProcesses
+    )
     # Make sure rebatch size is smaller than global batch size
     rebatch_size = min(rebatch_size, global_batch_size)
-    dataloader = poptorch.DataLoader(opts,
-                                     dataset,
-                                     batch_size=args.micro_batch_size,
-                                     num_workers=args.dataloader_worker,
-                                     shuffle=train,
-                                     drop_last= not(return_remaining),
-                                     persistent_workers = True,
-                                     auto_distributed_partitioning = True,
-                                     worker_init_fn=worker_initialization,
-                                     mode=mode,
-                                     rebatched_worker_size=rebatch_size,
-                                     async_options={'load_indefinitely': True})
+    dataloader = poptorch.DataLoader(
+        opts,
+        dataset,
+        batch_size=args.micro_batch_size,
+        num_workers=args.dataloader_worker,
+        shuffle=train,
+        drop_last=not (return_remaining),
+        persistent_workers=True,
+        auto_distributed_partitioning=True,
+        worker_init_fn=worker_initialization,
+        mode=mode,
+        rebatched_worker_size=rebatch_size,
+        async_options={"load_indefinitely": True},
+    )
     return dataloader
 
 

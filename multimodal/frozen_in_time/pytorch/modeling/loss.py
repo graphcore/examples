@@ -13,8 +13,7 @@ class CrossEntropy(nn.Module):
     def __init__(self, temperature=0.07):
         super().__init__()
         self.loss = nn.CrossEntropyLoss()
-        self.logit_scale = nn.Parameter(
-            torch.ones([]) * np.log(1 / temperature))
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / temperature))
 
     def forward(self, x):
         # Cosine similarity as logits
@@ -44,7 +43,7 @@ class NormSoftmaxLoss(nn.Module):
         jdiag = self.diag(j_logsm)
         loss_j = jdiag.sum() / jdiag.shape[0]
 
-        return - loss_i - loss_j
+        return -loss_i - loss_j
 
     def diag(self, x):
         eyes = torch.eye(x.shape[0])

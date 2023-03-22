@@ -30,13 +30,13 @@
 
 # Copyright 2019 Shigeki Karita
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
-'''
+"""
 This script has been adapted from some of the original EspNet and WeNet repo found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/nets_utils.py
     https://github.com/wenet-e2e/wenet/blob/main/wenet/utils/mask.py
 ]
-'''
+"""
 
 import torch
 
@@ -131,7 +131,6 @@ def make_pad_mask(lengths, maxlen):
     return mask
 
 
-
 def subsequent_mask(size, dtype=torch.bool):
     """Create mask for subsequent steps (size, size).
 
@@ -161,8 +160,8 @@ def target_mask(ys_in_pad, ignore_id):
 
 
 def subsequent_mask(
-        size: int,
-        device: torch.device = None,
+    size: int,
+    device: torch.device = None,
 ) -> torch.Tensor:
     """Create mask for subsequent steps (size, size).
 
@@ -215,18 +214,14 @@ def make_pad_mask_decoder(lengths: torch.Tensor, max_len: int = 0) -> torch.Tens
     """
     batch_size = lengths.size(0)
     max_len = max_len if max_len > 0 else lengths.max().item()
-    seq_range = torch.arange(0,
-                             max_len,
-                             dtype=torch.int64,
-                             device=lengths.device)
+    seq_range = torch.arange(0, max_len, dtype=torch.int64, device=lengths.device)
     seq_range_expand = seq_range.unsqueeze(0).expand(batch_size, max_len)
     seq_length_expand = lengths.unsqueeze(-1)
     mask = seq_range_expand >= seq_length_expand
     return mask
 
 
-def mask_finished_scores(score: torch.Tensor,
-                         flag: torch.Tensor) -> torch.Tensor:
+def mask_finished_scores(score: torch.Tensor, flag: torch.Tensor) -> torch.Tensor:
     """
     If a sequence is finished, we only allow one alive branch. This function
     aims to give one branch a zero score and the rest -inf score.
@@ -243,20 +238,17 @@ def mask_finished_scores(score: torch.Tensor,
     beam_size = score.size(-1)
     zero_mask = torch.zeros_like(flag, dtype=torch.bool)
     if beam_size > 1:
-        unfinished = torch.cat((zero_mask, flag.repeat([1, beam_size - 1])),
-                               dim=1)
-        finished = torch.cat((flag, zero_mask.repeat([1, beam_size - 1])),
-                             dim=1)
+        unfinished = torch.cat((zero_mask, flag.repeat([1, beam_size - 1])), dim=1)
+        finished = torch.cat((flag, zero_mask.repeat([1, beam_size - 1])), dim=1)
     else:
         unfinished = zero_mask
         finished = flag
-    score.masked_fill_(unfinished, -float('inf'))
+    score.masked_fill_(unfinished, -float("inf"))
     score.masked_fill_(finished, 0)
     return score
 
 
-def mask_finished_preds(pred: torch.Tensor, flag: torch.Tensor,
-                        eos: int) -> torch.Tensor:
+def mask_finished_preds(pred: torch.Tensor, flag: torch.Tensor, eos: int) -> torch.Tensor:
     """
     If a sequence is finished, all of its branch should be <eos>
 

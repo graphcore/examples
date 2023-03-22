@@ -17,10 +17,10 @@ PROFILE_PATH="profile"
 display_usage() {
 	echo "Pretrain BERT on IPU-POD64"
 	echo "Run from your local machine."
-	echo "Usage: $0 MODEL POD_SIZE VIPU_CLUSTER_NAME VIPU_PARTITION_NAME VIPU_HOST HOST1 HOST2 ..."
+	echo "Usage: $0 MODEL POD_SIZE VIPU_ALLOCATION_NAME VIPU_PARTITION_NAME VIPU_HOST HOST1 HOST2 ..."
 	echo "    MODEL: \"base\" or \"large\"."
 	echo "    POD_SIZE: \"POD64\"."
-	echo "    VIPU_CLUSTER_NAME: Name of the VIPU cluster."
+	echo "    VIPU_ALLOCATION_NAME: Name of the VIPU allocation."
 	echo "    VIPU_PARTITION_NAME: Name of the VIPU partition."
 	echo "    VIPU_HOST: VIPU IP address."
 	echo "    HOSTn: blank space separated list of IP addresses on which the instances will be run separated."
@@ -33,12 +33,12 @@ fi
 # First arguments are:
 # 1. Model type;
 # 2. Pod size;
-# 3. VIPU cluster name;
+# 3. VIPU allocation name;
 # 4. VIPU partition name;
 # 5. VIPU server IPU address;
 MODEL="$1"
 POD_SIZE="$2"
-VIPU_CLUSTER_NAME="$3"
+VIPU_ALLOCATION_NAME="$3"
 VIPU_PARTITION_NAME="$4"
 VIPU_SERVER_IP="$5"
 
@@ -69,7 +69,7 @@ else
 fi
 PHASE1_CONFIG_PATH='configs/pretrain_'"${MODEL}"'_128_phase1_'"${POD_SIZE}"'.json'
 
-echo "Running ${NUM_INSTANCES} instances of BERT ${MODEL} on hosts ${HOSTS_LIST} of ${POD_SIZE} with cluster ${VIPU_CLUSTER_NAME} and partition ${VIPU_PARTITION_NAME}"
+echo "Running ${NUM_INSTANCES} instances of BERT ${MODEL} on hosts ${HOSTS_LIST} of ${POD_SIZE} with cluster ${VIPU_ALLOCATION_NAME} and partition ${VIPU_PARTITION_NAME}"
 
 # Synchronise code, SDK, Python venv, and wikipedia dataset
 # ---------------------------------------------------------
@@ -123,7 +123,7 @@ TIMESTAMP="$(date +%s)"
 # MPI options
 MPI_GLOBAL_ARGS="--mca btl_tcp_if_include ${TCP_IF_NETMASK} --mca oob_tcp_if_include ${TCP_IF_NETMASK}"
 
-POPRUN_OPTIONS="-vv --host ${HOSTS_LIST} --num-ilds ${NUM_ILDS} --num-instances ${NUM_INSTANCES} --num-replicas ${NUM_REPLICAS} --ipus-per-replica 4 --vipu-server-host=${VIPU_SERVER_IP} --vipu-cluster=${VIPU_CLUSTER_NAME} --reset-partition=yes --update-partition=yes --remove-partition=no --vipu-partition=${VIPU_PARTITION_NAME}"
+POPRUN_OPTIONS="-vv --host ${HOSTS_LIST} --num-ilds ${NUM_ILDS} --num-instances ${NUM_INSTANCES} --num-replicas ${NUM_REPLICAS} --ipus-per-replica 4 --vipu-server-host=${VIPU_SERVER_IP} --vipu-allocation=${VIPU_ALLOCATION_NAME} --reset-partition=yes --update-partition=yes --remove-partition=no --vipu-partition=${VIPU_PARTITION_NAME}"
 
 set -x
 TF_POPLAR_FLAGS=--executable_cache_path=${LOCAL_HOME}/exec_cache \

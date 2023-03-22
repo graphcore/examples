@@ -52,7 +52,6 @@ def test_grouped_scatter_gather():
 
     config = ipu.config.IPUConfig()
     config.auto_select_ipus = 1
-    config.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
     ipu.utils.configure_ipu_system(config)
 
     gather_grads = dict()
@@ -61,8 +60,9 @@ def test_grouped_scatter_gather():
     N_TESTS = 10
     for _ in tqdm.trange(N_TESTS):
         inputs = tf.random.normal([FLAGS.micro_batch_size, FLAGS.n_nodes, FLAGS.n_latent])
-        indices = tf.constant(np.random.randint(
-            low=0, high=FLAGS.n_nodes, size=[FLAGS.micro_batch_size, FLAGS.n_edges]).astype(np.int32))
+        indices = tf.constant(
+            np.random.randint(low=0, high=FLAGS.n_nodes, size=[FLAGS.micro_batch_size, FLAGS.n_edges]).astype(np.int32)
+        )
 
         for grouped in (True, False):
             with tf.GradientTape() as tape:

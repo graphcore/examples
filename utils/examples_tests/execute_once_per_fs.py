@@ -29,14 +29,12 @@ class ExecuteOncePerFS:
 
             # Every process waits for files to be created
             attempts = 0
-            sleep_time = self.timeout/self.retries
+            sleep_time = self.timeout / self.retries
             remaining_files = self.file_list[:]
             remaining_exes = self.exe_list[:]
             while attempts < self.retries:
-                remaining_files = [
-                    path for path in remaining_files if not os.path.exists(path)]
-                remaining_exes = [
-                    path for path in remaining_exes if not os.access(path, os.R_OK | os.X_OK)]
+                remaining_files = [path for path in remaining_files if not os.path.exists(path)]
+                remaining_exes = [path for path in remaining_exes if not os.access(path, os.R_OK | os.X_OK)]
                 if len(remaining_files) == 0 and len(remaining_exes) == 0:
                     return result
 
@@ -44,5 +42,8 @@ class ExecuteOncePerFS:
                 attempts += 1
 
             # If we are here it means that we timed out...
-            raise RuntimeError(f"Timed out waiting for {remaining_files} to be made and/or {remaining_exes} to become executable.")
+            raise RuntimeError(
+                f"Timed out waiting for {remaining_files} to be made and/or {remaining_exes} to become executable."
+            )
+
         return wrapped

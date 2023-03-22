@@ -17,20 +17,22 @@ import poptorch
 
 
 class CtcLoss(torch.nn.Module):
-
-
     def forward(self, log_probs, targets, input_lengths, target_lengths, dtype):
-        dummy_shape = torch.zeros_like(torch.tensor(58.0, dtype=dtype), dtype=dtype, requires_grad=True)   # the dummy_shape's value is not import, which is used to put the shape and dtype to the custom_op
+        dummy_shape = torch.zeros_like(
+            torch.tensor(58.0, dtype=dtype), dtype=dtype, requires_grad=True
+        )  # the dummy_shape's value is not import, which is used to put the shape and dtype to the custom_op
         loss = poptorch.custom_op(
-            [log_probs, targets, input_lengths, target_lengths-1],
-            'Ctc',
-            'ai.graphcore',
+            [log_probs, targets, input_lengths, target_lengths - 1],
+            "Ctc",
+            "ai.graphcore",
             1,
             example_outputs=[dummy_shape, log_probs],
             attributes={
                 "enableReducedClassesInLabel": self.training,
                 "reduction": "Sum",
                 "blank": 0,
-                "outDataType": "UNDIFINED"})[0]
+                "outDataType": "UNDIFINED",
+            },
+        )[0]
         loss = loss / torch.tensor(log_probs.shape[1], dtype=dtype)
         return loss

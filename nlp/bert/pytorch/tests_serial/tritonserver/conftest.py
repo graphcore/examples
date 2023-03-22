@@ -17,9 +17,7 @@ from transformers import default_data_collator
 from triton_server.server_setup import *
 from utils import logger
 
-test_configs = {
-    'bert': 'squad_large_384'
-}
+test_configs = {"bert": "squad_large_384"}
 
 
 class Empty:
@@ -30,20 +28,22 @@ class Empty:
 def configure_bert_model():
     model = Empty()
 
-    pargs = ('--config', "squad_large_384", "--dataset", "generated")
-    model.config = transformers.BertConfig(
-        **(vars(parse_bert_args(args=pargs, config_file="configs_squad.yml"))))
+    pargs = ("--config", "squad_large_384", "--dataset", "generated")
+    model.config = transformers.BertConfig(**(vars(parse_bert_args(args=pargs, config_file="configs_squad.yml"))))
     if not model.config.checkpoint_input_dir:
-        logger(
-            "[warning] --checkpoint-input-dir was not specified; training with uninitialized BERT...")
+        logger("[warning] --checkpoint-input-dir was not specified; training with uninitialized BERT...")
     # Warnings for configs where embeddings may not fit
     if model.config.embedding_serialization_factor == 1:
         if model.config.replication_factor == 1:
-            logger("[warning] With replication_factor == 1 you may need to set "
-                   "embedding_serialization_factor > 1 for the model to fit")
+            logger(
+                "[warning] With replication_factor == 1 you may need to set "
+                "embedding_serialization_factor > 1 for the model to fit"
+            )
         elif not model.config.replicated_tensor_sharding:
-            logger("[warning] With replicated_tensor_sharding=False you may need to set "
-                   "embedding_serialization_factor > 1 for the model to fit")
+            logger(
+                "[warning] With replicated_tensor_sharding=False you may need to set "
+                "embedding_serialization_factor > 1 for the model to fit"
+            )
 
     model.opts = get_options(model.config)
     model.opts.outputMode(poptorch.OutputMode.All)
@@ -67,37 +67,48 @@ def configure_bert_model():
 
     # Create the model
     if model.config.checkpoint_input_dir:
-        model.model_ipu = PipelinedBertForQuestionAnswering.from_pretrained(
-            model.config.checkpoint_input_dir, config=model.config).parallelize().half()
+        model.model_ipu = (
+            PipelinedBertForQuestionAnswering.from_pretrained(model.config.checkpoint_input_dir, config=model.config)
+            .parallelize()
+            .half()
+        )
     else:
-        model.model_ipu = PipelinedBertForQuestionAnswering(
-            model.config).parallelize().half()
+        model.model_ipu = PipelinedBertForQuestionAnswering(model.config).parallelize().half()
 
     model.config.micro_batch_size = 2
     model.config.device_iterations = 16
     model.config.gradient_accumulation = 1
     model.config.replication_factor = 1
 
-    model.config.batch_size = model.config.device_iterations * model.config.micro_batch_size * \
-        model.config.gradient_accumulation * model.config.replication_factor
+    model.config.batch_size = (
+        model.config.device_iterations
+        * model.config.micro_batch_size
+        * model.config.gradient_accumulation
+        * model.config.replication_factor
+    )
 
     model.opts = get_options(model.config)
     model.opts.outputMode(poptorch.OutputMode.All)
-    model.val_dl = poptorch.DataLoader(model.opts,
-                                       validation_features.remove_columns(
-                                           ['example_id', 'offset_mapping']),
-                                       batch_size=model.config.micro_batch_size,
-                                       shuffle=False,
-                                       drop_last=False,
-                                       collate_fn=default_data_collator)
+    model.val_dl = poptorch.DataLoader(
+        model.opts,
+        validation_features.remove_columns(["example_id", "offset_mapping"]),
+        batch_size=model.config.micro_batch_size,
+        shuffle=False,
+        drop_last=False,
+        collate_fn=default_data_collator,
+    )
     model.datasets = datasets
     model.validation_features = validation_features
     yield model
 
 
 @pytest.fixture(scope="session", autouse=True)
-@ExecuteOncePerFS(lockfile=str(Path(__file__).parent.absolute()) + "/test_environment_ready.lock",
-                  file_list=[], timeout=120, retries=20)
+@ExecuteOncePerFS(
+    lockfile=str(Path(__file__).parent.absolute()) + "/test_environment_ready.lock",
+    file_list=[],
+    timeout=120,
+    retries=20,
+)
 def initialize_test_environment(request, configure_bert_model):
     export_model(request, configure_bert_model, "bert")
 
@@ -106,17 +117,15 @@ def initialize_test_environment(request, configure_bert_model):
 def poptorch_ref_model(request, triton_server, configure_bert_model):
     benchmark_only = request.config.getoption(benchmark_opt)
     # model name should be parametrized when new model will be added
-    model_name = 'bert'
+    model_name = "bert"
     if not benchmark_only:
         logger("Compiling Inference Model...")
-        popef_file = triton_server.model_repo_path + \
-            '/' + model_name + '/1/executable.popef'
+        popef_file = triton_server.model_repo_path + "/" + model_name + "/1/executable.popef"
         if not os.path.exists(popef_file):
             pytest.fail("Popef file: " + popef_file + " doesn't exist!")
 
         configure_bert_model.model_ipu.eval()
-        ref_model = poptorch.inferenceModel(
-            configure_bert_model.model_ipu, configure_bert_model.opts)
+        ref_model = poptorch.inferenceModel(configure_bert_model.model_ipu, configure_bert_model.opts)
         ref_model.loadExecutable(popef_file)
     else:
         ref_model = None

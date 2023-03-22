@@ -25,13 +25,13 @@ def test_ipu_cpu_match():
     --config unit_test
     """.split()
     config = parse_args(config)
-    log = Logger("./"+datetime.datetime.now().strftime('%Y.%m.%d-%H:%M:%S')+'.log', level='info')
+    log = Logger("./" + datetime.datetime.now().strftime("%Y.%m.%d-%H:%M:%S") + ".log", level="info")
 
     # Fix the random seeds
     torch.manual_seed(config.random_seed)
     np.random.seed(config.random_seed)
 
-    # Poptorch options
+    # PopTorch options
     opts = poptorch.Options()
     opts.replicationFactor(config.replication_factor)
     opts.autoRoundNumIPUs(True)
@@ -39,26 +39,20 @@ def test_ipu_cpu_match():
     opts.Training.gradientAccumulation(config.gradient_accumulation)
     opts.outputMode(poptorch.OutputMode.Final)
     opts.TensorLocations.setOptimizerLocation(
-        poptorch.TensorLocationSettings()
-        .useOnChipStorage(True)
-        .useReplicatedTensorSharding(False)
+        poptorch.TensorLocationSettings().useOnChipStorage(True).useReplicatedTensorSharding(False)
     )
     opts.randomSeed(config.random_seed)
 
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu)
-    )
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
 
     model_cpu = CLIP(config).train()
     model_ipu = CLIP(config).parallelize(log).train()
 
     model_ipu.load_state_dict(model_cpu.state_dict())
 
-    # Check that copy was sucessful
+    # Check that copy was successful
     assert model_ipu is not model_cpu
-    assert all([(a == b).all() for a, b in zip(
-        model_cpu.parameters(), model_ipu.parameters())]
-    ) is True
+    assert all([(a == b).all() for a, b in zip(model_cpu.parameters(), model_ipu.parameters())]) is True
 
     optimizer_cpu = torch.optim.AdamW(model_cpu.parameters(), lr=config.learning_rate)
     optimizer_ipu = poptorch.optim.AdamW(model_ipu.parameters(), lr=config.learning_rate, loss_scaling=1.0)
@@ -91,5 +85,5 @@ def test_ipu_cpu_match():
             assert np.allclose(cpu_loss.numpy(), ipu_loss.numpy(), atol=1e-6)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_ipu_cpu_match()

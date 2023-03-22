@@ -1,0 +1,11 @@
+{
+    "recommendations": [
+        "streetsidesoftware.code-spell-checker",
+        "tht13.rst-vscode",
+        "eamodio.gitlens",
+        "ms-python.python",
+        "ms-vscode.cpptools",
+        "davidanson.vscode-markdownlint",
+        "stkb.rewrap"
+    ]
+}

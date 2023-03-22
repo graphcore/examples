@@ -12,14 +12,14 @@
 # limitations under the License.
 #
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/transformer/embedding.py
 ]
 Main change:
     remove the ScaledPositionalEncoding class and LegacyRelPositionalEncoding class.
-'''
+"""
 
 import math
 import torch
@@ -79,9 +79,7 @@ class PositionalEncoding(torch.nn.Module):
                 return
         pe = torch.zeros(x.size(1), self.d_model)
         if self.reverse:
-            position = torch.arange(
-                x.size(1) - 1, -1, -1.0, dtype=torch.float32
-            ).unsqueeze(1)
+            position = torch.arange(x.size(1) - 1, -1, -1.0, dtype=torch.float32).unsqueeze(1)
         else:
             position = torch.arange(0, x.size(1), dtype=torch.float32).unsqueeze(1)
         div_term = torch.exp(
@@ -102,7 +100,7 @@ class PositionalEncoding(torch.nn.Module):
             torch.Tensor: Encoded tensor (batch, time, `*`).
 
         """
-        x = x * self.xscale + self.pe.to(x.device)[:, :x.size(1)]   # [:, :x.size(1)]
+        x = x * self.xscale + self.pe.to(x.device)[:, : x.size(1)]  # [:, :x.size(1)]
         return self.dropout(x)
 
 
@@ -134,13 +132,14 @@ class RelPositionalEncoding(torch.nn.Module):
         self.max_len = x.size(1)
 
         self.pe = torch.zeros(self.max_len, self.d_model)
-        position = torch.arange(0, self.max_len,
-                                dtype=torch.float32).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, self.d_model, 2, dtype=torch.float32) * -(math.log(10000.0) / self.d_model))
+        position = torch.arange(0, self.max_len, dtype=torch.float32).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, self.d_model, 2, dtype=torch.float32) * -(math.log(10000.0) / self.d_model)
+        )
         self.pe[:, 0::2] = torch.sin(position * div_term)
         self.pe[:, 1::2] = torch.cos(position * div_term)
         self.pe = self.pe.unsqueeze(0)
-        self.pe = self.pe[:, 0:0 + x.size(1)]
+        self.pe = self.pe[:, 0 : 0 + x.size(1)]
 
     def forward(self, x: torch.Tensor):
         """Add positional encoding.

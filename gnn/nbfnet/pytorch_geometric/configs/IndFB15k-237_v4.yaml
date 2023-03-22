@@ -1,0 +1,37 @@
+dataset:
+  name: "IndFB15k-237"
+  version: "v4"
+
+model:
+  input_dim: 64
+  hidden_dims: [64, 64, 64, 64, 64, 64]
+  message_fct: "mult"
+  aggregation_fct: "sum"
+  num_mlp_layers: 2
+  relation_learning: "linear_query"
+  adversarial_temperature: 0.7
+
+execution:
+  batch_size_train: 6
+  batch_size_test: 6
+  num_negative: 64
+  check_negatives: yes
+  lr: 0.001
+  edge_dropout: 0.0
+  num_epochs: 10
+  dtype: "float16"
+  loss_scale: 128
+  replicas: 1
+  device_iterations: 1
+  gradient_accumulation: 16
+  do_valid: yes
+  do_test: yes
+  pipeline:
+    preprocessing: 0
+    layer0: 0
+    layer1: 1
+    layer2: 1
+    layer3: 2
+    layer4: 2
+    layer5: 3
+    prediction: 3

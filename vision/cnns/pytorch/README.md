@@ -1,9 +1,9 @@
-# CNNs (Pytorch)
+# CNNs (PyTorch)
 Deep CNN residual learning models for image recognition and classification, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference |
-|-------------|-|------|-------|-------|-------|---|
-| Pytorch | Vision | CNNs | ImageNet LSVRC 2012 | Image recognition, Image classification | ✅  | ✅ |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference |
+|-----------|--------|-------|----------|-------|----------|-----------|
+| PyTorch | Vision | CNNs | ImageNet LSVRC 2012 | Image recognition, Image classification | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">✅ <br> Min. 4 IPUs (POD4) required |
 
 
 ## Instructions summary
@@ -25,32 +25,35 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
+
+NOTE: You must install PopTorch to your environment (as in 2. below) before installing requirements (as in 5. below), else you may encounter compatibility issues with Horovod
+
 To prepare your environment, follow these steps:
 
-1. Create and activate a Python3 virtual environment:
+1. Create and activate a fresh Python3 virtual environment:
 ```bash
-python3 -m venv <venv name>
-source <venv path>/bin/activate
+python3 -m venv <venv name> --clear
+source ./<venv name>/bin/activate
 ```
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -68,6 +71,8 @@ make install
 make install-turbojpeg
 ```
 
+
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup
 
@@ -106,12 +111,15 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Custom Inference
 
 ### Inference from pre-trained weights
 Pretrained models are used for inference. The weights are downloaded from the following places:
 * The official PyTorch model storage
 * [PyTorch Image Models](https://github.com/rwightman/pytorch-image-models) package's model storage
+
+
+## Other features
 
 ### Troubleshooting
 
@@ -121,7 +129,7 @@ If Triton server tests fails with such an error:
 [model_runtime:cpp] [error] Error in model_runtime/source/Executable.cpp:38:Failed to deserialize XXX : Error reading executable - package hash (YYY) differs from poplar hash (ZZZ)
 ```
 
-This mean that models were generated and saved with different version of SDK and needs to be recreated. Please remove `tests_serial/tritonserver/test_environment_ready.lock` and rerun tests.
+This mean that models were generated and saved with different version of SDK and needs to be recreated. Please remove `tests/tritonserver/test_environment_ready.lock` and rerun tests.
 
 ```bash
 Failed: Failed to download and/or compile Triton Server!

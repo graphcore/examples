@@ -3,11 +3,12 @@ Cluster graph convolutional networks for node classification, using cluster samp
 
 Run our Cluster GCN training on arXiv dataset on Paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3CHtqfy)
+[![Gradient](../../../gradient-badge.svg)](https://ipu.dev/3CHtqfy)
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| TensorFlow2 | GNNs | CGCN | PPI, arXiv, Reddit, Products, MAG, MAG240M | Node classification | ✅ | ❌ | [Cluster-GCN: An Efficient Algorithm for Training Deep and Large Graph Convolutional Networks](https://arxiv.org/pdf/1905.07953.pdf) |
+
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| TensorFlow 2 | GNNs | CGCN | PPI, arXiv, Reddit, Products, MAG, MAG240M | Node classification | <div style="text-align: center;">✅ <br>Min. 4 IPUs (POD4) required | <p style="text-align: center;">❌ | [Cluster-GCN: An Efficient Algorithm for Training Deep and Large Graph Convolutional Networks](https://arxiv.org/pdf/1905.07953.pdf) |
 
 
 ## Instructions summary
@@ -34,7 +35,7 @@ cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -48,7 +49,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -74,6 +75,8 @@ pip3 install -r requirements.txt
 sudo apt-get install libmetis-dev=5.1.0.dfsg-5
 ```
 
+
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
 
 ## Dataset setup
 

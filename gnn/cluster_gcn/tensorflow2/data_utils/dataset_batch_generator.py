@@ -44,8 +44,7 @@ def set_self_edge_dummy_values_to_zero(adjacency):
     dummy value with zeros for the self-edges.
     """
     # Convert from CSR to tuple representation.
-    indices, values, shape = decompose_sparse_adjacency(
-        adjacency.asformat("coo"))
+    indices, values, shape = decompose_sparse_adjacency(adjacency.asformat("coo"))
     # Remove dummy values but keeping the self-edges.
     values = set_self_edges_values_to_zero(values)
     return indices, values, shape
@@ -60,10 +59,7 @@ def set_self_edges_values_to_zero(data):
     return data
 
 
-def pad_adjacency_tuple(adjacency,
-                        adjacency_dtype,
-                        max_edges,
-                        max_nodes):
+def pad_adjacency_tuple(adjacency, adjacency_dtype, max_edges, max_nodes):
     """
     Converts adjacency to a tuple of indices, values and shape, and pad
     the indices and values to a fixed size. The indices are padded with
@@ -77,8 +73,7 @@ def pad_adjacency_tuple(adjacency,
 
     # Add self-edges, as they will be needed when processing
     # (e.g., adding regularisation) the adjacency matrix.
-    indices, values, _ = set_self_edge_dummy_values_to_zero(
-        adjacency)
+    indices, values, _ = set_self_edge_dummy_values_to_zero(adjacency)
 
     # Ensure values is the correct dtype
     values = values.astype(adjacency_dtype)
@@ -87,11 +82,7 @@ def pad_adjacency_tuple(adjacency,
     # clip or pad to a fixed number of edges as needed.
     num_edges_in_batch = indices.shape[0]
     if num_edges_in_batch > max_edges:
-        keep = np.random.choice(
-            np.arange(0, num_edges_in_batch),
-            size=max_edges,
-            replace=False
-        )
+        keep = np.random.choice(np.arange(0, num_edges_in_batch), size=max_edges, replace=False)
         indices = indices[keep, :]
         values = values[keep]
     else:
@@ -99,10 +90,7 @@ def pad_adjacency_tuple(adjacency,
         # Add the new edges for padding to a fake node.
         fake_node_id = max_nodes - 1
         # Pad the edge list with self connections on this fake node.
-        indices = np.pad(
-            indices,
-            (edge_padding, (0, 0)),
-            constant_values=fake_node_id)
+        indices = np.pad(indices, (edge_padding, (0, 0)), constant_values=fake_node_id)
         # Pad the value list with zeros for the corresponding padded edges.
         values = np.pad(values, edge_padding, constant_values=0)
     return indices, values
@@ -125,7 +113,7 @@ def tf_dataset_generator(
     deterministic=False,
     prefetch_depth=10,
     distributed_worker_count=1,
-    distributed_worker_index=0
+    distributed_worker_index=0,
 ):
     """Create a tf.data.Dataset of batches."""
 
@@ -169,29 +157,21 @@ def tf_dataset_generator(
         # we cast later.
         adjacency = adjacency.astype(adjacency_dtype)
 
-    def fix_output_shape_adjacency_dense(adjacency_batch,
-                                         features_batch,
-                                         labels_batch):
+    def fix_output_shape_adjacency_dense(adjacency_batch, features_batch, labels_batch):
         # We must feed the IPU with a fixed shape tensor,
         # which for the dense representation is achieved by
         # padding with dummy nodes.
         adjacency_batch.set_shape((max_nodes_per_batch, max_nodes_per_batch))
         return adjacency_batch, features_batch, labels_batch
 
-    def fix_output_shape_adjacency_sparse_tensor(indices_batch,
-                                                 values_batch,
-                                                 features_batch,
-                                                 labels_batch):
+    def fix_output_shape_adjacency_sparse_tensor(indices_batch, values_batch, features_batch, labels_batch):
         # We only use SparseTensor on CPU so can get away with not
         # specifying a fixed shape.
         indices_batch.set_shape((None, 2))
         values_batch.set_shape((None,))
         return indices_batch, values_batch, features_batch, labels_batch
 
-    def fix_output_shape_adjacency_sparse_tuple(indices_batch,
-                                                values_batch,
-                                                features_batch,
-                                                labels_batch):
+    def fix_output_shape_adjacency_sparse_tuple(indices_batch, values_batch, features_batch, labels_batch):
         # We must feed the IPU with a tuple with fixed size, which is
         # achieved by padding when needed.
         indices_batch.set_shape((max_edges_per_batch, 2))
@@ -203,34 +183,26 @@ def tf_dataset_generator(
         y_batch.set_shape((max_nodes_per_batch, labels.shape[1]))
         return x_batch, y_batch
 
-    def process_adjacency_dense(nodes_in_batch,
-                                features_batch,
-                                labels_batch):
+    def process_adjacency_dense(nodes_in_batch, features_batch, labels_batch):
         adjacency_batch = adjacency[nodes_in_batch, :][:, nodes_in_batch]
         adjacency_batch = adjacency_batch.toarray()
         if max_nodes_per_batch > nodes_in_batch.size:
             # Convert to a dense matrix and pad with zero.
             node_padding = (0, max_nodes_per_batch - nodes_in_batch.size)
-            adjacency_batch = np.pad(
-                adjacency_batch, (node_padding, node_padding))
+            adjacency_batch = np.pad(adjacency_batch, (node_padding, node_padding))
         return adjacency_batch, features_batch, labels_batch
 
-    def process_adjacency_sparse_tensor(nodes_in_batch,
-                                        features_batch,
-                                        labels_batch):
+    def process_adjacency_sparse_tensor(nodes_in_batch, features_batch, labels_batch):
         adjacency_batch = adjacency[nodes_in_batch, :][:, nodes_in_batch]
         # Pad the nodes of the sparse adjacency by changing its shape.
         adjacency_batch.resize((max_nodes_per_batch, max_nodes_per_batch))
         # Convert sparse matrix to a tuple that can be consumed by
         # tf.data.Dataset.from_generator.
         # We won't need the shape as it is a constant value.
-        indices_batch, values_batch, _ = decompose_sparse_adjacency(
-            adjacency_batch.asformat("coo"))
+        indices_batch, values_batch, _ = decompose_sparse_adjacency(adjacency_batch.asformat("coo"))
         return indices_batch, values_batch, features_batch, labels_batch
 
-    def process_adjacency_sparse_tuple(nodes_in_batch,
-                                       features_batch,
-                                       labels_batch):
+    def process_adjacency_sparse_tuple(nodes_in_batch, features_batch, labels_batch):
         """
         Converts adjacency to a tuple of indices, values and shape, and pad
         the indices and values to a fixed size. The indices are padded with
@@ -241,10 +213,7 @@ def tf_dataset_generator(
         """
         adjacency_batch = adjacency[nodes_in_batch, :][:, nodes_in_batch]
         indices_batch, values_batch = pad_adjacency_tuple(
-            adjacency_batch,
-            adjacency_dtype,
-            max_edges_per_batch,
-            max_nodes_per_batch
+            adjacency_batch, adjacency_dtype, max_edges_per_batch, max_nodes_per_batch
         )
         return indices_batch, values_batch, features_batch, labels_batch
 
@@ -254,11 +223,7 @@ def tf_dataset_generator(
         node_padding = None
 
         if not do_pad_nodes:
-            keep = np.random.choice(
-                np.arange(0, num_nodes_in_batch),
-                size=max_nodes_per_batch,
-                replace=False
-            )
+            keep = np.random.choice(np.arange(0, num_nodes_in_batch), size=max_nodes_per_batch, replace=False)
             nodes_in_batch = nodes_in_batch[keep]
 
         features_batch = features[nodes_in_batch, :]
@@ -267,102 +232,82 @@ def tf_dataset_generator(
         if do_pad_nodes:
             node_padding = (0, max_nodes_per_batch - nodes_in_batch.size)
             features_batch = np.pad(features_batch, (node_padding, (0, 0)))
-            labels_batch = np.pad(
-                labels_batch,
-                (node_padding, (0, 0)),
-                constant_values=MASKED_LABEL_VALUE
-            )
+            labels_batch = np.pad(labels_batch, (node_padding, (0, 0)), constant_values=MASKED_LABEL_VALUE)
         return nodes_in_batch, features_batch, labels_batch
 
     dataset = tf.data.Dataset.from_tensor_slices(cluster_indices)
     if distributed_worker_count > 1:
-        dataset = dataset.shard(num_shards=distributed_worker_count,
-                                index=distributed_worker_index)
+        dataset = dataset.shard(num_shards=distributed_worker_count, index=distributed_worker_index)
     dataset = dataset.shuffle(num_clusters, seed=seed)
     dataset = dataset.repeat()
     dataset = dataset.batch(clusters_per_batch)
 
     dataset = dataset.map(
-        lambda clusters_in_batch:
-            tf.numpy_function(
-                get_nodes_from_cluster_indices,
-                [clusters_in_batch],
-                clusters[0].dtype),
+        lambda clusters_in_batch: tf.numpy_function(
+            get_nodes_from_cluster_indices, [clusters_in_batch], clusters[0].dtype
+        ),
         num_parallel_calls=10,
-        deterministic=deterministic)
+        deterministic=deterministic,
+    )
 
     # Pad features and labels
     dataset = dataset.map(
-        lambda nodes_in_batch:
-            tf.numpy_function(
-                select_pad_features_and_labels,
-                [nodes_in_batch],
-                (nodes_in_batch.dtype, features.dtype, labels.dtype)),
+        lambda nodes_in_batch: tf.numpy_function(
+            select_pad_features_and_labels, [nodes_in_batch], (nodes_in_batch.dtype, features.dtype, labels.dtype)
+        ),
         num_parallel_calls=5,
-        deterministic=deterministic)
+        deterministic=deterministic,
+    )
 
     if adjacency_form == AdjacencyForm.DENSE:
         dataset = dataset.map(
-            lambda nodes_in_batch, feats, labels:
-                tf.numpy_function(
-                    process_adjacency_dense,
-                    [nodes_in_batch, feats, labels],
-                    (adjacency_type, features.dtype, labels.dtype)),
+            lambda nodes_in_batch, feats, labels: tf.numpy_function(
+                process_adjacency_dense, [nodes_in_batch, feats, labels], (adjacency_type, features.dtype, labels.dtype)
+            ),
             num_parallel_calls=5,
-            deterministic=deterministic)
-        dataset = dataset.map(fix_output_shape_adjacency_dense)
-        dataset = dataset.map(
-            lambda adj, feats, labels:
-            (
-                dict(
-                    adjacency_batch=adj,
-                    features_batch=feats
-                ),
-                labels
-            )
+            deterministic=deterministic,
         )
+        dataset = dataset.map(fix_output_shape_adjacency_dense)
+        dataset = dataset.map(lambda adj, feats, labels: (dict(adjacency_batch=adj, features_batch=feats), labels))
     elif adjacency_form == AdjacencyForm.SPARSE_TUPLE:
         dataset = dataset.map(
-            lambda nodes_in_batch, feats, labels:
-                tf.numpy_function(
-                    process_adjacency_sparse_tuple,
-                    [nodes_in_batch, feats, labels],
-                    (adjacency_type[0], adjacency_type[1], features.dtype, labels.dtype)),
+            lambda nodes_in_batch, feats, labels: tf.numpy_function(
+                process_adjacency_sparse_tuple,
+                [nodes_in_batch, feats, labels],
+                (adjacency_type[0], adjacency_type[1], features.dtype, labels.dtype),
+            ),
             num_parallel_calls=5,
-            deterministic=deterministic)
+            deterministic=deterministic,
+        )
         dataset = dataset.map(fix_output_shape_adjacency_sparse_tuple)
         dataset = dataset.map(
-            lambda adj_indices, adj_values, feats, labels:
-            (
-                dict(
-                    adjacency_batch=(adj_indices, adj_values),
-                    features_batch=feats
-                ),
-                labels
+            lambda adj_indices, adj_values, feats, labels: (
+                dict(adjacency_batch=(adj_indices, adj_values), features_batch=feats),
+                labels,
             )
         )
     elif adjacency_form == AdjacencyForm.SPARSE_TENSOR:
         dataset = dataset.map(
-            lambda nodes_in_batch, feats, labels:
-                tf.numpy_function(
-                    process_adjacency_sparse_tensor,
-                    [nodes_in_batch, feats, labels],
-                    (adjacency_type[0], adjacency_type[1], features.dtype, labels.dtype)),
+            lambda nodes_in_batch, feats, labels: tf.numpy_function(
+                process_adjacency_sparse_tensor,
+                [nodes_in_batch, feats, labels],
+                (adjacency_type[0], adjacency_type[1], features.dtype, labels.dtype),
+            ),
             num_parallel_calls=5,
-            deterministic=deterministic)
+            deterministic=deterministic,
+        )
         dataset = dataset.map(fix_output_shape_adjacency_sparse_tensor)
         dataset = dataset.map(
-            lambda adj_indices, adj_values, feats, labels:
-            (
+            lambda adj_indices, adj_values, feats, labels: (
                 dict(
                     adjacency_batch=tf.sparse.SparseTensor(
                         indices=tf.cast(adj_indices, tf.int64),
                         values=adj_values,
-                        dense_shape=tf.cast((max_nodes_per_batch, max_nodes_per_batch), tf.int64)
+                        dense_shape=tf.cast((max_nodes_per_batch, max_nodes_per_batch), tf.int64),
                     ),
-                    features_batch=feats
+                    features_batch=feats,
                 ),
-                labels
+                labels,
             )
         )
 
@@ -372,11 +317,11 @@ def tf_dataset_generator(
     if adjacency_form == AdjacencyForm.SPARSE_TUPLE:
         assert micro_batch_size == 1, (
             f"A micro_batch_size of {micro_batch_size} has been provided,"
-            " but only a micro_batch_size of 1 is currently supported.")
-        dataset = dataset.batch(micro_batch_size,
-                                drop_remainder=True,
-                                num_parallel_calls=5,
-                                deterministic=deterministic)
+            " but only a micro_batch_size of 1 is currently supported."
+        )
+        dataset = dataset.batch(
+            micro_batch_size, drop_remainder=True, num_parallel_calls=5, deterministic=deterministic
+        )
 
     dataset = dataset.prefetch(prefetch_depth)
     return dataset

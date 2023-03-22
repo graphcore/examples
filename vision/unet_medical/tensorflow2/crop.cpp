@@ -1,5 +1,5 @@
 // Copyright (c) 2021 Graphcore Ltd. All rights reserved.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the “License”);
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -19,39 +19,40 @@
 #include <poputil/TileMapping.hpp>
 #include <poputil/Util.hpp>
 
-
-poplar::Tensor crop(poplar::Graph &graph,
-              poplar::program::Sequence &prog,
-							const poplar::Tensor &input, float central_fraction,
-							const poplar::DebugContext &dc) {
+poplar::Tensor crop(poplar::Graph &graph, poplar::program::Sequence &prog,
+                    const poplar::Tensor &input, float central_fraction,
+                    const poplar::DebugContext &dc) {
   poputil::PoplibsOpDebugInfo di(dc, DI_ARGS(input, central_fraction));
 
   const auto input_dims = input.shape();
   assert(input_dims.size() == 4);
   auto output_dims = input_dims;
-// get the right dimension for cropped output
-  size_t bbox_h_start = static_cast<size_t>((input_dims[1] - input_dims[1] * central_fraction) /2);
-  size_t bbox_w_start = static_cast<size_t>((input_dims[2] - input_dims[2] * central_fraction) /2);
+  // get the right dimension for cropped output
+  size_t bbox_h_start = static_cast<size_t>(
+      (input_dims[1] - input_dims[1] * central_fraction) / 2);
+  size_t bbox_w_start = static_cast<size_t>(
+      (input_dims[2] - input_dims[2] * central_fraction) / 2);
   size_t bbox_h_size = input_dims[1] - bbox_h_start * 2;
   size_t bbox_w_size = input_dims[2] - bbox_w_start * 2;
 
   output_dims[1] = static_cast<size_t>(bbox_h_size);
   output_dims[2] = static_cast<size_t>(bbox_w_size);
 
-// slice the input to get output
-  poplar::Tensor output_to_copy = input.slice({0, bbox_h_start, bbox_w_start, 0}, 
-  									  {input_dims[0], input_dims[1] - bbox_h_start, input_dims[2] - bbox_w_start, input_dims[3]});
-  poplar::Tensor output = graph.addVariable(
-      input.elementType(), output_dims,
-      {di, "dims_crop_" + std::to_string(output_dims[2])});;
+  // slice the input to get output
+  poplar::Tensor output_to_copy =
+      input.slice({0, bbox_h_start, bbox_w_start, 0},
+                  {input_dims[0], input_dims[1] - bbox_h_start,
+                   input_dims[2] - bbox_w_start, input_dims[3]});
+  poplar::Tensor output =
+      graph.addVariable(input.elementType(), output_dims,
+                        {di, "dims_crop_" + std::to_string(output_dims[2])});
+  ;
   poputil::mapTensorLinearly(graph, output);
   prog.add(poplar::program::Copy(output_to_copy, output));
   return output;
 }
 
-
-poplar::Tensor crop_grads(poplar::Graph &graph,
-                          poplar::program::Sequence &prog,
+poplar::Tensor crop_grads(poplar::Graph &graph, poplar::program::Sequence &prog,
                           const poplar::Tensor &grad_output,
                           float central_fraction,
                           const poplar::DebugContext &dc) {
@@ -61,8 +62,10 @@ poplar::Tensor crop_grads(poplar::Graph &graph,
   auto grad_input_dims = grad_output_dims;
   grad_input_dims[1] = grad_output_dims[1] / central_fraction;
   grad_input_dims[2] = grad_output_dims[2] / central_fraction;
-  size_t bbox_h_start = static_cast<size_t>((grad_input_dims[1] - grad_output_dims[1]) /2);
-  size_t bbox_w_start = static_cast<size_t>((grad_input_dims[2] - grad_output_dims[1]) /2);
+  size_t bbox_h_start =
+      static_cast<size_t>((grad_input_dims[1] - grad_output_dims[1]) / 2);
+  size_t bbox_w_start =
+      static_cast<size_t>((grad_input_dims[2] - grad_output_dims[1]) / 2);
   size_t bbox_h_size = grad_input_dims[1] - bbox_h_start * 2;
   size_t bbox_w_size = grad_input_dims[2] - bbox_w_start * 2;
 
@@ -72,9 +75,12 @@ poplar::Tensor crop_grads(poplar::Graph &graph,
   poputil::mapTensorLinearly(graph, grad_input);
 
   popops::zero(graph, grad_input, prog);
-  prog.add(poplar::program::Copy(grad_output,
-                      grad_input.slice({0, bbox_h_start, bbox_w_start, 0}, 
-  									  {grad_input_dims[0], grad_input_dims[1] - bbox_h_start, grad_input_dims[2] - bbox_w_start, grad_input_dims[3]})));
+  prog.add(poplar::program::Copy(
+      grad_output,
+      grad_input.slice({0, bbox_h_start, bbox_w_start, 0},
+                       {grad_input_dims[0], grad_input_dims[1] - bbox_h_start,
+                        grad_input_dims[2] - bbox_w_start,
+                        grad_input_dims[3]})));
 
   return grad_input;
 }

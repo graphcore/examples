@@ -58,6 +58,6 @@ class GPTDecoderTP(addons.Module):
 
         for i in range(self.config.model.layers):
             args_nt = self.add_variable_inputs(i, facts)
-            x, = graph.bind(args_nt).call(x)
+            (x,) = graph.bind(args_nt).call(x)
 
         return x

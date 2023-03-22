@@ -18,8 +18,8 @@ from tensorflow.python import ipu
 
 
 class CentralCropIpu(tf.keras.layers.Layer):
-    ''' This is a custom operation for central crop without inplacing
-    '''
+    """This is a custom operation for central crop without inplacing"""
+
     def __init__(self, output_size, **kwargs):
         super().__init__(**kwargs)
         self.output_size = output_size
@@ -29,24 +29,23 @@ class CentralCropIpu(tf.keras.layers.Layer):
         img_hd = inputs_shape[1]
         img_diff = img_hd - self.output_size
         check = tf.debugging.assert_non_negative(
-            img_diff,
-            message='The crop output size {} should not be greater than input size'.format(self.output_size))
+            img_diff, message="The crop output size {} should not be greater than input size".format(self.output_size)
+        )
 
         with tf.control_dependencies([check]):
             return self.crop_custom_op(inputs)
 
     def crop_custom_op(self, inputs):
-        output_shape = (inputs.shape[0], self.output_size,
-                        self.output_size, inputs.shape[3])
+        output_shape = (inputs.shape[0], self.output_size, self.output_size, inputs.shape[3])
         outputs = {
             "output_types": [inputs.dtype],
             "output_shapes": [tf.TensorShape(output_shape)],
         }
 
         base_path = os.path.realpath(os.path.dirname(__file__))
-        lib_path = os.path.join(
-            base_path, "libcustom_op.so")
-        central_fraction = str(self.output_size/inputs.shape[1])
+        lib_path = os.path.join(base_path, "libcustom_op.so")
+        central_fraction = str(self.output_size / inputs.shape[1])
         cropped = ipu.custom_ops.precompiled_user_op(
-            [inputs], lib_path, attributes=central_fraction, gradient_attributes=central_fraction, outs=outputs)
+            [inputs], lib_path, attributes=central_fraction, gradient_attributes=central_fraction, outs=outputs
+        )
         return cropped[0]

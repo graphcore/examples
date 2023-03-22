@@ -12,20 +12,20 @@ from tensorflow.python.ipu import distributed
 from tensorflow.python.ipu.utils import reset_ipu_seed
 
 
-def set_host_seed(seed: typing.Optional[int],
-                  deterministic: bool = False) -> typing.Optional[int]:
+def set_host_seed(seed: typing.Optional[int], deterministic: bool = False) -> typing.Optional[int]:
 
     if seed is None:
         if deterministic:
             seed = random.randint(0, 2**32 - 1)
-            logging.info('In order to enforce a deterministic seed must be set. '
-                        f'Randomly generated seed for this run is {seed}.')
+            logging.info(
+                "In order to enforce a deterministic seed must be set. "
+                f"Randomly generated seed for this run is {seed}."
+            )
 
         if popdist.isPopdistEnvSet():
             random_int = seed or random.randint(0, 2**32 - 1)
-            logging.info(f'Broadcasting seed to initialize all instances with the same number: {random_int}.')
+            logging.info(f"Broadcasting seed to initialize all instances with the same number: {random_int}.")
             seed = int(distributed.broadcast(tf.convert_to_tensor(value=random_int, dtype=tf.int32), 0))
-
 
     if seed is not None:
         random.seed(seed)

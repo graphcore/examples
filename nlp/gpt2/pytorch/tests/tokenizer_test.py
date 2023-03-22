@@ -29,16 +29,20 @@ def test_tokenzier():
     """
     tokenizer_a = transformers.GPT2Tokenizer.from_pretrained("gpt2")
     tokenizer_b = build_megatron_tokenizer(
-        vocab_file=base_dir + "/../tokenizer/gpt2-vocab-50256.json", merge_file=base_dir + "/../tokenizer/gpt2-merges-50256.txt")
+        vocab_file=base_dir + "/../tokenizer/gpt2-vocab-50256.json",
+        merge_file=base_dir + "/../tokenizer/gpt2-merges-50256.txt",
+    )
 
-    text = "Generative Pre-trained Transformer 2 (GPT-2) is an open-source artificial intelligence created" \
-        "by OpenAI in February 2019.[1][2][3][4] GPT-2 translates text, answers questions, summarizes passages," \
-        "[5] and generates text output on a level that, while sometimes indistinguishable from that of humans,[6]" \
-        "can become repetitive or nonsensical when generating long passages.[7] It is a general-purpose learner;" \
-        "it was not specifically trained to do any of these tasks, and its ability to perform them is an extension" \
-        "of its general ability to accurately synthesize the next item in an arbitrary sequence.[8][5] GPT-2 was" \
-        "created as a 'direct scale-up' of OpenAI's 2018 GPT model,[9] with a ten-fold increase in both its" \
+    text = (
+        "Generative Pre-trained Transformer 2 (GPT-2) is an open-source artificial intelligence created"
+        "by OpenAI in February 2019.[1][2][3][4] GPT-2 translates text, answers questions, summarizes passages,"
+        "[5] and generates text output on a level that, while sometimes indistinguishable from that of humans,[6]"
+        "can become repetitive or nonsensical when generating long passages.[7] It is a general-purpose learner;"
+        "it was not specifically trained to do any of these tasks, and its ability to perform them is an extension"
+        "of its general ability to accurately synthesize the next item in an arbitrary sequence.[8][5] GPT-2 was"
+        "created as a 'direct scale-up' of OpenAI's 2018 GPT model,[9] with a ten-fold increase in both its"
         "parameter count and the size of its training dataset.[4]"
+    )
 
     tokens_a = tokenizer_a.encode(text)
     tokens_b = tokenizer_b.encode(text)

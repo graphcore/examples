@@ -13,12 +13,12 @@ def get_optimizer(
     beta_1=0.9,
     beta_2=0.999,
     epsilon=1e-06,
-    loss_scaling=None
+    loss_scaling=None,
 ):
     """Constructs and returns a Keras optimizer
     Args:
         gradient_accumulation_steps_per_replica: An integer representing the
-            number of gradient accumulations that have occured. This will be
+            number of gradient accumulations that have occurred. This will be
             used to scale down the gradients.
         num_replicas: An integer representing the number of replicas. This
             will be used to scale down the gradients.
@@ -40,14 +40,14 @@ def get_optimizer(
         return [(tf.cast(g, dtype=optimizer_compute_precision) / scale, v) for g, v in grads_and_vars]
 
     optimizer = AdamIpuOptimizer(
-        optimizer_compute_precisions=(optimizer_compute_precision, ),
+        optimizer_compute_precisions=(optimizer_compute_precision,),
         learning_rate=learning_rate,
         beta_1=beta_1,
         beta_2=beta_2,
         epsilon=epsilon,
         m_dtype=optimizer_compute_precision,
         v_dtype=optimizer_compute_precision,
-        gradient_transformers=[scale_gradients_by_replicas_and_grad_accum]
+        gradient_transformers=[scale_gradients_by_replicas_and_grad_accum],
     )
 
     if loss_scaling is not None:
@@ -62,25 +62,20 @@ class StaticLossScaleOptimizer(LossScaleOptimizer):
     supports a static loss scaling to use mixed precision in
     pipelining.
     """
-    def __init__(self,
-                 inner_optimizer,
-                 loss_scaling,
-                 optimizer_compute_precision):
+
+    def __init__(self, inner_optimizer, loss_scaling, optimizer_compute_precision):
         """
         Constructs loss scale optimizer.
         :param inner_optimizer: The optimizer to wrap with this
         functionality.
         :param loss_scaling: Constant loss scaling factor to be applied.
         """
-        super().__init__(inner_optimizer,
-                         dynamic=False,
-                         initial_scale=loss_scaling)
+        super().__init__(inner_optimizer, dynamic=False, initial_scale=loss_scaling)
         self.inner_optimizer.gradient_transformers.insert(
             0,
             lambda grads_and_vars: [
-                (tf.cast(g, dtype=optimizer_compute_precision) / loss_scaling, v)
-                for g, v in grads_and_vars
-            ]
+                (tf.cast(g, dtype=optimizer_compute_precision) / loss_scaling, v) for g, v in grads_and_vars
+            ],
         )
 
     def get_unscaled_gradients(self, grads):

@@ -20,16 +20,17 @@ def test_feed_forward_graph(test_config: BertConfig):
     )
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(np.zeros(input_shape),
-                             popxl.float32, name="input"),
-        ])
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(np.zeros(input_shape), popxl.float32, name="input"),
+            ]
+        )
         input_t = inputs_tensors[0]
         args, ff_graph = FeedForward(test_config).create_graph(input_t)
 
         ff = ff_graph.bind(args.init())
         call_info = ff.call_with_info(input_t)
-        act, = call_info.outputs
+        (act,) = call_info.outputs
 
     variables = [t for t in main.tensors if isinstance(t, Variable)]
     assert len(variables) == 6
@@ -43,10 +44,8 @@ def test_feed_forward_graph(test_config: BertConfig):
     with main:
         grad_ff_graph = addons.autodiff(ff_graph)
 
-        seed_gradient = popxl.constant(
-            np.ones(act.shape), act.dtype, "seed_gradient")
-        grad_ff_graph.call(
-            seed_gradient, args=grad_ff_graph.grad_graph_info.inputs_dict(call_info))
+        seed_gradient = popxl.constant(np.ones(act.shape), act.dtype, "seed_gradient")
+        grad_ff_graph.call(seed_gradient, args=grad_ff_graph.grad_graph_info.inputs_dict(call_info))
 
     bs = test_config.execution.micro_batch_size
     seq = test_config.model.sequence_length
@@ -55,8 +54,7 @@ def test_feed_forward_graph(test_config: BertConfig):
     ah = h // test_config.model.attention.heads
 
     # Check the correct activations have been attached
-    acts_shapes = list(
-        map(lambda t: t.shape, grad_ff_graph.grad_graph_info.inputs))
+    acts_shapes = list(map(lambda t: t.shape, grad_ff_graph.grad_graph_info.inputs))
 
     assert len(acts_shapes) == 10
 

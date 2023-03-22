@@ -22,4 +22,5 @@ class TestPretraining(SubProcessChecker):
             "--hidden_size 64 --heads 4",
             root_dir,
             ["Duration"],
-            env = gpt_root_env_path())
+            env=gpt_root_env_path(),
+        )

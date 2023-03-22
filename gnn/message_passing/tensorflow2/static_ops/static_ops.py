@@ -7,12 +7,12 @@ from tensorflow.python import ipu
 
 
 def _attribute(
-        op: str,
-        dtype: tf.DType,
-        n_groups: int,
-        table_size: int,
-        embedding_size: int,
-        n_lookup: int,
+    op: str,
+    dtype: tf.DType,
+    n_groups: int,
+    table_size: int,
+    embedding_size: int,
+    n_lookup: int,
 ) -> str:
     return " ".join(
         map(
@@ -46,8 +46,7 @@ def grouped_gather(params: tf.Tensor, indices: tf.Tensor) -> (tf.Tensor, Callabl
         )
     if len(indices.shape) != 2:
         raise ValueError(
-            "grouped_gather expects `indices` to have shape (n_groups, n_lookup)"
-            f", actual shape {indices.shape}"
+            "grouped_gather expects `indices` to have shape (n_groups, n_lookup)" f", actual shape {indices.shape}"
         )
     if params.shape[0] != indices.shape[0]:
         raise ValueError(
@@ -55,9 +54,7 @@ def grouped_gather(params: tf.Tensor, indices: tf.Tensor) -> (tf.Tensor, Callabl
             f", between `params` (shape {params.shape}) and `indices` (shape {indices.shape})"
         )
     if indices.dtype != tf.dtypes.int32:
-        raise ValueError(
-            f"grouped_gather expects indices.dtype == int32 (actual {indices.dtype})"
-        )
+        raise ValueError(f"grouped_gather expects indices.dtype == int32 (actual {indices.dtype})")
 
     @tf.custom_gradient
     def _internal_grouped_gather(_params, _indices):
@@ -66,9 +63,7 @@ def grouped_gather(params: tf.Tensor, indices: tf.Tensor) -> (tf.Tensor, Callabl
 
         (output,) = ipu.custom_ops.precompiled_user_op(
             [_params, _indices],
-            library_path=str(
-                Path(__file__).parent / "custom_grouped_gather_scatter.so"
-            ),
+            library_path=str(Path(__file__).parent / "custom_grouped_gather_scatter.so"),
             attributes=_attribute(
                 op="gather",
                 dtype=_params.dtype,
@@ -115,8 +110,7 @@ def grouped_scatter(data: tf.Tensor, indices: tf.Tensor, table_size: int) -> (tf
         )
     if len(indices.shape) != 2:
         raise ValueError(
-            "grouped_scatter expects `indices` to have shape (n_groups, n_lookup)"
-            f", actual shape {indices.shape}"
+            "grouped_scatter expects `indices` to have shape (n_groups, n_lookup)" f", actual shape {indices.shape}"
         )
     if data.shape[0] != indices.shape[0]:
         raise ValueError(
@@ -129,18 +123,14 @@ def grouped_scatter(data: tf.Tensor, indices: tf.Tensor, table_size: int) -> (tf
             f", between `data` (shape {data.shape}) and `indices` (shape {indices.shape})"
         )
     if indices.dtype != tf.dtypes.int32:
-        raise ValueError(
-            f"grouped_scatter expects indices.dtype == int32 (actual {indices.dtype})"
-        )
+        raise ValueError(f"grouped_scatter expects indices.dtype == int32 (actual {indices.dtype})")
 
     @tf.custom_gradient
     def _internal_grouped_scatter(_data, _indices):
         n_groups, n_lookup, embedding_size = map(int, _data.shape)
         (output,) = ipu.custom_ops.precompiled_user_op(
             [_data, _indices],
-            library_path=str(
-                Path(__file__).parent / "custom_grouped_gather_scatter.so"
-            ),
+            library_path=str(Path(__file__).parent / "custom_grouped_gather_scatter.so"),
             attributes=_attribute(
                 op="scatter",
                 dtype=_data.dtype,

@@ -29,16 +29,15 @@ from src.layers.layer_norm import LayerNorm
 from src.layers.convolution import ConvolutionModule
 
 
-
 def parse_conformer_args():
     yaml_args = dict()
     app_path = str(Path(__file__).parent.parent.resolve())
-    config_name = Path(app_path, 'configs', 'train.yaml')
+    config_name = Path(app_path, "configs", "train.yaml")
     if config_name is not None:
-        with open(config_name, 'r') as f:
+        with open(config_name, "r") as f:
             try:
                 yaml_args = yaml.safe_load(f)
-                return yaml_args['encoder']
+                return yaml_args["encoder"]
             except yaml.YAMLError as exc:
                 sys.exit(1)
 
@@ -49,7 +48,7 @@ class TestConvModel(nn.Module):
         super(TestConvModel, self).__init__()
         yaml_args = parse_conformer_args()
         dropout_rate = 0
-        convolution_layer_args = (yaml_args['output_size'], yaml_args['cnn_module_kernel'], Swish())
+        convolution_layer_args = (yaml_args["output_size"], yaml_args["cnn_module_kernel"], Swish())
         self.conv_module = ConvolutionModule(*convolution_layer_args, bias=False)
         self.dropout = nn.Dropout(dropout_rate)
         self.loss = nn.NLLLoss()
@@ -67,7 +66,7 @@ class TestLnModel(nn.Module):
         super(TestLnModel, self).__init__()
 
         yaml_args = parse_conformer_args()
-        output_size = yaml_args['output_size']
+        output_size = yaml_args["output_size"]
 
         self.norm_ff = LayerNorm(output_size, eps_=1e-12)
 
@@ -86,7 +85,10 @@ class TestSubsampleModel(nn.Module):
 
         yaml_args = parse_conformer_args()
         self.embed = Conv2dSubsampling(
-            yaml_args['input_size'], odim, dropout, RelPositionalEncoding(yaml_args['output_size'], 0, yaml_args['output_size'])
+            yaml_args["input_size"],
+            odim,
+            dropout,
+            RelPositionalEncoding(yaml_args["output_size"], 0, yaml_args["output_size"]),
         )
         self.odim = odim
         self.loss = nn.NLLLoss()
@@ -103,10 +105,10 @@ def get_dict(odim=32, mask_shape_sub=100, mask_shape=24):
 
     dict_shape = {}
     yaml_args = parse_conformer_args()
-    output_size = yaml_args['output_size']
-    feature_size = yaml_args['input_size']
+    output_size = yaml_args["output_size"]
+    feature_size = yaml_args["input_size"]
 
-    dict_shape['sub'] = [[1, mask_shape_sub, feature_size], [1, 1, mask_shape_sub]]
-    dict_shape['conv'] = [[odim, mask_shape, output_size], [odim, 1, mask_shape]]
-    dict_shape['ln'] = [[odim, mask_shape, output_size], [odim, 1, mask_shape]]
+    dict_shape["sub"] = [[1, mask_shape_sub, feature_size], [1, 1, mask_shape_sub]]
+    dict_shape["conv"] = [[odim, mask_shape, output_size], [odim, 1, mask_shape]]
+    dict_shape["ln"] = [[odim, mask_shape, output_size], [odim, 1, mask_shape]]
     return dict_shape

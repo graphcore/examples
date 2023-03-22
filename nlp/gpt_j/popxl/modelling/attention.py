@@ -15,8 +15,10 @@ from popxl_addons.named_tensors import NamedTensorData
 from utils.utils import shard
 from popxl_addons.layers import Linear
 
-from popxl_addons.ops.replicated_all_reduce_TP import (replicated_all_reduce_identical_inputs,
-                                                       replicated_all_reduce_identical_grad_inputs)
+from popxl_addons.ops.replicated_all_reduce_TP import (
+    replicated_all_reduce_identical_inputs,
+    replicated_all_reduce_identical_grad_inputs,
+)
 from popxl_addons.ops.rotary_pos_embed import rotary_pos_embed, trig_table_constants
 
 from config import GPTJConfig
@@ -42,14 +44,15 @@ class GPTJAttentionHeads(addons.Module):
         else:
             n_heads_groups = 1
 
-        assert self.config.model.attention.heads % n_heads_groups == 0, \
-            f'{self.config.model.attention.heads} % {n_heads_groups} != 0'
+        assert (
+            self.config.model.attention.heads % n_heads_groups == 0
+        ), f"{self.config.model.attention.heads} % {n_heads_groups} != 0"
 
         self.n_heads_groups = n_heads_groups
         self.n_heads = self.config.model.attention.heads // n_heads_groups
-        self.qkv = Linear(3 * self.config.model.hidden_size // n_heads_groups,
-                          replica_grouping=replica_grouping,
-                          bias=False)
+        self.qkv = Linear(
+            3 * self.config.model.hidden_size // n_heads_groups, replica_grouping=replica_grouping, bias=False
+        )
         self.rotary_dim = self.config.model.attention.rotary_dim or self.config.model.hidden_size // self.n_heads
 
     def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None):
@@ -58,39 +61,33 @@ class GPTJAttentionHeads(addons.Module):
         query, key, value = ops.split(qkv_act, 3, axis=-1)
 
         #: [batch, seq, heads, head_size]
-        query = reshape_for_scores(
-            query, self.config.model.sequence_length, self.n_heads)
-        key = reshape_for_scores(
-            key, self.config.model.sequence_length, self.n_heads)
-        value = reshape_for_scores(
-            value, self.config.model.sequence_length, self.n_heads)
+        query = reshape_for_scores(query, self.config.model.sequence_length, self.n_heads)
+        key = reshape_for_scores(key, self.config.model.sequence_length, self.n_heads)
+        value = reshape_for_scores(value, self.config.model.sequence_length, self.n_heads)
 
-        sin, cos = trig_table_constants(self.config.model.sequence_length,
-                                        self.rotary_dim,
-                                        self.config.model.attention.rotary_positional_embeddings_base,
-                                        self.config.model.dtype)
+        sin, cos = trig_table_constants(
+            self.config.model.sequence_length,
+            self.rotary_dim,
+            self.config.model.attention.rotary_positional_embeddings_base,
+            self.config.model.dtype,
+        )
         # Optim: outline below?
-        query = rotary_pos_embed(
-            query, sin, cos, self.rotary_dim).transpose((0, 2, 1, 3))
-        key = rotary_pos_embed(
-            key, sin, cos, self.rotary_dim).transpose((0, 2, 3, 1))
+        query = rotary_pos_embed(query, sin, cos, self.rotary_dim).transpose((0, 2, 1, 3))
+        key = rotary_pos_embed(key, sin, cos, self.rotary_dim).transpose((0, 2, 3, 1))
         value = value.transpose((0, 2, 1, 3))
 
         causal_mask = popxl.constant(
             # HF uses 1e9 which is beyond fp16 range
-            1e4 * (np.tril(np.ones((self.config.model.sequence_length,
-                   self.config.model.sequence_length))) - 1),
+            1e4 * (np.tril(np.ones((self.config.model.sequence_length, self.config.model.sequence_length))) - 1),
             query.dtype,
-            name="causal_mask")
+            name="causal_mask",
+        )
 
         if self.config.execution.attention_serialisation > 1:
-            queries = ops.split(
-                query, self.config.execution.attention_serialisation, axis=2)
-            masks = ops.split(
-                causal_mask, self.config.execution.attention_serialisation, axis=0)
+            queries = ops.split(query, self.config.execution.attention_serialisation, axis=2)
+            masks = ops.split(causal_mask, self.config.execution.attention_serialisation, axis=0)
 
-            blk_graph = popxl.gcg().ir.create_graph(self.attention_block,
-                                                    queries[0], key, value, masks[0], seed)
+            blk_graph = popxl.gcg().ir.create_graph(self.attention_block, queries[0], key, value, masks[0], seed)
 
             attn_outputs = []
             for query_i, mask_i in zip(queries, masks):
@@ -100,17 +97,20 @@ class GPTJAttentionHeads(addons.Module):
                     seed, blk_seed = ops.split_random_seed(seed)
                     args.append(blk_seed)
 
-                attn_block_output, = ops.call(blk_graph, *args)
+                (attn_block_output,) = ops.call(blk_graph, *args)
 
                 attn_outputs.append(attn_block_output)
             attn_output = ops.concat(attn_outputs, axis=2)
         else:
-            attn_output = self.attention_block(
-                query, key, value, causal_mask, seed)
+            attn_output = self.attention_block(query, key, value, causal_mask, seed)
 
-        return attn_output.transpose((0, 2, 1, 3)).reshape((self.config.execution.micro_batch_size*self.config.model.sequence_length, -1))
+        return attn_output.transpose((0, 2, 1, 3)).reshape(
+            (self.config.execution.micro_batch_size * self.config.model.sequence_length, -1)
+        )
 
-    def attention_block(self, query: popxl.Tensor, key: popxl.Tensor, value: popxl.Tensor, mask: popxl.Tensor, seed: popxl.Tensor):
+    def attention_block(
+        self, query: popxl.Tensor, key: popxl.Tensor, value: popxl.Tensor, mask: popxl.Tensor, seed: popxl.Tensor
+    ):
         attn_weights = query @ key
 
         attn_weights = attn_weights * (1 / math.sqrt(value.shape[-1]))
@@ -119,8 +119,7 @@ class GPTJAttentionHeads(addons.Module):
         attn_scores = ops.softmax(attn_weights, axis=-1)
         if not self.config.model.eval and self.config.model.dropout_prob != 0.0:
             assert seed is not None, "A seed Tensor must be provided when creating a non-eval model."
-            attn_scores = ops.dropout(
-                attn_scores, seed, p=self.config.model.dropout_prob)
+            attn_scores = ops.dropout(attn_scores, seed, p=self.config.model.dropout_prob)
 
         return attn_scores @ value
 
@@ -145,12 +144,10 @@ class GPTJSelfAttentionTP(addons.Module):
         self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp, group_size=dp)
 
         # Sharded across devices
-        self.heads = GPTJAttentionHeads(
-            config=config, replica_grouping=self.replica_grouping)
+        self.heads = GPTJAttentionHeads(config=config, replica_grouping=self.replica_grouping)
 
         # Sharded across devices
-        self.output = Linear(self.config.model.hidden_size,
-                             bias=False, replica_grouping=self.replica_grouping)
+        self.output = Linear(self.config.model.hidden_size, bias=False, replica_grouping=self.replica_grouping)
 
     def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
         """Identical inputs and identical outputs across shards"""
@@ -160,15 +157,13 @@ class GPTJSelfAttentionTP(addons.Module):
             seed, heads_seed = ops.split_random_seed(seed)
 
         # ----- Identical computation -----
-        z = replicated_all_reduce_identical_inputs(
-            x, group=self.replica_grouping.transpose())
+        z = replicated_all_reduce_identical_inputs(x, group=self.replica_grouping.transpose())
 
         # ----- Sharded computation -----
         z = self.heads(z, seed=heads_seed)
         z = self.output(z)
 
-        z = replicated_all_reduce_identical_grad_inputs(
-            z, group=self.replica_grouping.transpose())
+        z = replicated_all_reduce_identical_grad_inputs(z, group=self.replica_grouping.transpose())
 
         if not self.config.model.eval and self.config.model.dropout_prob != 0.0:
             assert seed is not None, "A seed Tensor must be provided when creating a non-eval model."
@@ -193,11 +188,13 @@ class GPTJSelfAttentionTP(addons.Module):
 
         return {
             variables.heads.qkv.weight: np.ascontiguousarray(
-                np.concatenate([
-                    np.concatenate(
-                        [query_w[i], key_w[i], value_w[i]], axis=-1)[np.newaxis, ...]
-                    for i in range(n_shards)
-                ])),
+                np.concatenate(
+                    [
+                        np.concatenate([query_w[i], key_w[i], value_w[i]], axis=-1)[np.newaxis, ...]
+                        for i in range(n_shards)
+                    ]
+                )
+            ),
             variables.output.weight: shard(out_proj_w, n_shards, axis=0),
         }
 
@@ -209,13 +206,17 @@ class GPTJSelfAttentionTP(addons.Module):
         # bias is the attention mask
         # masked bias is the constant used to translate to infinity (1e4)
         state_dict = {}
-        state_dict['q_proj.weight'] = torch.tensor(np.concatenate(
-            q.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype)
-        state_dict['k_proj.weight'] = torch.tensor(np.concatenate(
-            k.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype)
-        state_dict['v_proj.weight'] = torch.tensor(np.concatenate(
-            v.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype)
-        state_dict['out_proj.weight'] = torch.tensor(np.concatenate(
-            variables_data.output.weight, axis=0).T, dtype=config.torch_dtype)
+        state_dict["q_proj.weight"] = torch.tensor(
+            np.concatenate(q.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype
+        )
+        state_dict["k_proj.weight"] = torch.tensor(
+            np.concatenate(k.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype
+        )
+        state_dict["v_proj.weight"] = torch.tensor(
+            np.concatenate(v.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype
+        )
+        state_dict["out_proj.weight"] = torch.tensor(
+            np.concatenate(variables_data.output.weight, axis=0).T, dtype=config.torch_dtype
+        )
 
         return state_dict

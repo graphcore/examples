@@ -7,35 +7,46 @@
 *.bin
 
 **/weights
-**/images
+
 **/checkpoints
 
 **/model
 **/data
 **/logs
+**/*ubyte*
+**/exe_cache
+**/tf_report_*
+**/images
 
 **/cifar-10-batches-bin
 
 *.pyc
 __pycache__
 .cache
+.ipu_cache
+
 *.csv
 *.json
+!codeowners.json
 *.log
 *.so
 *.lock
-report.txt
 archive.a
 vars.capnp
+debug.cbor
+profile.pop*
+report.txt
 
 *.onnx
 *.popef
+*.pvti
 
 .DS_Store
 
 .idea
 .project
 .pydevproject
+.hypothesis
 
 # Remove VIM temp files
 *.swp
@@ -56,3 +67,6 @@ nohup.*
 
 utils/triton_server/backends
 !vision/cnns/pytorch/tests/tritonserver/models/*/*/*.json
+
+# cppimport files
+.rendered.*

@@ -42,7 +42,7 @@ class FeedForward(addons.Module):
 
     @staticmethod
     def hf_mapping(
-            config: BertConfig, variables: NamedTensors, hf_model_int: BertIntermediate, hf_model_out: BertOutput
+        config: BertConfig, variables: NamedTensors, hf_model_int: BertIntermediate, hf_model_out: BertOutput
     ) -> Dict[popxl.Tensor, np.ndarray]:
         dtype = config.model.dtype
 
@@ -52,5 +52,5 @@ class FeedForward(addons.Module):
             variables.output.weight: np.ascontiguousarray(to_numpy(hf_model_out.dense.weight.T, dtype)),
             variables.output.bias: to_numpy(hf_model_out.dense.bias, dtype),
             variables.norm.weight: to_numpy(hf_model_out.LayerNorm.weight, dtype),
-            variables.norm.bias: to_numpy(hf_model_out.LayerNorm.bias, dtype)
+            variables.norm.bias: to_numpy(hf_model_out.LayerNorm.bias, dtype),
         }

@@ -37,9 +37,9 @@ if __name__ == "__main__":
 
     # W&B
     if config.wandb:
-        wandb.init(project=config.wandb_project_name,
-                   name=config.wandb_run_name,
-                   settings=wandb.Settings(console="wrap"))
+        wandb.init(
+            project=config.wandb_project_name, name=config.wandb_run_name, settings=wandb.Settings(console="wrap")
+        )
         wandb.config.update(vars(config))
 
     # Execution parameters
@@ -53,8 +53,11 @@ if __name__ == "__main__":
         model_state_dict = restore_checkpoint(config, val=True)
         model.load_state_dict(model_state_dict)
     else:
-        model = PipelinedViTForImageClassification.from_pretrained(
-            config.pretrained_checkpoint, config=config).parallelize().train()
+        model = (
+            PipelinedViTForImageClassification.from_pretrained(config.pretrained_checkpoint, config=config)
+            .parallelize()
+            .train()
+        )
 
     if config.precision.startswith("16."):
         model.half()
@@ -81,8 +84,7 @@ if __name__ == "__main__":
             # per engine run
             acc = (out * config.micro_batch_size).sum() / config.samples_per_step
             all_preds.append(out * config.micro_batch_size)
-        logger.info("Valid Loss: {:.3f} Acc: {:.3f}".format(
-            torch.mean(losses).item(), acc))
+        logger.info("Valid Loss: {:.3f} Acc: {:.3f}".format(torch.mean(losses).item(), acc))
         if config.wandb:
             wandb.log({"Loss": torch.mean(losses).item(), "Accuracy": acc})
 
@@ -98,5 +100,4 @@ if __name__ == "__main__":
     logger.info("Valid Accuracy: %2.5f" % val_accuracy)
     logger.info("Number of samples: %d" % num_samples)
     if config.wandb:
-        wandb.log({"Total Accuracy": val_accuracy,
-                  "Number of samples": num_samples})
+        wandb.log({"Total Accuracy": val_accuracy, "Number of samples": num_samples})

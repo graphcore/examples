@@ -13,7 +13,7 @@
 #
 # This file has been modified by Graphcore Ltd.
 
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet2/asr/encoder/conformer_encoder.py
@@ -23,7 +23,7 @@ Main changes:
     remove the subsample class: conv2d2, conv2d6, conv2d8
     remove intermediate_outs block
 
-'''
+"""
 
 import torch
 from src.layers.attention import RelPositionMultiHeadedAttention
@@ -54,7 +54,7 @@ class ConformerEncoder(torch.nn.Module):
         zero_triu: bool = False,
         cnn_module_kernel: int = 31,
         max_len: int = 512,
-        dtype: torch.dtype = torch.float32
+        dtype: torch.dtype = torch.float32,
     ):
         super().__init__()
         self.dtype = dtype
@@ -63,11 +63,11 @@ class ConformerEncoder(torch.nn.Module):
         pos_enc_class = RelPositionalEncoding
 
         self.embed = Conv2dSubsampling(
-                        input_size,
-                        output_size,
-                        dropout_rate,
-                        pos_enc_class(output_size, positional_dropout_rate, max_len=max_len//4-1)
-                    )
+            input_size,
+            output_size,
+            dropout_rate,
+            pos_enc_class(output_size, positional_dropout_rate, max_len=max_len // 4 - 1),
+        )
 
         positionwise_layer = PositionwiseFeedForward
         positionwise_layer_args = (
@@ -86,9 +86,7 @@ class ConformerEncoder(torch.nn.Module):
         )
 
         convolution_layer = ConvolutionModule
-        convolution_layer_args = (
-            output_size, cnn_module_kernel, activation
-        )
+        convolution_layer_args = (output_size, cnn_module_kernel, activation)
 
         self.encoders = repeat(
             num_blocks,
@@ -118,9 +116,9 @@ class ConformerEncoder(torch.nn.Module):
             torch.Tensor: Output length (#batch).
 
         """
-        masks = (~make_pad_mask(ilens, xs_pad.size(1))[:, None, :])
+        masks = ~make_pad_mask(ilens, xs_pad.size(1))[:, None, :]
         xs_pad, masks = self.embed(xs_pad, masks)
-        
+
         # explicitly cast pos_emb to have the same type as batch
         if isinstance(xs_pad, tuple):
             xs_pad = (xs_pad[0], xs_pad[1].type(xs_pad[0].dtype))

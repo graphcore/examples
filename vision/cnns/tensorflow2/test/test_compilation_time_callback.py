@@ -3,6 +3,7 @@
 import unittest
 from pathlib import Path
 import sys
+
 sys.path.append(str(Path(__file__).absolute().parent.parent))
 from callbacks.compilation_time_callback import CompilationTimeCallback
 
@@ -18,8 +19,7 @@ class Mock_time:
 
 
 class CompilationTimeTest(unittest.TestCase):
-
-    @unittest.mock.patch('callbacks.compilation_time_callback.time', Mock_time)
+    @unittest.mock.patch("callbacks.compilation_time_callback.time", Mock_time)
     def test_compilation_time(self):
 
         callback = CompilationTimeCallback()
@@ -29,7 +29,7 @@ class CompilationTimeTest(unittest.TestCase):
         logs = {}
         callback.on_train_batch_begin(0, logs)
         callback.on_train_batch_end(0, logs)
-        self.assertEqual(logs, {'Compilation Time': 10})
+        self.assertEqual(logs, {"Compilation Time": 10})
 
         logs = {}
         callback.on_train_batch_begin(1, logs)

@@ -21,7 +21,7 @@ from itertools import groupby
 
 def get_char_dict(dict_path):
     char_dict = {}
-    with open(dict_path, 'r') as fp:
+    with open(dict_path, "r") as fp:
         for item in fp.readlines():
             char, index = item.strip().split(" ")
             char_dict[int(index)] = char
@@ -37,7 +37,7 @@ def get_recog_predict(y_pred, char_dict, key):
         key_ = key[i]
         hyp_chars = "".join(char_dict[int(idx)] for idx in y if char_dict.get(int(idx)))
         # Here only compare the ones before <sos/eos> which is the predicted value of the correctly identified part and the ref_l
-        hyp_chars = hyp_chars.split('<sos/eos>')[0]
+        hyp_chars = hyp_chars.split("<sos/eos>")[0]
         # Here append the predict and reference's key in order to compute_cer
-        pre_l.append(key_+" "+hyp_chars+"\n")
+        pre_l.append(key_ + " " + hyp_chars + "\n")
     return pre_l

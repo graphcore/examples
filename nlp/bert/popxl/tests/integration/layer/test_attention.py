@@ -45,11 +45,12 @@ def test_attention_cmp_huggingface(test_config: BertConfig):
     main = ir.main_graph
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(
-                input_t.reshape(-1, config.hidden_size), popxl.float32, name="act"),
-            addons.host_load(mask, popxl.float32, name="mask"),
-        ])
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(input_t.reshape(-1, config.hidden_size), popxl.float32, name="act"),
+                addons.host_load(mask, popxl.float32, name="mask"),
+            ]
+        )
         act, mask = inputs_tensors
         args, attn_graph = SelfAttention(test_config).create_graph(act, mask)
         grad_attn_graph = addons.autodiff(attn_graph)
@@ -61,8 +62,7 @@ def test_attention_cmp_huggingface(test_config: BertConfig):
         act, *_ = call_info.outputs
         output = addons.host_store(act)
 
-        gradient = popxl.constant(grad_wrt.numpy().reshape(
-            act.shape).copy(), act.dtype, "gradient")
+        gradient = popxl.constant(grad_wrt.numpy().reshape(act.shape).copy(), act.dtype, "gradient")
         # type: ignore
         grad_input, *_ = grad_attn_graph.call(gradient, args=grad_attn_graph.grad_graph_info.inputs_dict(call_info))
 
@@ -77,7 +77,5 @@ def test_attention_cmp_huggingface(test_config: BertConfig):
         session.write_variables_data(weights)
         outs = session.run(inputs)
 
-    np.testing.assert_almost_equal(
-        output_HF, outs[output].reshape(output_HF.shape), 4)
-    np.testing.assert_almost_equal(
-        input_grad_HF, outs[grad_stream].reshape(input_grad_HF.shape), 4)
+    np.testing.assert_almost_equal(output_HF, outs[output].reshape(output_HF.shape), 4)
+    np.testing.assert_almost_equal(input_grad_HF, outs[grad_stream].reshape(input_grad_HF.shape), 4)

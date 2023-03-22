@@ -109,6 +109,6 @@
         },
         "inference":{
             "batches_per_step": 2
-        }  
+        }
     }
 }

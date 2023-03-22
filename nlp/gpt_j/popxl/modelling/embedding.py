@@ -28,18 +28,19 @@ class GPTJEmbeddingsTP(addons.Module):
         tp = config.execution.tensor_parallel
         dp = config.execution.data_parallel
         self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp, group_size=dp)
-        self.word = Embedding(self.config.model.dtype,
-                              self.config.model.embedding.vocab_size,
-                              self.config.model.hidden_size,
-                              replica_grouping=self.replica_grouping)
+        self.word = Embedding(
+            self.config.model.dtype,
+            self.config.model.embedding.vocab_size,
+            self.config.model.hidden_size,
+            replica_grouping=self.replica_grouping,
+        )
 
     def build(self, input_ids: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
         """`input_ids` are offsetted. Identical outputs across shards"""
         input_ids = input_ids.flatten()
         x = self.word(input_ids)
 
-        x = replicated_all_reduce_identical_grad_inputs(
-            x, group=self.replica_grouping.transpose())
+        x = replicated_all_reduce_identical_grad_inputs(x, group=self.replica_grouping.transpose())
 
         # Identical computation
         if not self.config.model.eval and self.config.model.dropout_prob != 0.0:
@@ -57,38 +58,39 @@ class GPTJEmbeddingsTP(addons.Module):
         """
         dtype = config.model.dtype
         n_shards = config.execution.tensor_parallel
-        word_shard_size = Embedding.get_vocab_shard_size(
-            config.model.embedding.vocab_size, n_shards)
+        word_shard_size = Embedding.get_vocab_shard_size(config.model.embedding.vocab_size, n_shards)
 
         word_pad = word_shard_size * n_shards - config.model.embedding.vocab_size
 
         # Pad only first axis in one direction
         def pad(x, n_pad):
             return np.pad(x, ((0, n_pad), (0, 0)))
+
         return {
             variables.word.weight: shard(pad(to_numpy(hf_model.wte.weight.data, dtype), word_pad), n_shards, axis=0),
         }
 
     @staticmethod
     def to_hf(config: GPTJConfigHF, variables_data: NamedTensorData, hf_model: HFModel) -> Dict[str, torch.Tensor]:
-        state_dict = {'wte.weight': torch.tensor(np.concatenate(
-            variables_data.word.weight, axis=0)[:config.vocab_size], dtype=config.torch_dtype)}
+        state_dict = {
+            "wte.weight": torch.tensor(
+                np.concatenate(variables_data.word.weight, axis=0)[: config.vocab_size], dtype=config.torch_dtype
+            )
+        }
         return state_dict
 
     @staticmethod
     def get_offsets(config: GPTJConfig) -> np.ndarray:
         n_shards = config.execution.tensor_parallel
 
-        word_offsets = Embedding.get_offsets(
-            config.model.embedding.vocab_size, n_shards)
+        word_offsets = Embedding.get_offsets(config.model.embedding.vocab_size, n_shards)
         return word_offsets
 
     @staticmethod
     def get_vocab_shard_sizes(config: GPTJConfig) -> int:
         n_shards = config.execution.tensor_parallel
 
-        word_shard_size = Embedding.get_vocab_shard_size(
-            config.model.embedding.vocab_size, n_shards)
+        word_shard_size = Embedding.get_vocab_shard_size(config.model.embedding.vocab_size, n_shards)
 
         return word_shard_size
 
@@ -108,10 +110,11 @@ class GPTJEmbeddingsTP(addons.Module):
         n_shards = config.execution.tensor_parallel
         word_offsets = GPTJEmbeddingsTP.get_offsets(config)
 
-        words_offsetted = cls._offset_input(
-            words, word_offsets, n_shards, axis)
+        words_offsetted = cls._offset_input(words, word_offsets, n_shards, axis)
         return words_offsetted
 
     @staticmethod
     def offset_input(data: np.ndarray, i: int, config: GPTJConfig):
-        return data - (i * Embedding.get_vocab_shard_size(config.model.embedding.vocab_size, config.execution.tensor_parallel))
+        return data - (
+            i * Embedding.get_vocab_shard_size(config.model.embedding.vocab_size, config.execution.tensor_parallel)
+        )

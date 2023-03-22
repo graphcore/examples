@@ -6,6 +6,7 @@ from tensorflow.python import ipu
 import unittest
 from pathlib import Path
 import sys
+
 sys.path.append(str(Path(__file__).absolute().parent.parent))
 from normalization import batch_norm
 from optimizers.loss_scale_optimizer import add_loss_scaling_to_optimizer
@@ -13,20 +14,15 @@ from batch_config import BatchConfig
 
 
 class TestBatchNorm(unittest.TestCase):
-
     def run_model_on_ipu(self, ipu_batch_norm_layer=True, loss_scaling=None):
 
         input_shape = (3, 3, 1)
 
-        batch_config = BatchConfig(
-            micro_batch_size=2,
-            gradient_accumulation_count=1,
-            num_replicas=1)
+        batch_config = BatchConfig(micro_batch_size=2, gradient_accumulation_count=1, num_replicas=1)
 
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = 1
         cfg.device_connection.enable_remote_buffers = True
-        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
 
         ds = tf.data.Dataset.from_tensors(np.ones(input_shape))
@@ -43,11 +39,11 @@ class TestBatchNorm(unittest.TestCase):
             input_layer = tf.keras.Input(shape=input_shape)
             x = input_layer
             if ipu_batch_norm_layer:
-                x = batch_norm.BatchNormIPU(name='bn0')(x)
+                x = batch_norm.BatchNormIPU(name="bn0")(x)
             else:
-                x = tf.keras.layers.BatchNormalization(name='bn0')(x)
+                x = tf.keras.layers.BatchNormalization(name="bn0")(x)
             x = tf.keras.layers.Flatten()(x)
-            x = tf.keras.layers.Dense(1, kernel_initializer='ones', use_bias=False, trainable=False, name='dense')(x)
+            x = tf.keras.layers.Dense(1, kernel_initializer="ones", use_bias=False, trainable=False, name="dense")(x)
             model = tf.keras.Model(input_layer, x)
 
             model.build(input_shape=(batch_config.micro_batch_size, *input_shape))
@@ -61,10 +57,8 @@ class TestBatchNorm(unittest.TestCase):
 
             if ipu_batch_norm_layer:
                 optimizer_class = batch_norm.add_bn_moving_vars_updates_to_optimizer(
-                    optimizer_class,
-                    model=model,
-                    batch_config=batch_config,
-                    bn_momentum=0.99)
+                    optimizer_class, model=model, batch_config=batch_config, bn_momentum=0.99
+                )
 
         optimizer = optimizer_class()
 
@@ -91,7 +85,7 @@ class TestBatchNorm(unittest.TestCase):
         self.assertListEqual(prediction_custom_layer.numpy().tolist(), prediction_vanilla_layer.numpy().tolist())
         for vanilla_model_weight, custom_model_weight in zip(vanilla_layer_model.weights, custom_layer_model.weights):
             self.assertEqual(vanilla_model_weight.name, custom_model_weight.name)
-            if 'bn0' in vanilla_model_weight.name:
+            if "bn0" in vanilla_model_weight.name:
                 self.assertAlmostEqual(vanilla_model_weight.numpy()[0], custom_model_weight.numpy()[0])
 
     def test_combined_with_loss_scaling(self):
@@ -100,5 +94,5 @@ class TestBatchNorm(unittest.TestCase):
 
         for vanilla_model_weight, custom_model_weight in zip(vanilla_model.weights, loss_scaled_model.weights):
             self.assertEqual(vanilla_model_weight.name, custom_model_weight.name)
-            if 'bn0' in vanilla_model_weight.name:
+            if "bn0" in vanilla_model_weight.name:
                 self.assertAlmostEqual(vanilla_model_weight.numpy()[0], custom_model_weight.numpy()[0])

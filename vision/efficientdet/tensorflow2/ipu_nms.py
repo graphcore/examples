@@ -34,19 +34,17 @@ T = tf.Tensor  # a shortcut for typing check.
 BASE_PATH = (Path(__file__).parent / "NMS").absolute()
 
 
-def nms_op(threshold: float,
-           score_threshold: float,
-           num_detections: int,
-           scores: T,
-           boxes: T,
-           classes: Optional[T] = None,
-           multi_nms: bool = False) -> Tuple[T, T, T, T, T]:
+def nms_op(
+    threshold: float,
+    score_threshold: float,
+    num_detections: int,
+    scores: T,
+    boxes: T,
+    classes: Optional[T] = None,
+    multi_nms: bool = False,
+) -> Tuple[T, T, T, T, T]:
 
-    attributes = {
-        "threshold": threshold,
-        "scoreThreshold": score_threshold,
-        "numDetections": num_detections
-    }
+    attributes = {"threshold": threshold, "scoreThreshold": score_threshold, "numDetections": num_detections}
     attributes_json = json.dumps(attributes)
     logging.debug(attributes_json)
 
@@ -54,16 +52,19 @@ def nms_op(threshold: float,
 
     outputs = {
         "output_types": [tf.int32, tf.float16, tf.float16, tf.int32, tf.int32],
-        "output_shapes": [tf.TensorShape(output_shape), tf.TensorShape(output_shape),
-                          tf.TensorShape([scores.shape[0], num_detections, 4]),
-                          tf.TensorShape(output_shape), tf.TensorShape([scores.shape[0]])]
+        "output_shapes": [
+            tf.TensorShape(output_shape),
+            tf.TensorShape(output_shape),
+            tf.TensorShape([scores.shape[0], num_detections, 4]),
+            tf.TensorShape(output_shape),
+            tf.TensorShape([scores.shape[0]]),
+        ],
     }
 
     if multi_nms:
         inputs = [scores, boxes]
     elif classes is None:
-        raise RuntimeError(
-            "NMS requires the classes unless running in Multiclass mode.")
+        raise RuntimeError("NMS requires the classes unless running in Multiclass mode.")
     else:
         scores = tf.reduce_max(scores, -1)
         inputs = [scores, boxes, tf.cast(classes, tf.int32)]
@@ -72,11 +73,9 @@ def nms_op(threshold: float,
     lib_path = BASE_PATH / nms_type_str / "build" / "nms_custom_op.so"
     gp_path = BASE_PATH / "codelet.cpp"
 
-    return ipu.custom_ops.precompiled_user_op(inputs,
-                                              str(lib_path),
-                                              str(gp_path),
-                                              attributes=attributes_json,
-                                              outs=outputs)
+    return ipu.custom_ops.precompiled_user_op(
+        inputs, str(lib_path), str(gp_path), attributes=attributes_json, outs=outputs
+    )
 
 
 def ipu_nms(params, scores: T, boxes: T, classes: T, multi_nms: bool = False) -> Tuple[T, T, T, T]:
@@ -93,35 +92,35 @@ def ipu_nms(params, scores: T, boxes: T, classes: T, multi_nms: bool = False) ->
       A tuple (boxes, scores, classes, valid_lens), where valid_lens is a scalar
       denoting the valid length of boxes/scores/classes outputs.
     """
-    nms_configs = params['nms_configs']
-    max_output_size = nms_configs['max_output_size']
-    iou_thresh = nms_configs['iou_thresh']
-    score_thresh = nms_configs['score_thresh']
+    nms_configs = params["nms_configs"]
+    max_output_size = nms_configs["max_output_size"]
+    iou_thresh = nms_configs["iou_thresh"]
+    score_thresh = nms_configs["score_thresh"]
 
-    nms_idx, nms_scores, nms_boxes, nms_classes, nms_lengths = nms_op(threshold=iou_thresh,
-                                                                      score_threshold=score_thresh,
-                                                                      num_detections=max_output_size,
-                                                                      scores=scores,
-                                                                      boxes=boxes,
-                                                                      classes=classes,
-                                                                      multi_nms=multi_nms)
+    nms_idx, nms_scores, nms_boxes, nms_classes, nms_lengths = nms_op(
+        threshold=iou_thresh,
+        score_threshold=score_thresh,
+        num_detections=max_output_size,
+        scores=scores,
+        boxes=boxes,
+        classes=classes,
+        multi_nms=multi_nms,
+    )
 
     nms_classes = nms_classes + CLASS_OFFSET
 
     return nms_boxes, nms_scores, nms_classes, nms_idx
 
 
-def ipu_postprocessing(config: Config,
-                       step_outputs: List[T],
-                       image_scales: T = None,
-                       multi_nms: bool = False) -> Tuple[T, T, T, T]:
+def ipu_postprocessing(
+    config: Config, step_outputs: List[T], image_scales: T = None, multi_nms: bool = False
+) -> Tuple[T, T, T, T]:
     cls_outputs, box_outputs = step_outputs
 
     cls_outputs = to_list(cls_outputs)
     box_outputs = to_list(box_outputs)
 
-    boxes, scores, classes = pre_nms(
-        config.as_dict(), cls_outputs, box_outputs, topk=False)
+    boxes, scores, classes = pre_nms(config.as_dict(), cls_outputs, box_outputs, topk=False)
 
     outputs = ipu_nms(config.as_dict(), scores, boxes, classes, multi_nms)
     nms_boxes, nms_scores, nms_classes, nms_idx = outputs

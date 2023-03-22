@@ -24,50 +24,43 @@ class ThroughputCallback(keras.callbacks.Callback):
         time_per_epoch = time.time() - self.time
         samples_per_sec = self.samples_per_epoch / time_per_epoch
         if self.log_wandb:
-            wandb.log({'throughput': samples_per_sec})
+            wandb.log({"throughput": samples_per_sec})
 
         logging.info(f"\nthroughput: {samples_per_sec:.2f} samples/sec")
 
 
-def get_optimizer(name="adam",
-                  learning_rate=1e-5,
-                  dtype="float32",
-                  m_dtype=None,
-                  v_dtype=None,
-                  gradient_accumulation_factor=1,
-                  replicas=1):
-
+def get_optimizer(
+    name="adam",
+    learning_rate=1e-5,
+    dtype="float32",
+    m_dtype=None,
+    v_dtype=None,
+    gradient_accumulation_factor=1,
+    replicas=1,
+):
     def rescale_gradients(grads_and_vars):
-        return [
-            (g / (gradient_accumulation_factor * replicas), v)
-            for g, v in grads_and_vars]
+        return [(g / (gradient_accumulation_factor * replicas), v) for g, v in grads_and_vars]
 
-    if name == 'sgd':
-        opt = tf.keras.optimizers.SGD(
-            learning_rate=learning_rate,
-            gradient_transformers=[rescale_gradients])
-    elif name == 'adam' and dtype == tf.float32:
-        opt = tf.keras.optimizers.Adam(
-            learning_rate=learning_rate,
-            gradient_transformers=[rescale_gradients])
-    elif name == 'adam' and dtype == tf.float16:
+    if name == "sgd":
+        opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, gradient_transformers=[rescale_gradients])
+    elif name == "adam" and dtype == tf.float32:
+        opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, gradient_transformers=[rescale_gradients])
+    elif name == "adam" and dtype == tf.float16:
         opt = xpu.AdamIpuOptimizer(
-            learning_rate=learning_rate,
-            gradient_transformers=[rescale_gradients],
-            m_dtype=m_dtype,
-            v_dtype=v_dtype)
+            learning_rate=learning_rate, gradient_transformers=[rescale_gradients], m_dtype=m_dtype, v_dtype=v_dtype
+        )
     else:
         raise NotImplementedError(f"Optimizer {name} is not supported.")
 
     return opt
 
 
-def size_hr(num, suffix='B'):
-    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+def size_hr(num, suffix="B"):
+    for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
         if abs(num) < 1024.0:
             return "%3.1f %s%s" % (num, unit, suffix)
         num /= 1024.0
-    return "%.1f%s%s" % (num, 'Yi', suffix)
+    return "%.1f%s%s" % (num, "Yi", suffix)
 
 
 def print_trainable_variables(model):
@@ -86,4 +79,4 @@ def print_trainable_variables(model):
 
 
 def str_dtype_to_tf_dtype(str_dtype):
-    return {'float16': tf.float16, 'float32': tf.float32}[str_dtype]
+    return {"float16": tf.float16, "float32": tf.float32}[str_dtype]

@@ -10,15 +10,17 @@ from tensorflow.python import ipu
 from tensorflow.python.ipu.distributed.popdist_strategy import PopDistStrategy
 
 
-def create_ipu_strategy(num_ipus_per_replica,
-                        num_replicas,
-                        distributed_training=False,
-                        fp_exceptions=False,
-                        enable_recomputation=True,
-                        enable_stochastic_rounding=True,
-                        min_remote_tensor_size=50000,
-                        max_cross_replica_sum_buffer_size=10*1024*1024,
-                        compile_only=False):
+def create_ipu_strategy(
+    num_ipus_per_replica,
+    num_replicas,
+    distributed_training=False,
+    fp_exceptions=False,
+    enable_recomputation=True,
+    enable_stochastic_rounding=True,
+    min_remote_tensor_size=50000,
+    max_cross_replica_sum_buffer_size=10 * 1024 * 1024,
+    compile_only=False,
+):
     """
     Creates an IPU config and returns an IPU strategy ready to run
     something on IPUs
@@ -50,7 +52,9 @@ def create_ipu_strategy(num_ipus_per_replica,
     ipu_config.allow_recompute = enable_recomputation
 
     # Enable / disable stochastic rounding.
-    ipu_config.floating_point_behaviour.esr = ipu.config.StochasticRoundingBehaviour.from_bool(enable_stochastic_rounding)
+    ipu_config.floating_point_behaviour.esr = ipu.config.StochasticRoundingBehaviour.from_bool(
+        enable_stochastic_rounding
+    )
 
     # Enable / disable different optimisations.
     ipu_config.optimizations.minimum_remote_tensor_size = min_remote_tensor_size
@@ -58,7 +62,6 @@ def create_ipu_strategy(num_ipus_per_replica,
     ipu_config.optimizations.maximum_cross_replica_sum_buffer_size = max_cross_replica_sum_buffer_size
 
     # Configure connection to device.
-    ipu_config.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     if compile_only:
         ipu_config.device_connection.version = "ipu2"
         ipu_config.device_connection.type = ipu.config.DeviceConnectionType.PRE_COMPILE
@@ -66,9 +69,11 @@ def create_ipu_strategy(num_ipus_per_replica,
 
     if distributed_training:
         if num_replicas != popdist.getNumTotalReplicas():
-            logging.error(f'Replication factor given to poprun (=={popdist.getNumTotalReplicas()}) '
-                          f'does not match the config (=={num_replicas}).')
-        logging.info(f'Total number of instances {popdist.getNumInstances()}')
+            logging.error(
+                f"Replication factor given to poprun (=={popdist.getNumTotalReplicas()}) "
+                f"does not match the config (=={num_replicas})."
+            )
+        logging.info(f"Total number of instances {popdist.getNumInstances()}")
 
         popdist.tensorflow.set_ipu_config(ipu_config, ipus_per_replica=num_ipus_per_replica, configure_device=True)
     else:
@@ -80,13 +85,13 @@ def create_ipu_strategy(num_ipus_per_replica,
     return strategy
 
 
-def get_poplar_options_per_pipeline_stage(num_ipus_per_replica,
-                                          device_mapping,
-                                          matmul_available_memory_proportion,
-                                          matmul_partials_type):
+def get_poplar_options_per_pipeline_stage(
+    num_ipus_per_replica, device_mapping, matmul_available_memory_proportion, matmul_partials_type
+):
     if len(matmul_available_memory_proportion) != num_ipus_per_replica:
         raise ValueError(
-            f"Available memory proportion must be set for each of the {num_ipus_per_replica} IPUs in the pipeline.")
+            f"Available memory proportion must be set for each of the {num_ipus_per_replica} IPUs in the pipeline."
+        )
 
     return [
         ipu.pipelining_ops.PipelineStageOptions(
@@ -94,7 +99,9 @@ def get_poplar_options_per_pipeline_stage(num_ipus_per_replica,
                 "availableMemoryProportion": str(matmul_available_memory_proportion[stage]),
                 "partialsType": matmul_partials_type,
             }
-        ) for stage in device_mapping]
+        )
+        for stage in device_mapping
+    ]
 
 
 def set_random_seeds(seed=42):

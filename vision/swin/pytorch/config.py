@@ -37,7 +37,7 @@ from pathlib import Path
 _C = CN()
 
 # Base config files
-_C.BASE = ['']
+_C.BASE = [""]
 
 # -----------------------------------------------------------------------------
 # Data settings
@@ -46,18 +46,18 @@ _C.DATA = CN()
 # Batch size for a single GPU, could be overwritten by command line argument
 _C.DATA.BATCH_SIZE = 1
 # Path to dataset, could be overwritten by command line argument
-_C.DATA.DATA_PATH = ''
+_C.DATA.DATA_PATH = ""
 # Dataset name
-_C.DATA.DATASET = 'imagenet'
+_C.DATA.DATASET = "imagenet"
 # Input image size
 _C.DATA.IMG_SIZE = [224, 224]
 # Interpolation to resize image (random, bilinear, bicubic)
-_C.DATA.INTERPOLATION = 'bicubic'
+_C.DATA.INTERPOLATION = "bicubic"
 # Use zipped dataset instead of folder dataset
 # could be overwritten by command line argument
 _C.DATA.ZIP_MODE = False
 # Cache Data in Memory, could be overwritten by command line argument
-_C.DATA.CACHE_MODE = 'part'
+_C.DATA.CACHE_MODE = "part"
 # Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.
 _C.DATA.PIN_MEMORY = True
 # Number of data loading threads
@@ -67,16 +67,16 @@ _C.DATA.NUM_WORKERS = 8
 # -----------------------------------------------------------------------------
 _C.MODEL = CN()
 # Model type
-_C.MODEL.TYPE = 'swin'
+_C.MODEL.TYPE = "swin"
 # Model device
-_C.MODEL.DEVICE = 'gpu'
+_C.MODEL.DEVICE = "gpu"
 # Model alignment
 _C.MODEL.ALIGNMENT = False
 
 # Model name
-_C.MODEL.NAME = 'swin_tiny_patch4_window7_224'
+_C.MODEL.NAME = "swin_tiny_patch4_window7_224"
 # Checkpoint to resume, could be overwritten by command line argument
-_C.MODEL.RESUME = ''
+_C.MODEL.RESUME = ""
 # Number of classes, overwritten in data preparation
 _C.MODEL.NUM_CLASSES = 1000
 # Dropout rate
@@ -95,18 +95,18 @@ _C.MODEL.NUM_CLASSES = 1000
 _C.MODEL.SWIN.DEPTHS = [2, 2, 6, 2]
 _C.MODEL.SWIN.NUM_HEADS = [3, 6, 12, 24]
 _C.MODEL.SWIN.WINDOW_SIZE = 12
-_C.MODEL.SWIN.MLP_RATIO = 4.
+_C.MODEL.SWIN.MLP_RATIO = 4.0
 _C.MODEL.SWIN.QKV_BIAS = True
 _C.MODEL.SWIN.QK_SCALE = None
 _C.MODEL.SWIN.APE = False
 _C.MODEL.SWIN.PATCH_NORM = True
 # Normalization layers in SwinTransformerBlock before MLP, default: 'ln',
 # choice: ['ln', 'bn']
-_C.MODEL.SWIN.NORM_BEFORE_MLP = 'ln'
+_C.MODEL.SWIN.NORM_BEFORE_MLP = "ln"
 
 # MoBY parameters
 _C.MODEL.MOBY = CN()
-_C.MODEL.MOBY.ENCODER = 'swin'
+_C.MODEL.MOBY.ENCODER = "swin"
 _C.MODEL.MOBY.ONLINE_DROP_PATH_RATE = 0.1
 _C.MODEL.MOBY.TARGET_DROP_PATH_RATE = 0.0
 _C.MODEL.MOBY.CONTRAST_MOMENTUM = 0.99
@@ -114,7 +114,7 @@ _C.MODEL.MOBY.CONTRAST_TEMPERATURE = 0.2
 _C.MODEL.MOBY.CONTRAST_NUM_NEGATIVE = 4096
 _C.MODEL.MOBY.PROJ_NUM_LAYERS = 2
 _C.MODEL.MOBY.PRED_NUM_LAYERS = 2
-_C.MODEL.MOBY.EMA_PATH = ''
+_C.MODEL.MOBY.EMA_PATH = ""
 _C.MODEL.MOBY.QUEUE_DIM = 256
 
 # -----------------------------------------------------------------------------
@@ -141,7 +141,7 @@ _C.TRAIN.USE_CHECKPOINT = False
 
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()
-_C.TRAIN.LR_SCHEDULER.NAME = 'cosine'
+_C.TRAIN.LR_SCHEDULER.NAME = "cosine"
 # Epoch interval to decay LR, used in StepLRScheduler
 _C.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 30
 # LR decay rate, used in StepLRScheduler
@@ -149,7 +149,7 @@ _C.TRAIN.LR_SCHEDULER.DECAY_RATE = 0.1
 
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()
-_C.TRAIN.OPTIMIZER.NAME = 'adamw'
+_C.TRAIN.OPTIMIZER.NAME = "adamw"
 # Optimizer Epsilon
 _C.TRAIN.OPTIMIZER.EPS = 1e-8
 # Optimizer Betas
@@ -174,7 +174,7 @@ _C.IPU.AMP = 0.12
 # Linear eval settings
 # -----------------------------------------------------------------------------
 _C.LINEAR_EVAL = CN()
-_C.LINEAR_EVAL.PRETRAINED = ''
+_C.LINEAR_EVAL.PRETRAINED = ""
 
 # -----------------------------------------------------------------------------
 # Augmentation settings
@@ -183,11 +183,11 @@ _C.AUG = CN()
 # Color jitter factor
 _C.AUG.COLOR_JITTER = 0.4
 # Use AutoAugment policy. "v0" or "original"
-_C.AUG.AUTO_AUGMENT = 'rand-m9-mstd0.5-inc1'
+_C.AUG.AUTO_AUGMENT = "rand-m9-mstd0.5-inc1"
 # Random erase prob
 _C.AUG.REPROB = 0.25
 # Random erase mode
-_C.AUG.REMODE = 'pixel'
+_C.AUG.REMODE = "pixel"
 # Random erase count
 _C.AUG.RECOUNT = 1
 # Mixup alpha, mixup enabled if > 0
@@ -201,11 +201,11 @@ _C.AUG.MIXUP_PROB = 1.0
 # Probability of switching to cutmix when both mixup and cutmix enabled
 _C.AUG.MIXUP_SWITCH_PROB = 0.5
 # How to apply mixup/cutmix params. Per "batch", "pair", or "elem"
-_C.AUG.MIXUP_MODE = 'batch'
+_C.AUG.MIXUP_MODE = "batch"
 # Self-Supervised Learning Augmentation
 _C.AUG.SSL_AUG = False
 # SSL-Aug type
-_C.AUG.SSL_AUG_TYPE = 'byol'
+_C.AUG.SSL_AUG_TYPE = "byol"
 # SSL-Aug crop
 _C.AUG.SSL_AUG_CROP = 0.08
 # Self-Supervised Learning Linear Evaluation Augmentation
@@ -223,11 +223,11 @@ _C.TEST.CROP = True
 # -----------------------------------------------------------------------------
 # Mixed precision opt level, if O0, no amp is used ('O0', 'O1', 'O2')
 # overwritten by command line argument
-_C.AMP_OPT_LEVEL = ''
+_C.AMP_OPT_LEVEL = ""
 # Path to output folder, overwritten by command line argument
-_C.OUTPUT = ''
+_C.OUTPUT = ""
 # Tag of experiment, overwritten by command line argument
-_C.TAG = 'default'
+_C.TAG = "default"
 # Frequency to save checkpoint
 _C.SAVE_FREQ = 1
 # Frequency to logging info
@@ -240,7 +240,7 @@ _C.EVAL_MODE = False
 _C.THROUGHPUT_MODE = False
 # local rank for DistributedDataParallel, given by command line argument
 _C.LOCAL_RANK = 0
-_C.PRECISION = ['half', 'half']
+_C.PRECISION = ["half", "half"]
 _C.PRETRAINED = None
 
 swin_root_path = str(Path(__file__).parent)
@@ -249,19 +249,17 @@ sys.path.append(swin_root_path)
 
 def _update_config_from_file(config, cfg_name):
     config.defrost()
-    cfg_file = os.path.join(swin_root_path, 'configs/configs.yaml')
+    cfg_file = os.path.join(swin_root_path, "configs/configs.yaml")
 
-    with open(cfg_file, 'r') as f:
+    with open(cfg_file, "r") as f:
         yaml_cfg = yaml.load(f, Loader=yaml.FullLoader)[cfg_name]
 
-    for cfg in yaml_cfg.setdefault('BASE', ['']):
+    for cfg in yaml_cfg.setdefault("BASE", [""]):
         if cfg:
-            _update_config_from_file(
-                config, os.path.join(os.path.dirname(cfg_file), cfg)
-            )
+            _update_config_from_file(config, os.path.join(os.path.dirname(cfg_file), cfg))
 
     merge_config = CN(yaml_cfg)
-    print('=> merge config from {}'.format(cfg_name))
+    print("=> merge config from {}".format(cfg_name))
 
     config.merge_from_other_cfg(merge_config)
     config.freeze()
@@ -283,8 +281,8 @@ def update_config(config, args):
     if args.data_path:
         config.DATA.DATA_PATH = args.data_path
 
-    if args.output:
-        config.OUTPUT = args.output
+    if args.checkpoint_output_dir:
+        config.CHECKPOINT_OUTPUT_DIR = args.checkpoint_output_dir
     if args.pretrained_model:
         config.PRETRAINED = args.pretrained_model
     if args.ga:
@@ -300,7 +298,8 @@ def update_config(config, args):
         config.MODEL.DEVICE = args.device
 
     config.MODEL.MOBY.CONTRAST_NUM_NEGATIVE = (
-        config.MODEL.MOBY.CONTRAST_NUM_NEGATIVE // config.DATA.BATCH_SIZE) * config.DATA.BATCH_SIZE
+        config.MODEL.MOBY.CONTRAST_NUM_NEGATIVE // config.DATA.BATCH_SIZE
+    ) * config.DATA.BATCH_SIZE
 
     # output folder
     config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)

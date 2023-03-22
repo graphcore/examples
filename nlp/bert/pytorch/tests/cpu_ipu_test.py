@@ -30,6 +30,7 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization_factor):
     model ran on the CPU.
     """
     import warnings
+
     warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
     # Config
@@ -69,30 +70,37 @@ def test_ipu_cpu_match(recompute_checkpoint, embedding_serialization_factor):
     poptorch_model = poptorch.trainingModel(model_ipu, opts, optimizer=optimizer_ipu)
 
     # Input
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    inputs = tokenizer("Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute yo"
-                       "Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute yo"
-                       "Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute yo"
-                       "Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute", return_tensors="pt")
-    inputs['labels'] = torch.randint(0, config.vocab_size, [1, config.mask_tokens], dtype=torch.long)
-    inputs['next_sentence_label'] = torch.randint(0, 1, [1], dtype=torch.long)
-    inputs['masked_lm_positions'] = torch.randint(0, config.sequence_length, [1, config.mask_tokens], dtype=torch.long)
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    inputs = tokenizer(
+        "Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute yo"
+        "Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute yo"
+        "Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute yo"
+        "Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute Hello, my dog is cute",
+        return_tensors="pt",
+    )
+    inputs["labels"] = torch.randint(0, config.vocab_size, [1, config.mask_tokens], dtype=torch.long)
+    inputs["next_sentence_label"] = torch.randint(0, 1, [1], dtype=torch.long)
+    inputs["masked_lm_positions"] = torch.randint(0, config.sequence_length, [1, config.mask_tokens], dtype=torch.long)
 
     batch_size = config.micro_batch_size
 
-    batch = (inputs['input_ids'].repeat(batch_size, 1),
-             inputs['attention_mask'].repeat(batch_size, 1),
-             inputs['token_type_ids'].repeat(batch_size, 1),
-             inputs['masked_lm_positions'].repeat(batch_size, 1),
-             inputs['labels'].repeat(batch_size, 1),
-             inputs['next_sentence_label'].repeat(batch_size, 1))
+    batch = (
+        inputs["input_ids"].repeat(batch_size, 1),
+        inputs["attention_mask"].repeat(batch_size, 1),
+        inputs["token_type_ids"].repeat(batch_size, 1),
+        inputs["masked_lm_positions"].repeat(batch_size, 1),
+        inputs["labels"].repeat(batch_size, 1),
+        inputs["next_sentence_label"].repeat(batch_size, 1),
+    )
 
-    batch_cpu = (inputs['input_ids'].repeat(1, 1),
-                 inputs['attention_mask'].repeat(1, 1),
-                 inputs['token_type_ids'].repeat(1, 1),
-                 inputs['masked_lm_positions'].repeat(1, 1),
-                 inputs['labels'].repeat(1, 1),
-                 inputs['next_sentence_label'].repeat(1, 1))
+    batch_cpu = (
+        inputs["input_ids"].repeat(1, 1),
+        inputs["attention_mask"].repeat(1, 1),
+        inputs["token_type_ids"].repeat(1, 1),
+        inputs["masked_lm_positions"].repeat(1, 1),
+        inputs["labels"].repeat(1, 1),
+        inputs["next_sentence_label"].repeat(1, 1),
+    )
 
     # Training Loop
     for step in range(10):

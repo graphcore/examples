@@ -16,7 +16,7 @@ HOST1=`ifconfig eno1 | grep "inet " | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]
 HOSTS=$HOST1
 VIPU_SERVER=${VIPU_SERVER:=$HOST1}
 FIRST_PARTITION=`vipu-admin list partitions --api-host $VIPU_SERVER| grep ACTIVE | cut -d '|' -f 3 | cut -d ' ' -f 2 | head -1`
-PARTITON=${PARTITION:=$FIRST_PARTITION}
+PARTITION=${PARTITION:=$FIRST_PARTITION}
 # POPLAR options saves a bit of memory.
 POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false", "target.hostSyncTimeout": 900}' \
 poprun -vv \

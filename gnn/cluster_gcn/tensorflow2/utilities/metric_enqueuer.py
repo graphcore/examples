@@ -20,13 +20,14 @@ def wrap_loss_in_enqueuer(loss_class, items):
 
     call_method = getattr(loss_class, "call", None)
     if not callable(call_method):
-        raise NameError(f"Class {loss_class} does not have an"
-                        " implemented call method and so is not"
-                        " suitable for wrapping in an outfeed"
-                        " enqueuer.")
+        raise NameError(
+            f"Class {loss_class} does not have an"
+            " implemented call method and so is not"
+            " suitable for wrapping in an outfeed"
+            " enqueuer."
+        )
 
     class OutfeedEnqueuer(loss_class):
-
         def __init__(self, *args, **kwargs):
             super(OutfeedEnqueuer, self).__init__(*args, **kwargs)
             self.outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue()
@@ -54,6 +55,5 @@ def wrap_loss_in_enqueuer(loss_class, items):
                 self.outfeed_queue.enqueue(self.queue_buffer)
                 self.queue_buffer = dict()
             return value
-
 
     return OutfeedEnqueuer

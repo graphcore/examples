@@ -25,16 +25,14 @@ def test_decoder_block_TP_cmp_huggingface(test_config: GPTConfig):
     intermediate_size = hidden_size * 4
 
     # HuggingFace
-    config = HFConfig(hidden_size=hidden_size,
-                      seq_len=seq_len,
-                      n_inner=intermediate_size,
-                      n_head=test_config.model.attention.heads)
+    config = HFConfig(
+        hidden_size=hidden_size, seq_len=seq_len, n_inner=intermediate_size, n_head=test_config.model.attention.heads
+    )
     hf_model = GPT2Block(config).eval()
 
     # HF forward
-    input_t = torch.rand((batch_size, seq_len, hidden_size),
-                         requires_grad=True)
-    output_, = hf_model(input_t)
+    input_t = torch.rand((batch_size, seq_len, hidden_size), requires_grad=True)
+    (output_,) = hf_model(input_t)
 
     # HF backwards
     grad_wrt = torch.rand(output_.shape)
@@ -55,43 +53,36 @@ def test_decoder_block_TP_cmp_huggingface(test_config: GPTConfig):
     main = ir.main_graph
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(input_t.reshape(-1,
-                                             test_config.model.hidden_size),
-                             popxl.float32,
-                             name="input"),
-        ])
-        x, = inputs_tensors
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(input_t.reshape(-1, test_config.model.hidden_size), popxl.float32, name="input"),
+            ]
+        )
+        (x,) = inputs_tensors
 
         ff_args, ff_graph = GPTDecoderBlockTP(test_config).create_graph(x)
 
         ff_vars = ff_args.init()
         ff = ff_graph.bind(ff_vars)
         fwd_info = ff.call_with_info(x)
-        acts, = fwd_info.outputs
+        (acts,) = fwd_info.outputs
 
         fwd_d2h = addons.host_store(acts)
 
         # Backwards
         grad_ff_graph = addons.autodiff(ff_graph)
 
-        gradient = popxl.constant(
-            grad_wrt.reshape(acts.shape).numpy().copy(), acts.dtype,
-            "gradient")
-        grad_outputs, *_ = grad_ff_graph.call(
-            gradient, args=grad_ff_graph.grad_graph_info.inputs_dict(fwd_info))
+        gradient = popxl.constant(grad_wrt.reshape(acts.shape).numpy().copy(), acts.dtype, "gradient")
+        grad_outputs, *_ = grad_ff_graph.call(gradient, args=grad_ff_graph.grad_graph_info.inputs_dict(fwd_info))
 
         grad_d2h = addons.host_store(grad_outputs)
 
     # Run `OpToIdentityPattern` among others part of `PreAliasPatterns`
-    apply_pre_alias_patterns(ir, level='default')
+    apply_pre_alias_patterns(ir, level="default")
 
     weights = GPTDecoderBlockTP.hf_mapping(test_config, ff_vars, hf_model)
 
-    inputs = {
-        h2d: repeat(data, n_shards)
-        for h2d, data in zip(inputs_host_steam, inputs_data)
-    }
+    inputs = {h2d: repeat(data, n_shards) for h2d, data in zip(inputs_host_steam, inputs_data)}
 
     with popxl.Session(ir, "ipu_hw") as session:
         # TODO remove write_variables_pb once T56776 has landed
@@ -110,8 +101,5 @@ def test_decoder_block_TP_cmp_huggingface(test_config: GPTConfig):
         np.testing.assert_equal(fwd_data[0], fwd_data[i])
         np.testing.assert_equal(grad_data[0], grad_data[i])
     # Assert nearly equal to HF
-    np.testing.assert_almost_equal(output_HF,
-                                   fwd_data[0].reshape(output_HF.shape), 3)
-    np.testing.assert_almost_equal(input_grad_HF,
-                                   grad_data[0].reshape(input_grad_HF.shape),
-                                   3)
+    np.testing.assert_almost_equal(output_HF, fwd_data[0].reshape(output_HF.shape), 3)
+    np.testing.assert_almost_equal(input_grad_HF, grad_data[0].reshape(input_grad_HF.shape), 3)

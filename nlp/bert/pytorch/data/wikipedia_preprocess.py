@@ -20,14 +20,14 @@ import nltk
 
 # This checks if the tokenizers is installed. If it is not installed it downloads it.
 try:
-    nltk.data.find('tokenizers/punkt')
+    nltk.data.find("tokenizers/punkt")
 except LookupError:
-    nltk.download('punkt')
+    nltk.download("punkt")
 
 
 def main(args):
 
-    # Fisrt we check if the path is a file or a directory
+    # First we check if the path is a file or a directory
     input_files = []
     output_files = []
     if os.path.isfile(args.input_file_path):
@@ -39,36 +39,34 @@ def main(args):
         for d, __, f in os.walk(args.input_file_path):
             for file in f:
                 input_files.append(os.path.join(d, file))
-                output_files.append(os.path.join(
-                    args.output_file_path,
-                    os.path.normpath(d).split(os.sep)[-1],
-                    file+'_cleaned'))
+                output_files.append(
+                    os.path.join(args.output_file_path, os.path.normpath(d).split(os.sep)[-1], file + "_cleaned")
+                )
 
     if args.small_files:
-        print('The code is going to use just the first {} lines of the documents'.format(
-            args.max_len))
+        print("The code is going to use just the first {} lines of the documents".format(args.max_len))
 
     for idx, el in enumerate(input_files):
-        wiki_in = open(el, 'r')
+        wiki_in = open(el, "r")
         os.makedirs(os.path.dirname(output_files[idx]), exist_ok=True)
-        with open(output_files[idx], 'w')as o:
+        with open(output_files[idx], "w") as o:
             wiki_iterator = enumerate(wiki_in)
             for c, line in wiki_iterator:
                 # We skip empty lines in the file
                 if len(line.strip()):
-                    if re.search('<doc', line):
+                    if re.search("<doc", line):
                         # In this case we are dealing with the title so we skip a sentence
                         next(wiki_iterator)
-                    elif re.search('</doc', line):
+                    elif re.search("</doc", line):
                         # In this case we have reached the end of the wikipedia page, so we leave an empty line
-                        # in order to make the create_pretraining_data script know that it does not have to commect the sentences
-                        o.write('\n')
+                        # in order to make the create_pretraining_data script know that it does not have to connect the sentences
+                        o.write("\n")
                     else:
                         # We use the NLTK tokenizer in order to separate the sentences into each paragraph.
                         paragraph = nltk.sent_tokenize(line)
                         for sentence in paragraph:
                             o.write(sentence)
-                            o.write('\n')
+                            o.write("\n")
                 if args.small_files:
                     if c > args.max_len:
                         # To avoid generating too long files for testing
@@ -76,13 +74,20 @@ def main(args):
         wiki_in.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input-file-path', required=True, type=str)
-    parser.add_argument('--output-file-path', required=True, type=str)
-    parser.add_argument('--small-files', action='store_true',
-                        help='If this argument is passed, just the first 100 sequences of each single file.')
-    parser.add_argument('--max-len', default=100, type=int,
-                        help='If the small-files flag is activated, this number is going to set the maximum number of lines per document to be analyzed.')
+    parser.add_argument("--input-file-path", required=True, type=str)
+    parser.add_argument("--output-file-path", required=True, type=str)
+    parser.add_argument(
+        "--small-files",
+        action="store_true",
+        help="If this argument is passed, just the first 100 sequences of each single file.",
+    )
+    parser.add_argument(
+        "--max-len",
+        default=100,
+        type=int,
+        help="If the small-files flag is activated, this number is going to set the maximum number of lines per document to be analyzed.",
+    )
     args = parser.parse_args()
     main(args)

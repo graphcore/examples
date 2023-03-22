@@ -9,7 +9,7 @@ from torch import nn
 
 
 def make_divisible(x, divisible_by=8):
-    return int(math.ceil(x * 1. / divisible_by) * divisible_by)
+    return int(math.ceil(x * 1.0 / divisible_by) * divisible_by)
 
 
 class hswish(nn.Module):
@@ -47,7 +47,7 @@ class SE_Module(nn.Module):
             nn.Conv2d(channels, reduction_c, 1, bias=True),
             nn.ReLU(inplace=True),
             nn.Conv2d(reduction_c, channels, 1, bias=True),
-            hsigmoid()
+            hsigmoid(),
         )
         self.pool = nn.AdaptiveAvgPool2d(1)
 
@@ -58,13 +58,25 @@ class SE_Module(nn.Module):
 
 
 class MobileNetBottleneck(nn.Module):
-    def __init__(self, in_c, expansion, out_c, kernel_size, stride, se=False,
-                 activation='relu', first_conv=True, skip=True, linear=True, norm_layer=nn.BatchNorm2d):
+    def __init__(
+        self,
+        in_c,
+        expansion,
+        out_c,
+        kernel_size,
+        stride,
+        se=False,
+        activation="relu",
+        first_conv=True,
+        skip=True,
+        linear=True,
+        norm_layer=nn.BatchNorm2d,
+    ):
         super(MobileNetBottleneck, self).__init__()
 
-        if activation == 'relu':
+        if activation == "relu":
             self.act = nn.ReLU()
-        elif activation == 'h_swish':
+        elif activation == "h_swish":
             self.act = hswish()
         hidden_c = round(in_c * expansion)
         self.linear = linear
@@ -75,8 +87,7 @@ class MobileNetBottleneck(nn.Module):
             seq.append(nn.Conv2d(in_c, hidden_c, 1, 1, bias=False))
             seq.append(norm_layer(hidden_c))
             seq.append(self.act)
-        seq.append(nn.Conv2d(hidden_c, hidden_c, kernel_size, stride,
-                             kernel_size // 2, groups=hidden_c, bias=False))
+        seq.append(nn.Conv2d(hidden_c, hidden_c, kernel_size, stride, kernel_size // 2, groups=hidden_c, bias=False))
         seq.append(norm_layer(hidden_c))
         seq.append(self.act)
         if se:
@@ -107,21 +118,21 @@ class MobileNetV3_Large(nn.Module):
             hswish(),
         )
         self.mb_block = nn.Sequential(
-            MobileNetBottleneck(16, 1, 16, 3, 1, False, 'relu'),
-            MobileNetBottleneck(16, 4, 24, 3, 2, False, 'relu'),
-            MobileNetBottleneck(24, 3, 24, 3, 1, False, 'relu'),
-            MobileNetBottleneck(24, 3, 40, 5, 2, True, 'relu'),
-            MobileNetBottleneck(40, 3, 40, 5, 1, True, 'relu'),
-            MobileNetBottleneck(40, 3, 40, 5, 1, True, 'relu'),
-            MobileNetBottleneck(40, 6, 80, 3, 2, False, 'h_swish'),
-            MobileNetBottleneck(80, 2.5, 80, 3, 1, False, 'h_swish'),
-            MobileNetBottleneck(80, 2.3, 80, 3, 1, False, 'h_swish'),
-            MobileNetBottleneck(80, 2.3, 80, 3, 1, False, 'h_swish'),
-            MobileNetBottleneck(80, 6, 112, 3, 1, True, 'h_swish'),
-            MobileNetBottleneck(112, 6, 112, 3, 1, True, 'h_swish'),
-            MobileNetBottleneck(112, 6, 160, 5, 2, True, 'h_swish'),
-            MobileNetBottleneck(160, 6, 160, 5, 1, True, 'h_swish'),
-            MobileNetBottleneck(160, 6, 160, 5, 1, True, 'h_swish'),
+            MobileNetBottleneck(16, 1, 16, 3, 1, False, "relu"),
+            MobileNetBottleneck(16, 4, 24, 3, 2, False, "relu"),
+            MobileNetBottleneck(24, 3, 24, 3, 1, False, "relu"),
+            MobileNetBottleneck(24, 3, 40, 5, 2, True, "relu"),
+            MobileNetBottleneck(40, 3, 40, 5, 1, True, "relu"),
+            MobileNetBottleneck(40, 3, 40, 5, 1, True, "relu"),
+            MobileNetBottleneck(40, 6, 80, 3, 2, False, "h_swish"),
+            MobileNetBottleneck(80, 2.5, 80, 3, 1, False, "h_swish"),
+            MobileNetBottleneck(80, 2.3, 80, 3, 1, False, "h_swish"),
+            MobileNetBottleneck(80, 2.3, 80, 3, 1, False, "h_swish"),
+            MobileNetBottleneck(80, 6, 112, 3, 1, True, "h_swish"),
+            MobileNetBottleneck(112, 6, 112, 3, 1, True, "h_swish"),
+            MobileNetBottleneck(112, 6, 160, 5, 2, True, "h_swish"),
+            MobileNetBottleneck(160, 6, 160, 5, 1, True, "h_swish"),
+            MobileNetBottleneck(160, 6, 160, 5, 1, True, "h_swish"),
         )
         self.last_block = nn.Sequential(
             nn.Conv2d(160, 960, 1, bias=False),
@@ -154,17 +165,17 @@ class MobileNetV3_Small(nn.Module):
             hswish(),
         )
         self.mb_block = nn.Sequential(
-            MobileNetBottleneck(16, 1, 16, 3, 2, True, 'relu'),
-            MobileNetBottleneck(16, 4.5, 24, 3, 2, False, 'relu'),
-            MobileNetBottleneck(24, 88 / 24, 24, 3, 1, False, 'relu'),
-            MobileNetBottleneck(24, 4, 40, 5, 2, True, 'h_swish'),
-            MobileNetBottleneck(40, 6, 40, 5, 1, True, 'h_swish'),
-            MobileNetBottleneck(40, 6, 40, 5, 1, True, 'h_swish'),
-            MobileNetBottleneck(40, 3, 48, 5, 1, True, 'h_swish'),
-            MobileNetBottleneck(48, 3, 48, 5, 1, True, 'h_swish'),
-            MobileNetBottleneck(48, 6, 96, 5, 2, True, 'h_swish'),
-            MobileNetBottleneck(96, 6, 96, 5, 1, True, 'h_swish'),
-            MobileNetBottleneck(96, 6, 96, 5, 1, True, 'h_swish'),
+            MobileNetBottleneck(16, 1, 16, 3, 2, True, "relu"),
+            MobileNetBottleneck(16, 4.5, 24, 3, 2, False, "relu"),
+            MobileNetBottleneck(24, 88 / 24, 24, 3, 1, False, "relu"),
+            MobileNetBottleneck(24, 4, 40, 5, 2, True, "h_swish"),
+            MobileNetBottleneck(40, 6, 40, 5, 1, True, "h_swish"),
+            MobileNetBottleneck(40, 6, 40, 5, 1, True, "h_swish"),
+            MobileNetBottleneck(40, 3, 48, 5, 1, True, "h_swish"),
+            MobileNetBottleneck(48, 3, 48, 5, 1, True, "h_swish"),
+            MobileNetBottleneck(48, 6, 96, 5, 2, True, "h_swish"),
+            MobileNetBottleneck(96, 6, 96, 5, 1, True, "h_swish"),
+            MobileNetBottleneck(96, 6, 96, 5, 1, True, "h_swish"),
         )
         self.last_block = nn.Sequential(
             nn.Conv2d(96, 576, 1, bias=False),

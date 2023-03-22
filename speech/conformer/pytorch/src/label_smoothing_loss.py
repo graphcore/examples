@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/transformer/label_smoothing_loss.py
@@ -20,7 +20,7 @@ This script has been adapted from some of the original EspNet found here:
 
 Main changes:
     rename the parameters of forward function
-'''
+"""
 
 import torch
 import poptorch as pt
@@ -28,7 +28,6 @@ from torch import nn
 
 
 class CrossEntropyLoss(torch.nn.Module):
-
     def __init__(self, ignore_idx=-1):
         super().__init__()
         self.ce_loss = torch.nn.CrossEntropyLoss(ignore_index=ignore_idx)

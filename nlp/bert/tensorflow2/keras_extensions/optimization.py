@@ -18,25 +18,17 @@ class StaticLossScaleOptimizer(LossScaleOptimizer):
     inner optimizer's gradient_transformers, which we have
     observed tends to be more memory efficient.
     """
-    def __init__(self,
-                 inner_optimizer,
-                 loss_scaling):
+
+    def __init__(self, inner_optimizer, loss_scaling):
         """
         Constructs loss scale optimizer.
         :param inner_optimizer: The optimizer to wrap with this
         functionality.
         :param loss_scaling: Constant loss scaling factor to be applied.
         """
-        super().__init__(inner_optimizer,
-                         dynamic=False,
-                         initial_scale=loss_scaling,
-                         dynamic_growth_steps=None)
+        super().__init__(inner_optimizer, dynamic=False, initial_scale=loss_scaling, dynamic_growth_steps=None)
         self.inner_optimizer.gradient_transformers.insert(
-            0,
-            lambda grads_and_vars: [
-                (tf.cast(g, dtype=tf.float32) / loss_scaling, v)
-                for g, v in grads_and_vars
-            ]
+            0, lambda grads_and_vars: [(tf.cast(g, dtype=tf.float32) / loss_scaling, v) for g, v in grads_and_vars]
         )
 
     def get_unscaled_gradients(self, grads):
@@ -84,10 +76,7 @@ def get_optimizer(
     """
 
     def rescale_gradients_down(grads_and_vars):
-        return [
-            (tf.cast(g, dtype=tf.float32) / num_replicas, v)
-            for g, v in grads_and_vars
-        ]
+        return [(tf.cast(g, dtype=tf.float32) / num_replicas, v) for g, v in grads_and_vars]
 
     optimizer_kwargs = {
         "learning_rate": learning_rate_schedule,
@@ -102,8 +91,7 @@ def get_optimizer(
     }
 
     if optimizer_name == "AdamW":
-        AdamWIpuOptimizer = extend_with_decoupled_weight_decay(
-            AdamIpuOptimizer)
+        AdamWIpuOptimizer = extend_with_decoupled_weight_decay(AdamIpuOptimizer)
         optimizer = AdamWIpuOptimizer(
             weight_decay_rate,
             optimizer_compute_precisions=(tf.float32,),
@@ -118,9 +106,7 @@ def get_optimizer(
             **optimizer_kwargs,
         )
     else:
-        raise ValueError(
-            f"Unrecognised optimizer name: `{optimizer_name}`."
-            f" Choose one of {ALLOWED_OPTIMIZERS}")
+        raise ValueError(f"Unrecognised optimizer name: `{optimizer_name}`." f" Choose one of {ALLOWED_OPTIMIZERS}")
 
     if loss_scaling is not None:
         optimizer = StaticLossScaleOptimizer(optimizer, loss_scaling)

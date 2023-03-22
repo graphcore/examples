@@ -1,0 +1,88 @@
+# -------- LM --------
+gptj_6B: &gptj_6B
+  layers: 28
+  hidden_size: 4096
+  sequence_length: 1024
+  precision: 'float16'
+  attention:
+    heads: 16
+    rotary_positional_embeddings_base: 10000
+    rotary_dim: 64
+  embedding:
+    vocab_size: 50400
+    real_vocab_size: 50258
+
+gptj_tiny: &gptj_tiny
+  sequence_length: 8
+  embedding:
+    vocab_size: 128
+  hidden_size: 64
+  layers: 2
+  attention:
+    heads: 8
+    rotary_dim: 8
+  precision: "float16"
+
+# -------- VISUAL ENCODER --------
+clip_resnet_large: &clip_resnet_large
+  width: 96
+  image_resolution: 384
+  precision: 'float16'
+
+clip_tiny: &clip_tiny
+  width: 36 # default 96 -> 1/8 default
+  image_resolution: 48 # default 384 -> 1/8 default
+  precision: 'float16'
+
+# -------- MAGMA --------
+tiny:
+  magma_v1:
+    visual:
+      <<: *clip_tiny
+      execution:
+        micro_batch_size: 1
+        available_memory_proportion: [ 1.0 ]
+    transformer:
+      <<: *gptj_tiny
+      ff_adapter:
+        mode: 'normal'
+        downsample_factor: 4
+      execution:
+        micro_batch_size: 1
+        attention_serialisation: 1
+        tensor_parallel: 2
+
+release:
+  "magma_v1_1024":
+    seed: 0
+    visual:
+      <<: *clip_resnet_large
+      execution:
+        micro_batch_size: 1
+        available_memory_proportion: [ 1.0 ]
+    transformer:
+      <<: *gptj_6B
+      ff_adapter:
+        mode: 'normal'
+        downsample_factor: 4
+      execution:
+        available_memory_proportion: [ 0.45 ]
+        tensor_parallel: 4
+        micro_batch_size: 1
+        attention_serialisation: 1
+
+  "magma_v1_500":
+    seed: 0
+    visual:
+      <<: *clip_resnet_large
+    transformer:
+      <<: *gptj_6B
+      sequence_length: 500
+      execution:
+        available_memory_proportion: [ 0.45 ]
+        tensor_parallel: 4
+        micro_batch_size: 1
+        attention_serialisation: 1
+      ff_adapter:
+        mode: 'normal'
+        downsample_factor: 4

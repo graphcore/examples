@@ -15,7 +15,7 @@ import sys
 import magic
 
 
-if tf.__version__[0] != '2':
+if tf.__version__[0] != "2":
     raise ImportError("TensorFlow 2 is required")
 
 
@@ -48,7 +48,9 @@ def create_model(input_dim, input_dtype, layer_size, num_layers, use_siren, fp16
         front_end.append(keras.layers.Dense(layer_size, activation=act_fn, use_bias=False, kernel_initializer=init_fn))
     # Last layer of front-end reduces dimension so that after concatenating
     # the input the back end can have the same layer size:
-    front_end.append(keras.layers.Dense(layer_size - concat_dim, activation=act_fn, use_bias=False, kernel_initializer=init_fn))
+    front_end.append(
+        keras.layers.Dense(layer_size - concat_dim, activation=act_fn, use_bias=False, kernel_initializer=init_fn)
+    )
 
     concat = tf.keras.layers.Concatenate(axis=1)
 
@@ -58,7 +60,7 @@ def create_model(input_dim, input_dtype, layer_size, num_layers, use_siren, fp16
     # Penultimate layer has a bias:
     back_end.append(keras.layers.Dense(layer_size, activation=act_fn, kernel_initializer=init_fn))
     # Final layer maps back to colour-space coordinates:
-    back_end.append(keras.layers.Dense(3, activation='linear'))
+    back_end.append(keras.layers.Dense(3, activation="linear"))
 
     # Functional model:
     x = input
@@ -84,9 +86,13 @@ def create_model(input_dim, input_dtype, layer_size, num_layers, use_siren, fp16
         # NOTE: Regression target is in BGR format because that is how OpenCV loads images:
         color_matrix_init = keras.initializers.Constant(color_matrix)
         color_space_conversion = keras.layers.Dense(
-            units=3, use_bias=False, activation=None,
+            units=3,
+            use_bias=False,
+            activation=None,
             trainable=False,
-            kernel_initializer=color_matrix_init, name="color_space_conversion")
+            kernel_initializer=color_matrix_init,
+            name="color_space_conversion",
+        )
         bgr = color_space_conversion(x)
         output = bgr
 
@@ -95,42 +101,105 @@ def create_model(input_dim, input_dtype, layer_size, num_layers, use_siren, fp16
 
 def parse_args():
     parser = argparse.ArgumentParser("Neural Image Field (NIF) Generator")
-    parser.add_argument("--input", type=str, default="Mandrill_portrait_2_Berlin_Zoo.jpg", help="Input image file name.")
-    parser.add_argument("--blur", type=int, default=0, help="Size of Guassian blur kernel applied to the input (0 to disable).")
-    parser.add_argument("--model", type=str, default="./saved_model/", help="Output path to save the trained NIF model.")
+    parser.add_argument(
+        "--input", type=str, default="Mandrill_portrait_2_Berlin_Zoo.jpg", help="Input image file name."
+    )
+    parser.add_argument(
+        "--blur", type=int, default=0, help="Size of Gaussian blur kernel applied to the input (0 to disable)."
+    )
+    parser.add_argument(
+        "--model", type=str, default="./saved_model/", help="Output path to save the trained NIF model."
+    )
     parser.add_argument("--learning-rate", type=float, default=0.001, help="The learning rate for ADAM.")
     parser.add_argument("--batch-size", type=int, default=512, help="The batch size.")
     parser.add_argument("--epochs", type=int, default=2000, help="Total number of epochs to train for.")
     parser.add_argument("--layer-size", type=int, default=256, help="Hidden size of the MLPs."),
-    parser.add_argument("--layer-count", type=int, default=6, help="Number of MLP layers. Should be multiple of 2 as the network is split into a front and back end (with the input concatenated to the back end as in NERF models).")
-    parser.add_argument("--train-samples", type=int, default=1000000, help="The number of image samples used to train the NIF.")
-    parser.add_argument("--embedding-dimension", type=int, default=10, help="Dimension of the position embedding space for UV coords.")
-    parser.add_argument("--embedding-sigma", type=float, default=2.0, help="Base for the positional embedding (power base for Fourier features).")
-    parser.add_argument("--no-position-embedding", action="store_true", help="Disable the position embedding and train directly on UV coords.")
-    parser.add_argument("--deterministic-samples", action="store_true", help="Create training data from one uv sample per pixel (instead of randomly distributed).")
-    parser.add_argument("--disable-psnr", action="store_true", help="Disable peak signal-to-noise ratio evaluation during training. (Note: evaluation of the PSNR launches a separate process on a separate device which may be undesireable.)")
-    parser.add_argument("--replicas", type=int, default=1, help="Number of IPUs to replicate model over for data parallel training.")
-    parser.add_argument("--gradient-accumulation-count", type=int, default=1, help="Number of batches to process before applying a weight update.")
-    parser.add_argument("--callback-period", type=int, default=10, help="Interval in epochs at which to log training stats and evaluate PSNR (if enabled).")
+    parser.add_argument(
+        "--layer-count",
+        type=int,
+        default=6,
+        help="Number of MLP layers. Should be multiple of 2 as the network is split into a front and back end (with the input concatenated to the back end as in NERF models).",
+    )
+    parser.add_argument(
+        "--train-samples", type=int, default=1000000, help="The number of image samples used to train the NIF."
+    )
+    parser.add_argument(
+        "--embedding-dimension", type=int, default=10, help="Dimension of the position embedding space for UV coords."
+    )
+    parser.add_argument(
+        "--embedding-sigma",
+        type=float,
+        default=2.0,
+        help="Base for the positional embedding (power base for Fourier features).",
+    )
+    parser.add_argument(
+        "--no-position-embedding",
+        action="store_true",
+        help="Disable the position embedding and train directly on UV coords.",
+    )
+    parser.add_argument(
+        "--deterministic-samples",
+        action="store_true",
+        help="Create training data from one uv sample per pixel (instead of randomly distributed).",
+    )
+    parser.add_argument(
+        "--disable-psnr",
+        action="store_true",
+        help="Disable peak signal-to-noise ratio evaluation during training. (Note: evaluation of the PSNR launches a separate process on a separate device which may be undesirable.)",
+    )
+    parser.add_argument(
+        "--replicas", type=int, default=1, help="Number of IPUs to replicate model over for data parallel training."
+    )
+    parser.add_argument(
+        "--gradient-accumulation-count",
+        type=int,
+        default=1,
+        help="Number of batches to process before applying a weight update.",
+    )
+    parser.add_argument(
+        "--callback-period",
+        type=int,
+        default=10,
+        help="Interval in epochs at which to log training stats and evaluate PSNR (if enabled).",
+    )
     parser.add_argument("--siren", action="store_true", help="Use a SIREN MLP instead of an relu-MLP network.")
     parser.add_argument("--sin-fp16", action="store_true", help="If using SIREN use half precision sin function.")
-    parser.add_argument("--single-step", action="store_true", help="If set the program will execute a single step then exit. This is useful if profiling using PopVision.")
-    parser.add_argument("--no-ipu", action="store_true", help="Set this flag to disable IPU specific code paths (other IPU specific arguments will be ignored).")
-    parser.add_argument("--tensorboard-dir", type=str, default=None, help="Override the automatically generated name for the tensorboard logging path.")
+    parser.add_argument(
+        "--single-step",
+        action="store_true",
+        help="If set the program will execute a single step then exit. This is useful if profiling using PopVision.",
+    )
+    parser.add_argument(
+        "--no-ipu",
+        action="store_true",
+        help="Set this flag to disable IPU specific code paths (other IPU specific arguments will be ignored).",
+    )
+    parser.add_argument(
+        "--tensorboard-dir",
+        type=str,
+        default=None,
+        help="Override the automatically generated name for the tensorboard logging path.",
+    )
     parser.add_argument("--fp16", action="store_true", help="Train in fp16.")
     parser.add_argument("--loss-scale", type=float, default=32768, help="Loss scale (affects fp16 training only).")
     parser.add_argument("--mse", action="store_true", help="Use MSE loss instead of the default Huber loss.")
     parser.add_argument("--disable-stochastic-rounding", action="store_true", help="Disable stochastic rounding.")
-    parser.add_argument("--color-space", type=str, default="rgb", choices=["rgb", "yuv", "ycocg"], help="Force the network to predict in the specified color-space and convert to RGB with a static transform layer.")
+    parser.add_argument(
+        "--color-space",
+        type=str,
+        default="rgb",
+        choices=["rgb", "yuv", "ycocg"],
+        help="Force the network to predict in the specified color-space and convert to RGB with a static transform layer.",
+    )
     args = parser.parse_args()
     return args
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
 
     if args.fp16:
-        tf.keras.mixed_precision.set_global_policy('float16')
+        tf.keras.mixed_precision.set_global_policy("float16")
 
     if args.layer_count % 2:
         raise ValueError("Layer count must be a multiple of 2.")
@@ -144,7 +213,9 @@ if __name__ == '__main__':
     input_mean = np.mean(np.mean(img, axis=0), axis=0)  # Mean BGR value
     input_min = img.min().astype(float)
     input_max = img.max().astype(float)
-    print(f"Image loaded. Size: {img.shape} Type: {img.dtype} Mean value: {input_mean} Min/max: {input_min}/{input_max}")
+    print(
+        f"Image loaded. Size: {img.shape} Type: {img.dtype} Mean value: {input_mean} Min/max: {input_min}/{input_max}"
+    )
     rng = np.random.default_rng()
 
     if args.deterministic_samples:
@@ -181,12 +252,12 @@ if __name__ == '__main__':
     # learn high frequency functions:
     if args.siren:
         args.no_position_embedding = True  # Mixing siren with position embedding just makes a mess.
-        loss_fn = tf.keras.losses.MeanSquaredError(reduction='sum_over_batch_size', name="mse_loss")
+        loss_fn = tf.keras.losses.MeanSquaredError(reduction="sum_over_batch_size", name="mse_loss")
     else:
         if args.mse:
-            loss_fn = tf.keras.losses.MeanSquaredError(reduction='sum_over_batch_size', name="mse_loss")
+            loss_fn = tf.keras.losses.MeanSquaredError(reduction="sum_over_batch_size", name="mse_loss")
         else:
-            loss_fn = tf.keras.losses.Huber(delta=0.001, reduction='sum_over_batch_size', name="huber_loss")
+            loss_fn = tf.keras.losses.Huber(delta=0.001, reduction="sum_over_batch_size", name="huber_loss")
     embedding_dimension = 0 if args.no_position_embedding else args.embedding_dimension
     if not args.no_position_embedding:
         t0 = time.time()
@@ -204,41 +275,49 @@ if __name__ == '__main__':
     color_matrix = nif.color_space_to_bgr_matrix(args.color_space)
 
     with strategy.scope():
-        model = create_model(train_uv.shape[-1], train_uv.dtype,
-                             args.layer_size, args.layer_count,
-                             args.siren, args.sin_fp16, color_matrix)
+        model = create_model(
+            train_uv.shape[-1],
+            train_uv.dtype,
+            args.layer_size,
+            args.layer_count,
+            args.siren,
+            args.sin_fp16,
+            color_matrix,
+        )
         if not args.no_ipu:
             # Use running mean for numerical stability:
             model.set_gradient_accumulation_options(
                 gradient_accumulation_steps_per_replica=args.gradient_accumulation_count,
-                gradient_accumulation_reduction_method='running_mean',
-                dtype=tf.float32)
+                gradient_accumulation_reduction_method="running_mean",
+                dtype=tf.float32,
+            )
         model.summary()
 
         # Explicitly keep Adam optimizer state in fp32 (otherwise they inherit the type of the master weights which might be fp16):
-        opt = AdamIpuOptimizer(learning_rate=args.learning_rate, m_dtype='float32', v_dtype='float32', vhat_dtype='float32')
+        opt = AdamIpuOptimizer(
+            learning_rate=args.learning_rate, m_dtype="float32", v_dtype="float32", vhat_dtype="float32"
+        )
         if args.fp16:
             # Loss scaling necessary with fp16 master weights:
             opt = tf.keras.mixed_precision.LossScaleOptimizer(opt, dynamic=False, initial_scale=args.loss_scale)
 
         # Train the model:
-        model.compile(
-            loss = loss_fn,
-            optimizer = opt,
-            steps_per_execution=steps_per_exec)
+        model.compile(loss=loss_fn, optimizer=opt, steps_per_execution=steps_per_exec)
 
         # Need to save some NIF metadata with the model also:
         saved_model_path = args.model
         metadata_file = nif.metadata_path_from_keras_model_path(saved_model_path)
         os.makedirs(os.path.dirname(metadata_file), exist_ok=True)
-        nif.save_metadata(metadata_file,
-                          name = args.input,
-                          args = sys.argv,
-                          shape = img.shape,
-                          encode_params = encode_params,
-                          embedding_dim = embedding_dimension,
-                          embedding_sigma = args.embedding_sigma,
-                          model_path = args.model)
+        nif.save_metadata(
+            metadata_file,
+            name=args.input,
+            args=sys.argv,
+            shape=img.shape,
+            encode_params=encode_params,
+            embedding_dim=embedding_dimension,
+            embedding_sigma=args.embedding_sigma,
+            model_path=args.model,
+        )
 
         model_name_str = os.path.basename(os.path.normpath(args.model))
         time_string = datetime.datetime.now().isoformat()
@@ -249,12 +328,14 @@ if __name__ == '__main__':
         else:
             tb_logdir = os.path.join(args.tensorboard_dir, f"run_{model_name_str}_{time_string}")
 
-        eval_callback = nif.EvalCallback(original_file=args.input,
-                                         model_path=saved_model_path,
-                                         period=args.callback_period,
-                                         compute_psnr=not args.disable_psnr,
-                                         no_ipu=args.no_ipu,
-                                         log_dir=tb_logdir)
+        eval_callback = nif.EvalCallback(
+            original_file=args.input,
+            model_path=saved_model_path,
+            period=args.callback_period,
+            compute_psnr=not args.disable_psnr,
+            no_ipu=args.no_ipu,
+            log_dir=tb_logdir,
+        )
         if args.single_step:
             callbacks = []
             epochs = 1
@@ -264,17 +345,14 @@ if __name__ == '__main__':
             callbacks = [
                 # Two save callbacks: one is for standard Keras format:
                 tf.keras.callbacks.ModelCheckpoint(
-                    filepath=saved_model_path,
-                    save_weights_only=False,
-                    save_best_only=False),
+                    filepath=saved_model_path, save_weights_only=False, save_best_only=False
+                ),
                 # Second callback is for export to a format the Poplar ray-tracer can read:
                 tf.keras.callbacks.ModelCheckpoint(
-                    filepath=h5_model_path,
-                    include_optimizer=False,
-                    save_weights_only=False,
-                    save_best_only=False),
+                    filepath=h5_model_path, include_optimizer=False, save_weights_only=False, save_best_only=False
+                ),
                 eval_callback,
-                tf.keras.callbacks.TensorBoard(log_dir=tb_logdir, histogram_freq=5)
+                tf.keras.callbacks.TensorBoard(log_dir=tb_logdir, histogram_freq=5),
             ]
             epochs = args.epochs
 

@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet2/layers/global_mvn.py
@@ -22,7 +22,7 @@ Main changes:
     increase the part of generated data
     replce the processing of taking the reciprocal of std to pass the inv_std
 
-'''
+"""
 
 
 import torch
@@ -40,6 +40,7 @@ class GlobalMVN(torch.nn.Module):
         norm_vars: Apply var normalization
         eps:
     """
+
     def __init__(
         self,
         use_generate=False,
@@ -57,10 +58,7 @@ class GlobalMVN(torch.nn.Module):
         self.register_buffer("mean", mean)
         self.register_buffer("inv_std", inv_std)
 
-
-    def forward(
-        self, x: torch.Tensor, ilens: torch.Tensor = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, ilens: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward function
 
         Args:

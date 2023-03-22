@@ -13,12 +13,10 @@ from utilities.utils import decompose_sparse_adjacency
 class ClusteringStatistics:
     """Class to calculate and plot a variety of statistics of the given
     clusters and adjacency."""
-    def __init__(self,
-                 adjacency,
-                 clusters,
-                 num_clusters_per_batch,
-                 cluster_sample_size=500,
-                 combined_cluster_sample_size=100):
+
+    def __init__(
+        self, adjacency, clusters, num_clusters_per_batch, cluster_sample_size=500, combined_cluster_sample_size=100
+    ):
         self.adjacency = adjacency
         self.clusters = clusters
         self.num_clusters_per_batch = num_clusters_per_batch
@@ -85,8 +83,7 @@ class ClusteringStatistics:
     def get_cluster_degree(full_adjacency, cluster):
         """Returns the degree of a given cluster that is part of a full graph
         represented by full_adjacency."""
-        cluster_edge_list = decompose_sparse_adjacency(
-            full_adjacency[cluster, :][:, cluster].asformat("coo"))[0]
+        cluster_edge_list = decompose_sparse_adjacency(full_adjacency[cluster, :][:, cluster].asformat("coo"))[0]
         cluster_graph = ClusteringStatistics.build_nx_graph_from_edge_list(cluster_edge_list)
         return ClusteringStatistics.get_graph_degrees(cluster_graph)
 
@@ -105,7 +102,7 @@ class ClusteringStatistics:
     @staticmethod
     def plot_hist_to_wandb(data, name, data_name, **kwargs):
         """Plots a histogram to wandb."""
-        df = pd.DataFrame(data, columns = [data_name])
+        df = pd.DataFrame(data, columns=[data_name])
         fig = px.histogram(df, x=data_name, **kwargs)
         wandb.log({f"{name}": fig})
 
@@ -113,27 +110,16 @@ class ClusteringStatistics:
     def plot_bar_graph_to_wandb(data, name, x_label, y_label):
         """Plots a bar graph to wandb."""
         table = wandb.Table(data=data, columns=[x_label, y_label])
-        plot = wandb.plot.bar(
-            table,
-            x_label,
-            y_label,
-            title=name)
+        plot = wandb.plot.bar(table, x_label, y_label, title=name)
         wandb.log({name: plot})
 
     @staticmethod
-    def plot_edge_summary_to_wandb(total_edges,
-                                   clustered_edges,
-                                   combined_cluster_edges):
+    def plot_edge_summary_to_wandb(total_edges, clustered_edges, combined_cluster_edges):
         """Plots a summary of the number of edges to wandb."""
         values = [total_edges, clustered_edges, combined_cluster_edges]
         labels = ["total_edges", "clustered_edges", "combined_cluster_edges (batch)"]
         data = [[label, val] for (label, val) in zip(labels, values)]
-        ClusteringStatistics.plot_bar_graph_to_wandb(
-            data,
-            "Edge comparison",
-            "label",
-            "num edges"
-        )
+        ClusteringStatistics.plot_bar_graph_to_wandb(data, "Edge comparison", "label", "num edges")
 
     @staticmethod
     def plot_min_mean_max_to_wandb(in_data, name, axis_label):
@@ -141,12 +127,7 @@ class ClusteringStatistics:
         values = [min(in_data), np.mean(in_data), max(in_data), np.std(in_data)]
         labels = ["min", "mean", "max", "std"]
         data = [[label, val] for (label, val) in zip(labels, values)]
-        ClusteringStatistics.plot_bar_graph_to_wandb(
-            data,
-            name,
-            "label",
-            axis_label
-        )
+        ClusteringStatistics.plot_bar_graph_to_wandb(data, name, "label", axis_label)
 
     def get_statistics(self, wandb):
         """Evaluates the statistics over the full graph, clusters and
@@ -160,8 +141,8 @@ class ClusteringStatistics:
             self.plot_statistics_to_wandb()
         else:
             logging.info(
-                "Weights & Biases not enabled. To see plots enable"
-                " wandb in the config or on the command line.")
+                "Weights & Biases not enabled. To see plots enable" " wandb in the config or on the command line."
+            )
 
     def evaluate_full_graph(self):
         """Evaluates the statistics of the full graph."""
@@ -174,42 +155,39 @@ class ClusteringStatistics:
     def evaluate_clustered_graph(self):
         """Evaluates the statistics of the clusters."""
         logging.info("Evaluating statistics for the clusters...")
-        self.cluster_degrees = self.get_cluster_degrees(
-            self.adjacency,
-            self.clusters,
-            limit=self.cluster_sample_size)
+        self.cluster_degrees = self.get_cluster_degrees(self.adjacency, self.clusters, limit=self.cluster_sample_size)
         self.edges_per_cluster = [sum(c) for c in self.cluster_degrees]
-        self.nodes_per_cluster = self.get_num_nodes_in_clusters(
-            self.clusters,
-            limit=self.cluster_sample_size)
-        self.sparsity_per_cluster = self.get_sparsity_ratio_for_clusters(
-            self.adjacency, self.clusters)
+        self.nodes_per_cluster = self.get_num_nodes_in_clusters(self.clusters, limit=self.cluster_sample_size)
+        self.sparsity_per_cluster = self.get_sparsity_ratio_for_clusters(self.adjacency, self.clusters)
         self.total_cluster_degrees = sum(self.edges_per_cluster) / (self.cluster_sample_size / len(self.clusters))
 
     def evaluate_combined_clustered_graph(self):
         """Evaluates the statistics of the clusters combined into batches."""
         logging.info("Evaluating statistics for the combined clusters (batches)...")
         combined_clusters = self.get_combined_clusters(
-            self.clusters, self.num_clusters_per_batch, self.combined_cluster_sample_size)
+            self.clusters, self.num_clusters_per_batch, self.combined_cluster_sample_size
+        )
         self.combined_cluster_degrees = self.get_cluster_degrees(
-            self.adjacency,
-            combined_clusters,
-            limit=self.combined_cluster_sample_size)
+            self.adjacency, combined_clusters, limit=self.combined_cluster_sample_size
+        )
         self.edges_per_combined_cluster = [sum(c) for c in self.combined_cluster_degrees]
         self.nodes_per_combined_cluster = self.get_num_nodes_in_clusters(
-            combined_clusters,
-            limit=self.combined_cluster_sample_size)
-        self.sparsity_per_combined_cluster = self.get_sparsity_ratio_for_clusters(
-            self.adjacency, combined_clusters)
-        self.total_combined_cluster_degrees = sum(self.edges_per_combined_cluster) / (self.combined_cluster_sample_size / (len(self.clusters) // self.num_clusters_per_batch))
+            combined_clusters, limit=self.combined_cluster_sample_size
+        )
+        self.sparsity_per_combined_cluster = self.get_sparsity_ratio_for_clusters(self.adjacency, combined_clusters)
+        self.total_combined_cluster_degrees = sum(self.edges_per_combined_cluster) / (
+            self.combined_cluster_sample_size / (len(self.clusters) // self.num_clusters_per_batch)
+        )
 
     @staticmethod
     def formatted_min_mean_max(in_array):
         """Formatted print of the min mean and max of in_array."""
-        return (f"min {min(in_array):.4f}, "
-                f"mean {np.mean(in_array):.4f}, "
-                f"max {max(in_array):.4f}, "
-                f"std {np.std(in_array):.4f}")
+        return (
+            f"min {min(in_array):.4f}, "
+            f"mean {np.mean(in_array):.4f}, "
+            f"max {max(in_array):.4f}, "
+            f"std {np.std(in_array):.4f}"
+        )
 
     def print_statistics(self):
         """Formatted print of the statistics."""
@@ -240,82 +218,57 @@ class ClusteringStatistics:
         # Get the 99% percentile to visualise plotting without edge cases
         perc = int(np.percentile(self.full_graph_degrees, 99))
         data = [x for x in self.full_graph_degrees if x < perc]
-        self.plot_hist_to_wandb(
-            data,
-            "Node degrees of full graph",
-            "node_degrees",
-            nbins=perc,
-            log_x=False)
+        self.plot_hist_to_wandb(data, "Node degrees of full graph", "node_degrees", nbins=perc, log_x=False)
 
         # Plot the node degree distribution for the clusters
         all_clusters = np.concatenate(self.cluster_degrees)
         perc = int(np.percentile(all_clusters, 99))
         data = [x for x in all_clusters if x < perc]
-        self.plot_hist_to_wandb(
-            data,
-            "Node degrees of individual clusters",
-            "node_degrees",
-            nbins=perc,
-            log_x=False)
+        self.plot_hist_to_wandb(data, "Node degrees of individual clusters", "node_degrees", nbins=perc, log_x=False)
 
         # Plot a summary of number of edges in graph and clusters
         self.plot_edge_summary_to_wandb(
-            self.total_degree,
-            self.total_cluster_degrees,
-            self.total_combined_cluster_degrees)
+            self.total_degree, self.total_cluster_degrees, self.total_combined_cluster_degrees
+        )
 
         # Plot statistics for clusters
+        self.plot_min_mean_max_to_wandb(self.edges_per_cluster, "Edges in clusters", "num_edges")
+        self.plot_min_mean_max_to_wandb(self.nodes_per_cluster, "Nodes in clusters", "num_nodes")
         self.plot_min_mean_max_to_wandb(
-            self.edges_per_cluster,
-            "Edges in clusters",
-            "num_edges")
-        self.plot_min_mean_max_to_wandb(
-            self.nodes_per_cluster,
-            "Nodes in clusters",
-            "num_nodes")
-        self.plot_min_mean_max_to_wandb(
-            np.add(self.nodes_per_cluster, self.edges_per_cluster),
-            "Nodes + edges in clusters",
-            "num_nodes_and_edges")
-        self.plot_min_mean_max_to_wandb(
-            self.sparsity_per_cluster,
-            "Sparsity ratio in clusters",
-            "Sparsity ratio")
+            np.add(self.nodes_per_cluster, self.edges_per_cluster), "Nodes + edges in clusters", "num_nodes_and_edges"
+        )
+        self.plot_min_mean_max_to_wandb(self.sparsity_per_cluster, "Sparsity ratio in clusters", "Sparsity ratio")
         self.plot_bar_graph_to_wandb(
-            [[idx, d] for idx, d in enumerate(np.sort(self.nodes_per_cluster))],
-            "Nodes per cluster",
-            "cluster",
-            "nodes")
+            [[idx, d] for idx, d in enumerate(np.sort(self.nodes_per_cluster))], "Nodes per cluster", "cluster", "nodes"
+        )
         self.plot_bar_graph_to_wandb(
-            [[idx, d] for idx, d in enumerate(np.sort(self.edges_per_cluster))],
-            "Edges per cluster",
-            "cluster",
-            "edges")
+            [[idx, d] for idx, d in enumerate(np.sort(self.edges_per_cluster))], "Edges per cluster", "cluster", "edges"
+        )
 
         # Plot statistics for combined clusters
         self.plot_min_mean_max_to_wandb(
-            self.edges_per_combined_cluster,
-            "Edges in combined cluster (batches)",
-            "num_edges")
+            self.edges_per_combined_cluster, "Edges in combined cluster (batches)", "num_edges"
+        )
         self.plot_min_mean_max_to_wandb(
-            self.nodes_per_combined_cluster,
-            "Nodes in combined cluster (batches)",
-            "num_nodes")
+            self.nodes_per_combined_cluster, "Nodes in combined cluster (batches)", "num_nodes"
+        )
         self.plot_min_mean_max_to_wandb(
             np.add(self.nodes_per_combined_cluster, self.edges_per_combined_cluster),
             "Nodes + edges in combined cluster (batches)",
-            "num_nodes_and_edges")
+            "num_nodes_and_edges",
+        )
         self.plot_min_mean_max_to_wandb(
-            self.sparsity_per_combined_cluster,
-            f"Sparsity ratio in combined cluster (batches)",
-            "Sparsity ratio")
+            self.sparsity_per_combined_cluster, f"Sparsity ratio in combined cluster (batches)", "Sparsity ratio"
+        )
         self.plot_bar_graph_to_wandb(
             [[idx, d] for idx, d in enumerate(np.sort(self.nodes_per_combined_cluster))],
             "Nodes per combined cluster (batches)",
             "combined cluster",
-            "nodes")
+            "nodes",
+        )
         self.plot_bar_graph_to_wandb(
             [[idx, d] for idx, d in enumerate(np.sort(self.edges_per_combined_cluster))],
             "Edges per combined cluster (batches)",
             "combined cluster",
-            "edges")
+            "edges",
+        )

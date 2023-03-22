@@ -14,15 +14,9 @@ def ipu_static_ops(scope="session"):
     """This function builds the ipu_static_ops
     library for any tests that rely on it.
     """
-    build_path = Path(
-        examples_dir,
-        "gnn",
-        "message_passing",
-        "tensorflow2",
-        "static_ops"
-    )
+    build_path = Path(examples_dir, "gnn", "message_passing", "tensorflow2", "static_ops")
 
-    shared_libs = ['custom_grouped_gather_scatter.so']
+    shared_libs = ["custom_grouped_gather_scatter.so"]
     paths = [Path(build_path, f) for f in shared_libs]
 
     # Use exclusive lockfile to avoid race conditions on the build:
@@ -30,7 +24,7 @@ def ipu_static_ops(scope="session"):
 
     @ExecuteOncePerFS(lockfile=lock_path, file_list=paths, timeout=120, retries=20)
     def build_ipustaticops():
-        run(['make', 'clean'], cwd=build_path)
-        run(['make', '-j'], cwd=build_path)
+        run(["make", "clean"], cwd=build_path)
+        run(["make", "-j"], cwd=build_path)
 
     build_ipustaticops()

@@ -27,7 +27,7 @@ def alignment_options(ipus=8):
     opts.deviceIterations(1)
     opts.replicationFactor(1)
     opts.randomSeed(2)
-    mem_prop = {f'IPU{i}': 0.15 for i in range(ipus)}
+    mem_prop = {f"IPU{i}": 0.15 for i in range(ipus)}
 
     opts.setExecutionStrategy(poptorch.ShardedExecution())
     opts.setAvailableMemoryProportion(mem_prop)
@@ -35,14 +35,15 @@ def alignment_options(ipus=8):
 
 
 def train_options(
-        use_popdist,
-        gradient_accumulation_count=8,
-        replica=1,
-        iteration=1,
-        half=False,
-        als=False,
-        ipu_per_replica=4,
-        rts=False):
+    use_popdist,
+    gradient_accumulation_count=8,
+    replica=1,
+    iteration=1,
+    half=False,
+    als=False,
+    ipu_per_replica=4,
+    rts=False,
+):
 
     if use_popdist:
         opts = popdist.poptorch.Options(ipu_per_replica)
@@ -51,21 +52,16 @@ def train_options(
         opts.replicationFactor(replica)
 
     opts.randomSeed(42)
-    opts.enableExecutableCaching('./cachedir')
-    mem_prop = {f'IPU{i}': 0.15 for i in range(ipu_per_replica)}
+    opts.enableExecutableCaching("./cachedir")
+    mem_prop = {f"IPU{i}": 0.15 for i in range(ipu_per_replica)}
 
     opts.autoRoundNumIPUs(True)
     opts.Training.gradientAccumulation(gradient_accumulation_count)
-    opts.Training.accumulationAndReplicationReductionType(
-        poptorch.ReductionType.Mean)
+    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
 
-    opts.Training.setMeanAccumulationAndReplicationReductionStrategy(
-        poptorch.MeanReductionStrategy.Running
-    )
+    opts.Training.setMeanAccumulationAndReplicationReductionStrategy(poptorch.MeanReductionStrategy.Running)
     opts.deviceIterations(iteration)
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(
-            poptorch.AutoStage.AutoIncrement))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
     opts.setAvailableMemoryProportion(mem_prop)
 
     if half:
@@ -73,27 +69,26 @@ def train_options(
         opts.Precision.setPartialsType(torch.half)
         if als:
             opts.Training.setAutomaticLossScaling(True)
-    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
-                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
     opts._Popart.set(
-        "replicatedCollectivesSettings.prepareScheduleForMergingCollectives",
-        True)
-    opts._Popart.set(
-        "replicatedCollectivesSettings.mergeAllReduceCollectives",
-        True)
+        "accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized)
+    )
+    opts._Popart.set("replicatedCollectivesSettings.prepareScheduleForMergingCollectives", True)
+    opts._Popart.set("replicatedCollectivesSettings.mergeAllReduceCollectives", True)
 
     # rts
     if rts:
         opts.TensorLocations.setOptimizerLocation(
-            poptorch.TensorLocationSettings().useReplicatedTensorSharding(
-                True).minElementsForReplicatedTensorSharding(ipu_per_replica)
+            poptorch.TensorLocationSettings()
+            .useReplicatedTensorSharding(True)
+            .minElementsForReplicatedTensorSharding(ipu_per_replica)
         )
 
     return opts
 
 
-def finetune_options(gradient_accumulation_count=8, replica=1, device_iterations=1,
-                     half=False, ipu_per_replica=8, opt_type='train'):
+def finetune_options(
+    gradient_accumulation_count=8, replica=1, device_iterations=1, half=False, ipu_per_replica=8, opt_type="train"
+):
 
     if popdist.isPopdistEnvSet():
         opts = popdist.poptorch.Options(ipu_per_replica)
@@ -101,22 +96,19 @@ def finetune_options(gradient_accumulation_count=8, replica=1, device_iterations
         opts = poptorch.Options()
         opts.replicationFactor(replica)
     opts.randomSeed(42)
-    opts.enableExecutableCaching('./cachedir')
-    logger.info(f'ipu_per_replica {ipu_per_replica}')
-    mem_prop = {f'IPU{i}': 0.12 for i in range(ipu_per_replica)}
+    opts.enableExecutableCaching("./cachedir")
+    logger.info(f"ipu_per_replica {ipu_per_replica}")
+    mem_prop = {f"IPU{i}": 0.12 for i in range(ipu_per_replica)}
     opts.autoRoundNumIPUs(True)
-    if opt_type == 'train':
+    if opt_type == "train":
         opts.deviceIterations(device_iterations)
         opts.Training.gradientAccumulation(gradient_accumulation_count)
-        opts.Training.accumulationAndReplicationReductionType(
-            poptorch.ReductionType.Mean)
-        opts.setExecutionStrategy(
-            poptorch.PipelinedExecution(
-                poptorch.AutoStage.SameAsIpu))
+        opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
+        opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.SameAsIpu))
     else:
         opts.deviceIterations(device_iterations)
         opts.setExecutionStrategy(poptorch.ShardedExecution())
-        logger.info('poptorch.ShardedExecution')
+        logger.info("poptorch.ShardedExecution")
     opts.setAvailableMemoryProportion(mem_prop)
     if half:
         opts.Precision.enableStochasticRounding(True)
@@ -124,8 +116,9 @@ def finetune_options(gradient_accumulation_count=8, replica=1, device_iterations
 
     # rts
     opts.TensorLocations.setOptimizerLocation(
-        poptorch.TensorLocationSettings().useReplicatedTensorSharding(
-            True).minElementsForReplicatedTensorSharding(ipu_per_replica)
+        poptorch.TensorLocationSettings()
+        .useReplicatedTensorSharding(True)
+        .minElementsForReplicatedTensorSharding(ipu_per_replica)
     )
 
     return opts

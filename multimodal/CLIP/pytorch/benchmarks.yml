@@ -20,7 +20,7 @@ config_options: &config_options
 pytorch_clip_vit_b_32_train_gen_pod16:
     <<: [*common_options, *config_options]
     description:
-        Pytorch CLIP_ViT-B-32 8 IPU throughput benchmark using host generated synthetic data.
+        PyTorch CLIP_ViT-B-32 8 IPU throughput benchmark using host generated synthetic data.
     cmd: >-
         python3 train.py
             --config CLIP_ViT-B-32_cc3m
@@ -31,7 +31,7 @@ pytorch_clip_vit_b_32_train_gen_pod16:
 pytorch_clip_vit_b_32_train_real_pod16_conv:
     <<: [*common_options, *config_options]
     description:
-        Pytorch CLIP_ViT-B-32 8 IPU loss benchmark using cc3m dataset.
+        PyTorch CLIP_ViT-B-32 8 IPU loss benchmark using cc3m dataset.
     cmd: >-
         python3 train.py
             --config CLIP_ViT-B-32_cc3m
@@ -40,3 +40,4 @@ pytorch_clip_vit_b_32_train_real_pod16_conv:
             --image_path $DATASETS_DIR/cc3m/images
             --captions_path $DATASETS_DIR/cc3m/img_cap.csv
             --bpe_vocab_path $DATASETS_DIR/bpe_vocabulary/bpe_simple_vocab_16e6.txt.gz
+            --checkpoint_output_dir output/ckpt

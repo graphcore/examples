@@ -35,18 +35,16 @@ from transformers import get_constant_schedule
 
 
 def load_pretrained(config, model):
-    checkpoint = torch.load(config.PRETRAINED, map_location='cpu')
-    state_dict = checkpoint['model']
+    checkpoint = torch.load(config.PRETRAINED, map_location="cpu")
+    state_dict = checkpoint["model"]
 
     # delete relative_position_index since we always re-init it
-    relative_position_index_keys = [
-        k for k in state_dict.keys() if "relative_position_index" in k]
+    relative_position_index_keys = [k for k in state_dict.keys() if "relative_position_index" in k]
     for k in relative_position_index_keys:
         del state_dict[k]
 
     # delete relative_coords_table since we always re-init it
-    relative_position_index_keys = [
-        k for k in state_dict.keys() if "relative_coords_table" in k]
+    relative_position_index_keys = [k for k in state_dict.keys() if "relative_coords_table" in k]
     for k in relative_position_index_keys:
         del state_dict[k]
 
@@ -56,8 +54,7 @@ def load_pretrained(config, model):
         del state_dict[k]
 
     # bicubic interpolate relative_position_bias_table if not match
-    relative_position_bias_table_keys = [
-        k for k in state_dict.keys() if "relative_position_bias_table" in k]
+    relative_position_bias_table_keys = [k for k in state_dict.keys() if "relative_position_bias_table" in k]
     for k in relative_position_bias_table_keys:
         relative_position_bias_table_pretrained = state_dict[k]
         relative_position_bias_table_current = model.state_dict()[k]
@@ -69,22 +66,17 @@ def load_pretrained(config, model):
         else:
             if L1 != L2:
                 # bicubic interpolate relative_position_bias_table if not match
-                S1 = int(L1 ** 0.5)
-                S2 = int(L2 ** 0.5)
+                S1 = int(L1**0.5)
+                S2 = int(L2**0.5)
                 relative_position_bias_table_pretrained_resized = torch.nn.functional.interpolate(
-                    relative_position_bias_table_pretrained.permute(
-                        1, 0).view(
-                        1, nH1, S1, S1), size=(
-                        S2, S2), mode='bicubic')
-                state_dict[k] = relative_position_bias_table_pretrained_resized.view(
-                    nH2,
-                    L2).permute(
-                    1,
-                    0)
+                    relative_position_bias_table_pretrained.permute(1, 0).view(1, nH1, S1, S1),
+                    size=(S2, S2),
+                    mode="bicubic",
+                )
+                state_dict[k] = relative_position_bias_table_pretrained_resized.view(nH2, L2).permute(1, 0)
 
     # bicubic interpolate absolute_pos_embed if not match
-    absolute_pos_embed_keys = [
-        k for k in state_dict.keys() if "absolute_pos_embed" in k]
+    absolute_pos_embed_keys = [k for k in state_dict.keys() if "absolute_pos_embed" in k]
     for k in absolute_pos_embed_keys:
         # dpe
         absolute_pos_embed_pretrained = state_dict[k]
@@ -95,38 +87,35 @@ def load_pretrained(config, model):
             print(f"Error in loading {k}, passing......")
         else:
             if L1 != L2:
-                S1 = int(L1 ** 0.5)
-                S2 = int(L2 ** 0.5)
-                absolute_pos_embed_pretrained = absolute_pos_embed_pretrained.reshape(
-                    -1, S1, S1, C1)
-                absolute_pos_embed_pretrained = absolute_pos_embed_pretrained.permute(
-                    0, 3, 1, 2)
+                S1 = int(L1**0.5)
+                S2 = int(L2**0.5)
+                absolute_pos_embed_pretrained = absolute_pos_embed_pretrained.reshape(-1, S1, S1, C1)
+                absolute_pos_embed_pretrained = absolute_pos_embed_pretrained.permute(0, 3, 1, 2)
                 absolute_pos_embed_pretrained_resized = torch.nn.functional.interpolate(
-                    absolute_pos_embed_pretrained, size=(S2, S2), mode='bicubic')
-                absolute_pos_embed_pretrained_resized = absolute_pos_embed_pretrained_resized.permute(
-                    0, 2, 3, 1)
-                absolute_pos_embed_pretrained_resized = absolute_pos_embed_pretrained_resized.flatten(
-                    1, 2)
+                    absolute_pos_embed_pretrained, size=(S2, S2), mode="bicubic"
+                )
+                absolute_pos_embed_pretrained_resized = absolute_pos_embed_pretrained_resized.permute(0, 2, 3, 1)
+                absolute_pos_embed_pretrained_resized = absolute_pos_embed_pretrained_resized.flatten(1, 2)
                 state_dict[k] = absolute_pos_embed_pretrained_resized
 
     # check classifier, if not match, then re-init classifier to zero
-    head_bias_pretrained = state_dict['head.bias']
+    head_bias_pretrained = state_dict["head.bias"]
     Nc1 = head_bias_pretrained.shape[0]
     Nc2 = model.head.bias.shape[0]
-    if (Nc1 != Nc2):
+    if Nc1 != Nc2:
         if Nc1 == 21841 and Nc2 == 1000:
             print("loading ImageNet-22K weight to ImageNet-1K ......")
-            map22kto1k_path = f'dataset/map22kto1k.txt'
+            map22kto1k_path = f"dataset/map22kto1k.txt"
             with open(map22kto1k_path) as f:
                 map22kto1k = f.readlines()
             map22kto1k = [int(id22k.strip()) for id22k in map22kto1k]
-            state_dict['head.weight'] = state_dict['head.weight'][map22kto1k, :]
-            state_dict['head.bias'] = state_dict['head.bias'][map22kto1k]
+            state_dict["head.weight"] = state_dict["head.weight"][map22kto1k, :]
+            state_dict["head.bias"] = state_dict["head.bias"][map22kto1k]
         else:
-            torch.nn.init.constant_(model.head.bias, 0.)
-            torch.nn.init.constant_(model.head.weight, 0.)
-            del state_dict['head.weight']
-            del state_dict['head.bias']
+            torch.nn.init.constant_(model.head.bias, 0.0)
+            torch.nn.init.constant_(model.head.weight, 0.0)
+            del state_dict["head.weight"]
+            del state_dict["head.bias"]
             print(f"Error in loading classifier head, re-init classifier head to 0")
 
     msg = model.load_state_dict(state_dict, strict=False)
@@ -145,39 +134,33 @@ def get_grad_norm(parameters, norm_type=2):
     for p in parameters:
         param_norm = p.grad.data.norm(norm_type)
         total_norm += param_norm.item() ** norm_type
-    total_norm = total_norm ** (1. / norm_type)
+    total_norm = total_norm ** (1.0 / norm_type)
     return total_norm
 
 
-def get_lr_scheduler(optimizer,
-                     scheduler_type,
-                     warmup_steps=None,
-                     num_steps=None,
-                     last_epoch=-1):
+def get_lr_scheduler(optimizer, scheduler_type, warmup_steps=None, num_steps=None, last_epoch=-1):
     if scheduler_type == "linear":
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer, warmup_steps, num_steps)
+        scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, num_steps)
     elif scheduler_type == "constant":
         scheduler = get_constant_schedule(optimizer)
     elif scheduler_type == "cosine":
-        scheduler = get_cosine_schedule_with_warmup(
-            optimizer, warmup_steps, num_steps, last_epoch=last_epoch)
+        scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, num_steps, last_epoch=last_epoch)
     else:
         raise ValueError("Unknown scheduler_type:", scheduler_type)
     return scheduler
 
 
 class NameScope:
-    """ Create a name scope for a code block. All operators originating
-        from this block will have their names prefixed by the given string.
+    """Create a name scope for a code block. All operators originating
+    from this block will have their names prefixed by the given string.
 
-        >>> with NameScope("CustomString"):
-        ...     y = self.bmm(a, b)
-        ...     z = torch.relu(y)
+    >>> with NameScope("CustomString"):
+    ...     y = self.bmm(a, b)
+    ...     z = torch.relu(y)
     """
 
     def __init__(self, name: str):
-        assert isinstance(name, str), 'Parameter to NameScope must be a string'
+        assert isinstance(name, str), "Parameter to NameScope must be a string"
         self.name = name
 
     def __enter__(self):
@@ -190,7 +173,7 @@ class NameScope:
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
-    def __init__(self, name, fmt=':f'):
+    def __init__(self, name, fmt=":f"):
         self.name = name
         self.fmt = fmt
         self.reset()
@@ -208,6 +191,5 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
     def __str__(self):
-        fmtstr = '{name}\tval:{val' + self.fmt + \
-            '}\tavg:({avg' + self.fmt + '})'
+        fmtstr = "{name}\tval:{val" + self.fmt + "}\tavg:({avg" + self.fmt + "})"
         return fmtstr.format(**self.__dict__)

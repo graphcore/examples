@@ -31,12 +31,15 @@ class TestRecomputation:
     def check_recompute(cls, traced_model, checkpoint_name):
         for node in traced_model.graph.nodes:
             if str(node) == checkpoint_name:
-                assert "recomputation_checkpoint" in str(node.next), f"Layer conversion to recompute checkpoint doesn't work for{node}!"
-
+                assert "recomputation_checkpoint" in str(
+                    node.next
+                ), f"Layer conversion to recompute checkpoint doesn't work for{node}!"
 
     @classmethod
     def default_args(cls):
-        class HelperClass: pass
+        class HelperClass:
+            pass
+
         args = HelperClass()
         args.model = "resnet18"
         args.precision = "16.16"
@@ -67,7 +70,6 @@ class TestRecomputation:
         args.recompute_checkpoints = ["layer2/0/conv2"]
         model = models.get_model(args, {"out": 1000}, pretrained=False)
         TestRecomputation.check_recompute(model.model, "layer2/0/conv2")
-
 
     def test_recomutation_regex_conv(self):
         args = TestRecomputation.default_args()
@@ -105,8 +107,7 @@ class TestModelManipulator:
         activation_name_fn = name_match(".*relu.*")
         activation_type_fn = type_match([torch.nn.ReLU])
         for node in manipulated_model.traced_model.graph.nodes:
-            assert(activation_name_fn(node) == activation_type_fn(node))
-
+            assert activation_name_fn(node) == activation_type_fn(node)
 
     def test_next_node_consistency(self):
         model = torchvision.models.resnet18()
@@ -115,4 +116,4 @@ class TestModelManipulator:
         next_op_activation_name_fn = name_match(".*relu.*")
         next_op_activation_type_fn = type_match([torch.nn.ReLU])
         for node in manipulated_model.traced_model.graph.nodes:
-            assert(next_op_activation_name_fn(node) == next_op_activation_type_fn(node))
+            assert next_op_activation_name_fn(node) == next_op_activation_type_fn(node)

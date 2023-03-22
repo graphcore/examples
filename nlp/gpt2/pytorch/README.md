@@ -1,9 +1,9 @@
 # GPT-2
 GPT-2 for NLP pre-training and text generation, using the [huggingface transformers library](https://huggingface.co/docs/transformers/index), optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| Pytorch | NLP | GPT-2 | Wikipedia | Next sentence prediction, Masked language modelling, Question/Answering | ✅  | ✅ | [Language Models are Unsupervised Multitask Learners](https://d4mucfpksywv.cloudfront.net/better-language-models/language-models.pdf) | 
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | NLP | GPT-2 | Wikipedia | Next sentence prediction, Masked language modelling, Question/Answering | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required | [Language Models are Unsupervised Multitask Learners](https://d4mucfpksywv.cloudfront.net/better-language-models/language-models.pdf) |
 
 
 ## Instructions summary
@@ -25,18 +25,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -50,7 +50,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -68,6 +68,8 @@ pip3 install -r requirements.txt
 make
 ```
 
+
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup
 ### Wikipedia
@@ -92,7 +94,7 @@ find ./wikipedia_extracted/ -depth -name wiki_* -exec cat {} + > wikipedia_data.
 
 **Preprocess**
 
-We recommand to follow Nvidia's Megatron for data preprocessing and generated the training data, see <https://github.com/NVIDIA/Megatron-LM/tree/0ed2f6ac943560ab0a8a58b6628a669af8c250db#data-preprocessing>.
+We recommend to follow Nvidia's Megatron for data preprocessing and generated the training data, see <https://github.com/NVIDIA/Megatron-LM/tree/0ed2f6ac943560ab0a8a58b6628a669af8c250db#data-preprocessing>.
 
 ```bash
 git clone https://github.com/NVIDIA/Megatron-LM.git@0ed2f6ac943560ab0a8a58b6628a669af8c250db
@@ -184,7 +186,7 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Custom training
 
 ### Run the pretraining application
 **Notice**: The default scripts are used to get benchmarks for throughput only. You must passing path to processed data files to `--input-files` to start the actual pretraining, you may also need to specify the `--checkpoint-output-dir` to save checkpoints. It is recommended to use `--gradient-accumulation 512` when pretraining on the wikipedia dataset for better convergence. It takes 20 epochs(about 0.15 days per epoch) to reach a relative low LM loss together with the SOTA accuracy on evaluation tasks.
@@ -199,24 +201,8 @@ There are four GPT2 models:
 
 The JSON configuration files provided in the configs directory `config/` define detailed parameters for GPT2 models.
 
-### WikiText Perplexity Evaluation
-we evaluate perplexity on the word-level [WikiText-103 test dataset](https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-v1.zip),
-and appropriately compute perplexity given the change in tokens
-when using our generated BPE tokenizer.
 
-We use the following command to run WikiText-103 evaluation on pretrained model.
-```bash
-bash tasks/run_evaluate.sh wiki
-```
-
-### LAMBADA Cloze Accuracy
-To compute LAMBADA cloze accuracy (the accuracy of predicting the last token given the preceeding tokens)
-we utilize a detokenized, processed version of the [LAMBADA dataset](https://github.com/cybertronai/bflm/blob/master/lambada_test.jsonl).
-
-We use the following command to run LAMBADA evaluation on a pretrained model.
-```bash
-bash tasks/run_evaluate.sh lmbd
-```
+## Custom inference
 
 ###  Text Generation
 ```bash
@@ -242,11 +228,33 @@ This task is interactive. You can enter one sentence such as "My name is " and i
 | --fp16 | Whether to use fp16 model for this task|
 | --single-ipu | Whether to use single IPU for this task |
 | --poptorch_loop| Whether to use poptorch_loop to optimize the latency, only supported on single ipu|
-| --batch-size| batch size for inference. The defult is 1|
+| --batch-size| batch size for inference. The default is 1|
 | --input-len| The maximum input length you want to set for this task|
 | --output-len| The maximum output length you want to set for this task|
 
 Further arguments are described in the source file `text_generate_gpt2.py`
+
+
+## Other features
+
+### WikiText Perplexity Evaluation
+we evaluate perplexity on the word-level [WikiText-103 test dataset](https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-v1.zip),
+and appropriately compute perplexity given the change in tokens
+when using our generated BPE tokenizer.
+
+We use the following command to run WikiText-103 evaluation on pretrained model.
+```bash
+bash tasks/run_evaluate.sh wiki
+```
+
+### LAMBADA Cloze Accuracy
+To compute LAMBADA cloze accuracy (the accuracy of predicting the last token given the preceding tokens)
+we utilize a detokenized, processed version of the [LAMBADA dataset](https://github.com/cybertronai/bflm/blob/master/lambada_test.jsonl).
+
+We use the following command to run LAMBADA evaluation on a pretrained model.
+```bash
+bash tasks/run_evaluate.sh lmbd
+```
 
 
 ## Licensing

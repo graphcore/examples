@@ -32,7 +32,7 @@ class IpuTFBertSelfOutput(TFBertSelfOutput):
                 units=self.config.hidden_size,
                 kernel_initializer=get_initializer(self.config.initializer_range),
                 use_bias=self.use_projection_bias,
-                name="dense"
+                name="dense",
             )
 
     def build(self, input_shape: tf.TensorShape):

@@ -29,7 +29,7 @@ def find_optimal_anchors(opt, cfg, gen, image_size=896):
     print("Finding optimal anchors for image size " + str(image_size))
     cfg.model.image_size = image_size
 
-    dataset = Dataset(opt.data, cfg, 'train')
+    dataset = Dataset(opt.data, cfg, "train")
     auto_anchors = AutoAnchors(dataset, cfg.model, gen=gen)
     new_anchors = auto_anchors()
     return new_anchors
@@ -39,17 +39,21 @@ def find_max_nlabels(opt, cfg, new_anchors):
     model = PreprocessTargets(cfg.model, new_anchors)
 
     ipu_opts = ipu_options(cfg, model)
-    dataset = Dataset(opt.data, cfg, 'train')
-    loader = DataLoader(ipu_opts,
-                        dataset,
-                        batch_size=cfg.model.micro_batch_size,
-                        num_workers=cfg.system.num_workers,
-                        mode=DataLoaderMode.Async)
+    dataset = Dataset(opt.data, cfg, "train")
+    loader = DataLoader(
+        ipu_opts,
+        dataset,
+        batch_size=cfg.model.micro_batch_size,
+        num_workers=cfg.system.num_workers,
+        mode=DataLoaderMode.Async,
+    )
 
     inference_model = inferenceModel(model.eval(), ipu_opts)
 
-    max_nlabels = [torch.tensor([0]), ] * len(cfg.model.strides)
-    pbar = tqdm(loader, desc='Finding the maximum number of labels after preprocessing')
+    max_nlabels = [
+        torch.tensor([0]),
+    ] * len(cfg.model.strides)
+    pbar = tqdm(loader, desc="Finding the maximum number of labels after preprocessing")
     for _, (_, label, _, _) in enumerate(pbar):
         n_labels = inference_model(label)
 
@@ -61,10 +65,10 @@ def find_max_nlabels(opt, cfg, new_anchors):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--data", type=str, default="/localdata/datasets/", help="Dataset")
     parser.add_argument(
-        '--data', type=str, default='/localdata/datasets/', help='Dataset')
-    parser.add_argument(
-        '--config', type=str, default='configs/inference-yolov4p5.yaml', help='Configuration of the model')
+        "--config", type=str, default="configs/inference-yolov4p5.yaml", help="Configuration of the model"
+    )
 
     opt = parser.parse_args()
     cfg = get_cfg_defaults()

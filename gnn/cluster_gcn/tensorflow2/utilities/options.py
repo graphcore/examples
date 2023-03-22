@@ -8,15 +8,7 @@ from pydantic import BaseModel, root_validator, validator, PositiveInt
 from utilities.constants import MethodMaxNodesEdges
 
 
-ALLOWED_DATASET_TYPE = [
-    "ogbn-arxiv",
-    "ogbn-products",
-    "ogbn-mag",
-    "ogbn-lsc-mag240",
-    "ppi",
-    "reddit",
-    "generated"
-]
+ALLOWED_DATASET_TYPE = ["ogbn-arxiv", "ogbn-products", "ogbn-mag", "ogbn-lsc-mag240", "ppi", "reddit", "generated"]
 ALLOWED_LOGGING_TYPE = ["DEBUG", "INFO", "ERROR", "CRITICAL", "WARNING"]
 # Allowed precision types are float16 (fp16), float32 (fp32) and mixed precision with
 # compute dtype float16 and variable dtype float 32 (mixed)
@@ -49,7 +41,7 @@ ALLOWED_ADJACENCY_TRANSFORM = [
     "normalised_regularised",
     "self_connections_scaled_by_degree",
     "normalised_regularised_self_connections_scaled_by_degree",
-    "self_connections_scaled_by_degree_with_diagonal_enhancement"
+    "self_connections_scaled_by_degree_with_diagonal_enhancement",
 ]
 
 
@@ -70,10 +62,7 @@ class AdjacencyOptions(BaseModel):
             if warn_reg and regularisation is not None:
                 logging.warning("'regularisation' parameter from config will not be used.")
 
-        if transform_mode in [
-            "normalised_regularised",
-            "normalised_regularised_self_connections_scaled_by_degree"
-        ]:
+        if transform_mode in ["normalised_regularised", "normalised_regularised_self_connections_scaled_by_degree"]:
             if regularisation is None:
                 raise ValueError("'regularisation' parameter is needed in config file.")
             warn_unused_parameters(warn_diag=True)
@@ -91,8 +80,9 @@ class AdjacencyOptions(BaseModel):
     @validator("transform_mode", always=True)
     def adjacency_transform_mode_type_match(cls, value):
         if value not in ALLOWED_ADJACENCY_TRANSFORM:
-            raise ValueError(f"Unrecognised adjacency transform mode: '{value}'."
-                             f" Choose one of {ALLOWED_ADJACENCY_TRANSFORM}")
+            raise ValueError(
+                f"Unrecognised adjacency transform mode: '{value}'." f" Choose one of {ALLOWED_ADJACENCY_TRANSFORM}"
+            )
         return value
 
 
@@ -123,18 +113,19 @@ class IPUConfigOptions(BaseModel):
         device_mapping = values.get("pipeline_device_mapping")
         num_device_mapping = len(device_mapping)
         num_ipus_per_replica = max(device_mapping) + 1
-        length_matmul_amp_list = len(values.get(
-            "matmul_available_memory_proportion_per_pipeline_stage"))
+        length_matmul_amp_list = len(values.get("matmul_available_memory_proportion_per_pipeline_stage"))
         if num_pipeline_stages != num_device_mapping:
             raise ValueError(
                 f"Number of pipeline stages ({num_pipeline_stages}) does not"
                 f" match the number of device mappings ({num_device_mapping})."
                 " Ensure the `pipeline_stages` and `pipeline_device_mapping`"
-                " lists are the same length.")
+                " lists are the same length."
+            )
         if length_matmul_amp_list != num_ipus_per_replica:
             raise ValueError(
                 "Available memory proportion must be set for each of the "
-                f" {num_ipus_per_replica} IPUs in the pipeline.")
+                f" {num_ipus_per_replica} IPUs in the pipeline."
+            )
         return values
 
     @root_validator()
@@ -142,8 +133,9 @@ class IPUConfigOptions(BaseModel):
         recomputation = values.get("enable_recomputation")
         len_pipeline_stages = len(values.get("pipeline_stages"))
         if recomputation and len_pipeline_stages < 2:
-            raise ValueError("Recomputation requires a minimum of 2 pipeline stages. "
-                             f"Only {len_pipeline_stages} given.")
+            raise ValueError(
+                "Recomputation requires a minimum of 2 pipeline stages. " f"Only {len_pipeline_stages} given."
+            )
         return values
 
 
@@ -177,39 +169,41 @@ class SetOptions(BaseModel):
     @validator("micro_batch_size", always=True)
     def micro_batch_size_limit(cls, value):
         if value != 1:
-            raise ValueError(f"micro_batch_size `{value}` is not allowed."
-                             f" Only the value of 1 is supported.")
+            raise ValueError(f"micro_batch_size `{value}` is not allowed." f" Only the value of 1 is supported.")
         return value
 
     @validator("device", always=True)
     def device_match(cls, value):
         if value not in ALLOWED_DEVICE_OPTIONS:
-            raise ValueError(f"Unrecognised device type `{value}` in"
-                             f" {cls.__name__} options."
-                             f" Choose one of {ALLOWED_DEVICE_OPTIONS}")
+            raise ValueError(
+                f"Unrecognised device type `{value}` in"
+                f" {cls.__name__} options."
+                f" Choose one of {ALLOWED_DEVICE_OPTIONS}"
+            )
         if value == "cpu":
-            logging.warning("Requested to run on CPU device for"
-                            f" {cls.__name__}. The IPU config options will be"
-                            " ignored, and any IPU specific layers will be"
-                            " replaced with their generic equivalent.")
+            logging.warning(
+                "Requested to run on CPU device for"
+                f" {cls.__name__}. The IPU config options will be"
+                " ignored, and any IPU specific layers will be"
+                " replaced with their generic equivalent."
+            )
         return value
 
     @root_validator(pre=False)
     def precision_type_match(cls, values):
         precision = values.get("precision")
         if precision not in ALLOWED_PRECISION_TYPE:
-            raise ValueError(f"Unrecognised precision type: `{values.get('precision')}`."
-                             f" Choose one of {ALLOWED_PRECISION_TYPE}")
+            raise ValueError(
+                f"Unrecognised precision type: `{values.get('precision')}`." f" Choose one of {ALLOWED_PRECISION_TYPE}"
+            )
         if values.get("device") != "ipu" and precision == "fp16":
-            raise ValueError(f"Sparse tensors in precision {precision} on CPU is not"
-                             " supported.")
+            raise ValueError(f"Sparse tensors in precision {precision} on CPU is not" " supported.")
         return values
 
     @root_validator(pre=False)
     def set_executions_and_epochs(cls, values):
         if values.get("executions_per_epoch") > 1 and values.get("epochs_per_execution") > 1:
-            raise ValueError(f"executions_per_epoch and epochs_per_execution can't"
-                             " be set at the same time.")
+            raise ValueError(f"executions_per_epoch and epochs_per_execution can't" " be set at the same time.")
         return values
 
     @root_validator(pre=False)
@@ -217,9 +211,11 @@ class SetOptions(BaseModel):
         replicas = values.get("replicas")
         device = values.get("device")
         if replicas > 1 and device != "ipu":
-            raise ValueError(f"Replicas > 1 is only supported on IPU."
-                             f" Found `{values.get('replicas')}` and"
-                             f"`{values.get('device')}`.")
+            raise ValueError(
+                f"Replicas > 1 is only supported on IPU."
+                f" Found `{values.get('replicas')}` and"
+                f"`{values.get('device')}`."
+            )
         return values
 
 
@@ -302,41 +298,51 @@ class Options(BaseModel):
         num_clusters_training = values.get("training").get("num_clusters")
         num_clusters_validation = values.get("validation").get("num_clusters")
 
-        if ((max_nodes_per_batch_training or max_nodes_per_batch_validation) and
-                (num_clusters_training or num_clusters_validation)):
-            raise ValueError("Set either max_nodes_per_batch for both training"
-                             "and validation or num_clusters for both training and"
-                             " validation. If max_nodes_per_batch is used, the"
-                             " number of clusters will be calculated automatically"
-                             " based on this, and vice versa.")
-        if ((num_clusters_training or num_clusters_validation) and
-                None in (num_clusters_training, num_clusters_validation)):
-            raise ValueError("If setting the number of clusters, you must set"
-                             " the num_clusters option for all dataset splits")
-        if ((max_nodes_per_batch_training or max_nodes_per_batch_validation) and
-                None in (max_nodes_per_batch_training, max_nodes_per_batch_validation)):
-            raise ValueError("If setting the max nodes per batch, you must set"
-                             " the max_nodes_per_batch option for all dataset"
-                             " splits.")
+        if (max_nodes_per_batch_training or max_nodes_per_batch_validation) and (
+            num_clusters_training or num_clusters_validation
+        ):
+            raise ValueError(
+                "Set either max_nodes_per_batch for both training"
+                "and validation or num_clusters for both training and"
+                " validation. If max_nodes_per_batch is used, the"
+                " number of clusters will be calculated automatically"
+                " based on this, and vice versa."
+            )
+        if (num_clusters_training or num_clusters_validation) and None in (
+            num_clusters_training,
+            num_clusters_validation,
+        ):
+            raise ValueError(
+                "If setting the number of clusters, you must set" " the num_clusters option for all dataset splits"
+            )
+        if (max_nodes_per_batch_training or max_nodes_per_batch_validation) and None in (
+            max_nodes_per_batch_training,
+            max_nodes_per_batch_validation,
+        ):
+            raise ValueError(
+                "If setting the max nodes per batch, you must set"
+                " the max_nodes_per_batch option for all dataset"
+                " splits."
+            )
         return values
 
     @validator("dataset_name", always=True)
     def dataset_name_match(cls, value):
         if value not in ALLOWED_DATASET_TYPE:
-            raise ValueError(f"Unrecognised dataset name: `{value}`."
-                             f" Choose one of {ALLOWED_DATASET_TYPE}")
+            raise ValueError(f"Unrecognised dataset name: `{value}`." f" Choose one of {ALLOWED_DATASET_TYPE}")
         return value
 
     @validator("method_max_edges", always=True)
     def method_max_edges_allowed(cls, value):
         if value not in ALLOWED_MAX_EDGES_COMPUTE_METHOD:
-            raise ValueError(f"Unrecognised method to compute the maximum number of edges:"
-                             f"`{value}`. Choose one of {ALLOWED_MAX_EDGES_COMPUTE_METHOD}.")
+            raise ValueError(
+                f"Unrecognised method to compute the maximum number of edges:"
+                f"`{value}`. Choose one of {ALLOWED_MAX_EDGES_COMPUTE_METHOD}."
+            )
         return value
 
     @validator("logging", always=True)
     def logging_type_match(cls, value):
         if value not in ALLOWED_LOGGING_TYPE:
-            raise ValueError(f"Unrecognised logging type: `{value}`."
-                             f" Choose one of {ALLOWED_LOGGING_TYPE}")
+            raise ValueError(f"Unrecognised logging type: `{value}`." f" Choose one of {ALLOWED_LOGGING_TYPE}")
         return value

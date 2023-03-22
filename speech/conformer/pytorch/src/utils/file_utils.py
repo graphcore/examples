@@ -10,18 +10,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-'''
+"""
 This script has been adapted from some of the original WeNet repo found here:
 [
     https://github.com/wenet-e2e/wenet/blob/main/wenet/utils/file_utils.py
 ]
-'''
+"""
 import re
 
 
 def read_lists(list_file):
     lists = []
-    with open(list_file, 'r', encoding='utf8') as fin:
+    with open(list_file, "r", encoding="utf8") as fin:
         for line in fin:
             lists.append(line.strip())
     return lists
@@ -49,20 +49,23 @@ def read_non_lang_symbols(non_lang_sym_path):
         non_lang_syms_pattern = re.compile(r"(\[[^\[\]]+\]|<[^<>]+>|{[^{}]+})")
         for sym in syms:
             if non_lang_syms_pattern.fullmatch(sym) is None:
+
                 class BadSymbolFormat(Exception):
                     pass
+
                 raise BadSymbolFormat(
                     "Non-linguistic symbols should be "
                     "formatted in {xxx}/<xxx>/[xxx], consider"
-                    " modify '%s' to meet the requirment. "
+                    " modify '%s' to meet the requirement. "
                     "More details can be found in discussions here : "
-                    "https://github.com/wenet-e2e/wenet/pull/819" % (sym))
+                    "https://github.com/wenet-e2e/wenet/pull/819" % (sym)
+                )
         return syms
 
 
 def read_symbol_table(symbol_table_file):
     symbol_table = {}
-    with open(symbol_table_file, 'r', encoding='utf8') as fin:
+    with open(symbol_table_file, "r", encoding="utf8") as fin:
         for line in fin:
             arr = line.strip().split()
             assert len(arr) == 2

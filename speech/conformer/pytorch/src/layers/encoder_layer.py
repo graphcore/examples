@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/conformer/encoder_layer.py
 ]
 Main change:
     replace the BatchNorm to LayerNorm
-'''
+"""
 
 import torch
 from torch import nn
@@ -130,9 +130,7 @@ class EncoderLayer(nn.Module):
             residual = x
             if self.normalize_before:
                 x = self.norm_ff_macaron(x)
-            x = residual + stoch_layer_coeff * self.ff_scale * self.dropout(
-                self.feed_forward_macaron(x)
-            )
+            x = residual + stoch_layer_coeff * self.ff_scale * self.dropout(self.feed_forward_macaron(x))
             if not self.normalize_before:
                 x = self.norm_ff_macaron(x)
 
@@ -167,9 +165,7 @@ class EncoderLayer(nn.Module):
         residual = x
         if self.normalize_before:
             x = self.norm_ff(x)
-        x = residual + stoch_layer_coeff * self.ff_scale * self.dropout(
-            self.feed_forward(x)
-        )
+        x = residual + stoch_layer_coeff * self.ff_scale * self.dropout(self.feed_forward(x))
         if not self.normalize_before:
             x = self.norm_ff(x)
 

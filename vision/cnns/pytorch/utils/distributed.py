@@ -19,7 +19,9 @@ def init_popdist(args):
     hvd.init()
     args.use_popdist = True
     if popdist.getNumTotalReplicas() != args.replicas:
-        logging.warn(f"The number of replicas is overridden by poprun. The new value is {popdist.getNumTotalReplicas()}.")
+        logging.warn(
+            f"The number of replicas is overridden by poprun. The new value is {popdist.getNumTotalReplicas()}."
+        )
     args.replicas = int(popdist.getNumLocalReplicas())
     args.popdist_rank = popdist.getInstanceIndex()
     args.popdist_size = popdist.getNumInstances()

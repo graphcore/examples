@@ -6,11 +6,11 @@ from tensorflow.python import ipu
 import unittest
 from pathlib import Path
 import sys
+
 sys.path.append(str(Path(__file__).absolute().parent.parent))
 
 
 class TestDistributedBatchNorm(unittest.TestCase):
-
     def run_model_on_ipu(self, seed: int, replicas: int, distributed_batch_norm_replica_group_size: int):
 
         input_shape = (3, 3, 1)
@@ -21,8 +21,7 @@ class TestDistributedBatchNorm(unittest.TestCase):
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = replicas
         cfg.device_connection.enable_remote_buffers = True
-        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
-        cfg.norms.experimental.distributed_batch_norm_replica_group_size = (distributed_batch_norm_replica_group_size)
+        cfg.norms.experimental.distributed_batch_norm_replica_group_size = distributed_batch_norm_replica_group_size
         cfg.configure_ipu_system()
 
         np.random.seed(seed)
@@ -49,16 +48,19 @@ class TestDistributedBatchNorm(unittest.TestCase):
 
                 input_layer = tf.keras.Input(shape=input_shape)
                 x = input_layer
-                x = tf.keras.layers.BatchNormalization(name='bn0')(x)
+                x = tf.keras.layers.BatchNormalization(name="bn0")(x)
                 x = tf.keras.layers.Flatten()(x)
-                x = tf.keras.layers.Dense(1, kernel_initializer='ones', use_bias=False,
-                                          trainable=False, name='dense')(x)
+                x = tf.keras.layers.Dense(1, kernel_initializer="ones", use_bias=False, trainable=False, name="dense")(
+                    x
+                )
                 model = tf.keras.Model(input_layer, x)
                 model.build(input_shape=(micro_batch_size, *input_shape))
-                model.compile(optimizer=optimizer,
-                              loss=loss_fn,
-                              metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
-                              steps_per_execution=steps_per_execution)
+                model.compile(
+                    optimizer=optimizer,
+                    loss=loss_fn,
+                    metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
+                    steps_per_execution=steps_per_execution,
+                )
                 model.fit(ds, steps_per_epoch=steps_per_execution, epochs=1)
 
             return model
@@ -68,7 +70,9 @@ class TestDistributedBatchNorm(unittest.TestCase):
 
     def test_distributed_batch_norm(self):
         pred_without_dist_batch_norm = self.run_model_on_ipu(
-            seed=1, replicas=2, distributed_batch_norm_replica_group_size=1)
+            seed=1, replicas=2, distributed_batch_norm_replica_group_size=1
+        )
         pred_with_dist_batch_norm = self.run_model_on_ipu(
-            seed=1, replicas=2, distributed_batch_norm_replica_group_size=2)
+            seed=1, replicas=2, distributed_batch_norm_replica_group_size=2
+        )
         assert pred_with_dist_batch_norm.numpy().sum() != pred_without_dist_batch_norm.numpy().sum()

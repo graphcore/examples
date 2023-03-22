@@ -45,12 +45,8 @@ class AttentionHeads(addons.Module):
 
         self.qkv = Linear(3 * self.config.model.hidden_size // n_heads_groups, replica_grouping=replica_grouping)
 
-    def build(self,
-              x: popxl.Tensor,
-              mask: popxl.Tensor,
-              seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
-        mask = mask.reshape(
-            (self.config.execution.micro_batch_size, 1, 1, self.config.model.sequence_length))
+    def build(self, x: popxl.Tensor, mask: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
+        mask = mask.reshape((self.config.execution.micro_batch_size, 1, 1, self.config.model.sequence_length))
 
         qkv_act = self.qkv(x)
         q_act, k_act, v_act = ops.split(qkv_act, 3, axis=-1)
@@ -70,8 +66,7 @@ class AttentionHeads(addons.Module):
 
         if not self.config.model.eval:
             assert seed is not None, "A seed Tensor must be provided when creating a non-eval model."
-            v_scores = ops.dropout(
-                v_scores, seed, p=self.config.model.dropout_prob)
+            v_scores = ops.dropout(v_scores, seed, p=self.config.model.dropout_prob)
 
         z = v_scores @ v_act
 
@@ -83,7 +78,8 @@ class AttentionHeads(addons.Module):
 
     @staticmethod
     def hf_mapping(
-            config: BertConfig, vars: NamedTensors, hf_model: BertSelfAttention) -> Dict[popxl.Tensor, np.ndarray]:
+        config: BertConfig, vars: NamedTensors, hf_model: BertSelfAttention
+    ) -> Dict[popxl.Tensor, np.ndarray]:
         dtype = config.model.dtype
 
         query_w = to_numpy(hf_model.query.weight, dtype).T
@@ -108,10 +104,7 @@ class SelfAttention(addons.Module):
         self.output = Linear(self.config.model.hidden_size)
         self.norm = LayerNorm()
 
-    def build(self,
-              x: popxl.Tensor,
-              mask: popxl.Tensor,
-              seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
+    def build(self, x: popxl.Tensor, mask: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
         heads_seed = None
         if not self.config.model.eval:
             assert seed is not None, "A seed Tensor must be provided when creating a non-eval model."
@@ -129,7 +122,8 @@ class SelfAttention(addons.Module):
 
     @staticmethod
     def hf_mapping(
-            config: BertConfig, variables: NamedTensors, hf_model: BertAttention) -> Dict[popxl.Tensor, np.ndarray]:
+        config: BertConfig, variables: NamedTensors, hf_model: BertAttention
+    ) -> Dict[popxl.Tensor, np.ndarray]:
         dtype = config.model.dtype
 
         return {
@@ -137,5 +131,5 @@ class SelfAttention(addons.Module):
             variables.output.bias: to_numpy(hf_model.output.dense.bias, dtype),
             variables.norm.weight: to_numpy(hf_model.output.LayerNorm.weight, dtype),
             variables.norm.bias: to_numpy(hf_model.output.LayerNorm.bias, dtype),
-            **AttentionHeads.hf_mapping(config, variables.heads, hf_model.self)
+            **AttentionHeads.hf_mapping(config, variables.heads, hf_model.self),
         }

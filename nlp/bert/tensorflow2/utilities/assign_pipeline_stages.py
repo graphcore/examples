@@ -23,12 +23,16 @@ class PipelineStagesAssigner:
         valid_names = tuple(i for p in self.pipeline_names.values() for i in p if isinstance(i, str))
         valid_types = tuple(i for p in self.pipeline_names.values() for i in p if inspect.isclass(i))
         for assignment in assignments:
-            if assignment.layer.name not in valid_names \
-                    and not isinstance(assignment.layer, valid_types) \
-                    and assignment.layer.name not in self.pipeline_allocate_previous \
-                    and not isinstance(assignment.layer, self.pipeline_allocate_previous):
-                raise ValueError(f"Layer with class {type(assignment.layer)} with name {assignment.layer.name} "
-                                 f"is not in the valid pipeline classes.")
+            if (
+                assignment.layer.name not in valid_names
+                and not isinstance(assignment.layer, valid_types)
+                and assignment.layer.name not in self.pipeline_allocate_previous
+                and not isinstance(assignment.layer, self.pipeline_allocate_previous)
+            ):
+                raise ValueError(
+                    f"Layer with class {type(assignment.layer)} with name {assignment.layer.name} "
+                    f"is not in the valid pipeline classes."
+                )
         return None
 
     @staticmethod
@@ -50,23 +54,25 @@ class PipelineStagesAssigner:
             valid_elements = [i for k in stage_slots.keys() for i in self.pipeline_names[k]]
             valid_names = tuple(name for name in valid_elements if isinstance(name, str))
             valid_types = tuple(name for name in valid_elements if inspect.isclass(name))
-            if layer.name in valid_names or (isinstance(layer, valid_types) and pipeline_index[type(layer)] != 'hid'):
+            if layer.name in valid_names or (isinstance(layer, valid_types) and pipeline_index[type(layer)] != "hid"):
                 return i
-            if isinstance(layer, valid_types) and pipeline_index[type(layer)] == 'hid' and stage_slots['hid'] > 0:
-                num_layers_per_stage[i]['hid'] -= 1
+            if isinstance(layer, valid_types) and pipeline_index[type(layer)] == "hid" and stage_slots["hid"] > 0:
+                num_layers_per_stage[i]["hid"] -= 1
                 return i
-        raise Exception(f"No available slot for layer `{layer.name}` of type `{type(layer)}` "
-                        f"with given pipeline stages.")
+        raise Exception(
+            f"No available slot for layer `{layer.name}` of type `{type(layer)}` " f"with given pipeline stages."
+        )
 
 
 class GluePipelineStagesAssigner(PipelineStagesAssigner):
-
     def assign_glue_pipeline_stages(self, assignments, pipeline_stages):
         dropout_layer_name = assignments[-2].layer.name
         if "dropout" not in dropout_layer_name:
-            raise ValueError("Error in allocating the TFBertForSequenceClassification " +
-                             "model to pipeline stages.In attempting to replace the name " +
-                             "of the final dropout layer, a name containing 'dropout' was " +
-                             "expected. Found instead {dropout_layer_name}.")
+            raise ValueError(
+                "Error in allocating the TFBertForSequenceClassification "
+                + "model to pipeline stages.In attempting to replace the name "
+                + "of the final dropout layer, a name containing 'dropout' was "
+                + "expected. Found instead {dropout_layer_name}."
+            )
         self.pipeline_names["glue_head"].append(dropout_layer_name)
         return super().assign_pipeline_stages(assignments, pipeline_stages)

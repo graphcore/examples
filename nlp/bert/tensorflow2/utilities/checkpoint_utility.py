@@ -14,9 +14,9 @@ def check_loaded_weights(model, all_initial_weights):
         logging.info(f"No. of weights in layer: {len(weights)}")
         for weight, initial_weight in zip(weights, initial_weights):
             if np.array_equal(weight, initial_weight):
-                logging.warning(f'------Checkpoint does not contain weights for weight {weight.shape}------')
+                logging.warning(f"------Checkpoint does not contain weights for weight {weight.shape}------")
             else:
-                logging.info(f'++++++Checkpoint contains weights for weight {weight.shape}++++++')
+                logging.info(f"++++++Checkpoint contains weights for weight {weight.shape}++++++")
 
 
 def load_checkpoint_into_model(model, pretrained_ckpt_path, expect_partial=False):
@@ -37,7 +37,8 @@ def load_checkpoint_into_model(model, pretrained_ckpt_path, expect_partial=False
         logging.error(
             f"Checkpoint path provided is either invalid cannot be found. "
             "Please provide a valid path to a directory, .ckpt or .ckpt.index "
-            "file. exiting.")
+            "file. exiting."
+        )
         sys.exit(1)
 
     loaded_ckpt = model.load_weights(ckpt)

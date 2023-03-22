@@ -4,13 +4,13 @@ helpFunction()
 {
    echo ""
    echo "Usage (int the case of 4 hosts): $0 -n host1,host2,host3,host4 " \
-        "-s host0 -o interface1 -b interface2 -p partition_name -c cluster_name"
+        "-s host0 -o interface1 -b interface2 -p partition_name -c allocation_name"
    echo -e "\t-n Hostnames/IPs of the hosts"
    echo -e "\t-s Hostname/IP of the controller server"
    echo -e "\t-o network interface of the control plane"
    echo -e "\t-b network interface of the data plane"
    echo -e "\t-p partition name"
-   echo -e "\t-c cluster name"
+   echo -e "\t-c allocation name"
    exit 1
 }
 
@@ -22,13 +22,13 @@ do
       o ) interface1="$OPTARG" ;;
       b ) interface2="$OPTARG" ;;
       p ) partition="$OPTARG" ;;
-      c ) cluster="$OPTARG" ;;
+      c ) allocation="$OPTARG" ;;
       ? ) helpFunction ;;
    esac
 done
 
 if [ -z "$hosts" ] || [ -z "$server" ] || [ -z "$interface1" ] || \
-    [ -z "$interface2" ] || [ -z "$partition" ] || [ -z "$cluster" ]
+    [ -z "$interface2" ] || [ -z "$partition" ] || [ -z "$allocation" ]
 then
    echo "Some or all of the parameters are empty";
    helpFunction
@@ -58,7 +58,7 @@ export IPUOF_VIPU_API_TIMEOUT=1000
 export POPLAR_LOG_LEVEL=WARN
 export POPLAR_ENGINE_OPTIONS='{"target.hostSyncTimeout": "3000"}'
 
-poprun 
+poprun
       --host $hosts \
       --vv \
       --reset-partition=no \
@@ -67,7 +67,7 @@ poprun
       --mpi-global-args="--output-filename output_poprun --mca oob_tcp_if_include $interface1 --mca btl_tcp_if_include $interface2" \
       --mpi-local-args="-x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x CPATH -x IPUOF_VIPU_API_TIMEOUT -x POPLAR_LOG_LEVEL -x POPLAR_SDK_ENABLED -x POPLAR_ENGINE_OPTIONS" \
       --vipu-partition=$partition \
-      --vipu-cluster=$cluster \
+      --vipu-allocation=$allocation \
       --ipus-per-replica 4 \
       --num-replicas=$replicas \
       --num-instances=$instances \

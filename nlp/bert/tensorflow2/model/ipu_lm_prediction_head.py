@@ -18,19 +18,16 @@
 
 import tensorflow as tf
 from tensorflow.python import ipu
-from transformers.models.bert.modeling_tf_bert import (
-    BertConfig,
-    shape_list,
-    TFBertPredictionHeadTransform
-)
+from transformers.models.bert.modeling_tf_bert import BertConfig, shape_list, TFBertPredictionHeadTransform
 
 
 class IpuTFBertLMPredictionHead(tf.keras.layers.Layer):
     """Modified TFBertLMPredictionHead object that contains a serialized
-       matmul to improve memory layout. This is used in conjuntion with
-       the TFBertEmbeddings which uses the weights in the input embeddings.
-       For best results, the serialization factor should be the same in
-       both cases."""
+    matmul to improve memory layout. This is used in conjunction with
+    the TFBertEmbeddings which uses the weights in the input embeddings.
+    For best results, the serialization factor should be the same in
+    both cases."""
+
     def __init__(
         self,
         config: BertConfig,
@@ -73,11 +70,13 @@ class IpuTFBertLMPredictionHead(tf.keras.layers.Layer):
             hidden_states = self.transform(hidden_states=hidden_states)
         seq_length = shape_list(hidden_states)[1]
         hidden_states = tf.reshape(tensor=hidden_states, shape=[-1, self.hidden_size])
-        hidden_states = ipu.math_ops.serialized_matmul(a=hidden_states,
-                                                       b=self.input_embeddings.weight,
-                                                       transpose_b=True,
-                                                       serialization_factor=self.serialization_factor,
-                                                       serialization_dimension="b_rows")
+        hidden_states = ipu.math_ops.serialized_matmul(
+            a=hidden_states,
+            b=self.input_embeddings.weight,
+            transpose_b=True,
+            serialization_factor=self.serialization_factor,
+            serialization_dimension="b_rows",
+        )
         hidden_states = tf.reshape(tensor=hidden_states, shape=[-1, seq_length, self.vocab_size])
         if self.use_prediction_bias:
             hidden_states = tf.nn.bias_add(value=hidden_states, bias=self.bias)

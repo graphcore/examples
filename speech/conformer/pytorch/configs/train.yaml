@@ -40,7 +40,7 @@ loss_fn:
   smoothing: 0.1
   normalize_length: false
 
-loss_weight:  
+loss_weight:
   ctc_weight: 0.3
 
 vocab:
@@ -49,7 +49,7 @@ vocab:
   unk: <unk>
   sos: <sos/eos>
   eos: <sos/eos>
-  vocab_path: './data/dict/lang_char.txt'  
+  vocab_path: './data/dict/lang_char.txt'
 
 
 train_dataset:
@@ -57,36 +57,36 @@ train_dataset:
   data_list: './data/train/data.list'
   feature_max_length: *feature_max_length
   target_max_length: *target_max_length
-  dtype: &type_data 'FLOAT16' 
+  dtype: &type_data 'FLOAT16'
   use_generated_data: false
   random_seed: &random_seed 1234
   is_spec_aug: false
-  
+
 train_conf:
-  filter_conf: 
+  filter_conf:
       max_length: *feature_max_length
       min_length: 0
       token_max_length: *target_max_length
       token_min_length: 1
-  resample_conf: 
+  resample_conf:
       resample_rate: 16000
   speed_perturb: True
-  fbank_conf: 
+  fbank_conf:
       num_mel_bins: 80
       frame_shift: 10
       frame_length: 25
       dither: 0.1
   spec_aug: True
-  spec_aug_conf: 
+  spec_aug_conf:
       num_t_mask: 2
       num_f_mask: 2
       max_t: 50
       max_f: 10
   shuffle: True
-  shuffle_conf: 
+  shuffle_conf:
       shuffle_size: 1500
   sort: True
-  sort_conf: 
+  sort_conf:
       sort_size: 500
   batch_conf:
     batch_type: 'static'

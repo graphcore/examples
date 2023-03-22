@@ -13,4 +13,3 @@ if [ ! -d ${DATA_DIR} ]; then
   tar jxvf ${LJS_ARCH}
   rm -f ${LJS_ARCH}
 fi
-

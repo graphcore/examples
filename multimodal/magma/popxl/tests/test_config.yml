@@ -1,0 +1,21 @@
+visual:
+  width: 12 # default 96 -> 1/8 default
+  image_resolution: 48 # default 384 -> 1/8 default
+  precision: 'float32'
+transformer:
+  sequence_length: 8
+  embedding:
+    vocab_size: 128
+    real_vocab_size: 128
+  hidden_size: 64
+  layers: 2
+  attention:
+    heads: 8
+    rotary_dim: 8
+  ff_adapter:
+    downsample_factor: 4
+  precision: "float32"
+  execution:
+    micro_batch_size: 1
+    attention_serialisation: 2
+    tensor_parallel: 2

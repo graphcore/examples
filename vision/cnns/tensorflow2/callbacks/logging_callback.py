@@ -10,7 +10,7 @@ units = {
     "%CPU memory": "%",
     "Compilation Time": "s",
     "validation_accuracy": "%",
-    "training_accuracy": "%"
+    "training_accuracy": "%",
 }
 
 

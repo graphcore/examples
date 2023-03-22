@@ -44,18 +44,17 @@ def cp_path_to_dir(cp_path, tag):
     if cp_path.is_dir():
         return cp_path
     path_sans_extension = cp_path.parent / cp_path.stem
-    cp_dir = Path(f'{path_sans_extension}-{tag}-cp')
+    cp_dir = Path(f"{path_sans_extension}-{tag}-cp")
     return cp_dir
 
 
 def main(args):
     if not args.generated_data and not args.synthetic_data:
-        assert Path(args.input_folder).exists(), f'The path {args.input_folder} was not found.'
+        assert Path(args.input_folder).exists(), f"The path {args.input_folder} was not found."
 
     abs_pathd = os.path.abspath(args.checkpoint_output_dir)
     os.makedirs(abs_pathd, exist_ok=True)
-    log = Logger(abs_pathd+"/"+datetime.datetime.now().strftime('%Y.%m.%d-%H:%M:%S')+'.log',
-                 level='INFO')
+    log = Logger(abs_pathd + "/" + datetime.datetime.now().strftime("%Y.%m.%d-%H:%M:%S") + ".log", level="INFO")
 
     # vocab size
 
@@ -71,21 +70,19 @@ def main(args):
     if exists(args.pretrained_checkpoint):
         dalle_path = Path(args.pretrained_checkpoint)
 
-        assert dalle_path.exists(), 'DALL-E model file does not exist'
-        loaded_obj = torch.load(str(dalle_path), map_location='cpu')
+        assert dalle_path.exists(), "DALL-E model file does not exist"
+        loaded_obj = torch.load(str(dalle_path), map_location="cpu")
 
-        dalle_params, vae_params, weights = loaded_obj['hparams'], loaded_obj['vae_params'], loaded_obj['weights']
-        opt_state = loaded_obj.get('opt_state')
-        scheduler_state = loaded_obj.get('scheduler_state')
+        dalle_params, vae_params, weights = loaded_obj["hparams"], loaded_obj["vae_params"], loaded_obj["weights"]
+        opt_state = loaded_obj.get("opt_state")
+        scheduler_state = loaded_obj.get("scheduler_state")
 
         vae = VQGanVAE(args.vqgan_model_path, args.vqgan_config_path)
 
-        dalle_params = dict(
-            **dalle_params
-        )
-        resume_epoch = loaded_obj.get('epoch', 0)
+        dalle_params = dict(**dalle_params)
+        resume_epoch = loaded_obj.get("epoch", 0)
     else:
-        print('using pretrained VAE for encoding images to tokens')
+        print("using pretrained VAE for encoding images to tokens")
         vae_params = None
 
         vae = VQGanVAE(args.vqgan_model_path, args.vqgan_config_path)
@@ -98,7 +95,7 @@ def main(args):
             heads=args.num_attention_heads,
             dim_head=args.dim_head,
             loss_img_weight=args.loss_img_weight,
-            attn_types=tuple(args.attn_types.split(',')),
+            attn_types=tuple(args.attn_types.split(",")),
             ff_dropout=args.ff_dropout,
             attn_dropout=args.attn_dropout,
             sandwich_norm=args.sandwich_norm,
@@ -107,7 +104,7 @@ def main(args):
             layers_per_ipu=args.layers_per_ipu,
             cls_ipu_id=args.cls_ipu_id,
             fp16=args.fp16,
-            byteio=args.byteio
+            byteio=args.byteio,
         )
         resume_epoch = 0
 
@@ -133,9 +130,7 @@ def main(args):
     opt = get_optimizer(args, dalle)
     if exists(args.pretrained_checkpoint) and opt_state:
         opt.load_state_dict(opt_state)
-    poptorch_dalle = poptorch.trainingModel(dalle,
-                                            options=opts,
-                                            optimizer=opt)
+    poptorch_dalle = poptorch.trainingModel(dalle, options=opts, optimizer=opt)
     if args.lr_scheduler == "ReduceLROnPlateau":
         scheduler = ReduceLROnPlateau(
             opt,
@@ -147,9 +142,7 @@ def main(args):
             verbose=True,
         )
     else:
-        lr_lambda = partial(get_lr_sched, scheduler=args.lr_scheduler,
-                            num_train_steps=args.epochs,
-                            warmup_ratio=0.2)
+        lr_lambda = partial(get_lr_sched, scheduler=args.lr_scheduler, num_train_steps=args.epochs, warmup_ratio=0.2)
         scheduler = LambdaLR(opt, lr_lambda=lr_lambda)
 
     if exists(args.pretrained_checkpoint) and scheduler_state:
@@ -157,11 +150,7 @@ def main(args):
 
     # experiment tracker
 
-    model_config = dict(
-        depth=args.num_hidden_layers,
-        heads=args.num_attention_heads,
-        dim_head=args.dim_head
-    )
+    model_config = dict(depth=args.num_hidden_layers, heads=args.num_attention_heads, dim_head=args.dim_head)
 
     if args.wandb and (not args.use_popdist or args.popdist_rank == 0):
         run = wandb.init(
@@ -170,26 +159,25 @@ def main(args):
             entity=None,
             resume=False,
             config=model_config,
-            settings=wandb.Settings(console='off')
+            settings=wandb.Settings(console="off"),
         )
-
 
     def save_model(path, epoch=0):
         if not path:
             return
 
         save_obj = {
-            'hparams': dalle_params,
-            'vae_params': vae_params,
-            'epoch': epoch,
+            "hparams": dalle_params,
+            "vae_params": vae_params,
+            "epoch": epoch,
         }
 
         save_obj = {
             **save_obj,
-            'weights': dalle.state_dict(),
-            'opt_state': opt.state_dict(),
+            "weights": dalle.state_dict(),
+            "opt_state": opt.state_dict(),
         }
-        save_obj['scheduler_state'] = (scheduler.state_dict() if scheduler else None)
+        save_obj["scheduler_state"] = scheduler.state_dict() if scheduler else None
         filename = f"dalle_{epoch}.pt"
         save_path = os.path.join(path, filename)
         torch.save(save_obj, save_path)
@@ -234,25 +222,24 @@ def main(args):
             if not args.use_popdist or args.popdist_rank == 0:
                 num_instances = args.popdist_size if args.use_popdist else 1
                 step_throughput = samples_per_step * num_instances / step_length
-                msg = ("Epoch: {:.2f}/{} "
-                       "Step: {}/{} "
-                       "Lr: {:.6f} "
-                       "loss: {:.3f} "
-                       "throughput: {:.2f} samples/sec"
-                       ).format(epoch, args.epochs,
-                                current_step, training_steps,
-                                opt.param_groups[0]['lr'],
-                                mean_loss,
-                                step_throughput)
+                msg = (
+                    "Epoch: {:.2f}/{} " "Step: {}/{} " "Lr: {:.6f} " "loss: {:.3f} " "throughput: {:.2f} samples/sec"
+                ).format(
+                    epoch,
+                    args.epochs,
+                    current_step,
+                    training_steps,
+                    opt.param_groups[0]["lr"],
+                    mean_loss,
+                    step_throughput,
+                )
                 log.logger.info(msg)
                 if args.wandb and (not args.use_popdist or args.popdist_rank == 0):
-                    wandb.log({"LR": opt.param_groups[0]['lr'],
-                               "Throughput": step_throughput,
-                               "Loss": mean_loss})
+                    wandb.log({"LR": opt.param_groups[0]["lr"], "Throughput": step_throughput, "Loss": mean_loss})
 
             start_step = time.perf_counter()
             if i != 0 and i % args.checkpoint_save_steps == 0:
-                save_model(args.checkpoint_output_dir, epoch=epoch+1)
+                save_model(args.checkpoint_output_dir, epoch=epoch + 1)
 
         if args.lr_scheduler == "ReduceLROnPlateau":
             scheduler.step(mean_loss)
@@ -260,7 +247,7 @@ def main(args):
             scheduler.step()
         poptorch_dalle.setOptimizer(opt)
 
-        save_model(args.checkpoint_output_dir, epoch=epoch+1)
+        save_model(args.checkpoint_output_dir, epoch=epoch + 1)
 
     if args.wandb and (not args.use_popdist or args.popdist_rank == 0):
         wandb.finish()
@@ -274,11 +261,12 @@ def main(args):
         log.logger.info(f"device_iterations: {args.device_iterations}")
         log.logger.info(f"training_steps: {training_steps}")
         duration_run = stop_train - start_train
-        num_samples = samples_per_step * num_instances * (training_steps-1)
+        num_samples = samples_per_step * num_instances * (training_steps - 1)
         overall_throughput = num_samples / total_compute_time
         log.logger.info(f"Training time: {duration_run:.3f} secs")
         log.logger.info("throughput: {:5f} samples/sec.".format(overall_throughput))
         log.logger.info("---------------------------------------")
+
 
 if __name__ == "__main__":
     # argument parsing

@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-'''
+"""
 This script has been adapted from some of the original WeNet repo found here:
 [
     https://github.com/wenet-e2e/wenet/blob/main/wenet/utils/common.py
 ]
-'''
+"""
 """Unility functions for Transformer."""
 
 import math
@@ -53,13 +53,12 @@ def pad_list(xs: List[torch.Tensor], pad_value: int):
     pad = torch.zeros(n_batch, max_len, dtype=xs[0].dtype, device=xs[0].device)
     pad = pad.fill_(pad_value)
     for i in range(n_batch):
-        pad[i, :xs[i].size(0)] = xs[i]
+        pad[i, : xs[i].size(0)] = xs[i]
 
     return pad
 
 
-def add_sos_eos(ys_pad: torch.Tensor, sos: int, eos: int,
-                ignore_id: int) -> Tuple[torch.Tensor, torch.Tensor]:
+def add_sos_eos(ys_pad: torch.Tensor, sos: int, eos: int, ignore_id: int) -> Tuple[torch.Tensor, torch.Tensor]:
     """Add <sos> and <eos> labels.
 
     Args:
@@ -102,9 +101,7 @@ def add_sos_eos(ys_pad: torch.Tensor, sos: int, eos: int,
     return ys_in, ys_out
 
 
-def reverse_pad_list(ys_pad: torch.Tensor,
-                     ys_lens: torch.Tensor,
-                     pad_value: float = -1.0) -> torch.Tensor:
+def reverse_pad_list(ys_pad: torch.Tensor, ys_lens: torch.Tensor, pad_value: float = -1.0) -> torch.Tensor:
     """Reverse padding for the list of tensors.
 
     Args:
@@ -124,14 +121,11 @@ def reverse_pad_list(ys_pad: torch.Tensor,
                 [9, 8, 0, 0]])
 
     """
-    r_ys_pad = pad_sequence([(torch.flip(y.int()[:i], [0]))
-                             for y, i in zip(ys_pad, ys_lens)], True,
-                            pad_value)
+    r_ys_pad = pad_sequence([(torch.flip(y.int()[:i], [0])) for y, i in zip(ys_pad, ys_lens)], True, pad_value)
     return r_ys_pad
 
 
-def th_accuracy(pad_outputs: torch.Tensor, pad_targets: torch.Tensor,
-                ignore_label: int) -> float:
+def th_accuracy(pad_outputs: torch.Tensor, pad_targets: torch.Tensor, ignore_label: int) -> float:
     """Calculate accuracy.
 
     Args:
@@ -143,11 +137,9 @@ def th_accuracy(pad_outputs: torch.Tensor, pad_targets: torch.Tensor,
         float: Accuracy value (0.0 - 1.0).
 
     """
-    pad_pred = pad_outputs.view(pad_targets.size(0), pad_targets.size(1),
-                                pad_outputs.size(1)).argmax(2)
+    pad_pred = pad_outputs.view(pad_targets.size(0), pad_targets.size(1), pad_outputs.size(1)).argmax(2)
     mask = pad_targets != ignore_label
-    numerator = torch.sum(
-        pad_pred.masked_select(mask) == pad_targets.masked_select(mask))
+    numerator = torch.sum(pad_pred.masked_select(mask) == pad_targets.masked_select(mask))
     denominator = torch.sum(mask)
     return float(numerator) / float(denominator)
 
@@ -163,7 +155,7 @@ def get_activation(act):
         "relu": torch.nn.ReLU,
         "selu": torch.nn.SELU,
         "swish": getattr(torch.nn, "SiLU", Swish),
-        "gelu": torch.nn.GELU
+        "gelu": torch.nn.GELU,
     }
 
     return activation_funcs[act]()
@@ -196,8 +188,8 @@ def log_add(args: List[int]) -> float:
     """
     Stable log add
     """
-    if all(a == -float('inf') for a in args):
-        return -float('inf')
+    if all(a == -float("inf") for a in args):
+        return -float("inf")
     a_max = max(args)
     lsp = math.log(sum(math.exp(a - a_max) for a in args))
     return a_max + lsp

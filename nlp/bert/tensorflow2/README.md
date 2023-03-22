@@ -1,9 +1,22 @@
 # BERT (TensorFlow2)
 Bidirectional Encoder Representations from Transformers for NLP pre-training and fine-tuning tasks (SQuAD), using the [huggingface transformers library](https://huggingface.co/docs/transformers/index), optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| TensorFlow2 | NLP | BERT | WIKI-103 | Next sentence prediction, Masked language modelling, Question/Answering | ✅  | ✅ | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) | 
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| TensorFlow 2 | NLP | BERT | WIKI-103 | Next sentence prediction, Masked language modelling, Question/Answering | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) |
+
+
+This directory demonstrates how to run the natural language model BERT (https://arxiv.org/pdf/1810.04805.pdf) on Graphcore IPUs utilising the [huggingface transformers library](https://huggingface.co/docs/transformers/index).
+
+There are two examples:
+
+1. BERT for pre-training on masked Wikipedia data - `run_pretraining.py`
+2. BERT for SQuAD (Stanford Question Answering Dataset) fine-tuning - `run_squad.py`
+
+The BERT model in these examples is taken from the Huggingface transformers library and is converted into an IPU optimised format.
+This includes dynamically replacing layers of the model with their IPU specific counterparts, outlining repeated blocks of the model, recomputation, and pipelining the model to efficiently over several Graphcore IPUs.
+The pretraining implementation of BERT uses the LAMB optimiser to capitalise on a large batch-size of 65k sequences in pre-training, and the SQuAD fine-tuning demonstrates converting a pre-existing Huggingface checkpoint.
+
 
 ## Instructions summary
 
@@ -24,7 +37,7 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
@@ -40,7 +53,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -61,6 +74,8 @@ For further information on Keras on the IPU, see the [documentation](https://doc
 pip3 install -r requirements.txt
 ```
 
+
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
 
 ## Dataset setup
 The dataset used for pretraining is WIKI-103. It can be generated from a RAW dump of Wikipedia following a five step process.
@@ -188,80 +203,36 @@ for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .
 ```
 
 **3) (Optional) Download Huggingface checkpoint**
-To quickly run finetuning you can download a pre-trained model from the Huggingface [repository](https://huggingface.co/models) and run finetuning. 
+To quickly run finetuning you can download a pre-trained model from the Huggingface [repository](https://huggingface.co/models) and run finetuning.
 The path to this checkpoint can be given in the command-line for `run_squad.py --pretrained-ckpt-path <PATH TO THE HUGGINGFACE CHECKPOINT>`.
 
 ## Running and benchmarking
 
 To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
 Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
-
-### Introduction
-This directory demonstrates how to run the natural language model BERT (https://arxiv.org/pdf/1810.04805.pdf) on Graphcore IPUs utilising the [huggingface transformers library](https://huggingface.co/docs/transformers/index). 
-
-There are two examples:
-
-1. BERT for pre-training on masked Wikipedia data - `run_pretraining.py`
-2. BERT for SQuAD (Stanford Question Answering Dataset) fine-tuning - `run_squad.py`
-
-The BERT model in these examples is taken from the Huggingface transformers library and is converted into an IPU optimised format. 
-This includes dynamically replacing layers of the model with their IPU specific counterparts, outlining repeated blocks of the model, recomputation, and pipelining the model to efficiently over several Graphcore IPUs.
-The pretraining implementation of BERT uses the LAMB optimiser to capitalise on a large batch-size of 65k sequences in pre-training, and the SQuAD fine-tuning demonstrates converting a pre-existing Huggingface checkpoint. 
+## Custom training
 
 ### Pre-training with BERT on IPU
-To validate that the machine and repository are set up correctly the BERT tiny model and sample text can be used. 
+To validate that the machine and repository are set up correctly the BERT tiny model and sample text can be used.
 
-The `tests/pretrain_tiny_test.json` file is a small model that can be used for simple experiments. Note that if you don't specify the directory where the sample text file is stored, this will default to using the whole wikipedia dataset. 
+The `tests/pretrain_tiny_test.json` file is a small model that can be used for simple experiments. Note that if you don't specify the directory where the sample text file is stored, this will default to using the whole wikipedia dataset.
 
 ```bash
 python run_pretraining.py --config tests/pretrain_tiny_test.json --dataset-dir data_utils/wikipedia/
 ```
-
-### View the pre-training results in Weights & Biases <a name="wandb"></a>
-
-This project supports Weights & Biases, a platform to keep track of machine learning experiments. A client for Weights&Biases will be installed by default and can be used during training bypassing the `--wandb` flag. 
-The user will need to manually login (see the quickstart guide [here](https://docs.wandb.ai/quickstart) and configure the project name with `--wandb-name`.)
-For more information please see https://www.wandb.com/.
-
-Once logged into wandb logging can be activated by toggling the `log_to_wandb` option in the config file. 
-You can also name your wandb run with the flag `--name <YOUR RUN NAME HERE>`.
-
-### Run Pre-Training Phase 1 <a name="large_wiki"></a>
-
-Pre-Training BERT Phase 1 uses sequence length 128, and uses masked Wikipedia data to learn word and position embeddings - task specific performance is later tuned with finetuning.
-This can be thought of as training the body of the model while the finetuning provides performance for specific heads.
-
-The pre-training is managed by the `run_pretraining.py` script and the model configuration by the config files in `configs/`.
-Provided configs are for `BASE` and `LARGE`, tuned to run on a Graphcore IPU POD system with 16 IPUs.
-
-To run pre-training for BERT Base use the following command:
-
-```bash
-python3 run_pretraining.py --config configs/pretrain_base_128_phase1.json
-```
-
-Swapping the config for `pretrain_large_128.phase1.json` will train the BERT Large model. 
-The path to the dataset is specified in the config, so ensure the path is correct for your machine, or give the path directly in the command-line with `--dataset-dir /localdata/datasets/wikipedia/128/`.
-
-The results of this run can be logged to Weights and Biases. 
-
-The resulting MLM loss curve will look like the following figure. You should see the double descent, characteristic of BERT pre-training, over the first 2000 steps before the loss plateaus to a value of approximately `1.4`. The exact result will vary depending on the Wikipedia dump and stochasticity.
-
-<img src=./figs/MLM_loss_phase1.png width=80% height=80%>
 
 ### Run Pre-Training Phase 2  <a name="large_wiki_2"></a>
 
@@ -280,19 +251,54 @@ Provided are the scripts to fine-tune BERT on the Stanford Question Answering Da
 To run on SQuAD, you will first need to download the dataset. The necessary training data can be found at the following link:
 [train-v1.1.json](https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json)
 
-Place the data in a directory `squad/` parallel to the Wikipedia data, the expected path can be found in the `configs/squad_base.json` file. 
+Place the data in a directory `squad/` parallel to the Wikipedia data, the expected path can be found in the `configs/squad_base.json` file.
 
-To run BERT fine-tuning on SQuAD requires the same set-up as for pre-training, follow the steps in [Prepare Environment](#prep_env) to activate the SDK and install the required packages. 
+To run BERT fine-tuning on SQuAD requires the same set-up as for pre-training, follow the steps in [Prepare Environment](#prep_env) to activate the SDK and install the required packages.
 
 The fine-tuning for a Large model on SQuAD 1.1 can be run with the following command:
 
 ``` bash
-python3 run_squad.py configs/squad_base.json 
+python3 run_squad.py configs/squad_base.json
 ```
 
 After fine-tuning the predictions file will be generated and the results evaluated.
 You should expect to see results for BERT Base approximately as:
 `{"f1": 87.97, "exact_match": 80.60}`.
+
+## Other features
+
+### View the pre-training results in Weights & Biases <a name="wandb"></a>
+
+This project supports Weights & Biases, a platform to keep track of machine learning experiments. A client for Weights&Biases will be installed by default and can be used during training bypassing the `--wandb` flag.
+The user will need to manually login (see the quickstart guide [here](https://docs.wandb.ai/quickstart) and configure the project name with `--wandb-name`.)
+For more information please see https://www.wandb.com/.
+
+Once logged into wandb logging can be activated by toggling the `log_to_wandb` option in the config file.
+You can also name your wandb run with the flag `--name <YOUR RUN NAME HERE>`.
+
+### Run Pre-Training Phase 1 <a name="large_wiki"></a>
+
+Pre-Training BERT Phase 1 uses sequence length 128, and uses masked Wikipedia data to learn word and position embeddings - task specific performance is later tuned with finetuning.
+This can be thought of as training the body of the model while the finetuning provides performance for specific heads.
+
+The pre-training is managed by the `run_pretraining.py` script and the model configuration by the config files in `configs/`.
+Provided configs are for `BASE` and `LARGE`, tuned to run on a Graphcore IPU POD system with 16 IPUs.
+
+To run pre-training for BERT Base use the following command:
+
+```bash
+python3 run_pretraining.py --config configs/pretrain_base_128_phase1.json
+```
+
+Swapping the config for `pretrain_large_128.phase1.json` will train the BERT Large model.
+The path to the dataset is specified in the config, so ensure the path is correct for your machine, or give the path directly in the command-line with `--dataset-dir /localdata/datasets/wikipedia/128/`.
+
+The results of this run can be logged to Weights and Biases.
+
+The resulting MLM loss curve will look like the following figure. You should see the double descent, characteristic of BERT pre-training, over the first 2000 steps before the loss plateaus to a value of approximately `1.4`. The exact result will vary depending on the Wikipedia dump and stochasticity.
+
+<img src=./figs/MLM_loss_phase1.png width=80% height=80%>
+
 
 ### Detailed overview of the config file format <a name="config"></a>
 
@@ -311,29 +317,29 @@ For advanced users wanting to customise the models, you may wish to update the c
 
 Key parameters to consider  if customising the model are:
 
-* `replicas` - the number of times to replicate the model, e.g., for a 4 IPU pipeline, 4x replication will use all 16 
-   IPUs on an IPU-POD 16. Replicating a model is known as _data parallelism_, since each replica process a part of the 
-   batch of samples. We call _micro batch_, the number of samples processed by each replica at a time, so they have to 
-   fit in memory during the forward and backward passes; and we call _global batch_ the total number of samples  used 
-   to estimate the gradient, which can include multiple micro batches per replica. 
+* `replicas` - the number of times to replicate the model, e.g., for a 4 IPU pipeline, 4x replication will use all 16
+   IPUs on an IPU-POD 16. Replicating a model is known as _data parallelism_, since each replica process a part of the
+   batch of samples. We call _micro batch_, the number of samples processed by each replica at a time, so they have to
+   fit in memory during the forward and backward passes; and we call _global batch_ the total number of samples  used
+   to estimate the gradient, which can include multiple micro batches per replica.
 * `micro_batch_size` - the size of the micro-batch that is seen by each replica
-* `grad_acc_steps_per_replica` - the number of micro-batches that are accumulated on each replica before performing the 
-   gradient update. 
-* `global batch size` - this is not a direct parameter in the config file, but is derived from the product: 
-   `global_batch_size = micro_batch_size * replicas * grad_acc_steps_per_replica`. In other words, this is the total 
-   number of samples used to compute the single gradient update step. By accumulating over multiple micro batches and 
-   over multiple replicas, we can use very large batch sizes, even if they don't fit in memory, which has been proved 
-   to speed up training (see, e.g., https://arxiv.org/pdf/1904.00962.pdf). 
-* `loss_scaling` - scaling factor used to scale the losses down to improve stability when training with large global  
-   batch sizes and partial precision (float16) computations. 
-* `matmul_available_memory_proportion_per_pipeline_stage` - the available memory proportion per IPU that `Poplar` 
-   reserves for temporary values, or intermediate sums, in operations such as matrix multiplications or convolutions. 
-   Reducing the memory proportion, reduces the memory footprint which allows to fit a larger micro batch in memory; but 
-   it also constraints the `Poplar` planner, which can lead to lower throughput. 
-* `pipeline_stages` - a nested list describing which model blocks are placed on which IPUs. The name abbreviations are 
+* `grad_acc_steps_per_replica` - the number of micro-batches that are accumulated on each replica before performing the
+   gradient update.
+* `global batch size` - this is not a direct parameter in the config file, but is derived from the product:
+   `global_batch_size = micro_batch_size * replicas * grad_acc_steps_per_replica`. In other words, this is the total
+   number of samples used to compute the single gradient update step. By accumulating over multiple micro batches and
+   over multiple replicas, we can use very large batch sizes, even if they don't fit in memory, which has been proved
+   to speed up training (see, e.g., https://arxiv.org/pdf/1904.00962.pdf).
+* `loss_scaling` - scaling factor used to scale the losses down to improve stability when training with large global
+   batch sizes and partial precision (float16) computations.
+* `matmul_available_memory_proportion_per_pipeline_stage` - the available memory proportion per IPU that `Poplar`
+   reserves for temporary values, or intermediate sums, in operations such as matrix multiplications or convolutions.
+   Reducing the memory proportion, reduces the memory footprint which allows to fit a larger micro batch in memory; but
+   it also constraints the `Poplar` planner, which can lead to lower throughput.
+* `pipeline_stages` - a nested list describing which model blocks are placed on which IPUs. The name abbreviations are
    found in `model/pipeline_stage_names.py` and can be customised with different layers.
-* `device_mapping` - a list mapping each of the pipeline stages onto each physical IPUs. An example of how this can be 
-   customised can be seen in the BERT configurations where the _pooler_ layer and the heads are placed on IPU 0 with 
+* `device_mapping` - a list mapping each of the pipeline stages onto each physical IPUs. An example of how this can be
+   customised can be seen in the BERT configurations where the _pooler_ layer and the heads are placed on IPU 0 with
    the embeddings layer to improve performance.
 
 ### Notes for optimization approaches <a name="optimization"></a>
@@ -364,7 +370,7 @@ For example, for BERT large in the config file:
    embedding_serialization_factor: int = 2
    ```
    The embedding matmul is serialized with the same factor as the matmul used in the IpuTFBertLMPredictionHead class in `model/ipu_lm_prediction_head.py` as it's a tied embedding. The ipu specific math operation `serialized_matmul` is used.
-* Compute the MLM loss for the masked tokens only instead of over all tokens, as the calculation of loss on full sequence length requires more memory. This is done in `model/ipu_pretraining_model.py`. The number of masked tokens should be fixed and specified in the config files: 
+* Compute the MLM loss for the masked tokens only instead of over all tokens, as the calculation of loss on full sequence length requires more memory. This is done in `model/ipu_pretraining_model.py`. The number of masked tokens should be fixed and specified in the config files:
    ```
    "max_predictions_per_seq": 20
    ```
@@ -378,7 +384,7 @@ The recompuation checkpoint is added with the class
    ```
    ModelAddRecomputationCheckpoints
    ```
-   in `keras_extentions/model_transformations.py`. More information about [recomputation checkpoint](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/common-memory-optimisations.html#recomputation-checkpoints). 
+   in `keras_extentions/model_transformations.py`. More information about [recomputation checkpoint](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/common-memory-optimisations.html#recomputation-checkpoints).
 * Offload the optimiser state. Guide can be found [here](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/common-memory-optimisations.html#variable-offloading).
 * Replace the upstream GeLu activation with the IPU specific GeLu when calling the bert_config in `run_pretraining.py`, `run_squad.py` and `run_seq_classification.py`.
    ```

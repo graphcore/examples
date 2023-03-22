@@ -1,9 +1,11 @@
 # GPT-J
 GPT-J for NLP pre-training and text generation, optimised for Graphcore's IPU.
 
+
 | Framework | Domain | Model | Datasets | Tasks | Training | Inference |
 |-----------|--------|-------|----------|-------|----------|-----------|
-| popXL | NLP | GPT-J | MNLI | Next sentence prediction, Question/Answering | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required | <p style="text-align: center;">✅ <br> Min. 16 IPU (POD16) required |
+| PopXL | NLP | GPT-J | MNLI | Next sentence prediction, Question/Answering | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">✅ <br> Min. 16 IPU (POD16) required |
+
 
 # Instructions summary
 
@@ -22,18 +24,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -57,7 +59,7 @@ pip3 install -r requirements.txt
 This dataset is downloaded automatically when requireed by the example itself, there is no requirement to download it manually.
 
 
-## Custom training/inference and other features
+## Custom training
 
 ### Mnli finetuning <a name="finetuning"></a>
 
@@ -73,12 +75,12 @@ The default model size for fine-tuning is GPT-J 6B on POD64 (named `gptj_6B_1024
 change it to other configurations that are available in the configuration file `config/finetuning.yml` using the `--config` CLI parameter.
 In particular, you can run fine-tuning on a POD16 using
 ```bash
-python3 run_finetuning_mnli.py --config gptj_6B_1024_pod16
+python3 run_finetuning.py --config gptj_6B_1024_pod16
 ```
 
 When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable this, use the environment variable `POPXL_CACHE_DIR=<PATH/TO/CACHE>` when running the application:
 ```bash
-POPXL_CACHE_DIR=<PATH/TO/CACHE> python3 run_finetuning_mnli.py
+POPXL_CACHE_DIR=<PATH/TO/CACHE> python3 run_finetuning.py
 ```
 
 We finetune the model as a Causal Language Model (CLM): given a sequence of tokens, the task is to predict the next token.
@@ -110,7 +112,7 @@ and target labels (one between `entailment`, `contradiction` and `neutral`).
 After tokenization, the maximum length of sequences is computed.
 Each sequence is right-padded to `max_len` + `output_len`, where `output_len` is the maximum number of new tokens we ask the model to generate. We set the `output_len` to 5 to accommodate all class labels and the `<|endoftext|>` token.
 We use right padding so that the causal mask automatically accounts for padding.
-GPTJTokenizer has no native padding token. However, we can safetly use the first `<|extratoken_1|>`.
+GPTJTokenizer has no native padding token. However, we can safely use the first `<|extratoken_1|>`.
 To increase efficiency, we perform inference of micro batches.
 Note that in a micro-batch each sequence has a different padding.
 Since next token logits are located at the last non-padded token, we need to provide these indices to the batch inference algorithm.
@@ -119,7 +121,7 @@ Finally, we retrieve literal labels detokenizing the predictions and we compute 
 
 To run validation using a finetuned model, run
 ```bash
-python3 run_mnli_validation.py --load {path_to_finetuned_checkpoint}
+python3 run_validation.py --load {path_to_finetuned_checkpoint}
 ```
 This script runs validation on the full dataset, producing the resulting accuracy.
 
@@ -134,12 +136,15 @@ To control the number of sentences, use the `micro_batch_size` parameter (defaul
 python3 run_inference.py --micro_batch_size 4
 ```
 
+
+## Other features
+
 ### Benchmarking <a name="benchmarking"></a>
-You can run execution scripts `inference.py` `finetuning_mnli.py` directly for benchmarking.
+You can run execution scripts `inference.py` `finetuning.py` directly for benchmarking.
 In that case, generated data will be used.
 For instance, the command below runs the benchmarking for GPT-J mnli finetuning.
 ```bash
-python3 finetuning_mnli.py
+python3 finetuning.py
 ```
 
 ### View the pre-training results in Weights & Biases <a name="wandb"></a>
@@ -197,15 +202,15 @@ Note that the `gradient_accumulation` size is automatically computed from the `g
 
     You can set the path to load and save checkpoints respectively by `load` and `save`.
     ```bash
-    python3 run_finetuning_mnli.py --save {path to your checkpoint file}
+    python3 run_finetuning.py --save {path to your checkpoint file}
     ```
 
     ```bash
-    python3 run_finetuning_mnli.py --load {path to your checkpoint file}
+    python3 run_finetuning.py --load {path to your checkpoint file}
     ```
 
     ```bash
-    python3 run_mnli_validation.py --load {path_to_finetuned_checkpoint}
+    python3 run_validation.py --load {path_to_finetuned_checkpoint}
     ```
 
 
@@ -215,11 +220,11 @@ Here we introduce some techniques that were required to scale up the GPT-J model
 ### Combining data parallelism, tensor parallelism and RTS <a name="tp_dp"></a>
 The model is executed using multiple IPUs to implement data parallelism and tensor parallelism via replication.
 
-**Data parallelism** means that the same program(which can span over multiple devices) is duplicated on different sets of devices, and each copy is feeded with different data. At each optimization step, the gradients are mean-reduced so that the weight update and model state are the same across all replicas. You can find more details about it in the [data parallelism tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
+**Data parallelism** means that the same program(which can span over multiple devices) is duplicated on different sets of devices, and each copy is fed with different data. At each optimization step, the gradients are mean-reduced so that the weight update and model state are the same across all replicas. You can find more details about it in the [data parallelism tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
 
 <figure >
 <img src="imgs/data_parallelism.png" width="800" alt="Data parallelism"/>
-<figcaption> <em > <b > Fig 1: </b> Data parallelism. The model (which can span across multiple devices) is duplicated on several device sets. All copies have same program and same variables but are feeded with different data. </em> </figcaption>
+<figcaption> <em > <b > Fig 1: </b> Data parallelism. The model (which can span across multiple devices) is duplicated on several device sets. All copies have same program and same variables but are fed with different data. </em> </figcaption>
 </figure>
 
 By itself, data parallelism it's just a way to increase the throughput and provides no memory gain.
@@ -251,28 +256,33 @@ Operations happening between these functions are sharded and give different resu
 
 For example, below is the implementation of `feed_forward` layer:
 ```python
-def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor]=None) -> List[popxl.Tensor]:
+def build(
+    self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None
+) -> List[popxl.Tensor]:
     # ----- Identical computation -----
-    z=replicated_all_reduce_identical_inputs(
-        x, group=self.replica_grouping.transpose())
+    z = replicated_all_reduce_identical_inputs(
+        x, group=self.replica_grouping.transpose()
+    )
 
     # ----- Sharded computation -----
-    z=self.intermediate(z)
-    z=ops.gelu(z)
-    z=self.output(z)
+    z = self.intermediate(z)
+    z = ops.gelu(z)
+    z = self.output(z)
 
-    z=replicated_all_reduce_identical_grad_inputs(
-        z, group=self.replica_grouping.transpose())
+    z = replicated_all_reduce_identical_grad_inputs(
+        z, group=self.replica_grouping.transpose()
+    )
 
     # ----- Identical computation -----
 
-    self.bias=self.add_variable_input(
-        'bias', lambda: np.zeros(z.shape[-1]), z.dtype)
-    z=z + self.bias
+    self.bias = self.add_variable_input("bias", lambda: np.zeros(z.shape[-1]), z.dtype)
+    z = z + self.bias
 
     if not self.config.model.eval and self.config.model.dropout_prob != 0.0:
-        assert seed is not None, "A seed Tensor must be provided when creating a non-eval model."
-        z=ops.dropout(z, seed, p=self.config.model.dropout_prob)
+        assert (
+            seed is not None
+        ), "A seed Tensor must be provided when creating a non-eval model."
+        z = ops.dropout(z, seed, p=self.config.model.dropout_prob)
     return z
 ```
 
@@ -352,11 +362,11 @@ Recall that three linear projections Q, K, V are applied to obtain query, key an
 The computation is then:
 
 ```python
-attn_weights=query @ key.T    # [batch, num_heads, seq_length, seq_length]
+attn_weights = query @ key.T  # [batch, num_heads, seq_length, seq_length]
 # ... scaling and causal mask
-attn_scores=ops.softmax(attn_weights, axis=-1)
+attn_scores = ops.softmax(attn_weights, axis=-1)
 # ... dropout
-attn_output=attn_scores @ value   # [batch, num_heads, seq_length, hidden_size]
+attn_output = attn_scores @ value  # [batch, num_heads, seq_length, hidden_size]
 ```
 
 For big sequences these activations are big, and we need to store or recompute them during the backward phase.
@@ -367,13 +377,11 @@ The pseudocode is :
 for q in split(Q):
     # q shape: [batch, num_heads, f, hidden_size]
     # key.T shape: [batch, num_heads, hidden_size, seq_length]
-    attn_weights=q @ key.T    # [batch, num_heads, f, seq_length]
+    attn_weights = q @ key.T  # [batch, num_heads, f, seq_length]
     # ... scaling and causal mask
-    attn_scores=ops.softmax(attn_weights, axis=-1)
+    attn_scores = ops.softmax(attn_weights, axis=-1)
     # ... dropout
-    attn_output=attn_scores @ value   # [batch, num_heads, f, hidden_size]
-
-concat slices
+    attn_output = attn_scores @ value  # [batch, num_heads, f, hidden_size]
 ```
 
 This way, intermediate tensors and activations are smaller.
@@ -384,7 +392,7 @@ For this technique to reach optimal performance, it should be employed with `pop
 Using this transform, gradients produced in a loop are progressively accumulated instead of being saved and then summed all at the end.
 In this way, memory is saved because only the accumulated result needs to be alive for the whole loop duration.
 
-You can look at the `create_decoder_block_graph` function in `finetuning_mnli.py` and to the attention layer in `modelling/attention.py` to understand how this is implemented in practice.
+You can look at the `create_decoder_block_graph` function in `finetuning.py` and to the attention layer in `modelling/attention.py` to understand how this is implemented in practice.
 
 ### Finetuning code details <a name="code_details"></a>
 

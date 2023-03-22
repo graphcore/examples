@@ -2,22 +2,64 @@
 #        pre-commit autoupdate
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v3.3.0
+    rev: v4.4.0
     hooks:
+      - id: check-json
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-added-large-files
       - id: no-commit-to-branch
         args: [--branch, master, --branch, main]
-  - repo: https://github.com/pre-commit/mirrors-autopep8
-    rev: v1.6.0  # v1.7.0 is not compatible with python3.6
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: trailing-whitespace
+  - repo: https://github.com/psf/black
+    rev: 22.12.0
     hooks:
-      - id: autopep8
-        args: [--in-place, --list-fixes, --ignore, 'E251,E303,E402,E501,E701,E226,E24,W50,W690']
+      - id: black
+        args: [--line-length, "120"]
+      - id: black-jupyter
+        files: '.*\.ipynb'
+  - repo: https://github.com/asottile/blacken-docs
+    rev: 1.13.0
+    hooks:
+      - id: blacken-docs
+        additional_dependencies:
+          - black==22.12.0
+  - repo: https://github.com/ssciwr/clang-format-hook
+    rev: v15.0.6
+    hooks:
+      - id: clang-format
+        args: [-i]
+        # Exclude protobuff files
+        exclude: '^(.*pb\.h)|(.*pb\.cc)$'
   - repo: local
     hooks:
-    - id: copyright-header-check
-      name: Copyright header check
-      description: Ensures that files have the proper copyright line at the top
-      entry: python3 -m examples_utils test_copyright --amend --exclude_json utils/examples_tests/copyright_header_test_exclude.json
-      pass_filenames: false
-      language: python
-      additional_dependencies:
-        - 'git+https://github.com/graphcore/examples-utils.git@latest_stable'
+      - id: copyright-header-check
+        name: Copyright header check
+        description: Ensures that files have the proper copyright line at the top
+        entry: python3 -m examples_utils test_copyright --amend --exclude_json utils/examples_tests/copyright_header_test_exclude.json
+        pass_filenames: false
+        language: python
+        additional_dependencies:
+          - "git+https://github.com/graphcore/examples-utils@f8673d362fdc7dc77e1fee5f77cbcd81dd9e4a2e"
+      - id: trademark-linter
+        name: Trademark linter
+        description: Ensures that files have the proper trademark line.
+        entry: python3 -m utils.linters.trademark.trademark
+        language: python
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.1.0
+    hooks:
+      - id: codespell
+        args: [-I, utils/linters/codespell_ignore.txt]
+        exclude: |
+          (?x)^(
+            nlp/gpt2/pytorch/tokenizer/gpt2-merges-50256.txt |
+            nlp/gpt2/pytorch/tokenizer/gpt2-vocab-50256.json |
+            speech/fastpitch/pytorch/filelists/ljs_audio_text_train_filelist.txt |
+            speech/fastpitch/pytorch/filelists/ljs_mel_dur_pitch_text_train_filelist.txt |
+            gnn/nbfnet/pytorch_geometric/static/fb15k-237_entitymapping.txt
+          )$

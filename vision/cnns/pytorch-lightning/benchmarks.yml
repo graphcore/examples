@@ -1,0 +1,38 @@
+---
+common_options: &common_options
+  data:
+    epoch_duration:
+      regexp: 'Epoch_elapsed_time: (\d*\.\d*)'
+      skip: 1
+    accuracy:
+      reduction_type: "final"
+      regexp: 'Validation_accuracy: (\d*\.\d*)'
+  output:
+    - [epoch duration, "epoch_duration"]
+    - [accuracy, "accuracy"]
+  env:
+    POPLAR_ENGINE_OPTIONS: '{"opt.enableMultiAccessCopies":"false"}'
+    PYTORCH_CACHE_DIR: "./pt_cache/"
+
+config_options: &config_options
+  requirements_path: requirements.txt
+  required_apt_packages_path: required_apt_packages.txt
+  pre_run_commands: [make install, make install-turbojpeg]
+
+
+pytorch_resnet50_train_real_pod16:
+  <<: [*common_options, *config_options]
+  description: ResNet training on 16 Mk2 IPUs, real data.
+  cmd: >-
+    poprun
+      -vv
+      --num-instances=8
+      --num-replicas=16
+      --executable-cache-path=$PYTORCH_CACHE_DIR
+    python3 train_lightning.py
+      --config resnet50
+      --imagenet-data-path $DATASETS_DIR/imagenet-raw-dataset
+      --epoch 2
+      --validation-mode none
+      --dataloader-worker 14
+      --dataloader-rebatch-size 256

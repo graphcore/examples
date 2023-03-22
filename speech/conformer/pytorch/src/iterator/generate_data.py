@@ -20,34 +20,32 @@ from torch.utils.data import Dataset
 class GenerateDataset(Dataset):
     def __init__(self, args):
         super(GenerateDataset, self).__init__()
-        '''
+        """
         Args:
             args(dict): config_file is 'configs/train.yaml'
-        '''
+        """
         self.args = args
-        grad_accum = self.args['ipu_options']['gradient_accumulation']
-        replicas = self.args['ipu_options']['num_replicas']
-        batch_size = self.args['train_iterator']['batch_size']
-        device_iterations = self.args['ipu_options']['device_iterations']
-        num_workers = self.args['train_iterator']['num_workers']
+        grad_accum = self.args["ipu_options"]["gradient_accumulation"]
+        replicas = self.args["ipu_options"]["num_replicas"]
+        batch_size = self.args["train_iterator"]["batch_size"]
+        device_iterations = self.args["ipu_options"]["device_iterations"]
+        num_workers = self.args["train_iterator"]["num_workers"]
 
         self.length = grad_accum * replicas * batch_size * device_iterations * num_workers * 2
         if popdist.isPopdistEnvSet():
-            self.length *= self.args['NumInstances']
-        self.random_seed = self.args['train_dataset']['random_seed']
+            self.length *= self.args["NumInstances"]
+        self.random_seed = self.args["train_dataset"]["random_seed"]
         self.feature, self.feature_max_len, self.target, self.target_max_len = self.get_fixed_data()
 
     def get_fixed_data(self):
         torch.manual_seed(self.random_seed)
-        input_size = self.args['encoder']['input_size']
-        feature_max_len = self.args['encoder']['max_len']
-        target_max_len = self.args['decoder']['max_len']
-        feature = torch.randn(
-            size=[self.args['encoder']['max_len'], input_size])
-        if self.args['train_dataset']['dtype'] == "FLOAT16":
+        input_size = self.args["encoder"]["input_size"]
+        feature_max_len = self.args["encoder"]["max_len"]
+        target_max_len = self.args["decoder"]["max_len"]
+        feature = torch.randn(size=[self.args["encoder"]["max_len"], input_size])
+        if self.args["train_dataset"]["dtype"] == "FLOAT16":
             feature = feature.half()
-        target = torch.ones(
-            size=[self.args['decoder']['max_len']], dtype=torch.long)
+        target = torch.ones(size=[self.args["decoder"]["max_len"]], dtype=torch.long)
         return feature, feature_max_len, target, target_max_len
 
     def __len__(self):

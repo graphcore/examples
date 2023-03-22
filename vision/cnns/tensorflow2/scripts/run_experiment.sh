@@ -109,7 +109,7 @@ TIMESTAMP="$(date +%Y-%m-%d_%H-%M-%S)"
 
 if [[ $PARTITION == "" ]] || [[ $IPUOF_VIPU_API_HOST == "" ]] || [[ $HOSTS == "" ]]; then
   MULTIHOST=false
-  echo "Mutli-host run disabled because --partition, --vipu-host or --hosts wasnt specified."
+  echo "Mutli-host run disabled because --partition, --vipu-host or --hosts wasn't specified."
 else
   MULTIHOST=true
 fi

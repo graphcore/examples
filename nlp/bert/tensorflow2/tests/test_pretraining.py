@@ -7,7 +7,6 @@ from tests.utils import get_app_root_dir
 
 
 class TestBuildAndRun(SubProcessChecker):
-
     @staticmethod
     def _get_sample_dataset_path():
         app_dir = get_app_root_dir()
@@ -23,19 +22,14 @@ class TestBuildAndRun(SubProcessChecker):
 
 
 class TestRunPretraining(TestBuildAndRun):
-
     def test_run_pretraining(self):
         cmd = self._get_pretraining_command(extra_args=["--dataset-dir", str(self._get_sample_dataset_path())])
-        self.run_command(cmd,
-                         get_app_root_dir(),
-                         [""])
+        self.run_command(cmd, get_app_root_dir(), [""])
 
     def test_run_pretraining_compile_only(self):
-        cmd = self._get_pretraining_command(extra_args=["--dataset-dir", str(self._get_sample_dataset_path()),
-                                                        "--compile-only"])
+        cmd = self._get_pretraining_command(
+            extra_args=["--dataset-dir", str(self._get_sample_dataset_path()), "--compile-only"]
+        )
         env = os.environ.copy()
         env["TF_POPLAR_FLAGS"] = "--executable_cache_path=./" + env.get("TF_POPLAR_FLAGS", "")
-        self.run_command(cmd,
-                         get_app_root_dir(),
-                         [""],
-                         env=env)
+        self.run_command(cmd, get_app_root_dir(), [""], env=env)

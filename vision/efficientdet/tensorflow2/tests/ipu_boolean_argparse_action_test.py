@@ -41,19 +41,19 @@ EXPECTED = {
 
 
 def generate_default_cases(first_item):
-    return [(first_item, ) + x for x in list(itertools.combinations_with_replacement([None, False, True], 2))]
+    return [(first_item,) + x for x in list(itertools.combinations_with_replacement([None, False, True], 2))]
 
 
 @pytest.mark.parametrize(
     "input_args, default_true, default_false",
-    generate_default_cases([]) +
-    generate_default_cases(["--true-item"]) +
-    generate_default_cases(["--true-item", "True"]) +
-    generate_default_cases(["--true-item", "False"]) +
-    generate_default_cases(["--false-item"]) +
-    generate_default_cases(["--false-item", "True"]) +
-    generate_default_cases(["--false-item", "False"]) +
-    generate_default_cases(["--false-item", "False", "--true-item", "False"])
+    generate_default_cases([])
+    + generate_default_cases(["--true-item"])
+    + generate_default_cases(["--true-item", "True"])
+    + generate_default_cases(["--true-item", "False"])
+    + generate_default_cases(["--false-item"])
+    + generate_default_cases(["--false-item", "True"])
+    + generate_default_cases(["--false-item", "False"])
+    + generate_default_cases(["--false-item", "False", "--true-item", "False"]),
 )
 def test_all(default_true, default_false, input_args):
     print(input_args)
@@ -63,9 +63,9 @@ def test_all(default_true, default_false, input_args):
 
     defaults = {}
     if default_true is not None:
-        defaults['true_item'] = default_true
+        defaults["true_item"] = default_true
     if default_false is not None:
-        defaults['false_item'] = default_false
+        defaults["false_item"] = default_false
 
     parser.set_defaults(**defaults)
 
@@ -74,8 +74,8 @@ def test_all(default_true, default_false, input_args):
 
     def check(key, expected_if_provided):
         idx = input_args.index(key)
-        if idx+1 < len(input_args) and not input_args[idx+1].startswith('--'):
-            expected = EXPECTED[input_args[idx+1].lower()]
+        if idx + 1 < len(input_args) and not input_args[idx + 1].startswith("--"):
+            expected = EXPECTED[input_args[idx + 1].lower()]
         else:
             expected = expected_if_provided
 
@@ -87,8 +87,8 @@ def test_all(default_true, default_false, input_args):
     exp_default_false = True if default_false is None else default_false
 
     if len(input_args) == 0:
-        assert result['true_item'] == exp_default_true
-        assert result['false_item'] == exp_default_false
+        assert result["true_item"] == exp_default_true
+        assert result["false_item"] == exp_default_false
 
     if "--true-item" in input_args:
         check("--true-item", expected_if_provided=True)

@@ -23,12 +23,24 @@ common_options_inference: &common_options_inference
     throughput:
       reduction_type: 'mean'
       regexp: 'throughput: *(.*?) samples\/sec'
-      skip: 2
+      skip: 0
   output:
     - [samples/sec, 'throughput']
 
 config_options: &config_options
   requirements_path: requirements.txt
+
+tf2_resnet50_train_real_pod4:
+  <<: [*common_options, *config_options]
+  description:
+    Resnet50 8k batch size, 16.16 precision, 1 replica, 4 pipeline stages
+  cmd: >-
+    python3 train.py
+        --config resnet50_mlperf_pod4_bs20
+        --num-epochs 5
+        --logs-per-epoch 29
+        --dataset-path $DATASETS_DIR/imagenet-data
+        --validation false
 
 tf2_resnet50_train_real_pod16:
   <<: [*common_options, *config_options]
@@ -53,18 +65,19 @@ tf2_resnet50_train_real_pod16_conv:
         --dataset-path $DATASETS_DIR/imagenet-data
         --checkpoint-output-dir ./checkpoints
         --checkpoint-input-dir ./checkpoints
+        --clean-dir False
         --wandb
         --wandb-run-name tf2_resnet50_train_real_pod16_conv
 
 tf2_resnet50_serving_throughput:
   <<: [*common_options_inference, *config_options]
   description:
-    Resnet50 serving throughput, batch size 1, 8, 16
+    Resnet50 serving throughput, batch size 1 and 32
   parameters:
-    batchsize: 1,8,16
+    batchsize: 1,32
   cmd: >-
     python3 send_request.py
-        --config resnet50_infer_bs16
+        --config resnet50_infer_bs{batchsize}
         --dataset-path $DATASETS_DIR/imagenet-data
         --batch-size {batchsize}
         --port 8502
@@ -75,7 +88,9 @@ tf2_resnet50_serving_latency:
   <<: *config_options
   data:
     latency:
-        regexp: 'latency avg: *(.*?) ms'
+        regexp: 'Latency for batch: *(.*?) ms'
+        skip: 20
+        reduction_type: 'mean'
   output:
     - [latency(ms), 'latency']
   description:
@@ -88,4 +103,3 @@ tf2_resnet50_serving_latency:
         --port 8502
         --num-threads 1
         --verbose
-

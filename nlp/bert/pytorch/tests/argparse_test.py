@@ -129,9 +129,7 @@ def test_get_layer_ipu():
     --num-hidden-layers 12
     """.split()
     config = BertConfig(**(vars(parse_bert_args(args))))
-    assert (_get_layer_ipu(config.layers_per_ipu) ==
-            [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
-            )
+    assert _get_layer_ipu(config.layers_per_ipu) == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
 
     args = """
     --config unit_test
@@ -139,9 +137,7 @@ def test_get_layer_ipu():
     --num-hidden-layers 11
     """.split()
     config = BertConfig(**(vars(parse_bert_args(args))))
-    assert (_get_layer_ipu(config.layers_per_ipu) ==
-            [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5]
-            )
+    assert _get_layer_ipu(config.layers_per_ipu) == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5]
 
     args = """
     --config unit_test
@@ -149,6 +145,4 @@ def test_get_layer_ipu():
     --num-hidden-layers 3
     """.split()
     config = BertConfig(**(vars(parse_bert_args(args))))
-    assert (_get_layer_ipu(config.layers_per_ipu) ==
-            [1, 2, 3]
-            )
+    assert _get_layer_ipu(config.layers_per_ipu) == [1, 2, 3]

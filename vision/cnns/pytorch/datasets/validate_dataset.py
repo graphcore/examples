@@ -23,8 +23,8 @@ def validate(path):
         print("Validation data is corrupted.")
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(add_help=True, description='Validate ImageNet Dataset')
-    parser.add_argument('--imagenet-data-path', type=str, required=True, help='Imagenet path')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(add_help=True, description="Validate ImageNet Dataset")
+    parser.add_argument("--imagenet-data-path", type=str, required=True, help="Imagenet path")
     args = parser.parse_args()
     validate(args.imagenet_data_path)

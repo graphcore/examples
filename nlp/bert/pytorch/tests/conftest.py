@@ -31,23 +31,19 @@ def cleanup():
 # cli option is specified.
 def pytest_addoption(parser):
     # Add cli option --long-test to run tests that take too long
-    parser.addoption("--long-test", action="store_true", default=False,
-                     help="Run long tests")
+    parser.addoption("--long-test", action="store_true", default=False, help="Run long tests")
 
 
 def pytest_configure(config):
     # Register marker longtest
-    config.addinivalue_line(
-        "markers",
-        "skip_longtest_needs_dataset: long tests needing dataset to run")
+    config.addinivalue_line("markers", "skip_longtest_needs_dataset: long tests needing dataset to run")
 
 
 def pytest_collection_modifyitems(config, items):
     # Add skip test marker based on --long-test option during execution
     if config.getoption("--long-test"):
         return
-    marker = pytest.mark.skip(reason="This test takes too long to run. "
-                              "Run manually with the --long-test option.")
+    marker = pytest.mark.skip(reason="This test takes too long to run. " "Run manually with the --long-test option.")
     for item in items:
         if "skip_longtest_needs_dataset" in item.keywords:
             item.add_marker(marker)
@@ -56,8 +52,3 @@ def pytest_collection_modifyitems(config, items):
     marker = pytest.mark.ipu_version("ipu2")
     for item in items:
         item.add_marker(marker)
-
-
-def pytest_sessionstart(session):
-    # Sets the IPUs to wait before attaching.
-    os.environ["POPTORCH_WAIT_FOR_IPU"] = "1"

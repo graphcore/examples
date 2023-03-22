@@ -8,14 +8,13 @@ from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 
 
 class LearningRateEnqueuer(LearningRateSchedule):
-
     def __init__(self, scheduler: LearningRateSchedule, queue: IPUOutfeedQueue):
         super().__init__()
         self._lr_schedule = scheduler
         self._queue = queue
 
     def __call__(self, step):
-        with tf.name_scope('learning_rate_scheduler'):
+        with tf.name_scope("learning_rate_scheduler"):
             new_lr = self._lr_schedule(step)
             self._queue.enqueue({"learning_rate": new_lr})
             return new_lr
@@ -25,10 +24,9 @@ class LearningRateEnqueuer(LearningRateSchedule):
 
 
 class FP32StepLearningRateSchedule(LearningRateSchedule):
-
     def __init__(self, schedule: LearningRateSchedule):
         super().__init__()
-        self.step = tf.Variable(0, trainable=False, dtype=tf.float32, name='fp32_step')
+        self.step = tf.Variable(0, trainable=False, dtype=tf.float32, name="fp32_step")
         self.schedule = schedule
 
     def __call__(self, _):
@@ -37,4 +35,4 @@ class FP32StepLearningRateSchedule(LearningRateSchedule):
         return lr
 
     def get_config(self) -> Mapping[str, Any]:
-        return {'schedule': self._lr_schedule.get_config()}
+        return {"schedule": self._lr_schedule.get_config()}

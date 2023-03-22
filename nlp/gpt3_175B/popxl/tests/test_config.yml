@@ -1,0 +1,19 @@
+model:
+  sequence_length: 8
+  embedding:
+    vocab_size: 128
+    max_positional_length: 8
+  hidden_size: 64
+  layers: 2
+  attention:
+    heads: 4
+  eval: True
+  precision: "float32"
+training:
+  global_batch_size: 2
+execution:
+  attention_serialisation: 2
+  micro_batch_size: 2
+  data_parallel: 1
+  tensor_parallel_1: 2
+  tensor_parallel_2: 2

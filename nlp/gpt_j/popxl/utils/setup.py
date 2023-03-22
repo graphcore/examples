@@ -25,13 +25,14 @@ from utils.simple_parsing_tools import parse_args_with_presets
 import popdist
 import sys
 
+
 def gptj_config_setup(
-        config_file: Union[str, Path],
-        presets_key: str,
-        default: str,
-        wandb_setup=False,
-        hf_model_setup=False,
-        CLI_args: Optional[str] = None,
+    config_file: Union[str, Path],
+    presets_key: str,
+    default: str,
+    wandb_setup=False,
+    hf_model_setup=False,
+    CLI_args: Optional[str] = None,
 ) -> Tuple[GPTJConfig, argparse.Namespace, Optional[GPTJForCausalLM]]:
     """Parse command line args and setup random seed, W&B, logging and
     load a pre-trained model.
@@ -48,17 +49,16 @@ def gptj_config_setup(
     Returns:
         GPTJConfig, argparse namespace and optional pretrained model
     """
+
     def custom_args(parser: ArgumentParser):
-        log_level = os.environ.get('APP_LOG_LEVEL', 'INFO')
+        log_level = os.environ.get("APP_LOG_LEVEL", "INFO")
         parser.add_argument(
             "--log_level",
-            choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+            choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
             type=str,
             default=log_level,
-            help=(
-                "Logging level for the app. "
-                "Can also be set using the environment variable `APP_LOG_LEVEL`"
-            ))
+            help=("Logging level for the app. " "Can also be set using the environment variable `APP_LOG_LEVEL`"),
+        )
 
         if hf_model_setup:
             parser.add_argument(
@@ -66,17 +66,17 @@ def gptj_config_setup(
                 type=str,
                 help="HuggingFace transformers pre-trained model to load. "
                 "Use 'None' to deliberately skip loading a model for debugging. "
-                "If no value is provided it will automatically try and match to the config."
+                "If no value is provided it will automatically try and match to the config.",
             )
 
         if wandb_setup:
-            parser.add_argument("--wandb",
-                                default="True",
-                                choices=["False", "True"],
-                                help="Initialise Weights and Biases")
+            parser.add_argument(
+                "--wandb", default="True", choices=["False", "True"], help="Initialise Weights and Biases"
+            )
+        # needed for jupyter notebooks
+        parser.add_argument("-f", type=str, default="", help=f"jupyter")
 
-    config, args = parse_args_with_presets(GPTJConfig, config_file, presets_key,
-                                           default, custom_args, CLI_args)
+    config, args = parse_args_with_presets(GPTJConfig, config_file, presets_key, default, custom_args, CLI_args)
     config: GPTJConfig  # type: ignore
     config.validate()
 
@@ -85,15 +85,15 @@ def gptj_config_setup(
     random.seed(config.model.seed)
 
     if wandb_setup:
-        if popdist.getInstanceIndex()==0:
-            wandb_init(config, tags=['PE', 'TP'], disable=args.wandb == 'False')
+        if popdist.getInstanceIndex() == 0:
+            wandb_init(config, tags=["PE", "TP"], disable=args.wandb == "False")
 
     logging_setup(args, config)
 
     if hf_model_setup:
-        if args.hf_model == 'None':
+        if args.hf_model == "None":
             pretrained = None
-        elif args.hf_model == 'Test':
+        elif args.hf_model == "Test":
             hf_config = HFConfig(
                 vocab_size=config.model.embedding.vocab_size,
                 n_positions=config.model.sequence_length,
@@ -107,8 +107,8 @@ def gptj_config_setup(
             )
             pretrained = GPTJForCausalLM(hf_config)
         else:
-            hf_model = 'EleutherAI/gpt-j-6B'
-            with timer('Loading HF model to host'):
+            hf_model = "EleutherAI/gpt-j-6B"
+            with timer("Loading HF model to host"):
                 pretrained = GPTJForCausalLM.from_pretrained(hf_model)
             xl_hf_config_check(config, pretrained.config)
     else:
@@ -118,68 +118,61 @@ def gptj_config_setup(
 
 
 def gptj_fine_tuning_setup(
-    config_file: Union[str, Path],
-    presets_key: str,
-    default_config: str,
+    config_file: Union[str, Path], presets_key: str, default_config: str, wandb_setup: bool = False
 ) -> Tuple[GPTJConfig, argparse.Namespace, Optional[GPTJForCausalLM]]:
-    """GPT-J setup for fine tunning scripts"""
-    config, args, pretrained = gptj_config_setup(config_file, presets_key, default_config,
-                                                 wandb_setup=False, hf_model_setup=True)
+    """GPT-J setup for finetuning scripts"""
+    config, args, pretrained = gptj_config_setup(
+        config_file, presets_key, default_config, wandb_setup=wandb_setup, hf_model_setup=True
+    )
 
     return config, args, pretrained
 
 
 def logging_setup(args, config):
     """Setup logging"""
-    logging.basicConfig(level=args.log_level,
-                        format='%(asctime)s %(levelname)s: %(message)s',
-                        datefmt="%Y-%m-%d %H:%M:%S",
-                        stream=sys.stdout,
-                        force=True)
-    logging.info(f"Staring. Process id: {os.getpid()}")
-    logging.info(f"Config: {config}")
+    logging.basicConfig(
+        level=args.log_level,
+        format="%(asctime)s %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+        force=True,
+    )
+    logging.info(f"Starting. Process id: {os.getpid()}")
 
 
 def xl_hf_config_check(config: GPTJConfig, hf_config: HFConfig):
     """Compare a GPTJConfig with a Hugging Face config and ensure they match. Required if loading a pre-trained model"""
     params = [
-        ('hidden_size', config.model.hidden_size, hf_config.n_embd),
-        ('heads', config.model.attention.heads, hf_config.n_head),
-        ('layers', config.model.layers, hf_config.n_layer),
-        ('vocab_size', config.model.embedding.vocab_size, hf_config.vocab_size),
-        ('rotary_dim', config.model.attention.rotary_dim,
-         hf_config.rotary_dim),
+        ("hidden_size", config.model.hidden_size, hf_config.n_embd),
+        ("heads", config.model.attention.heads, hf_config.n_head),
+        ("layers", config.model.layers, hf_config.n_layer),
+        ("vocab_size", config.model.embedding.vocab_size, hf_config.vocab_size),
+        ("rotary_dim", config.model.attention.rotary_dim, hf_config.rotary_dim),
     ]
     if not all(xl == hf for _, xl, hf in params):
-        not_eq_str = ', '.join(f'\n`{name}` not equal, config: {xl}, hf: {hf}'
-                               for name, xl, hf in params if xl != hf)
-        raise ValueError(
-            f"Config does not match the Hugging Face (hf) pre-trained model. Not matching: {not_eq_str}"
-        )
+        not_eq_str = ", ".join(f"\n`{name}` not equal, config: {xl}, hf: {hf}" for name, xl, hf in params if xl != hf)
+        raise ValueError(f"Config does not match the Hugging Face (hf) pre-trained model. Not matching: {not_eq_str}")
 
 
-def wandb_init(config: GPTJConfig,
-               tags: Optional[List[str]] = None,
-               disable: bool = False):
+def wandb_init(config: GPTJConfig, tags: Optional[List[str]] = None, disable: bool = False):
     """Setup weights and biases"""
     # Save config with addons and popxl version
     config_dict = config.to_dict()
-    config_dict['gradient_accumulation'] = config.gradient_accumulation
-    config_dict['ipus'] = config.ipus
-    config_dict['addons_version'] = ADDONS_GIT_COMMIT
-    config_dict['popxl_version'] = popart.versionString()
+    config_dict["gradient_accumulation"] = config.gradient_accumulation
+    config_dict["ipus"] = config.ipus
+    config_dict["addons_version"] = ADDONS_GIT_COMMIT
+    config_dict["popxl_version"] = popart.versionString()
 
     mode = "disabled" if disable else "online"
-    
+
     wandb.init(project="popxl-gptj", tags=tags, config=config_dict, mode=mode)
 
     # Upload config yml
     # Wandb uploads file asynchronously so can't use a normal context manager
     tmp_dir_cm = tempfile.TemporaryDirectory()
     tmp_dir = tmp_dir_cm.__enter__()
-    atexit.register(lambda: tmp_dir_cm.__exit__(None, None, None)
-                    )  # Delete directory on exit
-    tmp_path = os.path.join(tmp_dir, 'config.yml')
-    with open(tmp_path, 'w') as f:
+    atexit.register(lambda: tmp_dir_cm.__exit__(None, None, None))  # Delete directory on exit
+    tmp_path = os.path.join(tmp_dir, "config.yml")
+    with open(tmp_path, "w") as f:
         config.dump_yaml(f)
-    wandb.save(tmp_path, base_path=tmp_dir, policy='now')
+    wandb.save(tmp_path, base_path=tmp_dir, policy="now")

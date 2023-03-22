@@ -10,32 +10,31 @@ from tensorflow.python.ipu import distributed
 import tensorflow as tf
 from eight_bit_transfer import EightBitTransfer
 
-from . import (application_dataset, cifar10_dataset, imagenet_dataset,
-               mnist_dataset)
+from . import application_dataset, cifar10_dataset, imagenet_dataset, mnist_dataset
 from batch_config import BatchConfig
 
 PREFETCH_BUFFER_SIZE = 16
-AVAILABLE_DATASETS = ['imagenet', 'cifar10', 'mnist']
+AVAILABLE_DATASETS = ["imagenet", "cifar10", "mnist"]
 
 
 class DatasetFactory:
-
     @staticmethod
-    def get_dataset(dataset_name: str,
-                    dataset_path: str,
-                    split: str,
-                    img_datatype: tf.dtypes.DType,
-                    batch_config: BatchConfig,
-                    seed: Optional[int] = None,
-                    shuffle: bool = False,
-                    deterministic: bool = False,
-                    accelerator_side_preprocess: bool = True,
-                    pipeline_num_parallel: int = 48,
-                    fused_preprocessing: bool = False,
-                    synthetic_data: Optional[str] = None,
-                    eight_bit_transfer: Optional[EightBitTransfer] = None,
-                    repeat: bool = True,
-                    ) -> Tuple[application_dataset.ApplicationDataset, Optional[Callable], int]:
+    def get_dataset(
+        dataset_name: str,
+        dataset_path: str,
+        split: str,
+        img_datatype: tf.dtypes.DType,
+        batch_config: BatchConfig,
+        seed: Optional[int] = None,
+        shuffle: bool = False,
+        deterministic: bool = False,
+        accelerator_side_preprocess: bool = True,
+        pipeline_num_parallel: int = 48,
+        fused_preprocessing: bool = False,
+        synthetic_data: Optional[str] = None,
+        eight_bit_transfer: Optional[EightBitTransfer] = None,
+        repeat: bool = True,
+    ) -> Tuple[application_dataset.ApplicationDataset, Optional[Callable], int]:
         """Creates a dataset pipeline where preprocessing is divided on the host- and ipu-side.
 
         Args:
@@ -68,7 +67,7 @@ class DatasetFactory:
             fused_preprocessing (bool):
                         An optimisation allowing better memory mapping in some cases.
             synthetic_data (str):
-                        Used for benchamarking and tput evaluation. Can be either 'cpu' or
+                        Used for benchmarking and tput evaluation. Can be either 'cpu' or
                         'ipu'. An artificial dataset is generated on either sides to measure
                         bottlenecks in the processing.
             eight_bit_transfer (EightBitTransfer):
@@ -85,18 +84,22 @@ class DatasetFactory:
             ]
         """
 
-        logging.info(f'dataset_name = {dataset_name}')
+        logging.info(f"dataset_name = {dataset_name}")
 
         if popdist.getNumInstances() == 1 and not deterministic:
-            logging.info('Since the training is run in a single process, setting dataset pipeline '
-                         'threading and prefetching buffer size to tf.data.AUTOTUNE.')
+            logging.info(
+                "Since the training is run in a single process, setting dataset pipeline "
+                "threading and prefetching buffer size to tf.data.AUTOTUNE."
+            )
             pipeline_num_parallel = prefetch_size = tf.data.AUTOTUNE
         else:
             prefetch_size = PREFETCH_BUFFER_SIZE
-            logging.info(f'Setting number of threads for the dataset pipeline to {pipeline_num_parallel}, '
-                         f'and the prefetching buffer size to {prefetch_size}.')
+            logging.info(
+                f"Setting number of threads for the dataset pipeline to {pipeline_num_parallel}, "
+                f"and the prefetching buffer size to {prefetch_size}."
+            )
 
-        if dataset_name == 'imagenet':
+        if dataset_name == "imagenet":
             dataset = imagenet_dataset.ImagenetDataset(
                 dataset_path=dataset_path,
                 split=split,
@@ -105,10 +108,10 @@ class DatasetFactory:
                 seed=seed,
                 img_datatype=tf.uint8 if eight_bit_transfer is not None else img_datatype,
                 accelerator_side_preprocess=accelerator_side_preprocess,
-                fused_preprocessing=fused_preprocessing
+                fused_preprocessing=fused_preprocessing,
             )
 
-        elif dataset_name == 'cifar10':
+        elif dataset_name == "cifar10":
             dataset = cifar10_dataset.CIFAR10Dataset(
                 dataset_name=dataset_name,
                 dataset_path=dataset_path,
@@ -117,10 +120,10 @@ class DatasetFactory:
                 deterministic=deterministic,
                 seed=seed,
                 img_datatype=tf.uint8 if eight_bit_transfer is not None else img_datatype,
-                accelerator_side_preprocess=accelerator_side_preprocess
+                accelerator_side_preprocess=accelerator_side_preprocess,
             )
 
-        elif dataset_name == 'mnist':
+        elif dataset_name == "mnist":
             dataset = mnist_dataset.MNISTDataset(
                 dataset_name=dataset_name,
                 dataset_path=dataset_path,
@@ -129,46 +132,45 @@ class DatasetFactory:
                 deterministic=deterministic,
                 seed=seed,
                 img_datatype=tf.uint8 if eight_bit_transfer is not None else img_datatype,
-                accelerator_side_preprocess=accelerator_side_preprocess
+                accelerator_side_preprocess=accelerator_side_preprocess,
             )
 
         else:
-            raise ValueError(f'Unknown dataset {dataset_name}')
+            raise ValueError(f"Unknown dataset {dataset_name}")
 
         image_shape = dataset.image_shape()
 
         if synthetic_data is not None:
-            logging.info(f'Activating synthetic data on the host.')
+            logging.info(f"Activating synthetic data on the host.")
             ds = DatasetFactory.get_synthetic_dataset(
                 image_shape=image_shape,
                 num_classes=dataset.num_classes(),
                 data_type=img_datatype,
-                eight_bit_transfer=(eight_bit_transfer is not None))
+                eight_bit_transfer=(eight_bit_transfer is not None),
+            )
             padded_dataset_size = dataset.size()
         else:
             ds = dataset.read_single_image()
 
             cpu_preprocessing_fn = dataset.cpu_preprocessing_fn()
             if cpu_preprocessing_fn is not None:
-                ds = ds.map(cpu_preprocessing_fn,
-                            num_parallel_calls=pipeline_num_parallel,
-                            deterministic=deterministic)
+                ds = ds.map(cpu_preprocessing_fn, num_parallel_calls=pipeline_num_parallel, deterministic=deterministic)
 
-            if split != 'train':
+            if split != "train":
 
                 # compute per instance dataset size
                 unpadded_dataset_size = (
-                    dataset.size()
-                    if popdist.getNumInstances() == 1
-                    else ds.reduce(0, lambda x, _: x + 1).numpy()
+                    dataset.size() if popdist.getNumInstances() == 1 else ds.reduce(0, lambda x, _: x + 1).numpy()
                 )
 
                 # compute per instance discarded samples
-                num_discarded_samples = batch_config.get_num_discarded_samples(unpadded_dataset_size,
-                                                                               popdist.getNumInstances())
+                num_discarded_samples = batch_config.get_num_discarded_samples(
+                    unpadded_dataset_size, popdist.getNumInstances()
+                )
 
-                num_padding_samples = batch_config.get_num_padding_samples(num_discarded_samples,
-                                                                           popdist.getNumInstances())
+                num_padding_samples = batch_config.get_num_padding_samples(
+                    num_discarded_samples, popdist.getNumInstances()
+                )
 
                 # get padding samples from largest padded dataset size across all instances
                 if popdist.getNumInstances() > 1:
@@ -184,7 +186,8 @@ class DatasetFactory:
                         dataset.image_shape(),
                         tf.uint8 if eight_bit_transfer is not None else img_datatype,
                         dataset.num_classes(),
-                        num_padding_samples)
+                        num_padding_samples,
+                    )
 
                     ds = ds.concatenate(padding_dataset)
 
@@ -193,40 +196,34 @@ class DatasetFactory:
                 padded_dataset_size = -1
 
         ds = ds.batch(batch_size=batch_config.micro_batch_size, drop_remainder=True)
-        if split != 'train':
+        if split != "train":
             ds = ds.cache()
         if repeat:
             ds = ds.repeat()
         ds.prefetch(prefetch_size)
 
-        app_dataset = application_dataset.ApplicationDataset(pipeline=ds,
-                                                             image_shape=dataset.image_shape(),
-                                                             size=dataset.size(),
-                                                             num_classes=dataset.num_classes(),
-                                                             padded_size=padded_dataset_size)
+        app_dataset = application_dataset.ApplicationDataset(
+            pipeline=ds,
+            image_shape=dataset.image_shape(),
+            size=dataset.size(),
+            num_classes=dataset.num_classes(),
+            padded_size=padded_dataset_size,
+        )
 
-        ipu_preprocess_fn = (
-            dataset.ipu_preprocessing_fn() if accelerator_side_preprocess else None)
+        ipu_preprocess_fn = dataset.ipu_preprocessing_fn() if accelerator_side_preprocess else None
 
         return app_dataset, ipu_preprocess_fn, pipeline_num_parallel
 
     @staticmethod
-    def get_synthetic_dataset(image_shape: Tuple,
-                              num_classes: int,
-                              data_type: tf.dtypes.DType = tf.float32,
-                              eight_bit_transfer: bool = False):
+    def get_synthetic_dataset(
+        image_shape: Tuple, num_classes: int, data_type: tf.dtypes.DType = tf.float32, eight_bit_transfer: bool = False
+    ):
 
-        images = tf.random.truncated_normal(image_shape,
-                                            dtype=data_type,
-                                            mean=127,
-                                            stddev=60)
+        images = tf.random.truncated_normal(image_shape, dtype=data_type, mean=127, stddev=60)
         if eight_bit_transfer:
             images = tf.cast(images, tf.uint8)
 
-        labels = tf.random.uniform([],
-                                   minval=0,
-                                   maxval=num_classes - 1,
-                                   dtype=data_type)
+        labels = tf.random.uniform([], minval=0, maxval=num_classes - 1, dtype=data_type)
 
         ds = tf.data.Dataset.from_tensors((images, labels))
         ds = ds.cache()
@@ -235,12 +232,13 @@ class DatasetFactory:
         return ds
 
     @staticmethod
-    def get_validation_padding_dataset(img_shape: Tuple[int, int, int],
-                                       data_type: tf.dtypes.DType,
-                                       num_classes: int,
-                                       num_padding_samples: int) -> tf.data.Dataset:
+    def get_validation_padding_dataset(
+        img_shape: Tuple[int, int, int], data_type: tf.dtypes.DType, num_classes: int, num_padding_samples: int
+    ) -> tf.data.Dataset:
 
         image = tf.zeros(img_shape, data_type)
         label = tf.constant((num_classes,), dtype=tf.int32)
 
-        return tf.data.Dataset.from_tensors((image, label)).cache().repeat(num_padding_samples).take(num_padding_samples)
+        return (
+            tf.data.Dataset.from_tensors((image, label)).cache().repeat(num_padding_samples).take(num_padding_samples)
+        )

@@ -13,36 +13,36 @@
 # limitations under the License.
 
 # NO.1 compare grad
-extract_name="python alignment.py 
+extract_name="python alignment.py
                 --pipeline 3 2
-                --device ipu 
+                --device ipu
                 --extract_name"
 
-grad_ipu="python alignment.py 
+grad_ipu="python alignment.py
                 --pipeline 3 2
-                --device ipu 
+                --device ipu
                 --grad_compare"
-grad_cpu="python alignment.py 
-                --device cpu 
+grad_cpu="python alignment.py
+                --device cpu
                 --grad_compare"
 
 # NO.2 alignment shard
-shard_ipu="python alignment.py 
+shard_ipu="python alignment.py
                 --pipeline 3 2
                 --device ipu"
 
-shard_cpu="python alignment.py 
+shard_cpu="python alignment.py
                 --device cpu"
 
-# NO.3 alignment pipeline 
-pipeline_ipu="python alignment.py 
+# NO.3 alignment pipeline
+pipeline_ipu="python alignment.py
                 --pipeline 3 2
-                --device ipu 
-                --alignment_pipeline 
+                --device ipu
+                --alignment_pipeline
                 --gradient_accumulation_count 64"
 
-pipeline_cpu="python alignment.py 
-                --device cpu 
+pipeline_cpu="python alignment.py
+                --device cpu
                 --alignment_pipeline
                 --gradient_accumulation_count 64"
 

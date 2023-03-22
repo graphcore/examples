@@ -10,15 +10,17 @@ from tensorflow.python import ipu
 from tensorflow.python.ipu.distributed.popdist_strategy import PopDistStrategy
 
 
-def create_ipu_strategy(num_ipus_per_replica,
-                        num_replicas,
-                        matmul_available_memory_proportion,
-                        matmul_partials_type,
-                        fp_exceptions,
-                        distributed_training=False,
-                        enable_recomputation=True,
-                        num_io_tiles=0,
-                        compile_only=False):
+def create_ipu_strategy(
+    num_ipus_per_replica,
+    num_replicas,
+    matmul_available_memory_proportion,
+    matmul_partials_type,
+    fp_exceptions,
+    distributed_training=False,
+    enable_recomputation=True,
+    num_io_tiles=0,
+    compile_only=False,
+):
     """
     Creates an IPU config and returns an IPU strategy ready to run
     something on IPUs
@@ -58,7 +60,6 @@ def create_ipu_strategy(num_ipus_per_replica,
     ipu_config.floating_point_behaviour.nanoo = fp_exceptions
 
     # Configure connection to device.
-    ipu_config.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     if compile_only:
         ipu_config.device_connection.version = "ipu2"
         ipu_config.device_connection.type = ipu.config.DeviceConnectionType.PRE_COMPILE
@@ -66,9 +67,7 @@ def create_ipu_strategy(num_ipus_per_replica,
 
     # Set the matmul poplar options. If pipelining is used these
     # will be overridden per pipeline stage during pipeline assignment.
-    ipu_config.matmuls.poplar_options = get_matmul_options(
-        matmul_available_memory_proportion,
-        matmul_partials_type)
+    ipu_config.matmuls.poplar_options = get_matmul_options(matmul_available_memory_proportion, matmul_partials_type)
 
     if num_io_tiles:
         ipu_config.io_tiles.num_io_tiles = num_io_tiles
@@ -76,9 +75,11 @@ def create_ipu_strategy(num_ipus_per_replica,
 
     if distributed_training:
         if num_replicas != popdist.getNumTotalReplicas():
-            logging.error(f'Replication factor given to poprun (=={popdist.getNumTotalReplicas()}) '
-                          f'does not match the config (=={num_replicas}).')
-        logging.info(f'Total number of instances {popdist.getNumInstances()}')
+            logging.error(
+                f"Replication factor given to poprun (=={popdist.getNumTotalReplicas()}) "
+                f"does not match the config (=={num_replicas})."
+            )
+        logging.info(f"Total number of instances {popdist.getNumInstances()}")
 
         popdist.tensorflow.set_ipu_config(ipu_config, ipus_per_replica=num_ipus_per_replica, configure_device=True)
     else:
@@ -90,12 +91,8 @@ def create_ipu_strategy(num_ipus_per_replica,
     return strategy
 
 
-def get_matmul_options(matmul_available_memory_proportion,
-                       matmul_partials_type):
-    return {
-        "availableMemoryProportion": str(matmul_available_memory_proportion),
-        "partialsType": matmul_partials_type
-    }
+def get_matmul_options(matmul_available_memory_proportion, matmul_partials_type):
+    return {"availableMemoryProportion": str(matmul_available_memory_proportion), "partialsType": matmul_partials_type}
 
 
 def set_random_seeds(seed=42):

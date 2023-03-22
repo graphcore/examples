@@ -14,10 +14,10 @@ import poptorch
 
 def load_custom_ops_lib(path_custom_op: str):
     """Loads the custom op binary
-        Parameters:
-            predictions (str): name of the custom op binary file
+    Parameters:
+        predictions (str): name of the custom op binary file
     """
-    path_to_detection = Path(os.environ['PYTORCH_APPS_DETECTION_PATH'])
+    path_to_detection = Path(os.environ["PYTORCH_APPS_DETECTION_PATH"])
     so_path = path_to_detection.joinpath("utils/custom_ops/build/" + path_custom_op)
 
     if not so_path.is_file():
@@ -61,7 +61,14 @@ class Nms(torch.nn.Module):
         self.nms_max_detections = inference_cfg.nms_max_detections
         self.cpu_mode = cpu_mode
 
-    def cpu_nms(self, scores: torch.Tensor, boxes: torch.Tensor, classes: torch.Tensor, iou_threshold: float, max_detections: int) -> List[torch.Tensor]:
+    def cpu_nms(
+        self,
+        scores: torch.Tensor,
+        boxes: torch.Tensor,
+        classes: torch.Tensor,
+        iou_threshold: float,
+        max_detections: int,
+    ) -> List[torch.Tensor]:
         """
         Perform non maximum suppression on predictions
         Parameters:
@@ -86,14 +93,14 @@ class Nms(torch.nn.Module):
             if nms_preds.shape[0] > max_detections:
                 selected_box_indx[i] = nms_preds[:max_detections]
             else:
-                selected_box_indx[i, :nms_preds.shape[0]] = nms_preds
+                selected_box_indx[i, : nms_preds.shape[0]] = nms_preds
                 cpu_true_max_detections[i] = nms_preds.shape[0]
 
-            batch_indices = selected_box_indx[i, :cpu_true_max_detections[i]]
+            batch_indices = selected_box_indx[i, : cpu_true_max_detections[i]]
 
-            cpu_classes[i, :cpu_true_max_detections[i]] = bclasses[batch_indices]
-            cpu_boxes[i, :cpu_true_max_detections[i]] = bboxes[batch_indices]
-            cpu_scores[i, :cpu_true_max_detections[i]] = bscores[batch_indices]
+            cpu_classes[i, : cpu_true_max_detections[i]] = bclasses[batch_indices]
+            cpu_boxes[i, : cpu_true_max_detections[i]] = bboxes[batch_indices]
+            cpu_scores[i, : cpu_true_max_detections[i]] = bscores[batch_indices]
 
         return [selected_box_indx, cpu_scores, cpu_boxes, cpu_classes.int(), cpu_true_max_detections.int()]
 
@@ -108,10 +115,17 @@ class Nms(torch.nn.Module):
             name="Nms",
             domain="ai.graphcore",
             domain_version=1,
-            attributes={"threshold": self.iou_threshold, "scoreThreshold": self.score_threshold, "numDetections": self.nms_max_detections, "useGather": 1},
-            example_outputs=[torch.zeros(dtype=torch.long, size=[batch, self.nms_max_detections]),
-                             torch.zeros(dtype=scores.dtype, size=[batch, self.nms_max_detections]),
-                             torch.zeros(dtype=boxes.dtype, size=[batch, self.nms_max_detections, 4]),
-                             torch.zeros(dtype=torch.int, size=[batch, self.nms_max_detections]),
-                             torch.zeros(dtype=torch.int, size=[batch])]
+            attributes={
+                "threshold": self.iou_threshold,
+                "scoreThreshold": self.score_threshold,
+                "numDetections": self.nms_max_detections,
+                "useGather": 1,
+            },
+            example_outputs=[
+                torch.zeros(dtype=torch.long, size=[batch, self.nms_max_detections]),
+                torch.zeros(dtype=scores.dtype, size=[batch, self.nms_max_detections]),
+                torch.zeros(dtype=boxes.dtype, size=[batch, self.nms_max_detections, 4]),
+                torch.zeros(dtype=torch.int, size=[batch, self.nms_max_detections]),
+                torch.zeros(dtype=torch.int, size=[batch]),
+            ],
         )

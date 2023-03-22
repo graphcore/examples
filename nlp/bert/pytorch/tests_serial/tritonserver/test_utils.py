@@ -9,19 +9,17 @@ def log_performance_results(model_name, request_type, data_type, number_of_proce
     min_latency = np.min(latencies)
     max_latency = np.max(latencies)
 
-    logging.info(
-        "-------------------------------------------------------------------------------------------")
+    logging.info("-------------------------------------------------------------------------------------------")
     # Standardised metric reporting
     logging.info(f"{model_name}-{request_type}-{number_of_processes} results:")
     logging.info(f"\n\tdata_type: {data_type}")
     logging.info(
         f"\n\tthroughput: {np.mean(throughputs)} samples/sec (mean) (min: {np.min(throughputs)},"
-        f" max: {np.max(throughputs)}, std: {np.std(throughputs)})")
+        f" max: {np.max(throughputs)}, std: {np.std(throughputs)})"
+    )
     if number_of_processes > 1:
-        logging.info(
-            f"\n\tthroughput thread combined: {number_of_processes * np.mean(throughputs)} samples/sec (mean)")
-    logging.info(
-        f"\n\tlatency: {avg_latency} ms (mean) (min: {min_latency}, max: {max_latency})")
+        logging.info(f"\n\tthroughput thread combined: {number_of_processes * np.mean(throughputs)} samples/sec (mean)")
+    logging.info(f"\n\tlatency: {avg_latency} ms (mean) (min: {min_latency}, max: {max_latency})")
 
 
 class DataGeneratorWrapper:
@@ -38,7 +36,6 @@ class DataGeneratorWrapper:
         data_list = []
         processed_data_list = []
         for name in self.input_names:
-            processed_data_list.append(
-                data_dict[name].numpy().astype(np.int32))
+            processed_data_list.append(data_dict[name].numpy().astype(np.int32))
             data_list.append(data_dict[name])
         return processed_data_list, data_list

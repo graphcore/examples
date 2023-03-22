@@ -20,5 +20,5 @@ class ERF_GELU(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        cdf = 0.5 * (1.0 + torch.erf(x / (2.0 ** 0.5)))
+        cdf = 0.5 * (1.0 + torch.erf(x / (2.0**0.5)))
         return x * cdf

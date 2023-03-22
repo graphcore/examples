@@ -1,0 +1,3 @@
+pytest~=6.2
+filelock==3.0.12
+pytest-pythonpath==0.7.3

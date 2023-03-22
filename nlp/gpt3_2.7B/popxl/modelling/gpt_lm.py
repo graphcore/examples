@@ -92,11 +92,18 @@ class GPTLMHeadLossAndGradTP(addons.Module):
         dp = config.execution.data_parallel
         self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp, group_size=dp)
 
-    def build(self, x: popxl.Tensor, labels: popxl.Tensor, word_embedding_t: popxl.Tensor,
-              word_embedding_accum_t: popxl.TensorByRef, word_offset: popxl.Tensor):
+    def build(
+        self,
+        x: popxl.Tensor,
+        labels: popxl.Tensor,
+        word_embedding_t: popxl.Tensor,
+        word_embedding_accum_t: popxl.TensorByRef,
+        word_offset: popxl.Tensor,
+    ):
 
-        vocab_shard_size = Embedding.get_vocab_shard_size(self.config.model.embedding.vocab_size,
-                                                          self.config.execution.tensor_parallel)
+        vocab_shard_size = Embedding.get_vocab_shard_size(
+            self.config.model.embedding.vocab_size, self.config.execution.tensor_parallel
+        )
         word_embed = popxl.TensorSpec((self.config.model.hidden_size, vocab_shard_size), dtype=x.dtype)
 
         fwd_facts, fwd_graph = GPTLMHeadTP(self.config).create_graph(x, word_embed)
@@ -105,24 +112,29 @@ class GPTLMHeadLossAndGradTP(addons.Module):
         ignore_index = -1 * word_offset
         # TODO: make cross_entropy_sharded_loss_with_grad and use float32 for loss_scaling, for consistency with popart
         loss_graph = GraphWithNamedArgs(
-            fwd_graph.graph._ir.create_graph(cross_entropy_sharded_loss,
-                                             fwd_graph.graph.outputs[0],
-                                             labels,
-                                             ignore_index=ignore_index,
-                                             reduction='mean',
-                                             replica_grouping=self.replica_grouping.transpose()))
+            fwd_graph.graph._ir.create_graph(
+                cross_entropy_sharded_loss,
+                fwd_graph.graph.outputs[0],
+                labels,
+                ignore_index=ignore_index,
+                reduction="mean",
+                replica_grouping=self.replica_grouping.transpose(),
+            )
+        )
 
         required_grads = [fwd_graph.graph.inputs[0]]
         accums = list(fwd_graph.args.tensors) + [fwd_graph.graph.inputs[1]]  # layer norm weights + tied weight
         none_is_all_replica = partial(fill_none_group, none_value=popxl.gcg().ir.replica_grouping())
         replica_groupings = fwd_facts.replica_groupings.map(none_is_all_replica)
-        replica_groupings.insert('word_embedding', self.replica_grouping)
+        replica_groupings.insert("word_embedding", self.replica_grouping)
 
-        bwd_facts, bwd_graph = addons.transforms.autodiff_with_accumulation(fwd_graph,
-                                                                            tensors_to_accumulate_grads=accums,
-                                                                            grads_required=required_grads,
-                                                                            replica_groupings=replica_groupings)
-        loss_bwd = addons.transforms.autodiff(loss_graph, grads_required=(loss_graph.graph.inputs[0], ))
+        bwd_facts, bwd_graph = addons.transforms.autodiff_with_accumulation(
+            fwd_graph,
+            tensors_to_accumulate_grads=accums,
+            grads_required=required_grads,
+            replica_groupings=replica_groupings,
+        )
+        loss_bwd = addons.transforms.autodiff(loss_graph, grads_required=(loss_graph.graph.inputs[0],))
 
         tied_weight = word_embedding_t
         fwd_info = fwd_graph.bind(ts).call_with_info(x, tied_weight)
@@ -133,15 +145,15 @@ class GPTLMHeadLossAndGradTP(addons.Module):
 
         loss_scaling = popxl.constant(self.config.execution.loss_scaling, self.config.model.dtype)
 
-        dx, = loss_bwd.call(loss_scaling, args=loss_bwd.grad_graph_info.inputs_dict(loss_fwd_info))
+        (dx,) = loss_bwd.call(loss_scaling, args=loss_bwd.grad_graph_info.inputs_dict(loss_fwd_info))
 
         ln_facts = bwd_facts.copy()
-        ln_facts.accum.pop('word_embedding')
+        ln_facts.accum.pop("word_embedding")
         bwd_weights = self.add_variable_inputs("bwd", ln_facts)
 
         input_dict = bwd_graph.grad_graph_info.inputs_dict(fwd_info)
         input_dict.update({bwd_graph.args.accum.word_embedding: word_embedding_accum_t})
 
-        dx, = bwd_graph.bind(bwd_weights).call(dx, args=input_dict)
+        (dx,) = bwd_graph.bind(bwd_weights).call(dx, args=input_dict)
 
         return loss, dx

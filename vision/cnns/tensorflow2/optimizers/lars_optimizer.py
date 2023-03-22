@@ -31,7 +31,7 @@ class LARSIpuOptimizer(IpuOptimizerBase):
         weight_decay=0.0001,
         eeta=0.001,
         epsilon=0.0,
-        name='LARSOptimizer',
+        name="LARSOptimizer",
         exclude_from_weight_decay=None,
         exclude_from_layer_adaptation=None,
         use_nesterov=False,
@@ -74,10 +74,10 @@ class LARSIpuOptimizer(IpuOptimizerBase):
         """
         super().__init__(name, **kwargs)
         self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
-        self._set_hyper('eeta', tf.convert_to_tensor(eeta))
-        self._set_hyper('weight_decay', tf.convert_to_tensor(weight_decay))
-        self._set_hyper('momentum', tf.convert_to_tensor(momentum))
-        self._set_hyper('epsilon', tf.convert_to_tensor(epsilon or tf.keras.backend.epsilon()))
+        self._set_hyper("eeta", tf.convert_to_tensor(eeta))
+        self._set_hyper("weight_decay", tf.convert_to_tensor(weight_decay))
+        self._set_hyper("momentum", tf.convert_to_tensor(momentum))
+        self._set_hyper("epsilon", tf.convert_to_tensor(epsilon or tf.keras.backend.epsilon()))
         self.exclude_from_weight_decay = exclude_from_weight_decay
         self.exclude_from_layer_adaptation = exclude_from_layer_adaptation
         self.use_nesterov = use_nesterov
@@ -88,10 +88,10 @@ class LARSIpuOptimizer(IpuOptimizerBase):
 
     def _prepare_local(self, var_device, var_dtype, apply_state):
         super()._prepare_local(var_device, var_dtype, apply_state)
-        eeta = tf.cast(self._get_hyper('eeta'), var_dtype)
-        momentum = tf.cast(self._get_hyper('momentum'), var_dtype)
-        weight_decay = tf.cast(self._get_hyper('weight_decay'), var_dtype)
-        epsilon = tf.cast(self._get_hyper('epsilon'), var_dtype)
+        eeta = tf.cast(self._get_hyper("eeta"), var_dtype)
+        momentum = tf.cast(self._get_hyper("momentum"), var_dtype)
+        weight_decay = tf.cast(self._get_hyper("weight_decay"), var_dtype)
+        epsilon = tf.cast(self._get_hyper("epsilon"), var_dtype)
         apply_state[(var_device, var_dtype)].update(
             dict(
                 eeta=eeta,
@@ -104,15 +104,9 @@ class LARSIpuOptimizer(IpuOptimizerBase):
     def update_coefficients(self, handle, apply_state):
         var_device, var_dtype = handle.device, handle.dtype.base_dtype
         # update coefficients
-        return ((apply_state or {}).get((var_device, var_dtype)) or
-                self._fallback_apply_state(var_device, var_dtype))
+        return (apply_state or {}).get((var_device, var_dtype)) or self._fallback_apply_state(var_device, var_dtype)
 
-    def compute_trust_ratio(self,
-                            grad,
-                            var,
-                            eeta,
-                            epsilon,
-                            weight_decay):
+    def compute_trust_ratio(self, grad, var, eeta, epsilon, weight_decay):
 
         var_name = self._get_variable_name(var.name)
 
@@ -124,8 +118,7 @@ class LARSIpuOptimizer(IpuOptimizerBase):
             g_norm_cast = tf.cast(g_norm, dtype=grad.dtype)
 
             if self._do_use_weight_decay(var_name):
-                grad += (tf.cast(weight_decay, dtype=grad.dtype) *
-                         tf.cast(var, dtype=grad.dtype))
+                grad += tf.cast(weight_decay, dtype=grad.dtype) * tf.cast(var, dtype=grad.dtype)
             else:
                 weight_decay = 0
 
@@ -134,8 +127,10 @@ class LARSIpuOptimizer(IpuOptimizerBase):
                 x=tf.where(
                     condition=tf.greater(g_norm_cast, 0),
                     x=eeta * w_norm_cast / (g_norm_cast + weight_decay * w_norm_cast + epsilon),
-                    y=tf.constant(1.0, dtype=grad.dtype)),
-                y=tf.constant(1.0, dtype=grad.dtype))
+                    y=tf.constant(1.0, dtype=grad.dtype),
+                ),
+                y=tf.constant(1.0, dtype=grad.dtype),
+            )
         else:
             trust_ratio = tf.constant(1.0, dtype=grad.dtype)
 
@@ -143,16 +138,15 @@ class LARSIpuOptimizer(IpuOptimizerBase):
 
     def _resource_apply_dense(self, grad, var, apply_state=None):
         coefficients = self.update_coefficients(var, apply_state)
-        eeta = coefficients['eeta']
-        lr_t = coefficients['lr_t']
-        epsilon = coefficients['epsilon']
-        momentum = coefficients['momentum']
-        weight_decay = coefficients['weight_decay']
+        eeta = coefficients["eeta"]
+        lr_t = coefficients["lr_t"]
+        epsilon = coefficients["epsilon"]
+        momentum = coefficients["momentum"]
+        weight_decay = coefficients["weight_decay"]
 
-        momentum_var = self.get_slot(var, 'momentum_var')
+        momentum_var = self.get_slot(var, "momentum_var")
 
-        trust_ratio, grad = self.compute_trust_ratio(
-            grad, var, eeta, epsilon, weight_decay)
+        trust_ratio, grad = self.compute_trust_ratio(grad, var, eeta, epsilon, weight_decay)
         scaled_lr = lr_t * trust_ratio
 
         return training_ops.resource_apply_momentum(
@@ -162,19 +156,21 @@ class LARSIpuOptimizer(IpuOptimizerBase):
             grad=tf.cast(grad * scaled_lr, var.dtype.base_dtype),
             momentum=tf.cast(momentum, var.dtype.base_dtype),
             use_locking=False,
-            use_nesterov=self.use_nesterov
+            use_nesterov=self.use_nesterov,
         )
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "learning_rate": self._serialize_hyperparameter("learning_rate"),
-            "weight_decay": self._serialize_hyperparameter("weight_decay"),
-            "decay": self._serialize_hyperparameter("decay"),
-            "momentum": self._serialize_hyperparameter("momentum"),
-            "eeta": self._serialize_hyperparameter("eeta"),
-            "epsilon": self.epsilon,
-        })
+        config.update(
+            {
+                "learning_rate": self._serialize_hyperparameter("learning_rate"),
+                "weight_decay": self._serialize_hyperparameter("weight_decay"),
+                "decay": self._serialize_hyperparameter("decay"),
+                "momentum": self._serialize_hyperparameter("momentum"),
+                "eeta": self._serialize_hyperparameter("eeta"),
+                "epsilon": self.epsilon,
+            }
+        )
         return config
 
     def _do_use_weight_decay(self, param_name):

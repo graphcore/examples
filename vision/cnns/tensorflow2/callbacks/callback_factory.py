@@ -26,20 +26,21 @@ from .optimization_metric_callback import OptimizationMetricCallback
 
 
 class CallbackFactory:
-
     @staticmethod
-    def get_callbacks(log_period: int,
-                      images_per_execution: int,
-                      model: tf.keras.Model,
-                      micro_batches_per_epoch: int,
-                      outfeed_queues: Optional[List[Tuple[str, ipu.ipu_outfeed_queue.IPUOutfeedQueue]]] = None,
-                      debug_outfeed_queues: List[Tuple[str, ipu.ipu_outfeed_queue.IPUOutfeedQueue]] = [],
-                      checkpoint_period: int = 0,
-                      checkpoint_phase: int = 0,
-                      checkpoint_dir: str = '/tmp/checkpoints',
-                      hyperparams: dict = {},
-                      correct_metric: Optional[Tuple[str, float]] = None,
-                      fields_to_remove: List[str] = []):
+    def get_callbacks(
+        log_period: int,
+        images_per_execution: int,
+        model: tf.keras.Model,
+        micro_batches_per_epoch: int,
+        outfeed_queues: Optional[List[Tuple[str, ipu.ipu_outfeed_queue.IPUOutfeedQueue]]] = None,
+        debug_outfeed_queues: List[Tuple[str, ipu.ipu_outfeed_queue.IPUOutfeedQueue]] = [],
+        checkpoint_period: int = 0,
+        checkpoint_phase: int = 0,
+        checkpoint_dir: str = "/tmp/checkpoints",
+        hyperparams: dict = {},
+        correct_metric: Optional[Tuple[str, float]] = None,
+        fields_to_remove: List[str] = [],
+    ):
 
         callbacks = []
 
@@ -62,15 +63,16 @@ class CallbackFactory:
             for name, outfeed_queue in debug_outfeed_queues:
                 callbacks.append(DebugCallback(queue=outfeed_queue, name=name))
 
-        # For distributed validation peform all reduce on metrics
+        # For distributed validation perform all reduce on metrics
         if hyperparams.distributed_training and not hyperparams.accelerator_side_reduction:
             callbacks.append(AllReduceMetricsCallback())
 
         if checkpoint_period != 0:
-            callbacks.append(CheckpointCallback(ckpt_period=checkpoint_period,
-                                                ckpt_phase=checkpoint_phase,
-                                                checkpoint_dir=checkpoint_dir))
-
+            callbacks.append(
+                CheckpointCallback(
+                    ckpt_period=checkpoint_period, ckpt_phase=checkpoint_phase, checkpoint_dir=checkpoint_dir
+                )
+            )
 
         if correct_metric is not None:
             metric_name, correction_factor = correct_metric
@@ -84,19 +86,20 @@ class CallbackFactory:
         if hyperparams.wandb:
             wandb_log_period = log_period
             if wandb_log_period > 0:
-                callbacks.append(CustomWandbCallback(log_period=wandb_log_period,
-                                                     hyperparams=vars(hyperparams),
-                                                     model=model))
+                callbacks.append(
+                    CustomWandbCallback(log_period=wandb_log_period, hyperparams=vars(hyperparams), model=model)
+                )
 
         return callbacks
 
     @staticmethod
     def set_validation_only_callbacks(
-            callbacks: List[tf.keras.callbacks.Callback],
-            ckpt_list: List[str],
-            sweep: bool,
-            target_field: str,
-            target_value: float):
+        callbacks: List[tf.keras.callbacks.Callback],
+        ckpt_list: List[str],
+        sweep: bool,
+        target_field: str,
+        target_value: float,
+    ):
         callback_replaced = False
         for idx in range(len(callbacks)):
             if isinstance(callbacks[idx], EpochCalculationCallback):
@@ -109,7 +112,7 @@ class CallbackFactory:
                 callbacks.insert(idx, OptimizationMetricCallback(target_field, target_value))
 
         if not callback_replaced:
-            raise ValueError('EpochCalculationCallback not found and therefore not replaced')
+            raise ValueError("EpochCalculationCallback not found and therefore not replaced")
 
         return callbacks
 
@@ -117,4 +120,4 @@ class CallbackFactory:
     def log_optimization_metric(callbacks: List[tf.keras.callbacks.Callback]):
         for callback in callbacks:
             if isinstance(callback, OptimizationMetricCallback):
-                wandb.log({'optimization_metric' : callback.optimization_metric})
+                wandb.log({"optimization_metric": callback.optimization_metric})

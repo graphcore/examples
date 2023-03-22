@@ -26,13 +26,9 @@ def estimate_ds_throughput(config):
 
     # Set how the adjacency matrix is expressed,
     # namely dense tensor, sparse tensor, or tuple.
-    adjacency_form_training = get_adjacency_form(
-        config.training.device,
-        config.training.use_sparse_representation)
+    adjacency_form_training = get_adjacency_form(config.training.device, config.training.use_sparse_representation)
     # Decide on the dtype of the adjacency matrix
-    adjacency_dtype_training = get_adjacency_dtype(
-        config.training.device,
-        config.training.use_sparse_representation)
+    adjacency_dtype_training = get_adjacency_dtype(config.training.device, config.training.use_sparse_representation)
 
     method_max_edges = get_method_max(config.method_max_edges)
     method_max_nodes = get_method_max(config.method_max_nodes)
@@ -79,13 +75,20 @@ def estimate_ds_throughput(config):
         max_edges_per_batch=training_clusters.max_edges_per_batch,
         adjacency_dtype=adjacency_dtype_training,
         adjacency_form=adjacency_form_training,
-        seed=config.seed
+        seed=config.seed,
     )
 
-    results_tfdatatype = dataset_benchmark(data_generator_training, config.training.epochs, elements_per_epochs = int(config.training.num_clusters / config.training.clusters_per_batch), print_stats=False)
-    results_dict = json.loads(results_tfdatatype.numpy()[0].decode('utf-8'))
-    throughputs = [epoch['elements_per_second'] * training_clusters.max_nodes_per_batch for epoch in results_dict['epochs']]
-    skip_epochs = min(2, config.training.epochs-1)
+    results_tfdatatype = dataset_benchmark(
+        data_generator_training,
+        config.training.epochs,
+        elements_per_epochs=int(config.training.num_clusters / config.training.clusters_per_batch),
+        print_stats=False,
+    )
+    results_dict = json.loads(results_tfdatatype.numpy()[0].decode("utf-8"))
+    throughputs = [
+        epoch["elements_per_second"] * training_clusters.max_nodes_per_batch for epoch in results_dict["epochs"]
+    ]
+    skip_epochs = min(2, config.training.epochs - 1)
     throughputs = throughputs[skip_epochs:]
     mean_throughput = np.mean(throughputs)
     min_throughput = np.min(throughputs)
@@ -94,10 +97,9 @@ def estimate_ds_throughput(config):
     return mean_throughput, min_throughput, max_throughput, std_throughput
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Setup logging
-    logging.basicConfig(format="%(asctime)s %(levelname)-8s %(message)s",
-                        datefmt="%Y-%m-%d %H:%M:%S")
+    logging.basicConfig(format="%(asctime)s %(levelname)-8s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
     # Prevent doubling of TF logs.
     tf.get_logger().propagate = False
 
@@ -110,7 +112,7 @@ if __name__ == '__main__':
 
     mean_tput, min_tput, max_tput, std_tput = estimate_ds_throughput(config)
 
-    print(f'Mean throughput = {mean_tput:.1f} samples/sec')
-    print(f'Min throughput = {min_tput:.1f} samples/sec')
-    print(f'Max throughput = {max_tput:.1f} samples/sec')
-    print(f'STD throughput = {std_tput:.1f} samples/sec')
+    print(f"Mean throughput = {mean_tput:.1f} samples/sec")
+    print(f"Min throughput = {min_tput:.1f} samples/sec")
+    print(f"Max throughput = {max_tput:.1f} samples/sec")
+    print(f"STD throughput = {std_tput:.1f} samples/sec")

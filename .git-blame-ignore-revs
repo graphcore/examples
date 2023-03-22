@@ -1,0 +1,8 @@
+# Reformat with black & clang-format
+02f34546c54ed62ded7f43c33cb203aa1dc5c88a
+
+# Refactor public_examples taxonomy
+8db3486cd7d559517dc2e275bc3477bebd31f262
+
+# Add more pre-commit hooks, add black to docs & jupyter
+62ffeefaf3266b01a3ad012545d0a82383398a47

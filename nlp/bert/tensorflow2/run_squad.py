@@ -51,26 +51,26 @@ def fine_tune_squad(config):
         options.
     """
     if config.bert_model_name is None and config.pretrained_ckpt_path is None:
-        logging.warning("SQuAD requires a pretrained model, either"
-                        " `bert_model_name` (via config file) or"
-                        " `pretrained_ckpt_path` (via config file or"
-                        " `--pretrained-ckpt-path` command line argument)"
-                        " but none provided.")
+        logging.warning(
+            "SQuAD requires a pretrained model, either"
+            " `bert_model_name` (via config file) or"
+            " `pretrained_ckpt_path` (via config file or"
+            " `--pretrained-ckpt-path` command line argument)"
+            " but none provided."
+        )
     if config.bert_model_name is not None and config.pretrained_ckpt_path is not None:
-        logging.warning("Only one checkpoint is accepted, but two provided:"
-                        f" `bert_model_name`={config.bert_model_name}, and"
-                        f" `pretrained_ckpt_path`={config.pretrained_ckpt_path}.")
+        logging.warning(
+            "Only one checkpoint is accepted, but two provided:"
+            f" `bert_model_name`={config.bert_model_name}, and"
+            f" `pretrained_ckpt_path`={config.pretrained_ckpt_path}."
+        )
 
     universal_run_name = config.config.stem if config.name is None else config.name
     universal_run_name += f"-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     logging.info(f"Universal name for run: {universal_run_name}")
 
     if config.enable_wandb:
-        wandb.init(entity="sw-apps",
-                   project="TF2-BERT",
-                   name=universal_run_name,
-                   config=config,
-                   tags=config.wandb_tags)
+        wandb.init(entity="sw-apps", project="TF2-BERT", name=universal_run_name, config=config, tags=config.wandb_tags)
 
     num_pipeline_stages = len(config.ipu_config.pipeline_device_mapping)
     num_ipus_per_replica = max(config.ipu_config.pipeline_device_mapping) + 1
@@ -78,32 +78,35 @@ def fine_tune_squad(config):
     # Load training and validation data
     # =================================
     train_dataset, eval_dataset, num_train_samples, num_eval_samples, raw_datasets = get_squad_data(
-        config.global_batch.micro_batch_size,
-        config.dataset_dir,
-        config.generated_dataset,
-        config.max_seq_length
+        config.global_batch.micro_batch_size, config.dataset_dir, config.generated_dataset, config.max_seq_length
     )
-    total_num_train_samples = (config.num_epochs * num_train_samples.numpy()
-                               if config.total_num_train_samples is None
-                               else config.total_num_train_samples)
-    train_batch_config = BatchConfig(micro_batch_size=config.global_batch.micro_batch_size,
-                                     num_replicas=config.global_batch.replicas,
-                                     total_num_train_samples=total_num_train_samples,
-                                     gradient_accumulation_count=config.global_batch.grad_acc_steps_per_replica,
-                                     num_pipeline_stages=num_pipeline_stages,
-                                     dataset_size=num_train_samples.numpy(),
-                                     global_batches_per_log=config.global_batches_per_log,
-                                     task=Task.OTHER)
+    total_num_train_samples = (
+        config.num_epochs * num_train_samples.numpy()
+        if config.total_num_train_samples is None
+        else config.total_num_train_samples
+    )
+    train_batch_config = BatchConfig(
+        micro_batch_size=config.global_batch.micro_batch_size,
+        num_replicas=config.global_batch.replicas,
+        total_num_train_samples=total_num_train_samples,
+        gradient_accumulation_count=config.global_batch.grad_acc_steps_per_replica,
+        num_pipeline_stages=num_pipeline_stages,
+        dataset_size=num_train_samples.numpy(),
+        global_batches_per_log=config.global_batches_per_log,
+        task=Task.OTHER,
+    )
 
     # Create model
     # ============
     policy = tf.keras.mixed_precision.Policy("float16")
     tf.keras.mixed_precision.set_global_policy(policy)
-    strategy = create_ipu_strategy(num_ipus_per_replica=num_ipus_per_replica,
-                                   num_replicas=config.global_batch.replicas,
-                                   enable_stochastic_rounding=config.enable_stochastic_rounding,
-                                   enable_recomputation=config.enable_recomputation,
-                                   compile_only=config.compile_only)
+    strategy = create_ipu_strategy(
+        num_ipus_per_replica=num_ipus_per_replica,
+        num_replicas=config.global_batch.replicas,
+        enable_stochastic_rounding=config.enable_stochastic_rounding,
+        enable_recomputation=config.enable_recomputation,
+        compile_only=config.compile_only,
+    )
     set_random_seeds(config.seed)
     with strategy.scope():
         # Instantiate the pretrained model given in the config.
@@ -123,22 +126,19 @@ def fine_tune_squad(config):
             use_outlining=config.use_outlining,
             enable_recomputation=config.enable_recomputation,
             embedding_serialization_factor=config.embedding_serialization_factor,
-            rename_outputs={'tf.compat.v1.squeeze': 'start_positions', 'tf.compat.v1.squeeze_1': 'end_positions'},
+            rename_outputs={"tf.compat.v1.squeeze": "start_positions", "tf.compat.v1.squeeze_1": "end_positions"},
             use_prediction_bias=config.use_prediction_bias,
             use_projection_bias=config.use_projection_bias,
             use_cls_layer=config.use_cls_layer,
             use_qkv_bias=config.use_qkv_bias,
-            use_qkv_split=config.use_qkv_split
+            use_qkv_split=config.use_qkv_split,
         )
         # Load from pretrained checkpoint if requested.
         if config.pretrained_ckpt_path:
-            logging.info(
-                "Attempting to load pretrained checkpoint from path "
-                f"{config.pretrained_ckpt_path}")
+            logging.info("Attempting to load pretrained checkpoint from path " f"{config.pretrained_ckpt_path}")
             _ = load_checkpoint_into_model(
-                model=model,
-                pretrained_ckpt_path=config.pretrained_ckpt_path,
-                expect_partial=config.do_training)
+                model=model, pretrained_ckpt_path=config.pretrained_ckpt_path, expect_partial=config.do_training
+            )
 
         # Configure pipeline stages
         # =========================
@@ -152,7 +152,7 @@ def fine_tune_squad(config):
                 num_ipus_per_replica,
                 config.ipu_config.pipeline_device_mapping,
                 config.ipu_config.matmul_available_memory_proportion_per_pipeline_stage,
-                config.matmul_partials_type
+                config.matmul_partials_type,
             )
             model.set_pipelining_options(
                 gradient_accumulation_steps_per_replica=config.global_batch.grad_acc_steps_per_replica,
@@ -170,19 +170,23 @@ def fine_tune_squad(config):
             # ==============================
             # Wrap loss in an out-feed queue.
             loss = wrap_loss_in_enqueuer(
-                QuestionAnsweringLossFunction,
-                ["end_positions_loss", "start_positions_loss"])()
+                QuestionAnsweringLossFunction, ["end_positions_loss", "start_positions_loss"]
+            )()
             # Wrap accuracy in an out-feed queue.
             accuracy = wrap_stateful_metric_in_enqueuer(
-                tf.keras.metrics.SparseCategoricalAccuracy,
-                ["end_positions_accuracy", "start_positions_accuracy"])()
+                tf.keras.metrics.SparseCategoricalAccuracy, ["end_positions_accuracy", "start_positions_accuracy"]
+            )()
             # Define optimiser with polynomial decay learning rate.
-            lr_outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue(outfeed_mode=ipu.ipu_outfeed_queue.IPUOutfeedMode.LAST)
-            lr_scheduler = get_lr_scheduler(scheduler_name=config.optimizer_opts.learning_rate.schedule_name,
-                                            max_learning_rate=config.optimizer_opts.learning_rate.max_learning_rate,
-                                            warmup_frac=config.optimizer_opts.learning_rate.warmup_frac,
-                                            num_train_steps=train_batch_config.num_train_steps,
-                                            queue=lr_outfeed_queue)
+            lr_outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue(
+                outfeed_mode=ipu.ipu_outfeed_queue.IPUOutfeedMode.LAST
+            )
+            lr_scheduler = get_lr_scheduler(
+                scheduler_name=config.optimizer_opts.learning_rate.schedule_name,
+                max_learning_rate=config.optimizer_opts.learning_rate.max_learning_rate,
+                warmup_frac=config.optimizer_opts.learning_rate.warmup_frac,
+                num_train_steps=train_batch_config.num_train_steps,
+                queue=lr_outfeed_queue,
+            )
             # Prepare optimizer.
             optimizer = get_optimizer(
                 optimizer_name=config.optimizer_opts.name,
@@ -196,7 +200,7 @@ def fine_tune_squad(config):
                 optimizer=optimizer,
                 loss={"end_positions": loss, "start_positions": loss},
                 metrics={"end_positions": accuracy, "start_positions": accuracy},
-                steps_per_execution=train_batch_config.steps_per_execution
+                steps_per_execution=train_batch_config.steps_per_execution,
             )
 
             # Train the model
@@ -208,9 +212,7 @@ def fine_tune_squad(config):
                 model=model,
                 checkpoint_path=config.save_ckpt_path,
                 ckpt_every_n_steps_per_execution=config.ckpt_every_n_steps_per_execution,
-                outfeed_queues=[lr_outfeed_queue,
-                                loss.outfeed_queue,
-                                accuracy.outfeed_queue],
+                outfeed_queues=[lr_outfeed_queue, loss.outfeed_queue, accuracy.outfeed_queue],
                 enable_wandb=config.enable_wandb,
             )
             # Print configs to be logged in wandb's terminal.
@@ -222,9 +224,11 @@ def fine_tune_squad(config):
             # logging callback included in callbacks dir
             model.fit(
                 train_dataset,
-                steps_per_epoch=(train_batch_config.total_num_micro_batches
-                                 if train_batch_config.epochs < 1
-                                 else train_batch_config.num_micro_batches_per_epoch),
+                steps_per_epoch=(
+                    train_batch_config.total_num_micro_batches
+                    if train_batch_config.epochs < 1
+                    else train_batch_config.num_micro_batches_per_epoch
+                ),
                 epochs=math.ceil(train_batch_config.epochs),
                 callbacks=callbacks,
                 verbose=0,
@@ -234,17 +238,20 @@ def fine_tune_squad(config):
         # Evaluate the model on the validation set
         # ========================================
         # Prepare the dataset to be evaluated in the IPU.
-        eval_batch_config = BatchConfig(micro_batch_size=config.global_batch.micro_batch_size,
-                                        total_num_train_samples=num_eval_samples.numpy(),
-                                        gradient_accumulation_count=config.global_batch.grad_acc_steps_per_replica,
-                                        dataset_size=num_eval_samples.numpy(),
-                                        task=Task.OTHER)
-        eval_pred_dataset = get_prediction_dataset(eval_dataset,
-                                                   eval_batch_config.num_micro_batches_per_epoch)
+        eval_batch_config = BatchConfig(
+            micro_batch_size=config.global_batch.micro_batch_size,
+            total_num_train_samples=num_eval_samples.numpy(),
+            gradient_accumulation_count=config.global_batch.grad_acc_steps_per_replica,
+            dataset_size=num_eval_samples.numpy(),
+            task=Task.OTHER,
+        )
+        eval_pred_dataset = get_prediction_dataset(eval_dataset, eval_batch_config.num_micro_batches_per_epoch)
         with strategy.scope():
             # Re-compile the model for prediction if needed.
-            if (train_batch_config.steps_per_execution != eval_batch_config.steps_per_execution or
-                    not config.do_training):
+            if (
+                train_batch_config.steps_per_execution != eval_batch_config.steps_per_execution
+                or not config.do_training
+            ):
                 model.compile(steps_per_execution=eval_batch_config.steps_per_execution)
             # Get predictions for the validation data.
             logging.info(f"Running inference:\nGenerating predictions on the validation data...")
@@ -277,17 +284,18 @@ def fine_tune_squad(config):
 
 if __name__ == "__main__":
     # Combine arguments and config file
-    parser = argparse.ArgumentParser(description="TF2 BERT SQuAD Fine Tuning",
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description="TF2 BERT SQuAD Fine Tuning", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     parser = add_shared_arguments(parser)
     parser = add_squad_arguments(parser)
     args = parser.parse_args()
     config = combine_config_file_with_args(args, SQuADOptions)
 
     # Setup logging
-    logging.basicConfig(format="%(asctime)s %(levelname)-8s %(message)s",
-                        level=config.logging,
-                        datefmt="%Y-%m-%d %H:%M:%S")
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(message)s", level=config.logging, datefmt="%Y-%m-%d %H:%M:%S"
+    )
     # Prevent doubling of TF logs.
     tf.get_logger().propagate = False
 

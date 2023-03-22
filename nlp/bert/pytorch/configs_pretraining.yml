@@ -103,28 +103,11 @@ pretrain_base_128: &pretrain_base_128
 
   # Dataset
   input_files: ["data/wikipedia/128/*.tfrecord"]
-#----------------------------------------------------------------------------------
 
-#----------------------------------------------------------------------------------
-pretrain_base_384: &pretrain_base_384
+pretrain_base_128_pod4:
   <<: *pretrain_base_128
-
-  # Execution
-  micro_batch_size: 8
-  training_steps: 2137
-  gradient_accumulation: 512
-
-  # Model
-  sequence_length: 384
-  mask_tokens: 56
-
-  # Optimizer
-  lr_warmup: 0.128
-  learning_rate: 0.002828
-  loss_scaling: 128.0
-
-  # Dataset
-  input_files: ["data/wikipedia/384/*.tfrecord"]
+  replication_factor: 1
+  gradient_accumulation: 2048
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
@@ -148,6 +131,11 @@ pretrain_base_512: &pretrain_base_512
 
   # Dataset
   input_files: ["data/wikipedia/512/*.tfrecord"]
+
+pretrain_base_512_pod4:
+  <<: *pretrain_base_128
+  replication_factor: 1
+  gradient_accumulation: 2048
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
@@ -182,6 +170,11 @@ pretrain_large_128: &pretrain_large_128
 
   # Dataset
   input_files: ["data/wikipedia/128/*.tfrecord"]
+
+pretrain_large_128_pod4:
+  <<: *pretrain_large_128
+  replication_factor: 1
+  gradient_accumulation: 8192
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
@@ -223,40 +216,6 @@ pretrain_large_128_POD64_ALS:
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------
-pretrain_large_384: &pretrain_large_384
-  <<: *pretrain_large_128
-
-  # Execution
-  micro_batch_size: 2
-  training_steps: 2137
-  gradient_accumulation: 2048
-
-  # Model
-  sequence_length: 384
-  mask_tokens: 56
-
-  # Optimizer
-  lr_warmup: 0.128
-  learning_rate: 0.002828
-  loss_scaling: 8192.0
-
-  # Dataset
-  input_files: ["data/wikipedia/384/*.tfrecord"]
-#----------------------------------------------------------------------------------
-
-#----------------------------------------------------------------------------------
-pretrain_large_384_POD64: &pretrain_large_384_POD64
-  <<: *pretrain_large_384
-
-  # Execution
-  replication_factor: 16
-  gradient_accumulation: 512
-
-  # Optimizer
-  loss_scaling: 16384.0
-#----------------------------------------------------------------------------------
-
-#----------------------------------------------------------------------------------
 pretrain_large_512: &pretrain_large_512
   <<: *pretrain_large_128
 
@@ -277,6 +236,11 @@ pretrain_large_512: &pretrain_large_512
 
   # Dataset
   input_files: ["data/wikipedia/512/*.tfrecord"]
+
+pretrain_large_512_pod4:
+  <<: *pretrain_large_512
+  replication_factor: 1
+  gradient_accumulation: 8192
 #----------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------

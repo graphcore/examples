@@ -12,14 +12,14 @@
 # limitations under the License.
 #
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet repo found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet2/asr/decoder/transformer_decoder.py
 ]
 Main changes:
     Main change is the part of parameters of TransformerDecoder class.
-'''
+"""
 
 import torch
 from src.layers.layer_norm import LayerNorm
@@ -49,7 +49,7 @@ class TransformerDecoder(torch.nn.Module):
         src_attention_dropout_rate: float = 0.0,
         concat_after: bool = False,
         max_len: int = 50,
-        dtype: torch.dtype = torch.float32
+        dtype: torch.dtype = torch.float32,
     ):
         super().__init__()
         self.dtype = dtype
@@ -57,7 +57,7 @@ class TransformerDecoder(torch.nn.Module):
         pos_enc_class = PositionalEncoding
         self.embed = torch.nn.Sequential(
             torch.nn.Embedding(vocab_size, attention_dim),
-            pos_enc_class(attention_dim, positional_dropout_rate, max_len=max_len)  # add max_len to params
+            pos_enc_class(attention_dim, positional_dropout_rate, max_len=max_len),  # add max_len to params
         )
         self.normalize_before = normalize_before
         if self.normalize_before:
@@ -70,12 +70,8 @@ class TransformerDecoder(torch.nn.Module):
             num_blocks,
             lambda lnum: DecoderLayer(
                 attention_dim,
-                MultiHeadedAttention(
-                    attention_heads, attention_dim, self_attention_dropout_rate
-                ),
-                MultiHeadedAttention(
-                    attention_heads, attention_dim, src_attention_dropout_rate
-                ),
+                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate),
+                MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate),
                 PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
                 dropout_rate,
                 normalize_before,
@@ -102,7 +98,7 @@ class TransformerDecoder(torch.nn.Module):
                 if use_output_layer is True,
             olens: (batch, )
         """
-        tgt_mask = (~make_pad_mask(ys_in_lens, ys_in_pad.size(1))[:, None, :])
+        tgt_mask = ~make_pad_mask(ys_in_lens, ys_in_pad.size(1))[:, None, :]
         m = subsequent_mask(tgt_mask.size(-1), tgt_mask.device).unsqueeze(0)
         tgt_attention_mask = (tgt_mask.int().repeat(1, m.size(1), 1) + m.int()).eq(2)
         memory_mask = (~make_pad_mask(hlens, hs_pad.size(1)))[:, None, :]
@@ -111,9 +107,7 @@ class TransformerDecoder(torch.nn.Module):
         if self.dtype == torch.float16:
             x = x.type(torch.float16)
 
-        x, tgt_attention_mask, hs_pad, memory_mask = self.decoders(
-            x, tgt_attention_mask, hs_pad, memory_mask
-        )
+        x, tgt_attention_mask, hs_pad, memory_mask = self.decoders(x, tgt_attention_mask, hs_pad, memory_mask)
         if self.normalize_before:
             x = self.after_norm(x)
         if self.output_layer is not None:
@@ -150,11 +144,7 @@ class TransformerDecoder(torch.nn.Module):
                 c = None
             else:
                 c = cache[i]
-            x, tgt_mask, memory, memory_mask = decoder(x,
-                                                       tgt_mask,
-                                                       memory,
-                                                       memory_mask,
-                                                       cache=c)
+            x, tgt_mask, memory, memory_mask = decoder(x, tgt_mask, memory, memory_mask, cache=c)
             new_cache.append(x)
         if self.normalize_before:
             y = self.after_norm(x[:, -1])

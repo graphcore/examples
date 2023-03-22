@@ -4,8 +4,7 @@ import tensorflow as tf
 
 
 class LRLoggerCallback(tf.keras.callbacks.Callback):
-
-    def __init__(self, name='lr'):
+    def __init__(self, name="lr"):
         super().__init__()
         self.name = name
 

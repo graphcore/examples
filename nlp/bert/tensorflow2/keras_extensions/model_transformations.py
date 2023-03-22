@@ -13,7 +13,7 @@ from tensorflow.python.framework.tensor_spec import TensorSpec
 
 logger = logging.getLogger(__name__)
 
-KERAS_STANDARD_LAYERS = tuple(x[0] for x in inspect.getmembers(tf.keras.layers, inspect.isclass) if x[0] != 'Layer')
+KERAS_STANDARD_LAYERS = tuple(x[0] for x in inspect.getmembers(tf.keras.layers, inspect.isclass) if x[0] != "Layer")
 
 
 def get_keras_input_from_numpy_and_tf(dataset, name=None):
@@ -22,7 +22,7 @@ def get_keras_input_from_numpy_and_tf(dataset, name=None):
         shape=dataset.shape[1:],
         batch_size=dataset.shape[0] * strategy.num_replicas_in_sync,
         name=name,
-        dtype=dataset.dtype
+        dtype=dataset.dtype,
     )
 
 
@@ -32,7 +32,7 @@ def get_keras_input_from_tf_dataset(dataset):
         shape=dataset.element_spec.shape[1:],
         batch_size=dataset.element_spec.shape[0] * strategy.num_replicas_in_sync,
         name=dataset.element_spec.name,
-        dtype=dataset.element_spec.dtype
+        dtype=dataset.element_spec.dtype,
     )
 
 
@@ -42,8 +42,10 @@ def get_keras_input_from_dict(dataset):
         if isinstance(val, (np.ndarray, tf.Tensor)):
             input_layers[key] = get_keras_input_from_numpy_and_tf(val, key)
         else:
-            raise TypeError(f"Not supported data scheme. Expected `np.ndarray`, but received {type(val)}. "
-                            f"You might have to implement this case.")
+            raise TypeError(
+                f"Not supported data scheme. Expected `np.ndarray`, but received {type(val)}. "
+                f"You might have to implement this case."
+            )
     return input_layers
 
 
@@ -51,13 +53,12 @@ def get_keras_input_from_dict_of_tf_datasets(dataset):
     strategy = distribution_strategy_context.get_strategy()
     input_layers = dict()
     for key, val in dataset.items():
-        assert isinstance(val, TensorSpec), f"Not supported data schema, expected `TensorSpec` but " \
-                                            f"received `{type(val)}`. You have might to implement this case."
+        assert isinstance(val, TensorSpec), (
+            f"Not supported data schema, expected `TensorSpec` but "
+            f"received `{type(val)}`. You have might to implement this case."
+        )
         input_layers[key] = tf.keras.Input(
-            shape=val.shape[1:],
-            batch_size=val.shape[0] * strategy.num_replicas_in_sync,
-            name=key,
-            dtype=val.dtype
+            shape=val.shape[1:], batch_size=val.shape[0] * strategy.num_replicas_in_sync, name=key, dtype=val.dtype
         )
     return input_layers
 
@@ -91,7 +92,7 @@ def convert_to_functional(model_subclass, dataset):
     :return: Functional Keras model.
     """
     input_layers = get_input_layers(dataset)
-    if 'training' in tf_inspect.getfullargspec(model_subclass.call).args:
+    if "training" in tf_inspect.getfullargspec(model_subclass.call).args:
         model_func = tf.keras.Model(input_layers, model_subclass.call(input_layers, training=None))
     else:
         model_func = tf.keras.Model(input_layers, model_subclass.call(input_layers))
@@ -115,7 +116,7 @@ class ModelOptimization:
             for attr_key, attr_val in layer.__dict__.items():
                 if isinstance(attr_val, tf.keras.layers.Layer):
                     if layer.name not in attr_val.name:
-                        attr_val._name = layer.name + '.' + attr_val.name
+                        attr_val._name = layer.name + "." + attr_val.name
         return
 
     @staticmethod
@@ -125,8 +126,8 @@ class ModelOptimization:
         layers explicitly, and that had a default value set to False instead of None, require to adjust this default
         value to None, so that it will take the value from the context.
         """
-        if 'training' in kwargs:
-            kwargs['training'] = None
+        if "training" in kwargs:
+            kwargs["training"] = None
         return kwargs
 
     @staticmethod
@@ -187,13 +188,12 @@ class ModelOptimization:
             return layer.output
         else:
             kwargs = self.adjust_training_flag(kwargs)
-            logger.debug(f"Getting layer {layer} output passing args {args} and"
-                         f" kwargs {kwargs} to call()")
+            logger.debug(f"Getting layer {layer} output passing args {args} and" f" kwargs {kwargs} to call()")
             return layer(*args, **kwargs)
 
     @staticmethod
     def get_layer_simplified_name(layer_name):
-        return layer_name[layer_name.rfind('/') + 1:]
+        return layer_name[layer_name.rfind("/") + 1 :]
 
     def get_expected_input_layer_item(self, item, expected_name, expected_shape):
         if isinstance(item, KerasTensor):
@@ -230,8 +230,8 @@ class ModelOptimization:
 
         graph_in_edges, graph_out_edges, input_tensors = self.get_in_out_names_of_every_layer(initial_model)
 
-        graph_out_edges['root'] = [name for name in initial_model.input_names]
-        order = self.postorder(graph_out_edges, 'root')
+        graph_out_edges["root"] = [name for name in initial_model.input_names]
+        order = self.postorder(graph_out_edges, "root")
 
         for v in order:
             layer = initial_model.get_layer(v)
@@ -304,11 +304,7 @@ class ModelOptimization:
         :return: New model with expanded layer and same output names.
         """
         self.add_parent_prefix_to_sublayers(initial_model)
-        new_outputs, new_names = self.get_outputs_processed_model(
-            initial_model,
-            custom_layer_id,
-            input_process_fn
-        )
+        new_outputs, new_names = self.get_outputs_processed_model(initial_model, custom_layer_id, input_process_fn)
         new_model = tf.keras.Model(initial_model.inputs, new_outputs)
         self.rename_outputs(new_names, new_model)
         return new_model
@@ -335,14 +331,11 @@ class ModelOptimization:
         return new_args, new_kwargs
 
     def replace_args(self, args, input_layer):
-        new_args = [
-            self.update_arg_with_input_layer(arg, input_layer) for arg in args]
+        new_args = [self.update_arg_with_input_layer(arg, input_layer) for arg in args]
         return new_args
 
     def replace_kwargs(self, kwargs, input_layer):
-        new_kwargs = {
-            key: self.update_arg_with_input_layer(val, input_layer)
-            for key, val in kwargs.items()}
+        new_kwargs = {key: self.update_arg_with_input_layer(val, input_layer) for key, val in kwargs.items()}
         return new_kwargs
 
     def update_arg_with_input_layer(self, arg, input_layer):
@@ -405,15 +398,14 @@ class ModelOptimization:
 
     @staticmethod
     def update_output_names(output_names_dict, layer_name, old_name):
-        new_name = layer_name[:layer_name.find('/')]
+        new_name = layer_name[: layer_name.find("/")]
         return output_names_dict.update({new_name: old_name})
 
 
 class ModelExpansion(ModelOptimization):
-
     def is_to_be_processed(self, name, layer, custom_layer_id):
         if self.is_custom_layer(layer):
-            if custom_layer_id == 'all':
+            if custom_layer_id == "all":
                 return True
             else:
                 return self.is_name_or_class_match(name, layer, custom_layer_id)
@@ -441,7 +433,7 @@ class ModelLayerModification(ModelOptimization):
         return obj.__dict__
 
     def is_to_be_processed(self, name, layer, custom_layer_id):
-        if custom_layer_id == 'all':
+        if custom_layer_id == "all":
             return True
         return self.is_name_or_class_match(name, layer, custom_layer_id)
 
@@ -463,24 +455,19 @@ class ModelLayerModification(ModelOptimization):
                 elif isinstance(val, (list, tuple)):
                     for i in range(len(val)):
                         if isinstance(val[i], tf.keras.layers.Layer):
-                            properties[key][i] = self.update_property(val[i], to_update_params, update_func, parent=layer)
+                            properties[key][i] = self.update_property(
+                                val[i], to_update_params, update_func, parent=layer
+                            )
                 elif isinstance(val, dict):
                     for k, v in val.items():
                         if isinstance(v, tf.keras.layers.Layer):
-                            properties[key][k] = self.update_property(val[k], to_update_params, update_func, parent=layer)
+                            properties[key][k] = self.update_property(
+                                val[k], to_update_params, update_func, parent=layer
+                            )
         return layer
 
-    def search_layers(self,
-                      layer,
-                      layer_args,
-                      layer_kwargs,
-                      to_update_params,
-                      update_func,
-                      **kwargs):
-        new_layer = self.recursively_search_layers(layer,
-                                                   to_update_params,
-                                                   update_func,
-                                                   **kwargs)
+    def search_layers(self, layer, layer_args, layer_kwargs, to_update_params, update_func, **kwargs):
+        new_layer = self.recursively_search_layers(layer, to_update_params, update_func, **kwargs)
         new_output = self.get_layer_output(new_layer, layer_args, layer_kwargs)
         return new_output
 
@@ -514,8 +501,10 @@ def get_input_shape_layer_normalization(layer):
 
 
 def copy_weights_layer_normalization(layer, new_layer):
-    assert len(layer.axis) == 1, f"Current copy weights implementation only works when normalising along a single " \
-                                 f"axis, but provided `layer.axis={layer.axis}`."
+    assert len(layer.axis) == 1, (
+        f"Current copy weights implementation only works when normalising along a single "
+        f"axis, but provided `layer.axis={layer.axis}`."
+    )
     input_shape = get_input_shape_layer_normalization(layer)
     new_layer.build(input_shape)
     new_layer.set_weights(layer.get_weights())
@@ -531,7 +520,6 @@ def default_copy_weights_func(layer, new_layer):
 
 
 class ModelReplacing(ModelLayerModification):
-
     def __init__(self, to_replace_dict=None):
         self.to_replace_dict = to_replace_dict
         super().__init__()
@@ -539,27 +527,25 @@ class ModelReplacing(ModelLayerModification):
     @staticmethod
     def has_valid_get_config_method(layer):
         all_args = tf_inspect.getfullargspec(layer.__init__).args
-        expected_args = ('trainable', 'name', 'dtype', 'dynamic', '_batch_input_shape', 'self')
+        expected_args = ("trainable", "name", "dtype", "dynamic", "_batch_input_shape", "self")
         # Finds all arguments in the `__init__` that are not in the config:
         extra_args = [arg for arg in all_args if arg not in expected_args]
         # Check that either there are no new arguments or that `get_config` has been overridden:
-        if len(extra_args) > 0 and hasattr(layer.get_config, '_is_default'):
+        if len(extra_args) > 0 and hasattr(layer.get_config, "_is_default"):
             return False
         return True
 
     @staticmethod
     def replace_trackable_layer(parent, layer, new_layer):
-        logging.debug(f"Ensuring new layer {new_layer}"
-                      f"is trackable from parent {parent}.")
+        logging.debug(f"Ensuring new layer {new_layer}" f"is trackable from parent {parent}.")
         # Ensure parent's attributes associated with tracking are
-        # initilialized. For example, if the model hasn't yet been
+        # initialized. For example, if the model hasn't yet been
         # compiled.
         parent._maybe_initialize_trackable()
         # Remove the layer being replaced from the checkpoint dependencies
         # of the parent
         parent._self_unconditional_checkpoint_dependencies[:] = [
-            t_ref for t_ref in parent._self_unconditional_checkpoint_dependencies[:]
-            if t_ref.ref is not layer
+            t_ref for t_ref in parent._self_unconditional_checkpoint_dependencies[:] if t_ref.ref is not layer
         ]
         # Turn off _self_setattr_tracking when removing the layer from the
         # _self_unconditional_dependency_names to prevent tracking itself
@@ -568,8 +554,7 @@ class ModelReplacing(ModelLayerModification):
         # names to ensure it is not expected when doing dependency
         # search in the model
         parent._self_unconditional_dependency_names = {
-            k: v for k, v in parent._self_unconditional_dependency_names.items()
-            if v is not layer
+            k: v for k, v in parent._self_unconditional_dependency_names.items() if v is not layer
         }
         # Turn on parent _self_setattr_tracking as it was
         parent._self_setattr_tracking = True
@@ -579,7 +564,7 @@ class ModelReplacing(ModelLayerModification):
     def get_layer_params(self, layer):
         if not self.has_valid_get_config_method(layer):
             args = tf_inspect.getcallargs(layer.__init__)
-            args.pop('self')
+            args.pop("self")
             params = dict()
             for key in args.keys():
                 if not hasattr(layer, key):
@@ -593,8 +578,8 @@ class ModelReplacing(ModelLayerModification):
 
     def get_new_layer_params(self, layer, to_replace_dict):
         params = self.get_layer_params(layer)
-        if 'new_params' in to_replace_dict[type(layer)]:
-            new_layer_params = to_replace_dict[type(layer)]['new_params']
+        if "new_params" in to_replace_dict[type(layer)]:
+            new_layer_params = to_replace_dict[type(layer)]["new_params"]
 
             # Resolve any callable values
             for key, val in new_layer_params.items():
@@ -603,7 +588,7 @@ class ModelReplacing(ModelLayerModification):
         else:
             new_layer_params = dict()
 
-        new_layer_class = to_replace_dict[type(layer)]['new_class']
+        new_layer_class = to_replace_dict[type(layer)]["new_class"]
         valid_args = inspect.getfullargspec(new_layer_class.__init__)
         if valid_args.varkw:
             params.update(new_layer_params)
@@ -626,22 +611,16 @@ class ModelReplacing(ModelLayerModification):
             **kwargs,
         )
 
-    def replace_layer(self,
-                      layer,
-                      to_replace_dict,
-                      parent,
-                      *args,
-                      **kwargs):
+    def replace_layer(self, layer, to_replace_dict, parent, *args, **kwargs):
         to_replace_layer = to_replace_dict[type(layer)]
-        new_layer_class = to_replace_layer['new_class']
+        new_layer_class = to_replace_layer["new_class"]
 
         params = self.get_new_layer_params(layer, to_replace_dict)
-        logger.debug(f"Replacing layer {layer} with {new_layer_class}"
-                     f" and using additional params {params.keys()}")
+        logger.debug(f"Replacing layer {layer} with {new_layer_class}" f" and using additional params {params.keys()}")
         new_layer = new_layer_class(**params)
 
-        if to_replace_layer.get('copy_weights', False):
-            copy_weights_func = to_replace_layer.get('copy_weights_func', default_copy_weights_func)
+        if to_replace_layer.get("copy_weights", False):
+            copy_weights_func = to_replace_layer.get("copy_weights_func", default_copy_weights_func)
             copy_weights_func(layer, new_layer)
 
         # Manually make new layer trackable from parent layer / model
@@ -651,7 +630,6 @@ class ModelReplacing(ModelLayerModification):
 
 
 class ModelOutlining(ModelLayerModification):
-
     def __init__(self, to_outline_dict):
         self.to_outline_dict = to_outline_dict
         super().__init__()
@@ -659,8 +637,7 @@ class ModelOutlining(ModelLayerModification):
     @staticmethod
     def outline_layer_inplace(layer, to_outline_dict, *args, **kwargs):
         outline_kwargs = to_outline_dict[type(layer)].get("outline_kwargs", {})
-        logger.debug(f"Replacing call with outlined call in layer"
-                     f" {layer} using outline kwargs: {outline_kwargs}")
+        logger.debug(f"Replacing call with outlined call in layer" f" {layer} using outline kwargs: {outline_kwargs}")
 
         layer_call = layer.call
 
@@ -668,6 +645,7 @@ class ModelOutlining(ModelLayerModification):
             @ipu.outlined_function(**outline_kwargs)
             def inner_call():
                 return layer_call(*args, **kwargs)
+
             return inner_call()
 
         layer.call = call
@@ -684,7 +662,6 @@ class ModelOutlining(ModelLayerModification):
 
 
 class ModelAddRecomputationCheckpoints(ModelLayerModification):
-
     def __init__(self, to_checkpoint):
         self.to_checkpoint = to_checkpoint
         super().__init__()

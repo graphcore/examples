@@ -38,23 +38,25 @@ class ClusterGraph:
     the number of clusters to sample in a batch.
     """
 
-    def __init__(self,
-                 adjacency,
-                 clusters_per_batch,
-                 visible_nodes,
-                 max_nodes_per_batch=None,
-                 num_clusters=None,
-                 dataset_name=None,
-                 cache_dir=None,
-                 directed_graph=False,
-                 inter_cluster_ratio=0.0,
-                 method_max_nodes=MethodMaxNodesEdges.UPPER_BOUND,
-                 method_max_edges=MethodMaxNodesEdges.UPPER_BOUND,
-                 adjacency_form=AdjacencyForm.DENSE,
-                 node_edge_imbalance_ratio=None,
-                 seed=1,
-                 regenerate_cluster_cache=True,
-                 save_clustering_cache=True):
+    def __init__(
+        self,
+        adjacency,
+        clusters_per_batch,
+        visible_nodes,
+        max_nodes_per_batch=None,
+        num_clusters=None,
+        dataset_name=None,
+        cache_dir=None,
+        directed_graph=False,
+        inter_cluster_ratio=0.0,
+        method_max_nodes=MethodMaxNodesEdges.UPPER_BOUND,
+        method_max_edges=MethodMaxNodesEdges.UPPER_BOUND,
+        adjacency_form=AdjacencyForm.DENSE,
+        node_edge_imbalance_ratio=None,
+        seed=1,
+        regenerate_cluster_cache=True,
+        save_clustering_cache=True,
+    ):
         """
         Initialises the class
         :param adjacency: Adjacency matrix in compressed sparse row
@@ -93,22 +95,26 @@ class ClusterGraph:
         """
 
         if num_clusters is None and max_nodes_per_batch is None:
-            raise ValueError("One of num_clusters or max_nodes_per_batch"
-                             " must be set. Currently both are set to None.")
+            raise ValueError(
+                "One of num_clusters or max_nodes_per_batch" " must be set. Currently both are set to None."
+            )
         if num_clusters and max_nodes_per_batch:
-            raise ValueError("Only one of num_clusters or max_nodes_per_batch"
-                             " can be set. Currently both are set.")
+            raise ValueError("Only one of num_clusters or max_nodes_per_batch" " can be set. Currently both are set.")
         if num_clusters is not None:
             if num_clusters < 1:
-                raise ValueError("The number of requested clusters must be"
-                                 f" greater than 1, {num_clusters} clusters"
-                                 " has been requested.")
+                raise ValueError(
+                    "The number of requested clusters must be"
+                    f" greater than 1, {num_clusters} clusters"
+                    " has been requested."
+                )
             if num_clusters < clusters_per_batch:
-                raise ValueError("Provided clusters per batch"
-                                 f" {clusters_per_batch} is greater than"
-                                 f" the requested total number of clusters"
-                                 f" {num_clusters}. Ensure it is less than"
-                                 " or equal to.")
+                raise ValueError(
+                    "Provided clusters per batch"
+                    f" {clusters_per_batch} is greater than"
+                    f" the requested total number of clusters"
+                    f" {num_clusters}. Ensure it is less than"
+                    " or equal to."
+                )
 
         self.adjacency = adjacency
         self.clusters_per_batch = clusters_per_batch
@@ -130,23 +136,20 @@ class ClusterGraph:
         self._clusters = None
 
         if node_edge_imbalance_ratio is not None:
-            assert (len(node_edge_imbalance_ratio) == 2 and
-                    all([x > 1.0 for x in node_edge_imbalance_ratio])), (
-                "`node_edge_imbalance_ratio` must contain 2 floats greater"
-                " than 1.0")
+            assert len(node_edge_imbalance_ratio) == 2 and all([x > 1.0 for x in node_edge_imbalance_ratio]), (
+                "`node_edge_imbalance_ratio` must contain 2 floats greater" " than 1.0"
+            )
         self.node_edge_imbalance_ratio = node_edge_imbalance_ratio
 
         if num_clusters is None:
-            self.num_clusters = self.get_num_clusters(
-                self.num_nodes,
-                max_nodes_per_batch,
-                clusters_per_batch
+            self.num_clusters = self.get_num_clusters(self.num_nodes, max_nodes_per_batch, clusters_per_batch)
+            logging.info(
+                f"Max nodes per batch ({max_nodes_per_batch})"
+                f" provided, inferred {self.num_clusters} clusters"
+                f" given the dataset size ({self.num_nodes} nodes)"
+                " and clusters per batch"
+                f" ({clusters_per_batch})."
             )
-            logging.info(f"Max nodes per batch ({max_nodes_per_batch})"
-                         f" provided, inferred {self.num_clusters} clusters"
-                         f" given the dataset size ({self.num_nodes} nodes)"
-                         " and clusters per batch"
-                         f" ({clusters_per_batch}).")
         else:
             self.num_clusters = num_clusters
 
@@ -161,26 +164,21 @@ class ClusterGraph:
     def max_nodes_per_batch(self):
         if self._max_nodes_per_batch is None:
             if self._clusters is None:
-                raise ValueError("`cluster_graph` must be run before accessing"
-                                 " max_nodes_per_batch.")
+                raise ValueError("`cluster_graph` must be run before accessing" " max_nodes_per_batch.")
 
             num_nodes_per_cluster = [len(pt) for pt in self._clusters]
 
-            max_nodes_per_batch = self.get_max(
-                self.method_max_nodes,
-                num_nodes_per_cluster,
-                self.clusters_per_batch)
+            max_nodes_per_batch = self.get_max(self.method_max_nodes, num_nodes_per_cluster, self.clusters_per_batch)
 
-            max_nodes_per_batch = self.add_fake_node_for_sparse_tuple(
-                max_nodes_per_batch,
-                self.adjacency_form
-            )
+            max_nodes_per_batch = self.add_fake_node_for_sparse_tuple(max_nodes_per_batch, self.adjacency_form)
             self._max_nodes_per_batch = max_nodes_per_batch
-            logging.info(f"Number of clusters ({self.num_clusters})"
-                         f" provided, inferred max nodes per batch"
-                         f" {self._max_nodes_per_batch} given the dataset size"
-                         f" ({self.num_nodes} nodes) and clusters per batch"
-                         f" ({self.clusters_per_batch}).")
+            logging.info(
+                f"Number of clusters ({self.num_clusters})"
+                f" provided, inferred max nodes per batch"
+                f" {self._max_nodes_per_batch} given the dataset size"
+                f" ({self.num_nodes} nodes) and clusters per batch"
+                f" ({self.clusters_per_batch})."
+            )
         return self._max_nodes_per_batch
 
     @max_nodes_per_batch.setter
@@ -191,28 +189,22 @@ class ClusterGraph:
     def max_edges_per_batch(self):
         if self._max_edges_per_batch is None:
             if self._clusters is None:
-                raise ValueError("`cluster_graph` must be run before accessing"
-                                 " max_edges_per_batch.")
+                raise ValueError("`cluster_graph` must be run before accessing" " max_edges_per_batch.")
             logging.info("Counting the number of edges per cluster...")
-            num_edges_per_cluster = [
-                self.adjacency[pt, :][:, pt].sum() for pt in tqdm(self._clusters)
-            ]
+            num_edges_per_cluster = [self.adjacency[pt, :][:, pt].sum() for pt in tqdm(self._clusters)]
 
-            max_edges_per_batch = self.get_max(
-                self.method_max_edges,
-                num_edges_per_cluster,
-                self.clusters_per_batch)
+            max_edges_per_batch = self.get_max(self.method_max_edges, num_edges_per_cluster, self.clusters_per_batch)
 
             if self.adjacency_form == AdjacencyForm.SPARSE_TUPLE:
                 max_edges_per_batch += self.add_edges_for_sparse_tuple(
-                    max_edges_per_batch,
-                    self.max_nodes_per_batch,
-                    self.inter_cluster_ratio
+                    max_edges_per_batch, self.max_nodes_per_batch, self.inter_cluster_ratio
                 )
-            logging.info(f"Inferred max num edges per batch {max_edges_per_batch}, "
-                         f"given number of clusters ({self.num_clusters}) and "
-                         f"clusters per batch ({self.clusters_per_batch})."
-                         f" This includes room for inter-cluster and self-loop edges.")
+            logging.info(
+                f"Inferred max num edges per batch {max_edges_per_batch}, "
+                f"given number of clusters ({self.num_clusters}) and "
+                f"clusters per batch ({self.clusters_per_batch})."
+                f" This includes room for inter-cluster and self-loop edges."
+            )
 
             self._max_edges_per_batch = max_edges_per_batch
         return self._max_edges_per_batch
@@ -224,8 +216,7 @@ class ClusterGraph:
     @property
     def clusters(self):
         if self._clusters is None:
-            raise ValueError("`cluster_graph` must be run before accessing"
-                             " clusters.")
+            raise ValueError("`cluster_graph` must be run before accessing" " clusters.")
         return self._clusters
 
     @property
@@ -253,14 +244,9 @@ class ClusterGraph:
             num_per_cluster.sort()
             return int(sum(num_per_cluster[-num_sampled_clusters:]))
         elif method_max == MethodMaxNodesEdges.AVERAGE:
-            return int(np.ceil(
-                num_sampled_clusters * np.mean(num_per_cluster)))
+            return int(np.ceil(num_sampled_clusters * np.mean(num_per_cluster)))
         elif method_max == MethodMaxNodesEdges.AVERAGE_PLUS_STD:
-            return int(np.ceil(
-                num_sampled_clusters * (
-                        np.mean(num_per_cluster) + np.std(num_per_cluster)
-                )
-            ))
+            return int(np.ceil(num_sampled_clusters * (np.mean(num_per_cluster) + np.std(num_per_cluster))))
         else:
             raise ValueError("Unrecognised method_max_nodes/edges")
 
@@ -320,7 +306,8 @@ class ClusterGraph:
                 adjacency_to_cluster += adjacency_to_cluster.transpose()
 
             edge_list_to_cluster = decompose_sparse_adjacency(
-                adjacency_to_cluster[self.idx_nodes, :][:, self.idx_nodes].asformat("coo"))[0]
+                adjacency_to_cluster[self.idx_nodes, :][:, self.idx_nodes].asformat("coo")
+            )[0]
             num_edges = len(edge_list_to_cluster)
 
             graph_to_cluster = nx.Graph()
@@ -333,12 +320,10 @@ class ClusterGraph:
                     " cluster based on two constraints, balancing the number"
                     " of nodes and number of edges in each cluster with"
                     " this tolerances for each of those constraints. The"
-                    " optimal values for this will be dependent on the dataset.")
+                    " optimal values for this will be dependent on the dataset."
+                )
                 # Create a new graph with the original nodes
-                graph_to_cluster.add_nodes_from(
-                    range(self.num_nodes),
-                    node_weight=100,
-                    edge_weight=0)
+                graph_to_cluster.add_nodes_from(range(self.num_nodes), node_weight=100, edge_weight=0)
                 # Add new fake nodes corresponding to the existing edges, with
                 # a different set of weights applied. These fake nodes are only
                 # added for clustering purposes. This ensures we can
@@ -346,9 +331,8 @@ class ClusterGraph:
                 # the new edge nodes, or vice versa. We pick weights such that
                 # the weights on the original nodes and fake nodes are far apart.
                 graph_to_cluster.add_nodes_from(
-                    range(self.num_nodes, self.num_nodes + num_edges),
-                    node_weight=0,
-                    edge_weight=100)
+                    range(self.num_nodes, self.num_nodes + num_edges), node_weight=0, edge_weight=100
+                )
                 # Ensure the weights in the graph are used
                 graph_to_cluster.graph["node_weight_attr"] = ["node_weight", "edge_weight"]
 
@@ -373,7 +357,8 @@ class ClusterGraph:
                 logging.info(
                     "Nodes to edges balance ratio is set to None. This will"
                     " mean metis will cluster attempting to balance the"
-                    " number of nodes in each cluster.")
+                    " number of nodes in each cluster."
+                )
                 graph_to_cluster.add_nodes_from(range(self.num_nodes))
                 graph_to_cluster.add_edges_from(edge_list_to_cluster)
                 load_imbalance_tolerance = None
@@ -383,11 +368,8 @@ class ClusterGraph:
             graph_to_cluster.remove_edges_from(nx.selfloop_edges(graph_to_cluster))
 
             _, groups = metis.part_graph(
-                graph_to_cluster,
-                self.num_clusters,
-                seed=self.seed,
-                recursive=recursive,
-                ubvec=load_imbalance_tolerance)
+                graph_to_cluster, self.num_clusters, seed=self.seed, recursive=recursive, ubvec=load_imbalance_tolerance
+            )
         else:
             groups = [0] * self.num_nodes
 
@@ -422,20 +404,15 @@ class ClusterGraph:
         elif self.max_nodes_per_batch:
             init_param = f"max_nodes_per_batch-{self.max_nodes_per_batch}"
         else:
-            raise Exception("Either `max_nodes_per_batch` or "
-                            "`num_clusters` should be specified.")
-        filename = (f"{param_name}-{self.unique_identifier}-"
-                    f"{init_param}{CLUSTERING_CACHE_EXT}")
+            raise Exception("Either `max_nodes_per_batch` or " "`num_clusters` should be specified.")
+        filename = f"{param_name}-{self.unique_identifier}-" f"{init_param}{CLUSTERING_CACHE_EXT}"
         return filename
 
     def save(self):
         """Save the results of clustering to file."""
-        self.save_param_to_cache("clusters",
-                                 self.clusters)
-        self.save_param_to_cache("max_nodes_per_batch",
-                                 self.max_nodes_per_batch)
-        self.save_param_to_cache("max_edges_per_batch",
-                                 self.max_edges_per_batch)
+        self.save_param_to_cache("clusters", self.clusters)
+        self.save_param_to_cache("max_nodes_per_batch", self.max_nodes_per_batch)
+        self.save_param_to_cache("max_edges_per_batch", self.max_edges_per_batch)
 
     def save_param_to_cache(self, param_name, variable):
         """Saves param with value variable to a numpy file."""
@@ -453,16 +430,19 @@ class ClusterGraph:
         self._clusters = self.load_param_from_cache("clusters")
         self._max_nodes_per_batch = self.load_param_from_cache("max_nodes_per_batch")
         self._max_edges_per_batch = self.load_param_from_cache("max_edges_per_batch")
-        if (self._clusters is not None and
-                self._max_nodes_per_batch is not None and
-                self._max_edges_per_batch is not None):
+        if (
+            self._clusters is not None
+            and self._max_nodes_per_batch is not None
+            and self._max_edges_per_batch is not None
+        ):
             self._max_nodes_per_batch = int(self._max_nodes_per_batch)
             self._max_edges_per_batch = int(self._max_edges_per_batch)
             logging.info(
                 f"Loaded max_nodes_per_batch value {self._max_nodes_per_batch} "
                 f"and max_edges_per_batch value {self._max_edges_per_batch} for "
                 f"num clusters {self.num_clusters} and clusters per batch "
-                f"{self.clusters_per_batch}.")
+                f"{self.clusters_per_batch}."
+            )
             return True
         else:
             return False
@@ -475,7 +455,8 @@ class ClusterGraph:
             logging.info(
                 f"Loading {param_name} from cache {cache_path}, if this isn't"
                 " desired either remove this file or set"
-                " --regenerate-clustering-cache to `True`.")
-            with open(cache_path, 'rb') as f:
+                " --regenerate-clustering-cache to `True`."
+            )
+            with open(cache_path, "rb") as f:
                 return np.load(f, allow_pickle=True)
         return None

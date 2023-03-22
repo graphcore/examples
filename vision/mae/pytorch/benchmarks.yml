@@ -5,11 +5,11 @@ common_options: &common_options
     - [loss, 'loss']
   data:
     throughput:
-      regexp: 'throughput\s*(\d*)'
+      regexp: 'throughput:?[ \t]*(\d+)'
       skip: 1
     loss:
       reduction_type: 'final'
-      regexp: 'loss *(\d*\.\d*)'
+      regexp: 'loss:?[ \t]*([e\d\.\-\+]+)'
       skip: 1
   env:
     POPLAR_ENGINE_OPTIONS: '{
@@ -50,7 +50,7 @@ pytorch_mae_train_real_pod64:
       --remove-partition=no
       --vipu-server-host=$VIPU_CLI_API_HOST
       --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-      --vipu-cluster=$CLUSTER
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --vipu-server-timeout=3600
       --executable-cache-path=$PYTORCH_EXE_DIR
       --mpi-global-args="
@@ -88,7 +88,7 @@ pytorch_mae_train_real_pod64_conv:
       --remove-partition=no
       --vipu-server-host=$VIPU_CLI_API_HOST
       --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-      --vipu-cluster=$CLUSTER
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --vipu-server-timeout=3600
       --executable-cache-path=$PYTORCH_EXE_DIR
       --mpi-global-args="

@@ -108,7 +108,7 @@ config.training.epochs = 300
 # Logging interval to wandb
 config.training.logging_interval = 200
 # Executable cache path, storing compiled model
-config.training.exec_cache_path = './exec_cache'
+config.training.exec_cache_path = "./exec_cache"
 # Checkpoint interval to save the internal state of the model
 config.training.checkpoint_interval = 10
 # Scaling factors for each loss component
@@ -198,6 +198,7 @@ def convert_to_dict(cfg_node, key_list=[]):
         retval = yaml.comments.CommentedSeq(x)
         retval.fa.set_flow_style()
         return retval
+
     if not isinstance(cfg_node, CN):
         if isinstance(cfg_node, list):
             cfg_node = flist(cfg_node)

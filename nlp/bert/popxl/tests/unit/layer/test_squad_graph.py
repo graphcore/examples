@@ -16,17 +16,19 @@ def test_squad_graph(test_config: BertConfig):
 
     input_shape = (
         test_config.execution.micro_batch_size * test_config.model.sequence_length,
-        test_config.model.hidden_size)
+        test_config.model.hidden_size,
+    )
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(np.zeros(input_shape), popxl.float32, name="act"),
-        ])
-        args, attn_graph = BertSquadHead(
-            test_config).create_graph(*inputs_tensors)
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(np.zeros(input_shape), popxl.float32, name="act"),
+            ]
+        )
+        args, attn_graph = BertSquadHead(test_config).create_graph(*inputs_tensors)
 
         attn = attn_graph.bind(args.init())
-        act, = attn.call(*inputs_tensors)
+        (act,) = attn.call(*inputs_tensors)
 
     variables = [t for t in main.tensors if isinstance(t, Variable)]
     assert len(variables) == 2

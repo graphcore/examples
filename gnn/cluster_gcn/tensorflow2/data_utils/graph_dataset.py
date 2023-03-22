@@ -32,16 +32,19 @@ class GraphDataset:
     """Base class for graph datasets holding the data and transforms
     to apply to the dataset. This should not be used directly, instead
     use its child classes."""
-    def __init__(self,
-                 dataset_name,
-                 total_num_nodes,
-                 edges,
-                 features,
-                 labels,
-                 dataset_splits,
-                 task,
-                 graph_type,
-                 skip_train_feats_and_edges_allocation=False):
+
+    def __init__(
+        self,
+        dataset_name,
+        total_num_nodes,
+        edges,
+        features,
+        labels,
+        dataset_splits,
+        task,
+        graph_type,
+        skip_train_feats_and_edges_allocation=False,
+    ):
         self.total_num_nodes = total_num_nodes
         self.edges = edges
         self.features = features
@@ -56,51 +59,40 @@ class GraphDataset:
 
     @property
     def num_labels(self):
-        raise NotImplementedError("Property 'num_labels' must be implemented by"
-                                  "children classes")
+        raise NotImplementedError("Property 'num_labels' must be implemented by" "children classes")
 
     @property
     def num_features(self):
-        raise NotImplementedError("Property 'num_features' must be implemented by"
-                                  "children classes")
+        raise NotImplementedError("Property 'num_features' must be implemented by" "children classes")
 
     @property
     def num_nodes(self):
-        raise NotImplementedError("Property 'num_nodes' must be implemented by"
-                                  "children classes")
+        raise NotImplementedError("Property 'num_nodes' must be implemented by" "children classes")
 
     @property
     def num_edges(self):
-        raise NotImplementedError("Property 'num_edges' must be implemented by"
-                                  "children classes")
+        raise NotImplementedError("Property 'num_edges' must be implemented by" "children classes")
 
     def labels_to_one_hot(self, dtype=np.float32):
-        raise NotImplementedError(
-            "`labels_to_one_hot` method must be implemented in child class.")
+        raise NotImplementedError("`labels_to_one_hot` method must be implemented in child class.")
 
     def normalize_features(self):
-        raise NotImplementedError(
-            "`normalize_features` method must be implemented in child class.")
+        raise NotImplementedError("`normalize_features` method must be implemented in child class.")
 
     def precalculate_first_layer(self):
-        raise NotImplementedError(
-            "`precalculate_first_layer` method must be implemented in child class.")
+        raise NotImplementedError("`precalculate_first_layer` method must be implemented in child class.")
 
     def add_undirected_connections(self):
-        raise NotImplementedError(
-            "`add_undirected_connections` method must be implemented in child class.")
+        raise NotImplementedError("`add_undirected_connections` method must be implemented in child class.")
 
     def remove_self_connections(self):
-        raise NotImplementedError(
-            "`remove_self_connections` method must be implemented in child class.")
+        raise NotImplementedError("`remove_self_connections` method must be implemented in child class.")
 
     def generate_adjacency_matrices(self, dtype):
-        raise NotImplementedError(
-            "`generate_adjacency_matrices` method must be implemented in child class.")
+        raise NotImplementedError("`generate_adjacency_matrices` method must be implemented in child class.")
 
     def generate_masks(self):
-        raise NotImplementedError(
-            "`generate_masks` method must be implemented in child class.")
+        raise NotImplementedError("`generate_masks` method must be implemented in child class.")
 
     def __str__(self):
         return (
@@ -138,9 +130,7 @@ class GraphDataset:
         return np.hstack((first_layer_features, features))
 
     @staticmethod
-    def construct_adjacency(edges,
-                            num_data,
-                            dtype):
+    def construct_adjacency(edges, num_data, dtype):
         """Get the (sparse) adjacency matrix for the graph
         given by a number of nodes and an edge list. Whether the
         graph is directed or not should also be provided. Undirected
@@ -158,13 +148,11 @@ class GraphDataset:
             "The adjacency matrix is constructed as a CSR matrix which"
             f" doesn't support dtypes {unsupported_dtypes}. Either"
             " construct the adjacency with a supported dtype or cast"
-            " the adjacency later in the dataset pipeline.")
+            " the adjacency later in the dataset pipeline."
+        )
         return sp.csr_matrix(
-            (
-                np.ones((edges.shape[0]), dtype=dtype),
-                (edges[:, 0], edges[:, 1])
-            ),
-            shape=(num_data, num_data))
+            (np.ones((edges.shape[0]), dtype=dtype), (edges[:, 0], edges[:, 1])), shape=(num_data, num_data)
+        )
 
     @staticmethod
     def remove_self_connections_from_adjacency(adjacency):
@@ -181,7 +169,8 @@ class GraphDataset:
                 "The adjacency matrix contained self connections, which"
                 " have automatically been removed. If this is not"
                 " desired, set the kwarg `remove_self_connections` to"
-                " False.")
+                " False."
+            )
         return adjacency
 
     @staticmethod
@@ -216,10 +205,7 @@ class GraphDataset:
         return np.array(mask, dtype=np.bool)
 
     @staticmethod
-    def generate_train_edge_list(edges,
-                                 total_num_nodes,
-                                 validation_data,
-                                 test_data):
+    def generate_train_edge_list(edges, total_num_nodes, validation_data, test_data):
         """Generates the training edge list from the full edge list,
         total number of nodes and the nodes in each dataset split."""
         is_train = np.ones(total_num_nodes, dtype=np.bool)
@@ -273,17 +259,15 @@ class GraphDataset:
         for attribute in [*self.__dict__]:
             save_attribute(attribute)
 
-        # Svae meta info including the key word args for base class to load into
+        # Save meta info including the key word args for base class to load into
         base_args_spec = inspect.getargspec(inspect.getmro(type(self))[1].__init__)
-        self.meta_info = {"attributes_to_load": [*self.__dict__],
-                          "type": type(self),
-                          "base_args_spec": base_args_spec}
+        self.meta_info = {"attributes_to_load": [*self.__dict__], "type": type(self), "base_args_spec": base_args_spec}
         save_attribute("meta_info")
 
     @classmethod
     def load_preprocessed_dataset(cls, file_path):
         """Loads the preprocessed dataset from file."""
-        f = gzip.open(str(file_path), 'rb')
+        f = gzip.open(str(file_path), "rb")
         dataset = pickle.load(f)
         return dataset
 
@@ -304,16 +288,10 @@ class GraphDataset:
         # Take the class type from meta_info and unpack the vars in as keywords
         dataset = meta_info["type"](**init_dict)
 
-        addition_vars = list(
-            set(meta_info["attributes_to_load"]).difference(init_vars.args[1:])
-        )
+        addition_vars = list(set(meta_info["attributes_to_load"]).difference(init_vars.args[1:]))
         for var in addition_vars:
             var_filename = f"{base_directory}{var}{PICKLE_GZ_EXT}"
-            setattr(
-                dataset,
-                var,
-                cls.load_preprocessed_dataset(var_filename)
-            )
+            setattr(dataset, var, cls.load_preprocessed_dataset(var_filename))
 
         return dataset
 
@@ -328,22 +306,19 @@ class HomogeneousGraphDataset(GraphDataset):
         assert self.total_num_nodes == len(self.features), (
             "There is a mismatch between the number of entries for"
             " node features and number of nodes. There should be one"
-            " for each node.")
+            " for each node."
+        )
 
         assert self.total_num_nodes == len(self.labels), (
             "There is a mismatch between the number of entries for"
             " node labels and number of nodes. There should be one"
-            " for each node.")
+            " for each node."
+        )
         if self.skip_train_feats_and_edges_allocation is False:
-            self.features_train = self.generate_train_features(
-                self.features, self.dataset_splits["train"]
-            )
+            self.features_train = self.generate_train_features(self.features, self.dataset_splits["train"])
 
             self.edges_train = self.generate_train_edge_list(
-                self.edges,
-                self.total_num_nodes,
-                self.dataset_splits["validation"],
-                self.dataset_splits["test"]
+                self.edges, self.total_num_nodes, self.dataset_splits["validation"], self.dataset_splits["test"]
             )
         else:
             self.features_train = self.features
@@ -377,11 +352,7 @@ class HomogeneousGraphDataset(GraphDataset):
     @property
     def num_edges(self):
         """Returns the number of edges in the dataset for each split."""
-        return {
-            "train": len(self.edges_train),
-            "validation": len(self.edges),
-            "test": len(self.edges)
-        }
+        return {"train": len(self.edges_train), "validation": len(self.edges), "test": len(self.edges)}
 
     def labels_to_one_hot(self, dtype=np.float32):
         """Converts the labels to one hot labels."""
@@ -411,44 +382,33 @@ class HomogeneousGraphDataset(GraphDataset):
         """Precalculates the first layer features and concatenates
         them onto the existing features."""
         logging.info(f"Precalculating the first layer features in dataset...")
-        self.features_train = self.precalculate_first_layer_features(
-            self.features, self.adjacency_train)
-        self.features = self.precalculate_first_layer_features(
-            self.features, self.adjacency_full)
+        self.features_train = self.precalculate_first_layer_features(self.features, self.adjacency_train)
+        self.features = self.precalculate_first_layer_features(self.features, self.adjacency_full)
 
     def remove_self_connections(self):
         """Removes self connections from objects adjacency matrices."""
         logging.info(f"Removing self connections in dataset...")
-        self.adjacency_train = self.remove_self_connections_from_adjacency(
-            self.adjacency_train)
-        self.adjacency_full = self.remove_self_connections_from_adjacency(
-            self.adjacency_full)
+        self.adjacency_train = self.remove_self_connections_from_adjacency(self.adjacency_train)
+        self.adjacency_full = self.remove_self_connections_from_adjacency(self.adjacency_full)
 
     def add_undirected_connections(self):
         """Adds undirected connections from objects adjacency matrices."""
         logging.info(f"Removing undirected connections in dataset...")
-        self.adjacency_train = self.add_undirected_connections_to_adjacency(
-            self.adjacency_train)
-        self.adjacency_full = self.add_undirected_connections_to_adjacency(
-            self.adjacency_full)
+        self.adjacency_train = self.add_undirected_connections_to_adjacency(self.adjacency_train)
+        self.adjacency_full = self.add_undirected_connections_to_adjacency(self.adjacency_full)
 
     def generate_adjacency_matrices(self, dtype):
         """Generates the objects adjacency matrices from its edge lists."""
         logging.info(f"Generating adjacency matrices in dataset with dtype {dtype}...")
-        self.adjacency_train = self.construct_adjacency(
-            self.edges_train, self.total_num_nodes, dtype)
-        self.adjacency_full = self.construct_adjacency(
-            self.edges, self.total_num_nodes, dtype)
+        self.adjacency_train = self.construct_adjacency(self.edges_train, self.total_num_nodes, dtype)
+        self.adjacency_full = self.construct_adjacency(self.edges, self.total_num_nodes, dtype)
 
     def generate_masks(self):
         """Generates the objects masks."""
         logging.info(f"Generating masks in dataset...")
-        self.mask_train = self.create_sample_mask(
-            self.dataset_splits["train"], self.total_num_nodes)
-        self.mask_validation = self.create_sample_mask(
-            self.dataset_splits["validation"], self.total_num_nodes)
-        self.mask_test = self.create_sample_mask(
-            self.dataset_splits["test"], self.total_num_nodes)
+        self.mask_train = self.create_sample_mask(self.dataset_splits["train"], self.total_num_nodes)
+        self.mask_validation = self.create_sample_mask(self.dataset_splits["validation"], self.total_num_nodes)
+        self.mask_test = self.create_sample_mask(self.dataset_splits["test"], self.total_num_nodes)
 
 
 class HeterogeneousGraphDataset(GraphDataset):
@@ -464,7 +424,7 @@ class HeterogeneousGraphDataset(GraphDataset):
         node_types_missing_dataset_splits,
         edge_types,
         *args,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
 
@@ -475,20 +435,23 @@ class HeterogeneousGraphDataset(GraphDataset):
         self.edge_types = edge_types
 
         self.features_train = {
-            node_type: self.generate_train_features(self.features[node_type],
-                                                    self.dataset_splits["train"][node_type])
+            node_type: self.generate_train_features(self.features[node_type], self.dataset_splits["train"][node_type])
             for node_type in self.node_types_with_features
         }
 
         self.edges_train = dict()
         for edge_type in self.edge_types:
             self.edges_train[edge_type] = np.vstack(
-                [self.generate_train_edge_list(
-                    self.edges[edge_type],
-                    self.num_nodes_for_edge_type[edge_type],
-                    self.dataset_splits["validation"].get(node_type, None),
-                    self.dataset_splits["test"].get(node_type, None))
-                 for node_type in self.node_types])
+                [
+                    self.generate_train_edge_list(
+                        self.edges[edge_type],
+                        self.num_nodes_for_edge_type[edge_type],
+                        self.dataset_splits["validation"].get(node_type, None),
+                        self.dataset_splits["test"].get(node_type, None),
+                    )
+                    for node_type in self.node_types
+                ]
+            )
         logging.info("Preliminary processing done")
 
     @property
@@ -496,33 +459,31 @@ class HeterogeneousGraphDataset(GraphDataset):
         """Returns the number of nodes involved in edge types."""
         return {
             edge_type: sum(
-                [num_nodes for num_nodes in self.total_num_nodes.values()
-                 for node_type in self.node_types if node_type in edge_type])
+                [
+                    num_nodes
+                    for num_nodes in self.total_num_nodes.values()
+                    for node_type in self.node_types
+                    if node_type in edge_type
+                ]
+            )
             for edge_type in self.edge_types
         }
 
     @property
     def node_types_with_features(self):
         """Returns the node types which contain features."""
-        return tuple(
-            [node_type for node_type in self.node_types
-             if node_type not in self.node_types_missing_features]
-        )
+        return tuple([node_type for node_type in self.node_types if node_type not in self.node_types_missing_features])
 
     @property
     def node_types_with_labels(self):
         """Returns the node types which contain labels."""
-        return tuple(
-            [node_type for node_type in self.node_types
-             if node_type not in self.node_types_missing_labels]
-        )
+        return tuple([node_type for node_type in self.node_types if node_type not in self.node_types_missing_labels])
 
     @property
     def node_types_with_dataset_splits(self):
         """Returns the node types which dataset splits."""
         return tuple(
-            [node_type for node_type in self.node_types
-             if node_type not in self.node_types_missing_dataset_splits]
+            [node_type for node_type in self.node_types if node_type not in self.node_types_missing_dataset_splits]
         )
 
     @property
@@ -538,21 +499,15 @@ class HeterogeneousGraphDataset(GraphDataset):
     @property
     def num_nodes(self):
         """Returns the number of nodes in the dataset for each split."""
-        return {
-            key: {k: len(v) for k, v in val.items()}
-            for key, val in self.dataset_splits.items()
-        }
+        return {key: {k: len(v) for k, v in val.items()} for key, val in self.dataset_splits.items()}
 
     @property
     def num_edges(self):
         """Returns the number of edges in the dataset for each split."""
         return {
-            "train": {edge_type: len(self.edges_train[edge_type])
-                      for edge_type in self.edge_types},
-            "validation": {edge_type: len(self.edges[edge_type])
-                           for edge_type in self.edge_types},
-            "test": {edge_type: len(self.edges[edge_type])
-                     for edge_type in self.edge_types}
+            "train": {edge_type: len(self.edges_train[edge_type]) for edge_type in self.edge_types},
+            "validation": {edge_type: len(self.edges[edge_type]) for edge_type in self.edge_types},
+            "test": {edge_type: len(self.edges[edge_type]) for edge_type in self.edge_types},
         }
 
     def generate_missing_labels(self, dtype=np.int32):
@@ -563,11 +518,13 @@ class HeterogeneousGraphDataset(GraphDataset):
             logging.warning(
                 f"The labels for node type {node_type} will be populated with"
                 f" values ({MASKED_LABEL_VALUE}). This will mean it is masked in"
-                " training/validation/test.")
+                " training/validation/test."
+            )
             self.labels[node_type] = np.full(
                 (self.total_num_nodes[node_type], self.num_labels),
                 np.array(MASKED_LABEL_VALUE, dtype=dtype),
-                dtype=dtype)
+                dtype=dtype,
+            )
 
     @staticmethod
     def sort_edge_list_by_institution(edges, mapping_rule):
@@ -585,9 +542,11 @@ class HeterogeneousGraphDataset(GraphDataset):
         """
         if feature_mapping is not None:
             if not isinstance(feature_mapping, list):
-                logging.warning("Expected `feature_mapping` to be of type `list`. "
-                                "This may cause errors if the new features are required"
-                                "to be calculated in a specific order.")
+                logging.warning(
+                    "Expected `feature_mapping` to be of type `list`. "
+                    "This may cause errors if the new features are required"
+                    "to be calculated in a specific order."
+                )
             logging.info(f"Generating missing features in dataset...")
             # The missing features are made from averaging their neighbours
             # e.g. author features = average of their paper features
@@ -605,10 +564,7 @@ class HeterogeneousGraphDataset(GraphDataset):
                     sorted_edge_list = self.sort_edge_list_by_institution(self.edges, mapping_rule)
                     # Obtain the list of unique authors and their indices for the next
                     # step of np.split. The first index is skipped as it is 0.
-                    unique_institution_list_indices = np.unique(
-                        sorted_edge_list[:, 1],
-                        return_index=True
-                    )[1][1:]
+                    unique_institution_list_indices = np.unique(sorted_edge_list[:, 1], return_index=True)[1][1:]
                     id_mapping = np.split(sorted_edge_list[:, 0], unique_institution_list_indices)
                 # Edge list: ('author', 'writes', 'paper')
                 # Author node list example: [0, 0, 0, 0, 1, 1, 1, 2]
@@ -618,20 +574,14 @@ class HeterogeneousGraphDataset(GraphDataset):
                     # Obtain the list of unique authors and their indices for the
                     # next step of np.split. The first index is skipped as it is 0.
                     unique_author_list_indices = np.unique(
-                        self.edges[mapping_rule["edge_list"]][:, 0],
-                        return_index=True
+                        self.edges[mapping_rule["edge_list"]][:, 0], return_index=True
                     )[1][1:]
-                    id_mapping = np.split(
-                        self.edges[mapping_rule["edge_list"]][:, 1],
-                        unique_author_list_indices
-                    )
+                    id_mapping = np.split(self.edges[mapping_rule["edge_list"]][:, 1], unique_author_list_indices)
                 # Take the average of the features from the above mapping
                 logging.info("Start feature averaging")
                 self.features[feat_name] = np.vstack(
-                    [
-                        np.mean(self.features[mapping_rule["feature"]][x], axis=0)
-                        for x in id_mapping
-                    ]).astype(dtype)
+                    [np.mean(self.features[mapping_rule["feature"]][x], axis=0) for x in id_mapping]
+                ).astype(dtype)
                 # Update the nodes with missing features
                 logging.info("Finished feature averaging")
                 self.node_types_missing_features = tuple(
@@ -639,10 +589,7 @@ class HeterogeneousGraphDataset(GraphDataset):
                 )
         # All remaining nodes are assigned blank features
         for node_type in self.node_types_missing_features:
-            self.features[node_type] = np.full(
-                (self.total_num_nodes[node_type], self.num_features),
-                0,
-                dtype=dtype)
+            self.features[node_type] = np.full((self.total_num_nodes[node_type], self.num_features), 0, dtype=dtype)
 
     def generate_missing_dataset_splits(self, dtype=np.int32):
         """Generates missing entries in the dataset_split for the nodes
@@ -654,57 +601,45 @@ class HeterogeneousGraphDataset(GraphDataset):
                 # Add all nodes that aren't being trained on into the
                 # training set, the labels of these will be masked out.
                 for node_type in self.node_types_missing_dataset_splits:
-                    split[node_type] = np.arange(
-                        self.total_num_nodes[node_type],
-                        dtype=dtype)
+                    split[node_type] = np.arange(self.total_num_nodes[node_type], dtype=dtype)
             else:
                 for node_type in self.node_types_missing_dataset_splits:
                     split[node_type] = np.array([], dtype=dtype)
 
     def labels_to_one_hot(self, dtype=np.float32):
-        raise NotImplementedError(
-            "`labels_to_one_hot` method has not been implemented for"
-            " heterogeneous graphs.")
+        raise NotImplementedError("`labels_to_one_hot` method has not been implemented for" " heterogeneous graphs.")
 
     def normalize_features(self):
-        raise NotImplementedError(
-            "`normalize_features` method has not been implemented for"
-            " heterogeneous graphs.")
+        raise NotImplementedError("`normalize_features` method has not been implemented for" " heterogeneous graphs.")
 
     def precalculate_first_layer(self):
         raise NotImplementedError(
-            "`precalculate_first_layer` method has not been implemented for"
-            " heterogeneous graphs.")
+            "`precalculate_first_layer` method has not been implemented for" " heterogeneous graphs."
+        )
 
     def add_undirected_connections(self):
         raise NotImplementedError(
-            "`add_undirected_connections` method has not been implemented for"
-            " heterogeneous graphs.")
+            "`add_undirected_connections` method has not been implemented for" " heterogeneous graphs."
+        )
 
     def remove_self_connections(self):
         raise NotImplementedError(
-            "`remove_self_connections` method has not been implemented for"
-            " heterogeneous graphs.")
+            "`remove_self_connections` method has not been implemented for" " heterogeneous graphs."
+        )
 
     def generate_adjacency_matrices(self, dtype):
         raise NotImplementedError(
-            "`generate_adjacency_matrices` method has not been implemented for"
-            " heterogeneous graphs.")
+            "`generate_adjacency_matrices` method has not been implemented for" " heterogeneous graphs."
+        )
 
     def generate_masks(self):
-        raise NotImplementedError(
-            "`generate_masks` method has not been implemented for"
-            " heterogeneous graphs.")
+        raise NotImplementedError("`generate_masks` method has not been implemented for" " heterogeneous graphs.")
 
     def features_to_dtype(self, dtype):
-        raise NotImplementedError(
-            "`features_to_dtype` method has not been implemented for"
-            " heterogeneous graphs.")
+        raise NotImplementedError("`features_to_dtype` method has not been implemented for" " heterogeneous graphs.")
 
     def labels_to_dtype(self, dtype):
-        raise NotImplementedError(
-            "`labels_to_dtype` method has not been implemented for"
-            " heterogeneous graphs.")
+        raise NotImplementedError("`labels_to_dtype` method has not been implemented for" " heterogeneous graphs.")
 
     def reindex_edges(self):
         """Reindexes the edges so that, instead of having zero indexed
@@ -757,8 +692,7 @@ class HeterogeneousGraphDataset(GraphDataset):
         logging.info(f"Converting heterogeneous dataset to homogeneous...")
 
         # Combine the total number of nodes for each node type
-        num_nodes_entire_graph = sum(
-            [num_nodes for num_nodes in self.total_num_nodes.values()])
+        num_nodes_entire_graph = sum([num_nodes for num_nodes in self.total_num_nodes.values()])
 
         # Reindex the node ids in the edge lists and combine
         self.reindex_edges()
@@ -776,8 +710,7 @@ class HeterogeneousGraphDataset(GraphDataset):
 
         # Combine the labels, stacking based on the ordering in node_type
         assert all([node_type in self.labels.keys() for node_type in self.node_types]), (
-            "To convert a heterogeneous graph to homogeneous, all"
-            f" node types ({self.node_types}) must have a label."
+            "To convert a heterogeneous graph to homogeneous, all" f" node types ({self.node_types}) must have a label."
         )
         labels_list = [self.labels[node_type] for node_type in self.node_types]
         labels_entire_graph = np.vstack(labels_list)
@@ -785,9 +718,11 @@ class HeterogeneousGraphDataset(GraphDataset):
         # Combine the dataset splits, as these contain node ids they
         # need to be reindexed.
         assert all(
-            [node_type in nodes_split.keys()
-             for nodes_split in self.dataset_splits.values()
-             for node_type in self.node_types]
+            [
+                node_type in nodes_split.keys()
+                for nodes_split in self.dataset_splits.values()
+                for node_type in self.node_types
+            ]
         ), (
             "To convert a heterogeneous graph to homogeneous, all"
             f" node types ({self.node_types}) must have a dataset_splits"
@@ -809,5 +744,5 @@ class HeterogeneousGraphDataset(GraphDataset):
             dataset_splits=dataset_splits_entire_graph,
             task=self.task,
             graph_type=self.graph_type,
-            skip_train_feats_and_edges_allocation=True
+            skip_train_feats_and_edges_allocation=True,
         )

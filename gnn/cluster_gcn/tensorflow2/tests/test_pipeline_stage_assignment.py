@@ -11,10 +11,7 @@ from utilities.pipeline_stage_assignment import PipelineStagesAssigner
 
 def get_pipeline_assignments(pipeline_stages):
     pipeline_allocate_previous = (TFOpLambda,)
-    pipeline_names = {
-        "hid": [Dense],
-        "layer_norm": [LayerNormalization]
-    }
+    pipeline_names = {"hid": [Dense], "layer_norm": [LayerNormalization]}
 
     input_layer = tf.keras.Input(shape=1)
     kernel_initializer = tf.keras.initializers.Constant(1)
@@ -30,11 +27,9 @@ def get_pipeline_assignments(pipeline_stages):
     with strategy.scope():
         model = tf.keras.Model(input_layer, x)
 
-        pipeline_assigner = PipelineStagesAssigner(pipeline_allocate_previous,
-                                                   pipeline_names)
+        pipeline_assigner = PipelineStagesAssigner(pipeline_allocate_previous, pipeline_names)
         assignments = model.get_pipeline_stage_assignment()
-        assignments = pipeline_assigner.assign_pipeline_stages(assignments,
-                                                               pipeline_stages)
+        assignments = pipeline_assigner.assign_pipeline_stages(assignments, pipeline_stages)
 
         model.set_pipeline_stage_assignment(assignments)
         model.print_pipeline_stage_assignment_summary()
@@ -43,10 +38,11 @@ def get_pipeline_assignments(pipeline_stages):
 
 @pytest.mark.parametrize(
     "pipeline_stages, expected_stages",
-    [([["hid", "hid", "hid"], ["hid", "hid", "layer_norm"]],
-        [0, 0, 0, 0, 1, 1, 1, 1]),
-     ([["hid", "hid", "hid", "hid", "hid", "layer_norm"]],
-        [0, 0, 0, 0, 0, 0, 0, 0])])
+    [
+        ([["hid", "hid", "hid"], ["hid", "hid", "layer_norm"]], [0, 0, 0, 0, 1, 1, 1, 1]),
+        ([["hid", "hid", "hid", "hid", "hid", "layer_norm"]], [0, 0, 0, 0, 0, 0, 0, 0]),
+    ],
+)
 def test_pipeline_stage_assigner(pipeline_stages, expected_stages):
     assignments = get_pipeline_assignments(pipeline_stages)
     assert [a.pipeline_stage for a in assignments] == expected_stages
@@ -54,8 +50,8 @@ def test_pipeline_stage_assigner(pipeline_stages, expected_stages):
 
 @pytest.mark.parametrize(
     "pipeline_stages",
-    [[["hid", "hid", "hid"], ["hid", "layer_norm"]],
-     [["hid", "hid", "hid"], ["hid", "hid", "hid", "layer_norm"]]])
+    [[["hid", "hid", "hid"], ["hid", "layer_norm"]], [["hid", "hid", "hid"], ["hid", "hid", "hid", "layer_norm"]]],
+)
 def test_pipeline_stage_assigner_requested_too_few_stages(pipeline_stages):
     with pytest.raises(Exception):
         get_pipeline_assignments(pipeline_stages)

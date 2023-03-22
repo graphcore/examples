@@ -18,7 +18,7 @@ def average_epoch(average_num, epoch_list, src_path):
     avg = None
     assert average_num == len(epoch_list)
     for path in epoch_list:
-        states = torch.load(path, map_location=torch.device('cpu'))['model_weight']
+        states = torch.load(path, map_location=torch.device("cpu"))["model_weight"]
         if avg is None:
             avg = states
         else:
@@ -27,4 +27,4 @@ def average_epoch(average_num, epoch_list, src_path):
     for k in avg.keys():
         if avg[k] is not None:
             avg[k] = torch.true_divide(avg[k], average_num)
-    torch.save({'model_weight': avg}, src_path + '/average_' + str(average_num) + '/average.pt')
+    torch.save({"model_weight": avg}, src_path + "/average_" + str(average_num) + "/average.pt")

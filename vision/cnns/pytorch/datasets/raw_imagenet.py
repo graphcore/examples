@@ -16,10 +16,9 @@ class ImageNetDataset(torchvision.datasets.ImageFolder):
         for idx, (path, target) in enumerate(self.samples):
             self.samples[idx] = path, target, bboxes.get(target, None)
 
-
     def __getitem__(self, index: int):
         path, target, bbox = self.samples[index]
-        with open(path, 'rb') as jpeg_file:
+        with open(path, "rb") as jpeg_file:
             img = jpeg_file.read()
 
         if self.transform is not None:
@@ -29,12 +28,11 @@ class ImageNetDataset(torchvision.datasets.ImageFolder):
 
         return sample, target
 
-
     def load_bboxes(self, file_path):
         bboxes = {}
         if os.path.exists(file_path):
             with open(file_path) as csv_file:
-                csv_reader = csv.reader(csv_file, delimiter=',')
+                csv_reader = csv.reader(csv_file, delimiter=",")
                 for row in csv_reader:
                     file_name = row[0]
                     x1, y1, x2, y2 = float(row[1]), float(row[2]), float(row[3]), float(row[4])

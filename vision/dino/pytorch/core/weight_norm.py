@@ -34,16 +34,15 @@ class WeightNorm(object):
 
     # TODO Make return type more specific
     def compute_weight(self, module):
-        g = getattr(module, self.name + '_g')
-        v = getattr(module, self.name + '_v')
+        g = getattr(module, self.name + "_g")
+        v = getattr(module, self.name + "_v")
         return torch.nn.functional.normalize(v, p=2.0, dim=1, eps=1e-6) * g
 
     @staticmethod
-    def apply(module, name: str, dim: int) -> 'WeightNorm':
+    def apply(module, name: str, dim: int) -> "WeightNorm":
         for k, hook in module._forward_pre_hooks.items():
             if isinstance(hook, WeightNorm) and hook.name == name:
-                raise RuntimeError("Cannot register two weight_norm hooks on "
-                                   "the same parameter {}".format(name))
+                raise RuntimeError("Cannot register two weight_norm hooks on " "the same parameter {}".format(name))
 
         if dim is None:
             dim = -1
@@ -53,20 +52,15 @@ class WeightNorm(object):
         weight = getattr(module, name)
         if isinstance(weight, UninitializedParameter):
             raise ValueError(
-                'The module passed to `WeightNorm` can\'t have uninitialized parameters. '
-                'Make sure to run the dummy forward before applying weight normalization')
+                "The module passed to `WeightNorm` can't have uninitialized parameters. "
+                "Make sure to run the dummy forward before applying weight normalization"
+            )
         # remove w from parameter list
         del module._parameters[name]
 
         # add g and v as new parameters and express w as g/||v|| * v
-        module.register_parameter(
-            name + '_g',
-            Parameter(
-                norm_except_dim(
-                    weight,
-                    2,
-                    dim).data))
-        module.register_parameter(name + '_v', Parameter(weight.data))
+        module.register_parameter(name + "_g", Parameter(norm_except_dim(weight, 2, dim).data))
+        module.register_parameter(name + "_v", Parameter(weight.data))
         setattr(module, name, fn.compute_weight(module))
 
         # recompute weight before every forward()
@@ -77,16 +71,15 @@ class WeightNorm(object):
     def remove(self, module):
         weight = self.compute_weight(module)
         delattr(module, self.name)
-        del module._parameters[self.name + '_g']
-        del module._parameters[self.name + '_v']
+        del module._parameters[self.name + "_g"]
+        del module._parameters[self.name + "_v"]
         setattr(module, self.name, Parameter(weight.data))
 
     def __call__(self, module, inputs):
         setattr(module, self.name, self.compute_weight(module))
 
 
-
-def weight_norm(module, name='weight', dim=0):
+def weight_norm(module, name="weight", dim=0):
     r"""Applies weight normalization to a parameter in the given module.
     .. math::
          \mathbf{w} = g \dfrac{\mathbf{v}}{\|\mathbf{v}\|}

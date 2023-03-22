@@ -23,7 +23,8 @@ class TestSquad(SubProcessChecker):
             "--hidden_size 64 --heads 4",
             root_dir,
             ["Duration"],
-            env=bert_root_env_path())
+            env=bert_root_env_path(),
+        )
 
     def test_training_phased(self):
         self.run_command(
@@ -33,21 +34,23 @@ class TestSquad(SubProcessChecker):
             "--hidden_size 64 --heads 4",
             root_dir,
             ["Duration"],
-            env=bert_root_env_path())
+            env=bert_root_env_path(),
+        )
 
 
 class TestPretraining(SubProcessChecker):
     def test_training_phased(self):
-        #TODO remove when https://phabricator.sourcevertex.net/T68087 is solved
+        # TODO remove when https://phabricator.sourcevertex.net/T68087 is solved
         try:
             self.run_command(
-                    "python3 pretraining.py  --layers 3 "
-                    "--global_batch_size 16 --micro_batch_size 2 --data_parallel 2 "
-                    "--vocab_size 128 --sequence_length 8 --max_positional_length 8 "
-                    "--hidden_size 64 --heads 4",
-                    root_dir,
-                    ["Duration"],
-                    env=bert_root_env_path())
+                "python3 pretraining.py  --layers 3 "
+                "--global_batch_size 16 --micro_batch_size 2 --data_parallel 2 "
+                "--vocab_size 128 --sequence_length 8 --max_positional_length 8 "
+                "--hidden_size 64 --heads 4",
+                root_dir,
+                ["Duration"],
+                env=bert_root_env_path(),
+            )
         except:
             self.run_command(
                 "python3 pretraining.py  --layers 3 "
@@ -56,4 +59,5 @@ class TestPretraining(SubProcessChecker):
                 "--hidden_size 64 --heads 4",
                 root_dir,
                 ["Duration"],
-                env=bert_root_env_path())
+                env=bert_root_env_path(),
+            )

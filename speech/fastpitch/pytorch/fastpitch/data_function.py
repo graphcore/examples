@@ -36,16 +36,18 @@ from common.text.text_processing import TextProcessing
 
 
 class TextMelAliLoader(TextMelLoader):
-    """
-    """
+    """ """
+
     def __init__(self, **kwargs):
         super(TextMelAliLoader, self).__init__(**kwargs)
-        self.tp = TextProcessing(kwargs['symbol_set'], kwargs['text_cleaners'])
-        self.n_speakers = kwargs['n_speakers']
-        if len(self.audiopaths_and_text[0]) != 4 + (kwargs['n_speakers'] > 1):
-            raise ValueError('Expected four columns in audiopaths file for single speaker model. \n'
-                             'For multispeaker model, the filelist format is '
-                             '<mel>|<dur>|<pitch>|<text>|<speaker_id>')
+        self.tp = TextProcessing(kwargs["symbol_set"], kwargs["text_cleaners"])
+        self.n_speakers = kwargs["n_speakers"]
+        if len(self.audiopaths_and_text[0]) != 4 + (kwargs["n_speakers"] > 1):
+            raise ValueError(
+                "Expected four columns in audiopaths file for single speaker model. \n"
+                "For multispeaker model, the filelist format is "
+                "<mel>|<dur>|<pitch>|<text>|<speaker_id>"
+            )
 
     def __getitem__(self, index):
         # separate filename and text
@@ -63,9 +65,9 @@ class TextMelAliLoader(TextMelLoader):
         return text, mel, len_text, dur, pitch, speaker
 
 
-class TextMelAliCollate():
-    """ Zero-pads model inputs and targets based on number of frames per setep
-    """
+class TextMelAliCollate:
+    """Zero-pads model inputs and targets based on number of frames per setep"""
+
     def __init__(self):
         self.n_frames_per_step = 1  # Taco2 bckwd compat
 
@@ -78,19 +80,19 @@ class TextMelAliCollate():
         # Right zero-pad all one-hot text sequences to max input length
         max_input_len = 189
         input_lengths, ids_sorted_decreasing = torch.sort(
-            torch.LongTensor([len(x[0]) for x in batch]),
-            dim=0, descending=True)
+            torch.LongTensor([len(x[0]) for x in batch]), dim=0, descending=True
+        )
         text_padded = torch.LongTensor(len(batch), max_input_len)
         text_padded.zero_()
         for i in range(len(ids_sorted_decreasing)):
             text = batch[ids_sorted_decreasing[i]][0]
-            text_padded[i, :text.size(0)] = text
+            text_padded[i, : text.size(0)] = text
 
         dur_padded = torch.zeros_like(text_padded, dtype=batch[0][3].dtype)
         dur_lens = torch.zeros(dur_padded.size(0), dtype=torch.int32)
         for i in range(len(ids_sorted_decreasing)):
             dur = batch[ids_sorted_decreasing[i]][3]
-            dur_padded[i, :dur.shape[0]] = dur
+            dur_padded[i, : dur.shape[0]] = dur
             dur_lens[i] = dur.shape[0]
             assert dur_lens[i] == input_lengths[i]
 
@@ -104,14 +106,13 @@ class TextMelAliCollate():
         output_lengths = torch.LongTensor(len(batch))
         for i in range(len(ids_sorted_decreasing)):
             mel = batch[ids_sorted_decreasing[i]][1]
-            mel_padded[i, :, :mel.size(1)] = mel
+            mel_padded[i, :, : mel.size(1)] = mel
             output_lengths[i] = mel.size(1)
 
-        pitch_padded = torch.zeros(dur_padded.size(0), dur_padded.size(1),
-                                   dtype=batch[0][4].dtype)
+        pitch_padded = torch.zeros(dur_padded.size(0), dur_padded.size(1), dtype=batch[0][4].dtype)
         for i in range(len(ids_sorted_decreasing)):
             pitch = batch[ids_sorted_decreasing[i]][4]
-            pitch_padded[i, :pitch.shape[0]] = pitch
+            pitch_padded[i, : pitch.shape[0]] = pitch
 
         if batch[0][5] is not None:
             speaker = torch.zeros_like(input_lengths)
@@ -120,12 +121,19 @@ class TextMelAliCollate():
         else:
             speaker = None
 
-        return text_padded.int(), mel_padded.float(), dur_padded.int(), pitch_padded.float(), dur_lens.int(), output_lengths
+        return (
+            text_padded.int(),
+            mel_padded.float(),
+            dur_padded.int(),
+            pitch_padded.float(),
+            dur_lens.int(),
+            output_lengths,
+        )
 
 
 def batch_to_gpu(batch):
     """
-    droped for ipu
+    dropped for ipu
     """
     text_padded, mel_padded, output_lengths, dur_padded, dur_lens, pitch_padded = batch
     x = [text_padded, mel_padded, dur_padded, pitch_padded]

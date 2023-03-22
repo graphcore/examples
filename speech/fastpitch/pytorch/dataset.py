@@ -20,7 +20,7 @@ import numpy as np
 
 
 class CachedDataset(Dataset):
-    def __init__(self, folder='cached_data'):
+    def __init__(self, folder="cached_data"):
         super().__init__()
         self.folder = folder
         self.file_list = [os.path.join(self.folder, i) for i in os.listdir(folder)]
@@ -44,13 +44,7 @@ class CachedDataset(Dataset):
 class GenCachedDataset(Dataset):
     def __init__(self):
         super().__init__()
-        self.generated_sample = [
-            torch.zeros(189),
-            torch.zeros(80, 870),
-            0,
-            torch.zeros(189),
-            torch.zeros(189),
-            0]
+        self.generated_sample = [torch.zeros(189), torch.zeros(80, 870), 0, torch.zeros(189), torch.zeros(189), 0]
 
     def __len__(self):
         return 50000

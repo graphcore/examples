@@ -6,11 +6,10 @@ import tensorflow as tf
 from custom_exceptions import MissingArgumentException
 from .periodic_metrics import PeriodicMetrics
 
-ONE_OFF_METRICS = ['Compilation Time']
+ONE_OFF_METRICS = ["Compilation Time"]
 
 
 class CustomWandbCallback(tf.keras.callbacks.Callback):
-
     def __init__(self, log_period: int, hyperparams: dict, model: tf.keras.Model):
         self.log_period = log_period
         self.model = model
@@ -20,25 +19,25 @@ class CustomWandbCallback(tf.keras.callbacks.Callback):
     def initialise_wandb(self, args: dict):
 
         # validate wandb args
-        wandb_params_keys = set(args['wandb_params'].keys())
-        possible_keys = {'run_name', 'tags'}
+        wandb_params_keys = set(args["wandb_params"].keys())
+        possible_keys = {"run_name", "tags"}
         unexpected_keys = wandb_params_keys - possible_keys
         if len(unexpected_keys) > 0:
-            raise ValueError(f'wandb params contains unexpected fields: {unexpected_keys}')
+            raise ValueError(f"wandb params contains unexpected fields: {unexpected_keys}")
 
-        if 'model_name' not in args.keys():
-            raise MissingArgumentException('Argument \'model_name\' is missing for W&B.')
-        if 'dataset' not in args.keys():
-            raise MissingArgumentException('Argument \'dataset\' is missing for W&B.')
+        if "model_name" not in args.keys():
+            raise MissingArgumentException("Argument 'model_name' is missing for W&B.")
+        if "dataset" not in args.keys():
+            raise MissingArgumentException("Argument 'dataset' is missing for W&B.")
         name = f"{args['model_name']}-{args['dataset']}-{str(datetime.datetime.now())}"
-        name = args['wandb_params'].get('run_name', name)
+        name = args["wandb_params"].get("run_name", name)
 
-        tags = args['wandb_params'].get('tags', [])
+        tags = args["wandb_params"].get("tags", [])
 
-        wandb.init(project='tf2-resnet50', name=name, config=args, tags=tags)
+        wandb.init(project="tf2-resnet50", name=name, config=args, tags=tags)
 
     def on_train_begin(self, logs=None):
-        wandb.run.summary['graph'] = wandb.Graph.from_keras(self.model)
+        wandb.run.summary["graph"] = wandb.Graph.from_keras(self.model)
 
     def on_train_batch_end(self, batch, logs=None):
         self.upload_to_wandb(batch, logs)

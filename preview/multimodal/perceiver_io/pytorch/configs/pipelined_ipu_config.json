@@ -3,7 +3,7 @@
   "replication_factor": {
     "pod4": 1, "pod8": 2, "pod16": 4, "pod32": 8, "pod64": 16, "default": 1
   },
-  
+
   "device_iterations": 8,
   "executable_cache_dir": "./exe_cache",
   "inference_device_iterations": 4,

@@ -38,24 +38,21 @@ def nsp_loss(labels, logits):
     :param logits: Tensor of shape (batch size, 2).
     :return: Scalar value corresponding to the NSP loss after averaging the batch.
     """
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
-        from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
 
     loss = loss_fn(labels, logits)
     return tf.cast(tf.reduce_mean(loss), dtype=tf.float32)
 
 
 def question_answering_loss(labels, logits):
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
-        from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
 
     loss = loss_fn(labels, logits)
     return tf.reduce_mean(loss)
 
 
 def classification_loss(labels, logits):
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
-        from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
 
     loss = loss_fn(labels, logits)
     return tf.reduce_mean(loss)
@@ -70,29 +67,34 @@ def classification_loss_regression(labels, logits):
 
 class NSPLossFunction(LossFunctionWrapper):
     """Keras Loss wrapper for the NSP Loss loss between the labels and predictions."""
-    def __init__(self, name='NSP_LossCalculation'):
+
+    def __init__(self, name="NSP_LossCalculation"):
         super().__init__(nsp_loss, name=name)
 
 
 class MLMLossFunction(LossFunctionWrapper):
     """Keras Loss wrapper for the MLM Loss loss between the labels and predictions."""
-    def __init__(self, name='MLM_LossCalculation'):
+
+    def __init__(self, name="MLM_LossCalculation"):
         super().__init__(mlm_loss, name=name)
 
 
 class QuestionAnsweringLossFunction(LossFunctionWrapper):
     """Keras loss wrapper for the question-answer loss."""
-    def __init__(self, name='QuestionAnswerLossCalculation'):
+
+    def __init__(self, name="QuestionAnswerLossCalculation"):
         super().__init__(question_answering_loss, name=name)
 
 
 class ClassificationLossFunction(LossFunctionWrapper):
     """Keras loss wrapper for the classification loss."""
-    def __init__(self, name='ClassificationLossFunction'):
+
+    def __init__(self, name="ClassificationLossFunction"):
         super().__init__(classification_loss, name=name)
 
 
 class ClassificationLossFunctionRegression(LossFunctionWrapper):
     """Keras loss wrapper for the classification loss for regression tasks."""
-    def __init__(self, name='ClassificationLossFunctionRegression'):
+
+    def __init__(self, name="ClassificationLossFunctionRegression"):
         super().__init__(classification_loss_regression, name=name)

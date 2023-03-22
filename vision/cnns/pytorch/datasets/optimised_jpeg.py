@@ -22,27 +22,45 @@ class ExtendedTurboJPEG(turbojpeg.TurboJPEG):
         except OSError:
             logging.warning("TurboJPEG not found, fallback to slower PIL image loading.")
 
-
-    def _crop_decode_binding(self, img_buf, crop_x, crop_y, crop_h, crop_w, pixel_format=turbojpeg.TJPF_RGB,
-                             flags=turbojpeg.TJFLAG_FASTUPSAMPLE | turbojpeg.TJFLAG_FASTDCT):
+    def _crop_decode_binding(
+        self,
+        img_buf,
+        crop_x,
+        crop_y,
+        crop_h,
+        crop_w,
+        pixel_format=turbojpeg.TJPF_RGB,
+        flags=turbojpeg.TJFLAG_FASTUPSAMPLE | turbojpeg.TJFLAG_FASTDCT,
+    ):
         try:
             handle = self._TurboJPEG__init_decompress()
             jpeg_array = np.frombuffer(img_buf, dtype=np.uint8)
             src_addr = self._TurboJPEG__getaddr(jpeg_array)
             img_array = np.empty(
-                [crop_h + 8, crop_w, turbojpeg.tjPixelSize[pixel_format]],
-                dtype=np.uint8)  # one additional block row to avoid segment error
+                [crop_h + 8, crop_w, turbojpeg.tjPixelSize[pixel_format]], dtype=np.uint8
+            )  # one additional block row to avoid segment error
             img_array = img_array[:crop_h, :crop_w, :]  # remove added block row
             dest_addr = self._TurboJPEG__getaddr(img_array)
             status = self.__decompress_crop(
-                handle, src_addr, jpeg_array.size, dest_addr, 0,
-                0, 0, pixel_format, flags, crop_x, crop_y, crop_h, crop_w)
+                handle,
+                src_addr,
+                jpeg_array.size,
+                dest_addr,
+                0,
+                0,
+                0,
+                pixel_format,
+                flags,
+                crop_x,
+                crop_y,
+                crop_h,
+                crop_w,
+            )
             if status != 0:
                 self._TurboJPEG__report_error(handle)
             return img_array
         finally:
             self._TurboJPEG__destroy(handle)
-
 
     def crop_decode(self, img_buf, crop_x, crop_y, crop_h, crop_w, pixel_format=turbojpeg.TJPF_RGB):
         try:
@@ -54,7 +72,6 @@ class ExtendedTurboJPEG(turbojpeg.TurboJPEG):
             img = img.convert("RGB")
             img = transforms.functional.crop(img, crop_x, crop_y, crop_w, crop_h)
             return img
-
 
     def align_crop(self, crop_x, crop_y, crop_h, crop_w, jpeg_subsample):
         """

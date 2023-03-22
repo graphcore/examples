@@ -32,6 +32,7 @@ def default(val, d):
 def always(val):
     def inner(*args, **kwargs):
         return val
+
     return inner
 
 
@@ -39,9 +40,9 @@ def is_empty(t):
     return t.nelement() == 0
 
 
-def masked_mean(t, mask, dim = 1):
-    t = t.masked_fill(~mask[:, :, None], 0.)
-    return t.sum(dim = 1) / mask.sum(dim = 1)[..., None]
+def masked_mean(t, mask, dim=1):
+    t = t.masked_fill(~mask[:, :, None], 0.0)
+    return t.sum(dim=1) / mask.sum(dim=1)[..., None]
 
 
 def set_requires_grad(model, value):
@@ -56,17 +57,18 @@ def eval_decorator(fn):
         out = fn(model, *args, **kwargs)
         model.train(was_training)
         return out
+
     return inner
 
 
 # sampling helpers
 
 
-def top_k(logits, thres = 0.5):
+def top_k(logits, thres=0.5):
     num_logits = logits.shape[-1]
     k = max(int((1 - thres) * num_logits), 1)
     val, ind = torch.topk(logits, k)
-    probs = torch.full_like(logits, float('-inf'))
+    probs = torch.full_like(logits, float("-inf"))
     probs.scatter_(1, ind, val)
     return probs
 
@@ -75,38 +77,42 @@ def top_k(logits, thres = 0.5):
 
 
 class DALLE(nn.Module):
-    def __init__(self,
-                 *,
-                 dim,
-                 vae,
-                 num_text_tokens = 10000,
-                 text_seq_len = 256,
-                 depth,
-                 heads = 8,
-                 dim_head = 64,
-                 attn_dropout = 0.,
-                 ff_dropout = 0,
-                 sparse_attn = False,
-                 attn_types = None,
-                 loss_img_weight = 7,
-                 sandwich_norm = False,
-                 fp16 = False,
-                 byteio = False):
+    def __init__(
+        self,
+        *,
+        dim,
+        vae,
+        num_text_tokens=10000,
+        text_seq_len=256,
+        depth,
+        heads=8,
+        dim_head=64,
+        attn_dropout=0.0,
+        ff_dropout=0,
+        sparse_attn=False,
+        attn_types=None,
+        loss_img_weight=7,
+        sandwich_norm=False,
+        fp16=False,
+        byteio=False,
+    ):
         super().__init__()
-        assert isinstance(vae, (VQGanVAE)), 'vae must be an instance of DiscreteVAE'
+        assert isinstance(vae, (VQGanVAE)), "vae must be an instance of DiscreteVAE"
 
         image_size = vae.image_size
         num_image_tokens = vae.num_tokens
-        image_fmap_size = (vae.image_size // (2 ** vae.num_layers))
-        image_seq_len = image_fmap_size ** 2
+        image_fmap_size = vae.image_size // (2**vae.num_layers)
+        image_seq_len = image_fmap_size**2
 
-        num_text_tokens = num_text_tokens + text_seq_len  # reserve unique padding tokens for each position (text seq len)
+        num_text_tokens = (
+            num_text_tokens + text_seq_len
+        )  # reserve unique padding tokens for each position (text seq len)
 
         self.text_emb = nn.Embedding(num_text_tokens, dim)
         self.image_emb = nn.Embedding(num_image_tokens, dim)
 
         self.text_pos_emb = nn.Embedding(text_seq_len + 1, dim)  # +1 for <bos>
-        self.image_pos_emb = AxialPositionalEmbedding(dim, axial_shape = (image_fmap_size, image_fmap_size))
+        self.image_pos_emb = AxialPositionalEmbedding(dim, axial_shape=(image_fmap_size, image_fmap_size))
 
         self.num_text_tokens = num_text_tokens  # for offsetting logits index and calculating cross entropy loss
         self.num_image_tokens = num_image_tokens
@@ -122,19 +128,19 @@ class DALLE(nn.Module):
         set_requires_grad(self.vae, False)  # freeze VAE from being trained
 
         self.transformer = Transformer(
-            dim = dim,
-            causal = True,
-            seq_len = seq_len,
-            depth = depth,
-            heads = heads,
-            dim_head = dim_head,
-            attn_dropout = attn_dropout,
-            ff_dropout = ff_dropout,
-            attn_types = attn_types,
-            image_fmap_size = image_fmap_size,
-            sparse_attn = sparse_attn,
-            sandwich_norm = sandwich_norm,
-            fp16 = fp16,
+            dim=dim,
+            causal=True,
+            seq_len=seq_len,
+            depth=depth,
+            heads=heads,
+            dim_head=dim_head,
+            attn_dropout=attn_dropout,
+            ff_dropout=ff_dropout,
+            attn_types=attn_types,
+            image_fmap_size=image_fmap_size,
+            sparse_attn=sparse_attn,
+            sandwich_norm=sandwich_norm,
+            fp16=fp16,
         )
 
         self.to_logits = nn.Sequential(
@@ -145,12 +151,11 @@ class DALLE(nn.Module):
         seq_range = torch.arange(seq_len)
         logits_range = torch.arange(total_tokens)
 
-        seq_range = rearrange(seq_range, 'n -> () n ()')
-        logits_range = rearrange(logits_range, 'd -> () () d')
+        seq_range = rearrange(seq_range, "n -> () n ()")
+        logits_range = rearrange(logits_range, "d -> () () d")
 
-        self.logits_mask = (
-            ((seq_range >= text_seq_len) & (logits_range < num_text_tokens)) |
-            ((seq_range < text_seq_len) & (logits_range >= num_text_tokens))
+        self.logits_mask = ((seq_range >= text_seq_len) & (logits_range < num_text_tokens)) | (
+            (seq_range < text_seq_len) & (logits_range >= num_text_tokens)
         )
         self.logits_mask.requires_grad = False
 
@@ -158,14 +163,9 @@ class DALLE(nn.Module):
         self.fp16 = fp16
         self.byteio = byteio
 
-
     @torch.no_grad()
     @eval_decorator
-    def generate_texts(self,
-                       text=None,
-                       *,
-                       filter_thres = 0.5,
-                       temperature = 1.):
+    def generate_texts(self, text=None, *, filter_thres=0.5, temperature=1.0):
         text_seq_len = self.text_seq_len
         if text is None or text == "":
             text_tokens = torch.tensor([[0]])
@@ -190,8 +190,8 @@ class DALLE(nn.Module):
             logits.masked_fill_(logits_mask, max_neg_value)
             logits = logits[:, -1, :]
 
-            filtered_logits = top_k(logits, thres = filter_thres)
-            probs = F.softmax(filtered_logits / temperature, dim = -1)
+            filtered_logits = top_k(logits, thres=filter_thres)
+            probs = F.softmax(filtered_logits / temperature, dim=-1)
             sample = torch.multinomial(probs, 1)
 
             text_tokens = torch.cat((text_tokens, sample), dim=-1)
@@ -200,19 +200,17 @@ class DALLE(nn.Module):
         texts = [tokenizer.tokenizer.decode(text_token, pad_tokens=padding_tokens) for text_token in text_tokens]
         return text_tokens, texts
 
-
     @torch.no_grad()
     @eval_decorator
-    def generate_images(self,
-                        text,
-                        *,
-                        clip = None,
-                        mask = None,
-                        filter_thres = 0.5,
-                        temperature = 1.,
-                        img = None,
-                        num_init_img_tokens = None):
-        vae, text_seq_len, image_seq_len, num_text_tokens = self.vae, self.text_seq_len, self.image_seq_len, self.num_text_tokens
+    def generate_images(
+        self, text, *, clip=None, mask=None, filter_thres=0.5, temperature=1.0, img=None, num_init_img_tokens=None
+    ):
+        vae, text_seq_len, image_seq_len, num_text_tokens = (
+            self.vae,
+            self.text_seq_len,
+            self.image_seq_len,
+            self.num_text_tokens,
+        )
         total_len = text_seq_len + image_seq_len
 
         text = text[:, :text_seq_len]  # make sure text is within bounds
@@ -220,31 +218,39 @@ class DALLE(nn.Module):
 
         if exists(img):
             image_size = vae.image_size
-            assert img.shape[1] == 3 and img.shape[2] == image_size and img.shape[3] == image_size, f'input image must have the correct image size {image_size}'
+            assert (
+                img.shape[1] == 3 and img.shape[2] == image_size and img.shape[3] == image_size
+            ), f"input image must have the correct image size {image_size}"
 
             indices = vae.get_codebook_indices(img)
-            num_img_tokens = default(num_init_img_tokens, int(0.4375 * image_seq_len))  # OpenAI used 14 * 32 initial tokens to prime
-            assert num_img_tokens < image_seq_len, 'number of initial image tokens for priming must be less than the total image token sequence length'
+            num_img_tokens = default(
+                num_init_img_tokens, int(0.4375 * image_seq_len)
+            )  # OpenAI used 14 * 32 initial tokens to prime
+            assert (
+                num_img_tokens < image_seq_len
+            ), "number of initial image tokens for priming must be less than the total image token sequence length"
 
             indices = indices[:, :num_img_tokens]
-            out = torch.cat((out, indices), dim = -1)
+            out = torch.cat((out, indices), dim=-1)
 
         for cur_len in range(out.shape[1], total_len):
             is_image = cur_len >= text_seq_len
 
             text, image = out[:, :text_seq_len], out[:, text_seq_len:]
 
-            logits = self(text, image, mask = mask)[:, -1, :]
+            logits = self(text, image, mask=mask)[:, -1, :]
 
-            filtered_logits = top_k(logits, thres = filter_thres)
-            probs = F.softmax(filtered_logits / temperature, dim = -1)
+            filtered_logits = top_k(logits, thres=filter_thres)
+            probs = F.softmax(filtered_logits / temperature, dim=-1)
             sample = torch.multinomial(probs, 1)
 
-            sample -= (num_text_tokens if is_image else 0)  # offset sampled token if it is an image token, since logit space is composed of text and then image tokens
+            sample -= (
+                num_text_tokens if is_image else 0
+            )  # offset sampled token if it is an image token, since logit space is composed of text and then image tokens
             out = torch.cat((out, sample), dim=-1)
 
             if out.shape[1] <= text_seq_len:
-                mask = F.pad(mask, (0, 1), value = True)
+                mask = F.pad(mask, (0, 1), value=True)
 
         text_seq = out[:, :text_seq_len]
 
@@ -257,10 +263,7 @@ class DALLE(nn.Module):
 
         return images
 
-    def forward(self,
-                text,
-                image = None,
-                mask = None):
+    def forward(self, text, image=None, mask=None):
         if exists(image) and not is_empty(image):
             is_raw_image = len(image.shape) == 4
 
@@ -285,7 +288,7 @@ class DALLE(nn.Module):
 
         # add <bos>
 
-        text = F.pad(text, (1, 0), value = 0)
+        text = F.pad(text, (1, 0), value=0)
 
         tokens = self.text_emb(text)
         tokens += self.text_pos_emb(torch.arange(text.shape[1], device=image.device))
@@ -293,7 +296,7 @@ class DALLE(nn.Module):
         seq_len = tokens.shape[1]
 
         if exists(image) and not is_empty(image):
-            tokens = torch.cat((tokens, image_emb), dim = 1)
+            tokens = torch.cat((tokens, image_emb), dim=1)
             seq_len += image_len
 
         # when training, the length exceeds the total text + image length
@@ -320,15 +323,21 @@ class DALLE(nn.Module):
         if not self.training:
             return logits
 
-        assert exists(image), 'when training, image must be supplied'
+        assert exists(image), "when training, image must be supplied"
 
         offsetted_image = image + self.num_text_tokens
-        labels = torch.cat((text[:, 1:], offsetted_image), dim = 1)
+        labels = torch.cat((text[:, 1:], offsetted_image), dim=1)
 
-        logits = rearrange(logits, 'b n c -> b c n')
+        logits = rearrange(logits, "b n c -> b c n")
 
-        loss_text = F.cross_entropy(logits[:, :, :self.text_seq_len].permute([0, 2, 1]).reshape([-1, self.total_tokens]), labels[:, :self.text_seq_len].reshape(-1))
-        loss_img = F.cross_entropy(logits[:, :, self.text_seq_len:].permute([0, 2, 1]).reshape([-1, self.total_tokens]), labels[:, self.text_seq_len:].reshape(-1))
+        loss_text = F.cross_entropy(
+            logits[:, :, : self.text_seq_len].permute([0, 2, 1]).reshape([-1, self.total_tokens]),
+            labels[:, : self.text_seq_len].reshape(-1),
+        )
+        loss_img = F.cross_entropy(
+            logits[:, :, self.text_seq_len :].permute([0, 2, 1]).reshape([-1, self.total_tokens]),
+            labels[:, self.text_seq_len :].reshape(-1),
+        )
         loss = (loss_text + self.loss_img_weight * loss_img) / (self.loss_img_weight + 1)
 
-        return poptorch.identity_loss(loss, reduction='none')
+        return poptorch.identity_loss(loss, reduction="none")

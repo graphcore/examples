@@ -21,17 +21,12 @@ def test_feed_forward_cmp_huggingface(test_config: BertConfig):
     intermediate_size = hidden_size * 4
 
     # HuggingFace
-    config = HFConfig(
-        hidden_size=hidden_size,
-        seq_len=seq_len,
-        intermediate_size=intermediate_size
-    )
+    config = HFConfig(hidden_size=hidden_size, seq_len=seq_len, intermediate_size=intermediate_size)
     hf_intermediate_layer = BertIntermediate(config).eval()
     hf_output_layer = BertOutput(config).eval()
 
     # HF forward
-    input_t = torch.rand(
-        (batch_size, seq_len, hidden_size), requires_grad=True)
+    input_t = torch.rand((batch_size, seq_len, hidden_size), requires_grad=True)
     intermediate_output = hf_intermediate_layer(input_t)
     output_ = hf_output_layer(intermediate_output, input_t)
 
@@ -48,10 +43,11 @@ def test_feed_forward_cmp_huggingface(test_config: BertConfig):
     main = ir.main_graph
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(
-                input_t.reshape(-1, config.hidden_size), popxl.float32, name="input"),
-        ])
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(input_t.reshape(-1, config.hidden_size), popxl.float32, name="input"),
+            ]
+        )
         input_t = inputs_tensors[0]
         args, ff_graph = FeedForward(test_config).create_graph(input_t)
         grad_ff_graph = addons.autodiff(ff_graph)
@@ -63,10 +59,8 @@ def test_feed_forward_cmp_huggingface(test_config: BertConfig):
         act_stream = addons.host_store(act)
 
         # Backwards
-        gradient = popxl.constant(grad_wrt.reshape(
-            act.shape).numpy().copy(), act.dtype, "gradient")
-        grad_input, *_ = grad_ff_graph.call(
-            gradient, args=grad_ff_graph.grad_graph_info.inputs_dict(call_info))
+        gradient = popxl.constant(grad_wrt.reshape(act.shape).numpy().copy(), act.dtype, "gradient")
+        grad_input, *_ = grad_ff_graph.call(gradient, args=grad_ff_graph.grad_graph_info.inputs_dict(call_info))
 
         grad_stream = addons.host_store(grad_input)
 
@@ -81,7 +75,5 @@ def test_feed_forward_cmp_huggingface(test_config: BertConfig):
         session.write_variables_data(weights)
         outs = session.run(inputs)
 
-    np.testing.assert_almost_equal(
-        output_HF, outs[act_stream].reshape(output_HF.shape), 3)
-    np.testing.assert_almost_equal(
-        input_grad_HF, outs[grad_stream].reshape(input_grad_HF.shape), 3)
+    np.testing.assert_almost_equal(output_HF, outs[act_stream].reshape(output_HF.shape), 3)
+    np.testing.assert_almost_equal(input_grad_HF, outs[grad_stream].reshape(input_grad_HF.shape), 3)

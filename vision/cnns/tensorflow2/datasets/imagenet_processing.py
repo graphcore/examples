@@ -42,8 +42,8 @@ NUM_CHANNELS = 3
 NUM_CLASSES = 1001
 
 NUM_IMAGES = {
-    'train': 1281167,
-    'validation': 50000,
+    "train": 1281167,
+    "validation": 50000,
 }
 
 _NUM_TRAIN_FILES = 1024
@@ -63,15 +63,17 @@ NORMALISATION_STD = [0.229, 0.224, 0.225]
 _RESIZE_MIN = 256
 
 
-def process_record_dataset(dataset,
-                           is_training,
-                           batch_size,
-                           shuffle_buffer,
-                           parse_record_fn,
-                           dtype=tf.float32,
-                           datasets_num_private_threads=None,
-                           drop_remainder=False,
-                           tf_data_experimental_slack=False):
+def process_record_dataset(
+    dataset,
+    is_training,
+    batch_size,
+    shuffle_buffer,
+    parse_record_fn,
+    dtype=tf.float32,
+    datasets_num_private_threads=None,
+    drop_remainder=False,
+    tf_data_experimental_slack=False,
+):
     """Given a Dataset with raw records, return an iterator over the records.
     Args:
       dataset: A Dataset representing raw records
@@ -95,11 +97,9 @@ def process_record_dataset(dataset,
     # Defines a specific size thread pool for tf.data operations.
     if datasets_num_private_threads:
         options = tf.data.Options()
-        options.experimental_threading.private_threadpool_size = (
-            datasets_num_private_threads)
+        options.experimental_threading.private_threadpool_size = datasets_num_private_threads
         dataset = dataset.with_options(options)
-        logging.info('datasets_num_private_threads: %s',
-                     datasets_num_private_threads)
+        logging.info("datasets_num_private_threads: %s", datasets_num_private_threads)
 
     if is_training:
         # Shuffles records before repeating to respect epoch boundaries.
@@ -109,8 +109,8 @@ def process_record_dataset(dataset,
 
     # Parses the raw records into images and labels.
     dataset = dataset.map(
-        lambda value: parse_record_fn(value, is_training, dtype),
-        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        lambda value: parse_record_fn(value, is_training, dtype), num_parallel_calls=tf.data.experimental.AUTOTUNE
+    )
     dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
 
     # Operations between the final prefetch and the get_next call to the iterator
@@ -131,15 +131,9 @@ def process_record_dataset(dataset,
 def get_filenames(is_training, data_dir):
     """Return filenames for dataset."""
     if is_training:
-        return [
-            os.path.join(data_dir, 'train-%05d-of-01024' % i)
-            for i in range(_NUM_TRAIN_FILES)
-        ]
+        return [os.path.join(data_dir, "train-%05d-of-01024" % i) for i in range(_NUM_TRAIN_FILES)]
     else:
-        return [
-            os.path.join(data_dir, 'validation-%05d-of-00128' % i)
-            for i in range(128)
-        ]
+        return [os.path.join(data_dir, "validation-%05d-of-00128" % i) for i in range(128)]
 
 
 def parse_example_proto(example_serialized):
@@ -174,30 +168,31 @@ def parse_example_proto(example_serialized):
     """
     # Dense features in Example proto.
     feature_map = {
-        'image/encoded':
-            tf.io.FixedLenFeature([], dtype=tf.string, default_value=''),
-        'image/class/label':
-            tf.io.FixedLenFeature([], dtype=tf.int64, default_value=-1),
-        'image/class/text':
-            tf.io.FixedLenFeature([], dtype=tf.string, default_value=''),
+        "image/encoded": tf.io.FixedLenFeature([], dtype=tf.string, default_value=""),
+        "image/class/label": tf.io.FixedLenFeature([], dtype=tf.int64, default_value=-1),
+        "image/class/text": tf.io.FixedLenFeature([], dtype=tf.string, default_value=""),
     }
     sparse_float32 = tf.io.VarLenFeature(dtype=tf.float32)
     # Sparse features in Example proto.
-    feature_map.update({
-        k: sparse_float32 for k in [
-            'image/object/bbox/xmin', 'image/object/bbox/ymin',
-            'image/object/bbox/xmax', 'image/object/bbox/ymax'
-        ]
-    })
+    feature_map.update(
+        {
+            k: sparse_float32
+            for k in [
+                "image/object/bbox/xmin",
+                "image/object/bbox/ymin",
+                "image/object/bbox/xmax",
+                "image/object/bbox/ymax",
+            ]
+        }
+    )
 
-    features = tf.io.parse_single_example(
-        serialized=example_serialized, features=feature_map)
-    label = tf.cast(features['image/class/label'], dtype=tf.int32)
+    features = tf.io.parse_single_example(serialized=example_serialized, features=feature_map)
+    label = tf.cast(features["image/class/label"], dtype=tf.int32)
 
-    xmin = tf.expand_dims(features['image/object/bbox/xmin'].values, 0)
-    ymin = tf.expand_dims(features['image/object/bbox/ymin'].values, 0)
-    xmax = tf.expand_dims(features['image/object/bbox/xmax'].values, 0)
-    ymax = tf.expand_dims(features['image/object/bbox/ymax'].values, 0)
+    xmin = tf.expand_dims(features["image/object/bbox/xmin"].values, 0)
+    ymin = tf.expand_dims(features["image/object/bbox/ymin"].values, 0)
+    xmax = tf.expand_dims(features["image/object/bbox/xmax"].values, 0)
+    ymax = tf.expand_dims(features["image/object/bbox/ymax"].values, 0)
 
     # Note that we impose an ordering of (y, x) just to make life difficult.
     bbox = tf.concat([ymin, xmin, ymax, xmax], 0)
@@ -207,7 +202,7 @@ def parse_example_proto(example_serialized):
     bbox = tf.expand_dims(bbox, 0)
     bbox = tf.transpose(a=bbox, perm=[0, 2, 1])
 
-    return features['image/encoded'], label, bbox
+    return features["image/encoded"], label, bbox
 
 
 def parse_record(raw_record, is_training, dtype, preprocess_fn=None, seed=None):
@@ -233,14 +228,13 @@ def parse_record(raw_record, is_training, dtype, preprocess_fn=None, seed=None):
         num_channels=NUM_CHANNELS,
         on_host_preprocess_fn=preprocess_fn,
         is_training=is_training,
-        seed=seed)
+        seed=seed,
+    )
     image = tf.cast(image, dtype)
 
     # Subtract one so that labels are in [0, 1000), and cast to float32 for
     # Keras model.
-    label = tf.cast(
-        tf.cast(tf.reshape(label, shape=[1]), dtype=tf.int32) - 1,
-        dtype=tf.float32)
+    label = tf.cast(tf.cast(tf.reshape(label, shape=[1]), dtype=tf.int32) - 1, dtype=tf.float32)
     return image, label
 
 
@@ -262,24 +256,26 @@ def get_parse_record_fn(use_keras_image_data_format=False):
     def parse_record_fn(raw_record, is_training, dtype):
         image, label = parse_record(raw_record, is_training, dtype)
         if use_keras_image_data_format:
-            if tf.keras.backend.image_data_format() == 'channels_first':
+            if tf.keras.backend.image_data_format() == "channels_first":
                 image = tf.transpose(image, perm=[2, 0, 1])
         return image, label
 
     return parse_record_fn
 
 
-def input_fn(is_training,
-             data_dir,
-             batch_size,
-             dtype=tf.float32,
-             datasets_num_private_threads=None,
-             parse_record_fn=parse_record,
-             input_context=None,
-             drop_remainder=False,
-             tf_data_experimental_slack=False,
-             training_dataset_cache=False,
-             filenames=None):
+def input_fn(
+    is_training,
+    data_dir,
+    batch_size,
+    dtype=tf.float32,
+    datasets_num_private_threads=None,
+    parse_record_fn=parse_record,
+    input_context=None,
+    drop_remainder=False,
+    tf_data_experimental_slack=False,
+    training_dataset_cache=False,
+    filenames=None,
+):
     """Input function which provides batches for train or eval.
     Args:
       is_training: A boolean denoting whether the input is for training.
@@ -307,10 +303,11 @@ def input_fn(is_training,
 
     if input_context:
         logging.info(
-            'Sharding the dataset: input_pipeline_id=%d num_input_pipelines=%d',
-            input_context.input_pipeline_id, input_context.num_input_pipelines)
-        dataset = dataset.shard(input_context.num_input_pipelines,
-                                input_context.input_pipeline_id)
+            "Sharding the dataset: input_pipeline_id=%d num_input_pipelines=%d",
+            input_context.input_pipeline_id,
+            input_context.num_input_pipelines,
+        )
+        dataset = dataset.shard(input_context.num_input_pipelines, input_context.input_pipeline_id)
 
     if is_training:
         # Shuffle the input files
@@ -321,9 +318,8 @@ def input_fn(is_training,
     # parallel. You may want to increase this number if you have a large number of
     # CPU cores.
     dataset = dataset.interleave(
-        tf.data.TFRecordDataset,
-        cycle_length=10,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        tf.data.TFRecordDataset, cycle_length=10, num_parallel_calls=tf.data.experimental.AUTOTUNE
+    )
 
     if is_training and training_dataset_cache:
         # Improve training performance when training data is in remote storage and
@@ -372,7 +368,8 @@ def _decode_crop(image_buffer, bbox, num_channels, seed=None):
         area_range=[0.05, 1.0],
         max_attempts=100,
         use_image_if_no_bounding_boxes=True,
-        seed=seed)
+        seed=seed,
+    )
     bbox_begin, bbox_size, _ = sample_distorted_bounding_box
 
     # Reassemble the bounding box in the format the crop op requires.
@@ -381,8 +378,7 @@ def _decode_crop(image_buffer, bbox, num_channels, seed=None):
     crop_window = tf.stack([offset_y, offset_x, target_height, target_width])
 
     # Use the fused decode and crop op here, which is faster than each in series.
-    cropped = tf.image.decode_and_crop_jpeg(
-        image_buffer, crop_window, channels=num_channels, dct_method='INTEGER_FAST')
+    cropped = tf.image.decode_and_crop_jpeg(image_buffer, crop_window, channels=num_channels, dct_method="INTEGER_FAST")
 
     return cropped
 
@@ -399,12 +395,11 @@ def _central_crop(image, crop_height, crop_width):
     shape = tf.shape(input=image)
     height, width = shape[0], shape[1]
 
-    amount_to_be_cropped_h = (height - crop_height)
+    amount_to_be_cropped_h = height - crop_height
     crop_top = amount_to_be_cropped_h // 2
-    amount_to_be_cropped_w = (width - crop_width)
+    amount_to_be_cropped_w = width - crop_width
     crop_left = amount_to_be_cropped_w // 2
-    return tf.slice(image, [crop_top, crop_left, 0],
-                    [crop_height, crop_width, -1])
+    return tf.slice(image, [crop_top, crop_left, 0], [crop_height, crop_width, -1])
 
 
 def _mean_image_subtraction(image, means, num_channels):
@@ -425,10 +420,10 @@ def _mean_image_subtraction(image, means, num_channels):
         number of values in `means`.
     """
     if image.get_shape().ndims != 3:
-        raise ValueError('Input must be of size [height, width, C>0]')
+        raise ValueError("Input must be of size [height, width, C>0]")
 
     if len(means) != num_channels:
-        raise ValueError('len(means) must match the number of channels')
+        raise ValueError("len(means) must match the number of channels")
 
     # We have a 1-D tensor of means; convert to 3-D.
     # Note(b/130245863): we explicitly call `broadcast` instead of simply
@@ -495,23 +490,19 @@ def _resize_image(image, height, width):
       resized_image: A 3-D tensor containing the resized image. The first two
         dimensions have the shape [height, width].
     """
-    return tf.compat.v1.image.resize(
-        image, [height, width],
-        method=tf.image.ResizeMethod.BILINEAR,
-        align_corners=False)
+    return tf.compat.v1.image.resize(image, [height, width], method=tf.image.ResizeMethod.BILINEAR, align_corners=False)
 
 
 def _normalise_image(image):
-    """Normalise each image channel.
-    """
+    """Normalise each image channel."""
 
     image_shape = image.get_shape()
 
     if image_shape.ndims not in (3, 4):
-        raise ValueError('Input must be of size [height, width, C>0]')
+        raise ValueError("Input must be of size [height, width, C>0]")
 
     if len(NORMALISATION_MEAN) != image_shape[-1]:
-        raise ValueError('length NORMALISATION_MEAN must match the number of channels')
+        raise ValueError("length NORMALISATION_MEAN must match the number of channels")
 
     means = tf.cast(NORMALISATION_MEAN, dtype=image.dtype)
     std_dev = tf.cast(NORMALISATION_STD, dtype=image.dtype)
@@ -530,14 +521,16 @@ def _random_horizontal_flip(image, seed=None):
     return tf.image.random_flip_left_right(image, seed=seed)
 
 
-def preprocess_image(image_buffer,
-                     bbox,
-                     output_height,
-                     output_width,
-                     num_channels,
-                     on_host_preprocess_fn=None,
-                     is_training=False,
-                     seed=None):
+def preprocess_image(
+    image_buffer,
+    bbox,
+    output_height,
+    output_width,
+    num_channels,
+    on_host_preprocess_fn=None,
+    is_training=False,
+    seed=None,
+):
     """Preprocesses the given image.
     Preprocessing includes decoding, cropping, and resizing for both training
     and eval images. Training preprocessing, however, introduces some random

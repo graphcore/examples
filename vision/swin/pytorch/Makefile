@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 all: custom_ops.so
-custom_ops.so: 
+custom_ops.so:
 	g++ -std=c++14 -fPIC -O2 \
 		-DONNX_NAMESPACE=onnx \
 		custom_ops/remap_tensor_ce.cpp \

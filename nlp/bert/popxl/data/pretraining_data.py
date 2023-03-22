@@ -23,14 +23,14 @@ from torch.utils.data import IterableDataset
 from transformers import BertTokenizerFast
 
 TFRECORD_KEYS = (  # Torch Model Keys
-    'input_ids',  # input_ids                  : tokens after masking
-    'input_mask',  # attention_mask             : 1 if padding token, 0 otherwise
-    'segment_ids',  # token_type_ids             : sentence 0 or 1
+    "input_ids",  # input_ids                  : tokens after masking
+    "input_mask",  # attention_mask             : 1 if padding token, 0 otherwise
+    "segment_ids",  # token_type_ids             : sentence 0 or 1
     # masked_lm_positions        : position of masked tokens in input_ids
-    'masked_lm_positions',
+    "masked_lm_positions",
     # masked_lm_labels=None      : label of masked tokens with padding as 0.
-    'masked_lm_ids',
-    'next_sentence_labels'  # next_sentence_label=None   : 1 if next sentence, 0 otherwise
+    "masked_lm_ids",
+    "next_sentence_labels",  # next_sentence_label=None   : 1 if next sentence, 0 otherwise
 )
 
 
@@ -71,10 +71,7 @@ class TFRecordPretrainingDataset(IterableDataset):
     shuffle: Shuffle the data?
     """
 
-    def __init__(self,
-                 input_files,
-                 file_buffer_size=100,
-                 shuffle=True):
+    def __init__(self, input_files, file_buffer_size=100, shuffle=True):
         self.files = expand_glob_files(input_files)
         self.file_buffer_size = file_buffer_size
         self.shuffle = shuffle
@@ -85,9 +82,7 @@ class TFRecordPretrainingDataset(IterableDataset):
         self.data_index = 0
 
     def samples_per_file(self, filename):
-        reader = tfrecord_loader(filename,
-                                 None,
-                                 list(TFRECORD_KEYS))
+        reader = tfrecord_loader(filename, None, list(TFRECORD_KEYS))
         count = 0
         for _ in reader:
             count += 1
@@ -95,8 +90,7 @@ class TFRecordPretrainingDataset(IterableDataset):
 
     def __len__(self):
         if getattr(self, "_len", None) is None:
-            pool = multiprocessing.Pool(
-                min(multiprocessing.cpu_count(), len(self.files)))
+            pool = multiprocessing.Pool(min(multiprocessing.cpu_count(), len(self.files)))
             num_samples = pool.map(self.samples_per_file, self.files)
             pool.close()
             pool.join()
@@ -107,10 +101,11 @@ class TFRecordPretrainingDataset(IterableDataset):
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is not None:
             if popdist.isPopdistEnvSet():
-                self.worker_id = worker_info.id + \
-                    worker_info.num_workers * popdist.getInstanceIndex()
-                self.shard = worker_info.id + worker_info.num_workers * \
-                    popdist.getInstanceIndex(), worker_info.num_workers * popdist.getNumInstances()
+                self.worker_id = worker_info.id + worker_info.num_workers * popdist.getInstanceIndex()
+                self.shard = (
+                    worker_info.id + worker_info.num_workers * popdist.getInstanceIndex(),
+                    worker_info.num_workers * popdist.getNumInstances(),
+                )
             else:
                 self.worker_id = worker_info.id
                 self.shard = worker_info.id, worker_info.num_workers
@@ -145,11 +140,12 @@ class TFRecordPretrainingDataset(IterableDataset):
         self.data_index = 0
 
     def load_file(self):
-        reader = tfrecord_loader(self.files[self.file_index],
-                                 self.files[self.file_index].replace(
-                                     ".tfrecord", ".index"),
-                                 list(TFRECORD_KEYS),
-                                 self.shard)
+        reader = tfrecord_loader(
+            self.files[self.file_index],
+            self.files[self.file_index].replace(".tfrecord", ".index"),
+            list(TFRECORD_KEYS),
+            self.shard,
+        )
         data = []
         for datum in reader:
             data.append(datum)
@@ -180,6 +176,5 @@ if __name__ == "__main__":
         print(name, value.shape, value.dtype, type(value), value, "\n\n")
 
     print("And now, we are going to decode the tokens.\n")
-    tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased",
-                                                  do_lower_case=True)
-    print("\n\n", tokenizer.decode(datum['input_ids']), "\n\n")
+    tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased", do_lower_case=True)
+    print("\n\n", tokenizer.decode(datum["input_ids"]), "\n\n")

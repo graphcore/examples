@@ -8,30 +8,32 @@ from typing import Tuple
 import math
 
 
-def calculate_program_steps(hparams: argparse.Namespace,
-                            batch_config: batch_config.BatchConfig,
-                            dataset_size: int) -> Tuple[int, int, int, int]:
+def calculate_program_steps(
+    hparams: argparse.Namespace, batch_config: batch_config.BatchConfig, dataset_size: int
+) -> Tuple[int, int, int, int]:
 
     if hparams.weight_updates_per_epoch == -1:
         hparams.weight_updates_per_epoch = dataset_size // batch_config.global_batch_size
     micro_batches_per_epoch = hparams.weight_updates_per_epoch * batch_config.num_micro_batches_per_weight_update
 
     weight_updates_per_log = calculate_weight_updates_per_event(
-        hparams.logs_per_epoch, hparams.weight_updates_per_epoch, hparams.num_epochs)
+        hparams.logs_per_epoch, hparams.weight_updates_per_epoch, hparams.num_epochs
+    )
     micro_batches_per_log = weight_updates_per_log * batch_config.num_micro_batches_per_weight_update
-    logging.info(f'micro batches per log {micro_batches_per_log}')
+    logging.info(f"micro batches per log {micro_batches_per_log}")
 
     weight_updates_per_ckpt = calculate_weight_updates_per_event(
-        hparams.ckpts_per_epoch, hparams.weight_updates_per_epoch, int(hparams.num_epochs - hparams.first_ckpt_epoch))
+        hparams.ckpts_per_epoch, hparams.weight_updates_per_epoch, int(hparams.num_epochs - hparams.first_ckpt_epoch)
+    )
     micro_batches_per_ckpt = weight_updates_per_ckpt * batch_config.num_micro_batches_per_weight_update
-    logging.info(f'micro batches per checkpoint {micro_batches_per_ckpt}')
+    logging.info(f"micro batches per checkpoint {micro_batches_per_ckpt}")
 
     # the common frequency that samples both the logging and checkpointing events is given by the
     # greatest common divisor between the two.
     weight_updates_per_execution = math.gcd(weight_updates_per_log, weight_updates_per_ckpt)
     if weight_updates_per_execution == 0:
         # run training run in a single call
-        logging.warn('The entire training run will be executed in a single call to the device.')
+        logging.warn("The entire training run will be executed in a single call to the device.")
         weight_updates_per_execution = hparams.weight_updates_per_epoch * hparams.num_epochs
     micro_batches_per_execution = weight_updates_per_execution * batch_config.num_micro_batches_per_weight_update
 
@@ -46,7 +48,8 @@ def calculate_program_steps(hparams: argparse.Namespace,
     # than the actual number of steps per epoch ( = number of micro batches per epoch covering the whole dataset)
     if micro_batches_per_epoch % micro_batches_per_execution:
         raise ValueError(
-            f'micro_batches_per_execution {micro_batches_per_execution} should divide micro_batches_per_epoch = {micro_batches_per_epoch}')
+            f"micro_batches_per_execution {micro_batches_per_execution} should divide micro_batches_per_epoch = {micro_batches_per_epoch}"
+        )
 
     return micro_batches_per_epoch, micro_batches_per_execution, micro_batches_per_log, micro_batches_per_ckpt
 
@@ -71,7 +74,9 @@ def calculate_weight_updates_per_event(events_per_epoch: float, weight_updates_p
         if events_per_epoch < 1:
             # convert closest freq back to events per epoch
             closest_event_freq /= num_epochs
-        logging.warn(f'The dataset size and batch configuration doesn\'t allow for {events_per_epoch} events per '
-                     f'epoch. The closest possible frequency is {closest_event_freq} events per epoch.')
+        logging.warn(
+            f"The dataset size and batch configuration doesn't allow for {events_per_epoch} events per "
+            f"epoch. The closest possible frequency is {closest_event_freq} events per epoch."
+        )
 
     return weight_updates_per_event

@@ -18,18 +18,15 @@
 
 import tensorflow as tf
 from tensorflow.python.ipu.ops import embedding_ops
-from transformers.models.bert.modeling_tf_bert import (
-    shape_list,
-    TFBertEmbeddings
-)
+from transformers.models.bert.modeling_tf_bert import shape_list, TFBertEmbeddings
 
 
 class IpuTFBertEmbeddings(TFBertEmbeddings):
     """Modified IpuTFBertEmbeddings object that contains a serialized
-       input embedding to improve memory layout. This is used in
-       conjuntion with the IpuTFBertLMPredictionHead which uses the input
-       embeddings weights in a serialized matmul. For best results, the
-       serialization factor should be the same in both cases."""
+    input embedding to improve memory layout. This is used in
+    conjunction with the IpuTFBertLMPredictionHead which uses the input
+    embeddings weights in a serialized matmul. For best results, the
+    serialization factor should be the same in both cases."""
 
     def __init__(self, config, serialization_factor=1, **kwargs):
         super().__init__(config, **kwargs)
@@ -56,10 +53,8 @@ class IpuTFBertEmbeddings(TFBertEmbeddings):
 
         if input_ids is not None:
             inputs_embeds = embedding_ops.embedding_lookup(
-                self.weight,
-                ids=input_ids,
-                name="word_embedding_lookup",
-                serialization_factor=self.serialization_factor)
+                self.weight, ids=input_ids, name="word_embedding_lookup", serialization_factor=self.serialization_factor
+            )
 
         input_shape = shape_list(inputs_embeds)[:-1]
 
@@ -72,15 +67,13 @@ class IpuTFBertEmbeddings(TFBertEmbeddings):
             )
 
         position_embeds = embedding_ops.embedding_lookup(
-            self.position_embeddings,
-            ids=position_ids,
-            name="position_embeddings_lookup")
+            self.position_embeddings, ids=position_ids, name="position_embeddings_lookup"
+        )
         position_embeds = tf.tile(input=position_embeds, multiples=(input_shape[0], 1, 1))
 
         token_type_embeds = embedding_ops.embedding_lookup(
-            self.token_type_embeddings,
-            ids=token_type_ids,
-            name="token_type_embeddings_lookup")
+            self.token_type_embeddings, ids=token_type_ids, name="token_type_embeddings_lookup"
+        )
 
         final_embeddings = inputs_embeds + position_embeds + token_type_embeds
         final_embeddings = self.LayerNorm(inputs=final_embeddings)

@@ -9,22 +9,33 @@ from ..layers import ResidualBlock, ConvNormAct, get_norm
 
 
 class CrossStagePartialBlock(nn.Module):
-    def __init__(self, ch_in: int, ch_out: int, number_of_repetitions: int = 1, activation: nn.Module = nn.ReLU(), norm: str = "group", num_groups: int = None) -> None:
+    def __init__(
+        self,
+        ch_in: int,
+        ch_out: int,
+        number_of_repetitions: int = 1,
+        activation: nn.Module = nn.ReLU(),
+        norm: str = "group",
+        num_groups: int = None,
+    ) -> None:
         super().__init__()
 
         self.ch_in = ch_in
         self.hidden = int(ch_out * 0.5)
-        self.bottleneck_conv1 = ConvNormAct(
-            self.ch_in, self.hidden, 1, 1, activation, norm, num_groups)
+        self.bottleneck_conv1 = ConvNormAct(self.ch_in, self.hidden, 1, 1, activation, norm, num_groups)
         self.bottleneck_conv2 = nn.Conv2d(self.ch_in, self.hidden, 1, 1, bias=False)
 
         self.conv1 = nn.Conv2d(self.hidden, self.hidden, 1, 1, bias=False)
         self.conv2 = ConvNormAct(2 * self.hidden, ch_out, 1, 1, activation, norm, num_groups)
 
-        self.norm = get_norm(norm, self.hidden*2, num_groups)
+        self.norm = get_norm(norm, self.hidden * 2, num_groups)
 
         self.res_modules = nn.Sequential(
-            *[ResidualBlock(self.hidden, self.hidden, activation, norm, num_groups) for _ in range(number_of_repetitions)])
+            *[
+                ResidualBlock(self.hidden, self.hidden, activation, norm, num_groups)
+                for _ in range(number_of_repetitions)
+            ]
+        )
 
         self.act = activation
 
@@ -41,12 +52,13 @@ class CrossStagePartialBlock(nn.Module):
 
 
 class CSPDark(nn.Module):
-    def __init__(self, ch_in: int, ch_out: int, num_reps: int, activation: nn.Module, norm: str, num_groups: int = None) -> None:
+    def __init__(
+        self, ch_in: int, ch_out: int, num_reps: int, activation: nn.Module, norm: str, num_groups: int = None
+    ) -> None:
         super().__init__()
 
         self.downsample = ConvNormAct(ch_in, ch_out, 3, 2, activation, norm, num_groups)
-        self.csp = CrossStagePartialBlock(
-            ch_out, ch_out, num_reps, activation, norm, num_groups)
+        self.csp = CrossStagePartialBlock(ch_out, ch_out, num_reps, activation, norm, num_groups)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.csp(self.downsample(x))
@@ -54,6 +66,7 @@ class CSPDark(nn.Module):
 
 class Yolov4P5BackBone(nn.Module):
     """Yolov4-P5 backbone as described in https://arxiv.org/abs/2011.08036"""
+
     def __init__(self, input_channels: int, activation: nn.Module, norm: str = "group", num_groups: int = 2) -> None:
         super().__init__()
 

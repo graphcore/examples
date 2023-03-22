@@ -21,7 +21,7 @@ from datasets.optimised_jpeg import ExtendedTurboJPEG
 import turbojpeg
 
 
-class TestCustomAugmentations():
+class TestCustomAugmentations:
     @staticmethod
     def deterministic_get_params(*args):
         return 20, 20, 100, 100
@@ -41,11 +41,12 @@ class TestCustomAugmentations():
         """
         img, tensor = TestCustomAugmentations._generate_img()
         custom_pipeline = NormalizeToTensor(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        correct_pipeline = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        correct_pipeline = transforms.Compose(
+            [transforms.ToTensor(), transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
+        )
         custom = custom_pipeline(img)
         correct = correct_pipeline(img)
         assert torch.allclose(custom, correct, atol=1e-06)
-
 
     def test_inference_pipeline(self):
         """
@@ -53,14 +54,16 @@ class TestCustomAugmentations():
         """
         img, tensor = TestCustomAugmentations._generate_img(256)
         jpeg_stream = BytesIO()
-        img.save(jpeg_stream, format='JPEG')
+        img.save(jpeg_stream, format="JPEG")
         jpeg_stream = jpeg_stream.getvalue()
-        ground_truth_preprocess = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        ground_truth_preprocess = transforms.Compose(
+            [
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
         preprocess = get_preprocessing_pipeline(train=False, input_size=224, half_precision=False, normalize=True)
         result_img = preprocess(img)
         result_tensor = preprocess(tensor)
@@ -79,12 +82,13 @@ class TestCustomAugmentations():
         preprocess((tensor, "bbox"))
         preprocess(tensor)
 
-
     def test_ipu_side_normalization(self):
         img_host = torch.rand(3, 100, 100) * 255.0
         img_ipu = img_host.clone()
         host_pipeline = NormalizeToTensor(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        model = models.NormalizeInputModel(lambda x: x, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], output_cast="full")
+        model = models.NormalizeInputModel(
+            lambda x: x, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], output_cast="full"
+        )
         host_result = host_pipeline(img_host)
         ipu_result = model(img_ipu)
         assert torch.allclose(host_result, ipu_result, atol=1e-06)
@@ -94,24 +98,23 @@ class TestCustomAugmentations():
             def forward(self, batch):
                 return batch
 
-        images = torch.stack([
-            torch.ones(1, 12, 12),
-            torch.ones(1, 12, 12) * 2,
-            torch.ones(1, 12, 12) * 3,
-        ]).to(torch.float)
+        images = torch.stack(
+            [
+                torch.ones(1, 12, 12),
+                torch.ones(1, 12, 12) * 2,
+                torch.ones(1, 12, 12) * 3,
+            ]
+        ).to(torch.float)
         labels = torch.tensor([1, 2, 3])
 
-        class args: pass
+        class args:
+            pass
+
         args = args()
         args.mixup_alpha = 0.5
         args.precision = "32.32"
 
-        model = AugmentationModel(
-                    Model(),
-                    use_mixup=True,
-                    use_cutmix=False,
-                    args=args
-                )
+        model = AugmentationModel(Model(), use_mixup=True, use_cutmix=False, args=args)
 
         def dummy_sample(bs=3):
             return torch.tensor([0.5, 0.5, 0.5])
@@ -120,11 +123,13 @@ class TestCustomAugmentations():
         model = poptorch.inferenceModel(model)
         mixed_images, all_coeffs = model(images)
 
-        correct_mixed_images = torch.stack([
-            torch.ones(1, 12, 12) * 2,    # 0.5 * 1 + 0.5 * 3
-            torch.ones(1, 12, 12) * 1.5,  # 0.5 * 2 + 0.5 * 1
-            torch.ones(1, 12, 12) * 2.5,  # 0.5 * 3 + 0.5 * 2
-        ]).to(torch.float)
+        correct_mixed_images = torch.stack(
+            [
+                torch.ones(1, 12, 12) * 2,  # 0.5 * 1 + 0.5 * 3
+                torch.ones(1, 12, 12) * 1.5,  # 0.5 * 2 + 0.5 * 1
+                torch.ones(1, 12, 12) * 2.5,  # 0.5 * 3 + 0.5 * 2
+            ]
+        ).to(torch.float)
 
         torch.testing.assert_allclose(mixed_images, correct_mixed_images)
         torch.testing.assert_allclose(all_coeffs[0], dummy_sample())
@@ -150,14 +155,18 @@ class TestCustomAugmentations():
             def forward(self, batch):
                 return batch
 
-        images = torch.stack([
-            torch.ones(1, 10, 10),
-            torch.ones(1, 10, 10) * 2,
-            torch.ones(1, 10, 10) * 3,
-        ]).to(torch.float)
+        images = torch.stack(
+            [
+                torch.ones(1, 10, 10),
+                torch.ones(1, 10, 10) * 2,
+                torch.ones(1, 10, 10) * 3,
+            ]
+        ).to(torch.float)
         labels = torch.tensor([1, 2, 3])
 
-        class args: pass
+        class args:
+            pass
+
         args = args()
         # 0.75 should result in 5x5 cut boxes.
         args.cutmix_lambda_low = 0.75
@@ -165,22 +174,26 @@ class TestCustomAugmentations():
         args.cutmix_disable_prob = 0.0
         args.precision = "32.32"
 
-        model = poptorch.inferenceModel(AugmentationModel(
-            Model(),
-            use_mixup=False,
-            use_cutmix=True,
-            args=args,
-        ))
+        model = poptorch.inferenceModel(
+            AugmentationModel(
+                Model(),
+                use_mixup=False,
+                use_cutmix=True,
+                args=args,
+            )
+        )
         cutmixed_images, all_coeffs = model(images)
 
         torch.testing.assert_allclose(all_coeffs[0], torch.tensor(0.75))
         torch.testing.assert_allclose(
             torch.sum(cutmixed_images, dim=(1, 2, 3)),
-            torch.tensor([
-                0.75 * images[0].sum() + 0.25 * images[1].sum(),
-                0.75 * images[1].sum() + 0.25 * images[2].sum(),
-                0.75 * images[2].sum() + 0.25 * images[0].sum(),
-            ]),
+            torch.tensor(
+                [
+                    0.75 * images[0].sum() + 0.25 * images[1].sum(),
+                    0.75 * images[1].sum() + 0.25 * images[2].sum(),
+                    0.75 * images[2].sum() + 0.25 * images[0].sum(),
+                ]
+            ),
         )
         torch.testing.assert_allclose(
             actual=torch.unique(cutmixed_images[0], sorted=True),
@@ -222,13 +235,17 @@ class TestCustomAugmentations():
             def forward(self, batch):
                 return batch
 
-        images = torch.stack([
-            torch.ones(1, 10, 10),
-            torch.ones(1, 10, 10) * 2,
-            torch.ones(1, 10, 10) * 3,
-        ]).to(torch.float)
+        images = torch.stack(
+            [
+                torch.ones(1, 10, 10),
+                torch.ones(1, 10, 10) * 2,
+                torch.ones(1, 10, 10) * 3,
+            ]
+        ).to(torch.float)
 
-        class args: pass
+        class args:
+            pass
+
         args = args()
         # Value of 1.0 for lambda disables cutmix.
         args.cutmix_lambda_low = 1.0
@@ -236,12 +253,14 @@ class TestCustomAugmentations():
         args.cutmix_disable_prob = 0.0
         args.precision = "32.32"
 
-        model = poptorch.inferenceModel(AugmentationModel(
-            Model(),
-            use_mixup=False,
-            use_cutmix=True,
-            args=args,
-        ))
+        model = poptorch.inferenceModel(
+            AugmentationModel(
+                Model(),
+                use_mixup=False,
+                use_cutmix=True,
+                args=args,
+            )
+        )
         cutmixed_images, all_coeff = model(images)
 
         torch.testing.assert_allclose(all_coeff[0], torch.tensor(1.0))
@@ -255,7 +274,11 @@ class TestHostBenchmark:
 
     def test_poprun_host_benchmark(self):
         executable = get_current_interpreter_executable()
-        output = run_script("poprun", f"--num-instances=2 --offline-mode=1 --num-replicas=2 {executable} datasets/host_benchmark.py --data cifar10 --micro-batch-size 256", python=False)
+        output = run_script(
+            "poprun",
+            f"--num-instances=2 --offline-mode=1 --num-replicas=2 {executable} datasets/host_benchmark.py --data cifar10 --micro-batch-size 256",
+            python=False,
+        )
         assert "Throughput of the iteration" in output
 
 
@@ -263,14 +286,19 @@ class TestHostBenchmark:
 @pytest.mark.parametrize("dataset", ["real", "generated"])
 @pytest.mark.parametrize("precision", ["16.16", "32.32"])
 def test_input_8bit(dataset, precision):
-    """ Test 8-bit input vs usual input precision
-    """
+    """Test 8-bit input vs usual input precision"""
+
     def run_model(dl, eight_bit_io=False):
         class MyModel(torch.nn.Module):
             def forward(self, x):
                 return x * 2.0
+
         cast_op = "half" if precision == "16.16" else "full"
-        model = NormalizeInputModel(MyModel(), mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], output_cast=cast_op) if eight_bit_io else MyModel()
+        model = (
+            NormalizeInputModel(MyModel(), mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], output_cast=cast_op)
+            if eight_bit_io
+            else MyModel()
+        )
         poptorch_model = poptorch.inferenceModel(model, poptorch.Options())
         input_data = next(iter(dl))[0]
         return poptorch_model(input_data)
@@ -278,6 +306,7 @@ def test_input_8bit(dataset, precision):
     class HelperClass:
         def __init__(self):
             pass
+
     args = HelperClass()
     opts = poptorch.Options()
     args.micro_batch_size = 1
@@ -305,25 +334,29 @@ def test_get_data(async_dataloader, return_remaining, num_instances):
     """
     Check whether all the samples are used.
     """
+
     class HelperClass:
         def __init__(self):
             pass
+
     args = HelperClass()
     args.precision = "16.16"
-    args.model = 'resnet50'
+    args.model = "resnet50"
     args.device_iterations = 1
     args.replicas = 1
     args.micro_batch_size = 31
     args.dataloader_worker = 8
-    args.normalization_location = 'ipu'
+    args.normalization_location = "ipu"
     args.eight_bit_io = False
-    args.data = 'cifar10'
+    args.data = "cifar10"
     lengths = []
     for instance_id in range(num_instances):
         opts = poptorch.Options()
         if num_instances > 1:
             opts.Distributed.configureProcessId(instance_id, num_instances)
-        dataloader = get_data(args, opts, train=False, async_dataloader=async_dataloader, return_remaining=return_remaining)
+        dataloader = get_data(
+            args, opts, train=False, async_dataloader=async_dataloader, return_remaining=return_remaining
+        )
         length = 0
         for x, y in dataloader:
             length += x.size()[0]
@@ -343,6 +376,7 @@ def test_random_raw(random_generator, instances):
     """
     Tests whether all the augmentations are unique.
     """
+
     class DummyDataset(torch.utils.data.Dataset):
         def __init__(self, size=10, transform=None):
             self.size = size
@@ -371,7 +405,9 @@ def test_random_raw(random_generator, instances):
         if instances > 1:
             opts.Distributed.configureProcessId(instance_id, instances)
         opts = opts.randomSeed(42)
-        data_loader = poptorch.DataLoader(opts, ds, batch_size=1, num_workers=5, shuffle=True, worker_init_fn=worker_init)
+        data_loader = poptorch.DataLoader(
+            opts, ds, batch_size=1, num_workers=5, shuffle=True, worker_init_fn=worker_init
+        )
         for item in data_loader:
             frac = item[0].numpy().tolist() % 1  # Get fraction(augmentation)
             frac = int(10000 * frac)  # avoid rounding error
@@ -385,13 +421,15 @@ class TestJpeg:
     def test_crop_decode(self):
         jpeg_decoder = ExtendedTurboJPEG()
         test_img_path = os.path.abspath(os.path.dirname(__file__)) + "/../data/images/zebra.jpg"
-        with open(test_img_path, 'rb') as jpeg_file:
+        with open(test_img_path, "rb") as jpeg_file:
             img = jpeg_file.read()
 
         turbo_crop_img = jpeg_decoder.crop_decode(img, 40, 80, 80, 120)
         turbo_crop_img = transforms.ToTensor()(turbo_crop_img)
 
-        img_array = jpeg_decoder.decode(img, pixel_format = turbojpeg.TJPF_RGB, flags=turbojpeg.TJFLAG_FASTUPSAMPLE | turbojpeg.TJFLAG_FASTDCT)
+        img_array = jpeg_decoder.decode(
+            img, pixel_format=turbojpeg.TJPF_RGB, flags=turbojpeg.TJFLAG_FASTUPSAMPLE | turbojpeg.TJFLAG_FASTDCT
+        )
         pil_crop_img = Image.fromarray(img_array)
         pil_crop_img = pil_crop_img.convert("RGB")
         pil_crop_img = transforms.ToTensor()(pil_crop_img)

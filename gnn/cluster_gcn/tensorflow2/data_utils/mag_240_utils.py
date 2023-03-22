@@ -6,8 +6,6 @@ from ogb.lsc import MAG240MDataset
 
 
 class PreprocessMAG240Dataset(MAG240MDataset):
-
-
     def __init__(self, *args, pca_features_path=None):
         super().__init__(*args)
         self.pca_features_path = pca_features_path
@@ -20,5 +18,5 @@ class PreprocessMAG240Dataset(MAG240MDataset):
 
     @property
     def pca_feat(self) -> np.ndarray:
-        pca_features = np.load(self.pca_features_path, mmap_mode='r')
+        pca_features = np.load(self.pca_features_path, mmap_mode="r")
         return pca_features

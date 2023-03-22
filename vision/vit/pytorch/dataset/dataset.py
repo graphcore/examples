@@ -29,10 +29,8 @@ from dataset.preprocess import get_preprocessing_pipeline
 
 def get_random_datum(config):
     dataset = GeneratedDataset(
-        shape=[3, 224, 224],
-        size=config.samples_per_step,
-        half_precision=True,
-        byteio=config.byteio)
+        shape=[3, 224, 224], size=config.samples_per_step, half_precision=True, byteio=config.byteio
+    )
     return dataset.stacked_batch()
 
 
@@ -88,6 +86,7 @@ def cache_output(filename):
     """
     Dump the output of a function to a cache file in json format
     """
+
     def decorator(f):
         @wraps(f)
         def func(self, directory, *args, **kwargs):
@@ -98,7 +97,9 @@ def cache_output(filename):
                 out = f(self, directory, *args, **kwargs)
                 filepath.write_text(json.dumps(out))
             return out
+
         return func
+
     return decorator
 
 
@@ -116,8 +117,7 @@ class ImageNetDataset(torchvision.datasets.ImageFolder):
 
 def get_data(config, model_opts, train=True, async_dataloader=False):
     dataset = get_dataset(config, model_opts, train=train)
-    dataloader = get_dataloader(
-        config, model_opts, dataset, train=train, async_dataloader=async_dataloader)
+    dataloader = get_dataloader(config, model_opts, dataset, train=train, async_dataloader=async_dataloader)
     return dataloader
 
 
@@ -137,27 +137,38 @@ def get_dataset(config, model_opts, train=True):
         config.normalize_image_on_device = True
 
     transform = get_preprocessing_pipeline(
-        train, 224, half_precision, normalize=not config.normalize_image_on_device, extra_aug=config.extra_aug, byteio=config.byteio)
+        train,
+        224,
+        half_precision,
+        normalize=not config.normalize_image_on_device,
+        extra_aug=config.extra_aug,
+        byteio=config.byteio,
+    )
 
     # Determine the size of the small datasets
-    dataset_size = config.micro_batch_size * \
-        model_opts.device_iterations * \
-        config.replication_factor * \
-        model_opts.Training.gradient_accumulation * \
-        config.iterations
+    dataset_size = (
+        config.micro_batch_size
+        * model_opts.device_iterations
+        * config.replication_factor
+        * model_opts.Training.gradient_accumulation
+        * config.iterations
+    )
 
     # Select the right dataset
     if config.dataset == "generated":
         dataset = GeneratedDataset(
-            (3, 224, 224), size=dataset_size, half_precision=half_precision, byteio=config.byteio)
+            (3, 224, 224), size=dataset_size, half_precision=half_precision, byteio=config.byteio
+        )
 
     elif config.dataset in ["imagenet1k", "imagenet21k"]:
-        dataset = ImageNetDataset(os.path.join(
-            config.dataset_path, "train" if train else "validation"), transform=transform)
+        dataset = ImageNetDataset(
+            os.path.join(config.dataset_path, "train" if train else "validation"), transform=transform
+        )
 
     elif config.dataset == "cifar10":
-        dataset = torchvision.datasets.CIFAR10(root=config.dataset_path, train=train,
-                                               download=True, transform=transform)
+        dataset = torchvision.datasets.CIFAR10(
+            root=config.dataset_path, train=train, download=True, transform=transform
+        )
     else:
         raise Exception("Dataset type not recognized: %s" % config.dataset)
     return dataset
@@ -171,8 +182,7 @@ def get_dataloader(config, model_opts, dataset, train=True, async_dataloader=Fal
         else:
             mode = poptorch.DataLoaderMode.AsyncRebatched
             if config.rebatched_worker_size is not None:
-                config.rebatched_worker_size = min(
-                    config.rebatched_worker_size, config.global_batch_size)
+                config.rebatched_worker_size = min(config.rebatched_worker_size, config.global_batch_size)
     else:
         mode = poptorch.DataLoaderMode.Sync
 
@@ -181,14 +191,15 @@ def get_dataloader(config, model_opts, dataset, train=True, async_dataloader=Fal
         "load_indefinitely": True,
         "early_preload": True,
         "miss_sleep_time_in_ms": 0,
-        "buffer_size": 8}
+        "buffer_size": 8,
+    }
 
-    if train and not(isinstance(dataset, IterableDataset)):
+    if train and not (isinstance(dataset, IterableDataset)):
         shuffle = True
     else:
         shuffle = False
 
-    if not(isinstance(dataset, IterableDataset)):
+    if not (isinstance(dataset, IterableDataset)):
         batch_size = config.micro_batch_size
     else:
         batch_size = None
@@ -199,14 +210,13 @@ def get_dataloader(config, model_opts, dataset, train=True, async_dataloader=Fal
         batch_size=batch_size,
         num_workers=config.dataloader_workers,
         shuffle=shuffle,
-        drop_last=not(isinstance(
-            dataset, IterableDataset)),
+        drop_last=not (isinstance(dataset, IterableDataset)),
         persistent_workers=True,
-        auto_distributed_partitioning=not isinstance(
-            dataset, IterableDataset),
+        auto_distributed_partitioning=not isinstance(dataset, IterableDataset),
         worker_init_fn=None,
         mode=mode,
         async_options=async_options,
         rebatched_worker_size=config.rebatched_worker_size,
-        collate_fn=None)
+        collate_fn=None,
+    )
     return dataloader

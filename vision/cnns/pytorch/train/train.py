@@ -10,7 +10,6 @@ import popdist
 import horovod.torch as hvd
 import numpy as np
 
-from datetime import datetime
 from poptorch.optim import SGD, RMSprop, AdamW
 from lr_schedule import WarmUpLRDecorator, PeriodicLRDecorator
 from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR, ExponentialLR
@@ -24,6 +23,7 @@ import models.loss
 import utils
 import datasets
 import datasets.augmentations as augmentations
+from datetime import datetime
 
 
 def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, validation_function=None):
@@ -31,7 +31,9 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
     logging.info(f"Training the model. Start: {str(training_start_time)}")
 
     # A generic container used by the train function to set and update the host-side training state.
-    class TrainingState(): pass
+    class TrainingState:
+        pass
+
     state = TrainingState()
 
     state.iterations_per_epoch = len(training_data)
@@ -41,7 +43,10 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
 
     # Determine the loss scaling change points.
     num_loss_scaling_steps = int(math.log2(args.loss_scaling // args.initial_loss_scaling)) + 1
-    loss_scaling_steps = {i * (args.epoch // num_loss_scaling_steps) + 1: args.initial_loss_scaling * (2 ** i) for i in range(num_loss_scaling_steps)}
+    loss_scaling_steps = {
+        i * (args.epoch // num_loss_scaling_steps) + 1: args.initial_loss_scaling * (2**i)
+        for i in range(num_loss_scaling_steps)
+    }
     state.new_loss_scaling = state.old_loss_scaling = args.initial_loss_scaling
 
     if args.mixup_enabled or args.cutmix_enabled:
@@ -87,10 +92,10 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
             update_lr(lr_scheduler, optimizer, training_model, state, args)
 
         # End of the epoch.
-        if not args.checkpoint_output_dir == "":
+        if not args.checkpoint_output_dir == "" and (state.epoch % args.checkpoint_save_freq) == 0:
             model_state = models.get_model_state_dict(training_model)
             optimizer_state = optimizer.state_dict()
-            
+
             if args.use_popdist:
                 popdist.execute_on_instances(
                     {0},
@@ -115,7 +120,6 @@ def train(training_model, training_data, args, lr_scheduler, epochs, optimizer, 
                     running_mean_acc,
                     args,
                 )
-
     training_end_time = datetime.now()
     total_training_time = training_end_time - training_start_time
     logging.info(f"Finished training. Time: {str(training_end_time)}. It took: {str(total_training_time)}")
@@ -128,7 +132,10 @@ def get_augmented_samples(args, input_data, random_generator):
     if args.mixup_enabled:
         mixup_coeffs = augmentations.sample_mixup_coefficients(
             alpha=args.mixup_alpha,
-            global_batch_size=args.micro_batch_size * args.gradient_accumulation * args.replicas * args.device_iterations,
+            global_batch_size=args.micro_batch_size
+            * args.gradient_accumulation
+            * args.replicas
+            * args.device_iterations,
             np_type=np.float16 if args.precision[:3] == "16." else np.float,
             random_generator=random_generator,
         )
@@ -249,7 +256,7 @@ def update_lr(lr_scheduler, optimizer, training_model, state, args):
     if state.new_lr != state.old_lr or state.new_loss_scaling != state.old_loss_scaling:
         if state.new_loss_scaling != state.old_loss_scaling:
             optimizer.loss_scaling = state.new_loss_scaling
-            if args.optimizer == 'sgd_combined':
+            if args.optimizer == "sgd_combined":
                 optimizer.param_groups[0]["velocity_scaling"] = state.new_loss_scaling
                 optimizer.param_groups[1]["velocity_scaling"] = state.new_loss_scaling
         training_model.setOptimizer(optimizer)
@@ -259,7 +266,9 @@ def update_lr(lr_scheduler, optimizer, training_model, state, args):
             logging.info(f"Learning rate is changed to {state.new_lr}")
 
 
-def persist_checkpoint(model_state, optimizer_state, model_name, checkpoint_output_path, state, running_mean_loss, running_mean_acc, args):
+def persist_checkpoint(
+    model_state, optimizer_state, model_name, checkpoint_output_path, state, running_mean_loss, running_mean_acc, args
+):
 
     # Save the weights in the first process only.
     if not os.path.exists(checkpoint_output_path):
@@ -267,22 +276,23 @@ def persist_checkpoint(model_state, optimizer_state, model_name, checkpoint_outp
 
     save_path = os.path.join(checkpoint_output_path, f"{model_name}_{args.data}_{state.epoch}.pt")
     save_data = {
-        'epoch': state.epoch,
-        'model_state_dict': model_state,
-        'optimizer_state_dict': optimizer_state,
-        'loss': running_mean_loss,
-        'train_accuracy': running_mean_acc,
-        'args': args,
+        "epoch": state.epoch,
+        "model_state_dict": model_state,
+        "optimizer_state_dict": optimizer_state,
+        "loss": running_mean_loss,
+        "train_accuracy": running_mean_acc,
+        "args": args,
     }
     torch.save(save_data, save_path)
 
     print(f"Checkpoint saved to: {save_path}")
 
+
 def create_training_opts(args):
     ipus_per_replica = len(args.pipeline_splits) + 1
     total_replicas = args.replicas
     if args.use_popdist:
-        opts = popdist.poptorch.Options(ipus_per_replica = ipus_per_replica)
+        opts = popdist.poptorch.Options(ipus_per_replica=ipus_per_replica)
         total_replicas = popdist.getNumTotalReplicas()
     else:
         opts = poptorch.Options()
@@ -320,21 +330,45 @@ def get_optimizer(args, model):
                 regularized_params.append(param)
 
     params = [
-        {'params': regularized_params, 'weight_decay': args.weight_decay},
-        {'params': non_regularized_params, 'weight_decay': 0}
+        {"params": regularized_params, "weight_decay": args.weight_decay},
+        {"params": non_regularized_params, "weight_decay": 0},
     ]
 
     optimizer = None
-    if args.optimizer == 'sgd':
-        optimizer = SGD(params, lr=args.lr, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, use_combined_accum=False)
-    elif args.optimizer == 'sgd_combined':
-        optimizer = SGD(params, lr=args.lr, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, velocity_scaling=args.initial_loss_scaling, use_combined_accum=True)
-    elif args.optimizer == 'adamw':
+    if args.optimizer == "sgd":
+        optimizer = SGD(
+            params, lr=args.lr, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, use_combined_accum=False
+        )
+    elif args.optimizer == "sgd_combined":
+        optimizer = SGD(
+            params,
+            lr=args.lr,
+            momentum=args.momentum,
+            loss_scaling=args.initial_loss_scaling,
+            velocity_scaling=args.initial_loss_scaling,
+            use_combined_accum=True,
+        )
+    elif args.optimizer == "adamw":
         optimizer = AdamW(params, lr=args.lr, loss_scaling=args.initial_loss_scaling, eps=args.optimizer_eps)
-    elif args.optimizer == 'rmsprop':
-        optimizer = RMSprop(params, lr=args.lr, alpha=args.rmsprop_decay, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, eps=args.optimizer_eps)
-    elif args.optimizer == 'rmsprop_tf':
-        optimizer = RMSprop(params, lr=args.lr, alpha=args.rmsprop_decay, momentum=args.momentum, loss_scaling=args.initial_loss_scaling, eps=args.optimizer_eps, use_tf_variant=True)
+    elif args.optimizer == "rmsprop":
+        optimizer = RMSprop(
+            params,
+            lr=args.lr,
+            alpha=args.rmsprop_decay,
+            momentum=args.momentum,
+            loss_scaling=args.initial_loss_scaling,
+            eps=args.optimizer_eps,
+        )
+    elif args.optimizer == "rmsprop_tf":
+        optimizer = RMSprop(
+            params,
+            lr=args.lr,
+            alpha=args.rmsprop_decay,
+            momentum=args.momentum,
+            loss_scaling=args.initial_loss_scaling,
+            eps=args.optimizer_eps,
+            use_tf_variant=True,
+        )
     return optimizer
 
 
@@ -363,6 +397,7 @@ def get_validation_function(args, model):
         inference_model.detachFromDevice()
         model.train()
         return val_acc
+
     return ValidationFunction(validation_func, len(test_data))
 
 
@@ -370,13 +405,20 @@ def get_lr_scheduler(args, optimizer, step_per_epoch, start_epoch=0):
     scheduler_freq = args.lr_scheduler_freq if args.lr_scheduler_freq > 0.0 else step_per_epoch
     scheduler_last_epoch = (scheduler_freq * start_epoch) - 1
     if args.lr_schedule == "step":
-        lr_scheduler = MultiStepLR(optimizer=optimizer, milestones=[step*scheduler_freq for step in args.lr_epoch_decay], gamma=args.lr_decay, last_epoch=scheduler_last_epoch)
+        lr_scheduler = MultiStepLR(
+            optimizer=optimizer,
+            milestones=[step * scheduler_freq for step in args.lr_epoch_decay],
+            gamma=args.lr_decay,
+            last_epoch=scheduler_last_epoch,
+        )
     elif args.lr_schedule == "cosine":
-        lr_scheduler = CosineAnnealingLR(optimizer=optimizer, T_max=args.epoch*scheduler_freq, last_epoch=scheduler_last_epoch)
+        lr_scheduler = CosineAnnealingLR(
+            optimizer=optimizer, T_max=args.epoch * scheduler_freq, last_epoch=scheduler_last_epoch
+        )
     elif args.lr_schedule == "exponential":
         lr_scheduler = ExponentialLR(optimizer=optimizer, gamma=args.lr_decay, last_epoch=scheduler_last_epoch)
 
-    lr_scheduler = PeriodicLRDecorator(optimizer=optimizer, lr_scheduler=lr_scheduler, period=1./scheduler_freq)
+    lr_scheduler = PeriodicLRDecorator(optimizer=optimizer, lr_scheduler=lr_scheduler, period=1.0 / scheduler_freq)
     lr_scheduler = WarmUpLRDecorator(optimizer=optimizer, lr_scheduler=lr_scheduler, warmup_epoch=args.warmup_epoch)
     return lr_scheduler
 
@@ -386,23 +428,33 @@ def fine_tune(args):
     args.half_res_training = False
     args.mixup_enabled = False
     args.cutmix_enabled = False
-    args.optimizer = 'sgd'
+    args.optimizer = "sgd"
     args.momentum = 0.0
     args.warmup_epoch = 0
     args.lr = args.fine_tune_lr
-    args.lr_schedule = 'cosine'
+    args.lr_schedule = "cosine"
     args.lr_scheduler_freq = 0
     args.micro_batch_size = args.fine_tune_micro_batch_size
     args.gradient_accumulation = args.fine_tune_gradient_accumulation
     opts = create_training_opts(args)
 
     train_data = datasets.get_data(args, opts, train=True, fine_tuning=True, async_dataloader=True)
-    model_fine_tune = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled, with_loss=True, inference_mode=False)
+    model_fine_tune = models.get_model(
+        args,
+        datasets.datasets_info[args.data],
+        pretrained=False,
+        use_mixup=args.mixup_enabled,
+        use_cutmix=args.cutmix_enabled,
+        with_loss=True,
+        inference_mode=False,
+    )
 
     if not args.use_popdist or args.popdist_rank == 0:
-        avg_checkpoint_file = os.path.join(args.checkpoint_input_dir, f"{args.model}_{args.data}_{args.epoch}_averaged.pt")
+        avg_checkpoint_file = os.path.join(
+            args.checkpoint_input_dir, f"{args.model}_{args.data}_{args.epoch}_averaged.pt"
+        )
         avg_checkpoint = torch.load(avg_checkpoint_file)
-        models.load_model_state_dict(model_fine_tune, avg_checkpoint['model_state_dict'])
+        models.load_model_state_dict(model_fine_tune, avg_checkpoint["model_state_dict"])
 
     if args.use_popdist:
         hvd.broadcast_parameters(models.get_model_state_dict(model_fine_tune), root_rank=0)
@@ -412,7 +464,7 @@ def fine_tune(args):
 
     # Freeze relevant parameters.
     for param_name, param in nested_model.named_parameters():
-        param_name = param_name.replace('.', '/')
+        param_name = param_name.replace(".", "/")
         if param_name.startswith(args.fine_tune_first_trainable_layer):
             break
         logging.info(f"Freezing parameter {param_name}")
@@ -420,27 +472,44 @@ def fine_tune(args):
 
     # Make relevant dropout and batch norm layers eval.
     for module_name, module in nested_model.named_modules():
-        module_name = module_name.replace('.', '/')
+        module_name = module_name.replace(".", "/")
         if module_name.startswith(args.fine_tune_first_trainable_layer):
             break
-        if isinstance(module, torch.nn.modules.batchnorm._BatchNorm) or isinstance(module, torch.nn.modules.dropout._DropoutNd):
+        if isinstance(module, torch.nn.modules.batchnorm._BatchNorm) or isinstance(
+            module, torch.nn.modules.dropout._DropoutNd
+        ):
             logging.info(f"Setting module {module_name} to eval mode")
             module.eval()
 
     optimizer = get_optimizer(args, model_fine_tune)
     lr_scheduler = get_lr_scheduler(args, optimizer, len(train_data))
     training_model = convert_to_ipu_model(model_fine_tune, args, optimizer)
-    train(training_model, train_data, args, lr_scheduler, range(args.epoch + 1, args.epoch + 1 + args.fine_tune_epoch), optimizer)
+    train(
+        training_model,
+        train_data,
+        args,
+        lr_scheduler,
+        range(args.epoch + 1, args.epoch + 1 + args.fine_tune_epoch),
+        optimizer,
+    )
     train_data.terminate()
     return model_fine_tune, training_model
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_arguments()
     opts = create_training_opts(args)
     train_data = datasets.get_data(args, opts, train=True, async_dataloader=True)
 
-    model = models.get_model(args, datasets.datasets_info[args.data], pretrained=False, use_mixup=args.mixup_enabled, use_cutmix=args.cutmix_enabled, with_loss=True, inference_mode=False)
+    model = models.get_model(
+        args,
+        datasets.datasets_info[args.data],
+        pretrained=False,
+        use_mixup=args.mixup_enabled,
+        use_cutmix=args.cutmix_enabled,
+        with_loss=True,
+        inference_mode=False,
+    )
     if args.use_popdist:
         hvd.broadcast_parameters(models.get_model_state_dict(model), root_rank=0)
 
@@ -456,9 +525,11 @@ if __name__ == '__main__':
     train(training_model, train_data, args, lr_scheduler, range(1, args.epoch + 1), optimizer, training_validation_func)
     train_data.terminate()
 
-    if args.weight_avg_strategy != 'none' and (not args.use_popdist or args.popdist_rank == 0):
+    if args.weight_avg_strategy != "none" and (not args.use_popdist or args.popdist_rank == 0):
         average_fn = weight_avg.create_average_fn(args)
-        weight_avg.average_model_weights(args.checkpoint_input_dir, args.checkpoint_output_dir, average_fn, args.weight_avg_N)
+        weight_avg.average_model_weights(
+            args.checkpoint_input_dir, args.checkpoint_output_dir, average_fn, args.weight_avg_N
+        )
 
     if args.half_res_training:
         training_model.destroy()
@@ -472,12 +543,17 @@ if __name__ == '__main__':
             if not args.use_popdist or args.popdist_rank == 0:
                 log_data = {
                     "validation_epoch": args.epoch + args.fine_tune_epoch,
-                    "validation_iteration": (args.epoch + args.fine_tune_epoch) * validation_function.validation_iterations_per_epoch,
+                    "validation_iteration": (args.epoch + args.fine_tune_epoch)
+                    * validation_function.validation_iterations_per_epoch,
                     "validation_accuracy": val_accuracy,
                 }
                 utils.Logger.log_validate_results(log_data)
         else:
-            checkpoint_files = [os.path.join(args.checkpoint_input_dir, file_name) for file_name in os.listdir(args.checkpoint_input_dir) if file_name.endswith(".pt")]
+            checkpoint_files = [
+                os.path.join(args.checkpoint_input_dir, file_name)
+                for file_name in os.listdir(args.checkpoint_input_dir)
+                if file_name.endswith(".pt")
+            ]
             if args.use_popdist:
                 popdist.execute_on_instances({0}, validate_checkpoints, checkpoint_files)
             else:

@@ -1,0 +1,13 @@
+matplotlib==3.6.2
+nbconvert==7.2.6
+ipywidgets==8.0.2
+jupyter==1.0.0
+periodictable==1.6.1
+py3Dmol==1.8.1
+pytest~=6.2
+pytest-pythonpath==0.7.3
+pytest-forked~=1.4
+pytest-xdist~=2.5
+seaborn==0.12.1
+tabulate==0.9.0
+git+https://github.com/graphcore/examples-utils@latest_stable#egg=examples-utils

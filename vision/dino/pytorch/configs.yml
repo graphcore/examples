@@ -26,7 +26,7 @@ vit_base_pod16: &vit_base_pod16
   epochs: 100
   device: ipu
   num_workers: 16
-  output: checkpoint_dino_vit_base
+  checkpoint_output_dir: checkpoint_dino_vit_base
   log: loss.log
   local_crops_number: 8
   local_crops_scale: [0.05, 0.4]
@@ -68,7 +68,7 @@ vit_base_pod64: &vit_base_pod64
   epochs: 100
   device: ipu
   num_workers: 32
-  output: checkpoint_dino_vit_base
+  checkpoint_output_dir: checkpoint_dino_vit_base
   log: loss.log
   local_crops_number: 8
   local_crops_scale: [0.05, 0.4]
@@ -115,7 +115,7 @@ vit_small_pod16_half: &vit_small_pod16_half
   epochs: 100
   device: ipu
   num_workers: 32
-  output: checkpoint_dino_vit_small_half
+  checkpoint_output_dir: checkpoint_dino_vit_small_half
   log: loss.log
   local_crops_number: 10
   local_crops_scale: [0.05, 0.25]
@@ -161,7 +161,7 @@ vit_small_pod16: &vit_small_pod16
   device: ipu
   ipu_per_replica: 4
   num_workers: 32
-  output: checkpoint_dino_vit_small
+  checkpoint_output_dir: checkpoint_dino_vit_small
   log: loss.log
   local_crops_number: 10
   local_crops_scale: [0.05, 0.25]
@@ -203,7 +203,7 @@ vit_small_pod64: &vit_small_pod64
   device: ipu
   ipu_per_replica: 4
   num_workers: 32
-  output: checkpoint_dino_vit_small
+  checkpoint_output_dir: checkpoint_dino_vit_small
   log: loss.log
   local_crops_number: 10
   local_crops_scale: [0.05, 0.25]
@@ -258,4 +258,3 @@ vit_base_pytest: &vit_base_pytest
 # ----------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------
-

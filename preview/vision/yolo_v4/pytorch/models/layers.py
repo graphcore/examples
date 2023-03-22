@@ -11,19 +11,24 @@ def get_norm(norm: str, num_features: int, num_groups: int = None):
     elif norm == "group":
         return nn.GroupNorm(num_groups, num_features, eps=0.001)
     else:
-        raise ValueError('Norm must be either \"batch\" or \"group\"')
+        raise ValueError('Norm must be either "batch" or "group"')
 
 
 class ConvNormAct(nn.Module):
-    def __init__(self,
-                 ch_in: int, ch_out: int, kernel_size: int = 1,
-                 stride: int = 1, activation: nn.Module = nn.Identity(),
-                 norm: str = "group", num_groups: int = None) -> None:
+    def __init__(
+        self,
+        ch_in: int,
+        ch_out: int,
+        kernel_size: int = 1,
+        stride: int = 1,
+        activation: nn.Module = nn.Identity(),
+        norm: str = "group",
+        num_groups: int = None,
+    ) -> None:
         super().__init__()
 
-        self.conv = nn.Conv2d(ch_in, ch_out, kernel_size,
-                              stride, kernel_size // 2, groups=1, bias=False)
-        self.norm = get_norm(norm, ch_out*1, num_groups)
+        self.conv = nn.Conv2d(ch_in, ch_out, kernel_size, stride, kernel_size // 2, groups=1, bias=False)
+        self.norm = get_norm(norm, ch_out * 1, num_groups)
         self.act = activation
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -31,13 +36,15 @@ class ConvNormAct(nn.Module):
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self,
-                 ch_in: int,
-                 ch_out: int,
-                 activation: nn.Module = nn.ReLU(),
-                 norm: str = "group",
-                 num_groups: int = None,
-                 shortcut: bool = True) -> None:
+    def __init__(
+        self,
+        ch_in: int,
+        ch_out: int,
+        activation: nn.Module = nn.ReLU(),
+        norm: str = "group",
+        num_groups: int = None,
+        shortcut: bool = True,
+    ) -> None:
         super().__init__()
 
         self.conv1 = ConvNormAct(ch_in, ch_out, 1, 1, activation, norm, num_groups)

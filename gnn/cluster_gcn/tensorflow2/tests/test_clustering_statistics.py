@@ -7,11 +7,7 @@ from tests.utils import edge_list_to_sparse_adj
 
 
 def get_example_adjacency():
-    edge_list = np.array([[0, 4],
-                          [0, 3],
-                          [0, 1],
-                          [3, 4],
-                          [1, 2]])
+    edge_list = np.array([[0, 4], [0, 3], [0, 1], [3, 4], [1, 2]])
     num_nodes = 5
 
     adj = edge_list_to_sparse_adj(edge_list, num_nodes)
@@ -43,11 +39,7 @@ def test_get_cluster_degree():
 
 
 def test_clustering_statistics():
-    edge_list = np.array([[0, 4],
-                          [0, 3],
-                          [0, 1],
-                          [3, 4],
-                          [1, 2]])
+    edge_list = np.array([[0, 4], [0, 3], [0, 1], [3, 4], [1, 2]])
     num_nodes = 5
     clusters_per_batch = 2
 

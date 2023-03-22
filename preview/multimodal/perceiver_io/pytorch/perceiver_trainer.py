@@ -6,14 +6,13 @@ import torch
 
 
 class PerceiverTrainer(IPUTrainer):
-
     def create_scheduler(self, num_training_steps: int, optimizer: torch.optim.Optimizer = None):
 
-        print('Create scheduler')
+        print("Create scheduler")
 
         optimizer = self.optimizer if optimizer is None else optimizer
         if self.args.constant_cosine:
-            print('Setting constant cosine lr schedule')
+            print("Setting constant cosine lr schedule")
 
             warmup_steps = self.args.get_warmup_steps(num_training_steps)
             total_decay_steps = num_training_steps - warmup_steps

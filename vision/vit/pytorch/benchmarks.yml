@@ -132,7 +132,7 @@ pytorch_vit_lamb_pretrain_real_pod64_conv:
       --vipu-server-host=$IPUOF_VIPU_API_HOST
       --vipu-server-timeout=3600
       --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-      --vipu-cluster=$VIPU_CLUSTER_ID
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --executable-cache-path PYTORCH_EXE_DIR
       --mpi-global-args="
         --mca oob_tcp_if_include $TCP_IF_INCLUDE
@@ -149,7 +149,7 @@ pytorch_vit_lamb_pretrain_real_pod64_conv:
         -x POPLAR_ENGINE_OPTIONS"
     python3 pretrain.py
       --config b16_in1k_pretrain_lamb
-      --dataset-path $DATASETS_DIR/imagenet1k
+      --dataset-path $DATASETS_DIR/imagenet-raw-dataset
       --byteio true
       --gradient-accumulation 512
       --dataloader-workers 32
@@ -158,6 +158,8 @@ pytorch_vit_lamb_pretrain_real_pod64_conv:
       --wandb true
       --wandb-project-name torch-vit
       --wandb-run-name pytorch_vit_lamb_pretrain_real_pod64_conv
+      --checkpoint-output-dir output/ckpt-in1k-pretrain
+
 
 pytorch_vit_pretrain_validation_real_pod4:
   <<: [*validation_options, *config_options]
@@ -171,12 +173,12 @@ pytorch_vit_pretrain_validation_real_pod4:
       --remove-partition=yes
       --reset-partition=no
       --vipu-server-host=$VIPU_CLI_API_HOST
-      --vipu-partition=$PARTITION
-      --vipu-cluster=$CLUSTER
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --executable-cache-path PYTORCH_EXE_DIR
     python validation.py
       --config b16_in1k_pretrain_valid
-      --dataset-path $DATASETS_DIR/imagenet1k
+      --dataset-path $DATASETS_DIR/imagenet-raw-dataset
       --pretrained-checkpoint output/ckpt-in1k-pretrain/step_11399
       --wandb true
       --wandb-project-name torch-vit
@@ -199,20 +201,20 @@ pytorch_vit_finetune_real_pod16_conv:
       --ipus-per-replica=4
       --num-replicas=4
       --num-instances=1
-      --update-partition=yes
-      --remove-partition=yes
       --reset-partition=no
       --vipu-server-host=$VIPU_CLI_API_HOST
-      --vipu-partition=$PARTITION
-      --vipu-cluster=$CLUSTER
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --executable-cache-path PYTORCH_EXE_DIR
     python3 finetune.py
       --config b16_imagenet1k
-      --dataset-path $DATASETS_DIR/imagenet1k
+      --dataset-path $DATASETS_DIR/imagenet-raw-dataset
       --checkpoint-output-dir ./output/ckpt-in1k-finetune
       --wandb true
       --wandb-project-name torch-vit
       --wandb-run-name pytorch_vit_finetune_real_pod16_conv
+      --checkpoint-output-dir output/ckpt-in1k-finetune
+
 
 pytorch_vit_finetune_validation_real_pod4:
   <<: [*validation_options, *config_options]
@@ -226,12 +228,12 @@ pytorch_vit_finetune_validation_real_pod4:
       --remove-partition=yes
       --reset-partition=no
       --vipu-server-host=$VIPU_CLI_API_HOST
-      --vipu-partition=$PARTITION
-      --vipu-cluster=$CLUSTER
+      --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --executable-cache-path PYTORCH_EXE_DIR
     python validation.py
       --config b16_imagenet1k_valid
-      --dataset-path $DATASETS_DIR/imagenet1k
+      --dataset-path $DATASETS_DIR/imagenet-raw-dataset
       --pretrained-checkpoint output/ckpt-in1k-finetune/step_625
       --wandb true
       --wandb-project-name torch-vit

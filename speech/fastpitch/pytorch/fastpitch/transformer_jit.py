@@ -32,7 +32,7 @@ class PositionalEmbedding(nn.Module):
         super(PositionalEmbedding, self).__init__()
         self.demb = demb
         inv_freq = 1 / (10000 ** (torch.arange(0.0, demb, 2.0) / demb))
-        self.register_buffer('inv_freq', inv_freq)
+        self.register_buffer("inv_freq", inv_freq)
 
     def forward(self, pos_seq, bsz: Optional[int] = None):
         sinusoid_inp = torch.ger(pos_seq, self.inv_freq)
@@ -52,7 +52,8 @@ class PositionwiseFF(nn.Module):
         self.dropout = dropout
 
         self.CoreNet = nn.Sequential(
-            nn.Linear(d_model, d_inner), nn.ReLU(),
+            nn.Linear(d_model, d_inner),
+            nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(d_inner, d_model),
             nn.Dropout(dropout),
@@ -118,14 +119,13 @@ class PositionwiseConvFF(nn.Module):
 
 
 class MultiHeadAttn(nn.Module):
-    def __init__(self, n_head, d_model, d_head, dropout, dropatt=0.1,
-                 pre_lnorm=False):
+    def __init__(self, n_head, d_model, d_head, dropout, dropatt=0.1, pre_lnorm=False):
         super(MultiHeadAttn, self).__init__()
 
         self.n_head = n_head
         self.d_model = d_model
         self.d_head = d_head
-        self.scale = 1 / (d_head ** 0.5)
+        self.scale = 1 / (d_head**0.5)
         self.dropout = dropout
         self.pre_lnorm = pre_lnorm
 
@@ -134,7 +134,6 @@ class MultiHeadAttn(nn.Module):
         self.dropatt = nn.Dropout(dropatt)
         self.o_net = nn.Linear(n_head * d_head, d_model, bias=False)
         self.layer_norm = nn.LayerNorm(d_model)
-
 
     def forward(self, inp, attn_mask: Optional[torch.Tensor] = None):
         residual = inp
@@ -160,15 +159,14 @@ class MultiHeadAttn(nn.Module):
         if attn_mask is not None:
             attn_mask = attn_mask.unsqueeze(1)
             attn_mask = attn_mask.repeat(n_head, attn_mask.size(2), 1)
-            attn_score.masked_fill_(attn_mask, -float('inf'))
+            attn_score.masked_fill_(attn_mask, -float("inf"))
 
         attn_prob = F.softmax(attn_score, dim=2)
         attn_prob = self.dropatt(attn_prob)
         attn_vec = torch.bmm(attn_prob, v)
 
         attn_vec = attn_vec.view(n_head, inp.size(0), inp.size(1), d_head)
-        attn_vec = attn_vec.permute(1, 2, 0, 3).contiguous().view(
-            inp.size(0), inp.size(1), n_head * d_head)
+        attn_vec = attn_vec.permute(1, 2, 0, 3).contiguous().view(inp.size(0), inp.size(1), n_head * d_head)
 
         # linear projection
         attn_out = self.o_net(attn_vec)
@@ -190,13 +188,11 @@ class MultiHeadAttn(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, n_head, d_model, d_head, d_inner, kernel_size, dropout,
-                 **kwargs):
+    def __init__(self, n_head, d_model, d_head, d_inner, kernel_size, dropout, **kwargs):
         super(TransformerLayer, self).__init__()
 
         self.dec_attn = MultiHeadAttn(n_head, d_model, d_head, dropout, **kwargs)
-        self.pos_ff = PositionwiseConvFF(d_model, d_inner, kernel_size, dropout,
-                                         pre_lnorm=kwargs.get('pre_lnorm'))
+        self.pos_ff = PositionwiseConvFF(d_model, d_inner, kernel_size, dropout, pre_lnorm=kwargs.get("pre_lnorm"))
 
     def forward(self, dec_inp, mask):
         output = self.dec_attn(dec_inp, attn_mask=~mask.squeeze(2))
@@ -207,9 +203,23 @@ class TransformerLayer(nn.Module):
 
 
 class FFTransformer(nn.Module):
-    def __init__(self, n_layer, n_head, d_model, d_head, d_inner, kernel_size,
-                 dropout, dropatt, dropemb=0.0, embed_input=True,
-                 n_embed=None, d_embed=None, padding_idx=0, pre_lnorm=False):
+    def __init__(
+        self,
+        n_layer,
+        n_head,
+        d_model,
+        d_head,
+        d_inner,
+        kernel_size,
+        dropout,
+        dropatt,
+        dropemb=0.0,
+        embed_input=True,
+        n_embed=None,
+        d_embed=None,
+        padding_idx=0,
+        pre_lnorm=False,
+    ):
         super(FFTransformer, self).__init__()
         self.d_model = d_model
         self.n_head = n_head
@@ -219,8 +229,7 @@ class FFTransformer(nn.Module):
 
         self.embed_input = embed_input
         if embed_input:
-            self.word_emb = nn.Embedding(n_embed, d_embed or d_model,
-                                         padding_idx=self.padding_idx)
+            self.word_emb = nn.Embedding(n_embed, d_embed or d_model, padding_idx=self.padding_idx)
         else:
             self.word_emb = NoOp()
 
@@ -231,12 +240,11 @@ class FFTransformer(nn.Module):
         for _ in range(n_layer):
             self.layers.append(
                 TransformerLayer(
-                    n_head, d_model, d_head, d_inner, kernel_size, dropout,
-                    dropatt=dropatt, pre_lnorm=pre_lnorm)
+                    n_head, d_model, d_head, d_inner, kernel_size, dropout, dropatt=dropatt, pre_lnorm=pre_lnorm
+                )
             )
 
-    def forward(self, dec_inp, seq_lens: Optional[torch.Tensor] = None,
-                conditioning: Optional[torch.Tensor] = None):
+    def forward(self, dec_inp, seq_lens: Optional[torch.Tensor] = None, conditioning: Optional[torch.Tensor] = None):
         if not self.embed_input:
             inp = dec_inp
             assert seq_lens is not None

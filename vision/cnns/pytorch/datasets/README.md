@@ -4,7 +4,7 @@ PyTorch CNN dataset & data handling
 
 ### File structure
 
-* `host_benchmark.py` Benchmark the host side throughput. 
+* `host_benchmark.py` Benchmark the host side throughput.
 * `data.py` Provides the dataloader.
 * `preprocess.py` Optimized preprocess transformations.
 * `README.md` This file.
@@ -17,7 +17,7 @@ PyTorch CNN dataset & data handling
 
 Use the following script to calculate the checksum of the dataset.
 ```
-python validate_dataset.py --imagenet-data-path <path> 
+python validate_dataset.py --imagenet-data-path <path>
 ```
 
 ### How to benchmark host-side data loading

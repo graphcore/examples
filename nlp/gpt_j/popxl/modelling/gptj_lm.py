@@ -3,6 +3,7 @@ from functools import partial
 import numpy as np
 from typing import Optional, Dict, Tuple, Callable, List, Union
 import torch
+
 # HF
 from transformers.models.gptj.modeling_gptj import GPTJForCausalLM as HFModel
 from transformers.models.gptj.modeling_gptj import GPTJModel
@@ -27,8 +28,7 @@ from utils.utils import shard
 from math import ceil
 
 
-def generate_greedy_tp(config: GPTJConfig, logits: popxl.Tensor,
-                       last_token_index: popxl.Tensor):
+def generate_greedy_tp(config: GPTJConfig, logits: popxl.Tensor, last_token_index: popxl.Tensor):
     """
     Generate a new token based on greedy choice.
     Args:
@@ -41,21 +41,19 @@ def generate_greedy_tp(config: GPTJConfig, logits: popxl.Tensor,
     tp = config.execution.tensor_parallel
     # indices for next token logits in each batch
     offsetted_batch_indices = popxl.constant(
-        np.arange(0, config.execution.micro_batch_size) *
-        config.model.sequence_length,
-        dtype=popxl.int32)
+        np.arange(0, config.execution.micro_batch_size) * config.model.sequence_length, dtype=popxl.int32
+    )
     offsetted_batch_indices = last_token_index + offsetted_batch_indices
     # next token logits, sharded
-    next_token_logits = logits[
-        offsetted_batch_indices]  # (tp, mb_size, vocab_shard_size)
+    next_token_logits = logits[offsetted_batch_indices]  # (tp, mb_size, vocab_shard_size)
 
     # gather tensor parallel shards and get full logits: (mb_size, vocab_size)
     next_token_logits = ops.collectives.replicated_all_gather(
-        next_token_logits,
-        group=popxl.gcg().ir.replica_grouping(group_size=tp),
-        output_shape='new_axis')
-    next_token_logits = next_token_logits.transpose((1,0,2)).reshape_(
-        (config.execution.micro_batch_size, config.model.embedding.vocab_size))
+        next_token_logits, group=popxl.gcg().ir.replica_grouping(group_size=tp), output_shape="new_axis"
+    )
+    next_token_logits = next_token_logits.transpose((1, 0, 2)).reshape_(
+        (config.execution.micro_batch_size, config.model.embedding.vocab_size)
+    )
 
     # (mb_size,)
     return ops.argmax(next_token_logits, dim=1)
@@ -72,8 +70,7 @@ class GPTJLMHeadTP(addons.Module):
         self.config = config
         tp = config.execution.tensor_parallel
         dp = config.execution.data_parallel
-        self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp,
-                                                                group_size=dp)
+        self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp, group_size=dp)
         # identical
         self.ln_f = LayerNorm()
         shard_size = ceil(self.config.model.embedding.vocab_size / tp)
@@ -82,50 +79,40 @@ class GPTJLMHeadTP(addons.Module):
     def build(self, x: popxl.Tensor) -> popxl.Tensor:
         x = self.ln_f(x)
         # sharded
-        x = replicated_all_reduce_identical_inputs(
-            x, group=self.replica_grouping.transpose())
+        x = replicated_all_reduce_identical_inputs(x, group=self.replica_grouping.transpose())
         logits = self.head(x)
         return logits
 
     @staticmethod
-    def hf_mapping(config: GPTJConfig, variables: NamedTensors,
-                   hf_model: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
+    def hf_mapping(config: GPTJConfig, variables: NamedTensors, hf_model: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
         dtype = config.model.dtype
         n_shards = config.execution.tensor_parallel
 
         weights = {
-            variables.head.weight:
-            shard(to_numpy(hf_model.lm_head.weight.data.T, dtype),
-                  n_shards,
-                  axis=-1),
-            variables.head.bias:
-            shard(to_numpy(hf_model.lm_head.bias.data, dtype),
-                  n_shards,
-                  axis=-1),
-            variables.ln_f.weight:
-            to_numpy(hf_model.transformer.ln_f.weight.data, dtype),
-            variables.ln_f.bias:
-            to_numpy(hf_model.transformer.ln_f.bias.data, dtype),
+            variables.head.weight: shard(to_numpy(hf_model.lm_head.weight.data.T, dtype), n_shards, axis=-1),
+            variables.head.bias: shard(to_numpy(hf_model.lm_head.bias.data, dtype), n_shards, axis=-1),
+            variables.ln_f.weight: to_numpy(hf_model.transformer.ln_f.weight.data, dtype),
+            variables.ln_f.bias: to_numpy(hf_model.transformer.ln_f.bias.data, dtype),
         }
 
         return weights
 
     @staticmethod
-    def to_hf(config: GPTJConfigHF, variables_data: NamedTensorData, hf_model: HFModel) -> Dict[str, 'torch.Tensor']:
+    def to_hf(config: GPTJConfigHF, variables_data: NamedTensorData, hf_model: HFModel) -> Dict[str, "torch.Tensor"]:
         try:
             import torch
         except ModuleNotFoundError:
             raise ModuleNotFoundError("PyTorch is not installed.")
 
         state_dict = {}
-        state_dict['lm_head.weight'] = torch.tensor(np.concatenate(
-            variables_data.head.weight.transpose(0, 2, 1), axis=0), dtype=config.torch_dtype)
-        state_dict['lm_head.bias'] = torch.tensor(np.concatenate(
-            variables_data.head.bias, axis=0), dtype=config.torch_dtype)
-        state_dict['transformer.ln_f.weight'] = torch.tensor(
-            variables_data.ln_f.weight, dtype=config.torch_dtype)
-        state_dict['transformer.ln_f.bias'] = torch.tensor(
-            variables_data.ln_f.bias, dtype=config.torch_dtype)
+        state_dict["lm_head.weight"] = torch.tensor(
+            np.concatenate(variables_data.head.weight.transpose(0, 2, 1), axis=0), dtype=config.torch_dtype
+        )
+        state_dict["lm_head.bias"] = torch.tensor(
+            np.concatenate(variables_data.head.bias, axis=0), dtype=config.torch_dtype
+        )
+        state_dict["transformer.ln_f.weight"] = torch.tensor(variables_data.ln_f.weight, dtype=config.torch_dtype)
+        state_dict["transformer.ln_f.bias"] = torch.tensor(variables_data.ln_f.bias, dtype=config.torch_dtype)
 
         return state_dict
 
@@ -136,8 +123,7 @@ class GPTJLMHeadModelTP(addons.Module):
         super().__init__()
         self.config = config
 
-        self.transformer = GPTJModelTP(
-            config, include_layer_norm=False)  # move layer norm to the head
+        self.transformer = GPTJModelTP(config, include_layer_norm=False)  # move layer norm to the head
         self.lm_head = GPTJLMHeadTP(config)
 
     def build(self, input_ids: popxl.Tensor) -> popxl.Tensor:
@@ -148,23 +134,19 @@ class GPTJLMHeadModelTP(addons.Module):
         return x
 
     @staticmethod
-    def hf_mapping(config: GPTJConfig, variables: NamedTensors,
-                   hf_model: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
-        weights = GPTJModelTP.hf_mapping(config,
-                                         variables.transformer,
-                                         hf_model.transformer,
-                                         layer_norm=False)
-        weights.update(
-            GPTJLMHeadTP.hf_mapping(config, variables.lm_head, hf_model))
+    def hf_mapping(config: GPTJConfig, variables: NamedTensors, hf_model: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
+        weights = GPTJModelTP.hf_mapping(config, variables.transformer, hf_model.transformer, layer_norm=False)
+        weights.update(GPTJLMHeadTP.hf_mapping(config, variables.lm_head, hf_model))
 
         return weights
 
     @staticmethod
     def to_hf(variables_data: NamedTensorData, hf_model: HFModel) -> Dict[str, torch.Tensor]:
-        state_dict = {'transformer.' + k: v for k, v in GPTJModelTP.to_hf(
-            variables_data.transformer, hf_model.transformer, layer_norm=False).items()}
-        state_dict.update(GPTJLMHeadTP.to_hf(
-            hf_model.config, variables_data.lm_head, hf_model.lm_head))
+        state_dict = {
+            "transformer." + k: v
+            for k, v in GPTJModelTP.to_hf(variables_data.transformer, hf_model.transformer, layer_norm=False).items()
+        }
+        state_dict.update(GPTJLMHeadTP.to_hf(hf_model.config, variables_data.lm_head, hf_model.lm_head))
         return state_dict
 
 
@@ -174,8 +156,7 @@ class GPTJLMHeadLossAndGradTP(addons.Module):
         self.config = config
         tp = config.execution.tensor_parallel
         dp = config.execution.data_parallel
-        self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp,
-                                                                group_size=dp)
+        self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp, group_size=dp)
 
     def build(self, x: popxl.Tensor, labels: popxl.Tensor):
 
@@ -183,24 +164,27 @@ class GPTJLMHeadLossAndGradTP(addons.Module):
         ts = self.add_variable_inputs("fwd", fwd_facts)
 
         loss_graph = GraphWithNamedArgs(
-            fwd_graph.graph._ir.create_graph(cross_entropy_sharded_loss,
-                                             fwd_graph.graph.outputs[0],
-                                             labels,
-                                             reduction='mean',
-                                             replica_grouping=self.replica_grouping.transpose()))
+            fwd_graph.graph._ir.create_graph(
+                cross_entropy_sharded_loss,
+                fwd_graph.graph.outputs[0],
+                labels,
+                reduction="mean",
+                replica_grouping=self.replica_grouping.transpose(),
+            )
+        )
 
         required_grads = [fwd_graph.graph.inputs[0]]
         accums = list(fwd_graph.args.tensors)
         replica_groupings = fwd_facts.replica_groupings.copy()
-        replica_groupings.insert('word_embedding', self.replica_grouping)
+        replica_groupings.insert("word_embedding", self.replica_grouping)
 
         bwd_facts, bwd_graph = addons.transforms.autodiff_with_accumulation(
             fwd_graph,
             tensors_to_accumulate_grads=accums,
             grads_required=required_grads,
-            replica_groupings=replica_groupings)
-        loss_bwd = addons.transforms.autodiff(
-            loss_graph, grads_required=(loss_graph.graph.inputs[0], ))
+            replica_groupings=replica_groupings,
+        )
+        loss_bwd = addons.transforms.autodiff(loss_graph, grads_required=(loss_graph.graph.inputs[0],))
 
         fwd_info = fwd_graph.bind(ts).call_with_info(x)
 
@@ -208,28 +192,22 @@ class GPTJLMHeadLossAndGradTP(addons.Module):
         loss_fwd_info = loss_graph.call_with_info(logits, labels)
         loss = loss_fwd_info.parent_output(0)
 
-        loss_scaling = popxl.constant(self.config.execution.loss_scaling,
-                                      self.config.model.dtype)
+        loss_scaling = popxl.constant(self.config.execution.loss_scaling, self.config.model.dtype)
 
-        dx, = loss_bwd.call(
-            loss_scaling,
-            args=loss_bwd.grad_graph_info.inputs_dict(loss_fwd_info))
+        (dx,) = loss_bwd.call(loss_scaling, args=loss_bwd.grad_graph_info.inputs_dict(loss_fwd_info))
 
         bwd_weights = self.add_variable_inputs("bwd", bwd_facts.copy())
 
-        dx, = bwd_graph.bind(bwd_weights).call(
-            dx, args=bwd_graph.grad_graph_info.inputs_dict(fwd_info))
+        (dx,) = bwd_graph.bind(bwd_weights).call(dx, args=bwd_graph.grad_graph_info.inputs_dict(fwd_info))
 
         return loss, dx
 
     @staticmethod
     def get_offsets(config: GPTJConfig):
         n_shards = config.execution.tensor_parallel
-        vocab_shard_size = ceil(
-            config.model.embedding.vocab_size / config.execution.tensor_parallel)
+        vocab_shard_size = ceil(config.model.embedding.vocab_size / config.execution.tensor_parallel)
         return np.arange(n_shards * vocab_shard_size, step=vocab_shard_size)
 
     @staticmethod
     def offset_input(data: np.ndarray, i: int, config: GPTJConfig):
-        return data - (i * ceil(config.model.embedding.vocab_size /
-                                config.execution.tensor_parallel))
+        return data - (i * ceil(config.model.embedding.vocab_size / config.execution.tensor_parallel))

@@ -10,8 +10,8 @@ current_path = Path(__file__).parent
 
 class AdgmomTest(SubProcessChecker):
     """Test simple command line executions."""
+
     @pytest.mark.ipus(2)
     def test_default(self):
         """Test the default"""
-        self.run_command(
-            "python tf2_AdGMoM.py", current_path, ["Iterations", "6000"])
+        self.run_command("python tf2_AdGMoM.py", current_path, ["Iterations", "6000"])

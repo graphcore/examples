@@ -37,4 +37,4 @@ Then you need to generate the indices for the TFRecords
 ```bash
 cd wikipedia_tf
 for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .tfrecord`.index; done
-``` 
+```

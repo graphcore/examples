@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet2/torch_utils/initialize.py
@@ -20,7 +20,7 @@ This script has been adapted from some of the original EspNet found here:
 Main change:
     remove the LegacyRelPositionMultiHeadedAttention class.
 
-'''
+"""
 
 import torch
 from src.layers.layer_norm import LayerNorm

@@ -1,9 +1,9 @@
 # SWIN (Shifted Windows Vision Transformers)
 Swin Transformer: Hierarchical Vision Transformer using Shifted Windows, optimised for Graphcore's IPU. Based on the models provided by [SWIN](https://github.com/microsoft/Swin-Transformer)
 
-| Framework | domain | Model | Datasets | Tasks| Training | Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| Pytorch | Vision | SWIN | ImageNet LSVRC 2012 | Image recognition, Image classification | ✅  | ✅ | [Swin Transformer: Hierarchical Vision Transformer using Shifted Windows](https://arxiv.org/pdf/2103.14030.pdf) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | Vision | SWIN | ImageNet LSVRC 2012 | Image recognition, Image classification | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">❌ | [Swin Transformer: Hierarchical Vision Transformer using Shifted Windows](https://arxiv.org/pdf/2103.14030.pdf) |
 
 ## Instructions summary
 
@@ -24,18 +24,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -49,7 +49,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -68,6 +68,8 @@ cd custom_ops
 make all
 ```
 
+
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup
 ### ImageNet LSVRC 2012
@@ -105,11 +107,12 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Custom training
+
 ### Precision options
 We can train with fp32.32 and fp16.16 (input.weights). We can use the PRECISION parameter in config to modify the required precision
 
-Accuracy is as follows: 
+Accuracy is as follows:
 
 | model | input size | precision | machine |     acc     |
 |-------|------------|-----------|---------|-------------|
@@ -129,11 +132,11 @@ In the above results, base 384 and large are finetune models it needs the pretra
 
 You can load the base 384 model pretrained on imagenet21k by:
 ```bash
-wget https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window7_224_22k.pth
+wget https://github.com/SwinTransformer/storage/releases/download/latest_stable/swin_base_patch4_window7_224_22k.pth
 ```
-and large 224 model pretrained on imagenet21k by: 
+and large 224 model pretrained on imagenet21k by:
 ```bash
-wget https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_large_patch4_window7_224_22k.pth
+wget https://github.com/SwinTransformer/storage/releases/download/latest_stable/swin_large_patch4_window7_224_22k.pth
 ```
 
 Once the training finishes, you can validate accuracy:
@@ -155,7 +158,7 @@ The following files are created by Graphcore and are licensed under Apache Licen
 * train_swin.py
 * utils.py
 * validate.py
-The following files are based on code from [repo](https://github.com/microsoft/Swin-Transformer) which is licensed under the  MIT License: 
+The following files are based on code from [repo](https://github.com/microsoft/Swin-Transformer) which is licensed under the  MIT License:
 * config.py
 * dataset/cached_image_folder.py
 * dataset/samplers.py
@@ -165,7 +168,7 @@ The following files are based on code from [repo](https://github.com/microsoft/S
 * optimizer.py
 * train_swin.sh
 See the headers in the files for details.
-  
+
 External packages:
 - `transformers` is licenced under Apache License, Version 2.0
 - `pytest` is licensed under MIT License

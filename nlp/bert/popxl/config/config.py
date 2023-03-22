@@ -179,13 +179,14 @@ class BertConfig(Config):
 
     @property
     def gradient_accumulation(self):
-        denom = (self.execution.data_parallel * self.execution.micro_batch_size)
+        denom = self.execution.data_parallel * self.execution.micro_batch_size
         if self.training.global_batch_size % denom != 0:
             raise RuntimeError(
                 "Unable to set gradient accumulation to match the global batch size. "
                 "global_batch_size % (data_parallel * micro_batch_size) != 0. "
                 f"{self.training.global_batch_size} % "
-                f"({self.execution.data_parallel} * {self.execution.micro_batch_size}) != 0")
+                f"({self.execution.data_parallel} * {self.execution.micro_batch_size}) != 0"
+            )
 
         return self.training.global_batch_size // denom
 

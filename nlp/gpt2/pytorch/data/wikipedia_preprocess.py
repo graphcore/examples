@@ -31,21 +31,21 @@ class WikicorpusTextFormatting:
 
     # This puts one article per line
     def merge(self):
-        with open(self.output_filename, mode='w', newline='\n') as ofile:
-            for dirname in glob.glob(self.wiki_path + '/*/', recursive=False):
-                for filename in glob.glob(dirname + 'wiki_*', recursive=self.recursive):
+        with open(self.output_filename, mode="w", newline="\n") as ofile:
+            for dirname in glob.glob(self.wiki_path + "/*/", recursive=False):
+                for filename in glob.glob(dirname + "wiki_*", recursive=self.recursive):
                     print(filename)
                     article_lines = []
                     article_open = False
 
-                    with open(filename, mode='r', newline='\n') as file:
+                    with open(filename, mode="r", newline="\n") as file:
                         for line in file:
-                            if '<doc id=' in line:
+                            if "<doc id=" in line:
                                 article_open = True
-                            elif '</doc>' in line:
+                            elif "</doc>" in line:
                                 article_open = False
                                 for oline in article_lines[1:]:
-                                    if oline != '\n':
+                                    if oline != "\n":
                                         ofile.write(oline.rstrip() + " ")
                                 ofile.write("\n\n")
                                 article_lines = []
@@ -57,38 +57,31 @@ class WikicorpusTextFormatting:
 def main(args):
     # Step 1: merge the data into one txt file
     wiki_path = args.input_file_path
-    output_filename = args.output_file_path + \
-        '/wikicorpus_en_one_article_per_line.txt'
+    output_filename = args.output_file_path + "/wikicorpus_en_one_article_per_line.txt"
     # wiki_formatter = WikicorpusTextFormatting(wiki_path, output_filename, recursive=True)
     # wiki_formatter.merge()
 
     # Step 2: tokenize the articles
-    output_path = args.output_file_path + '/wikicorpus_en_one_article_per_line.pkl'
-    print("preprocessing data,data path:{}, save path:{}".format(
-        output_filename, output_path))
+    output_path = args.output_file_path + "/wikicorpus_en_one_article_per_line.pkl"
+    print("preprocessing data,data path:{}, save path:{}".format(output_filename, output_path))
 
     if args.use_bpe:
-        print('Generate and use BPE tokenizer...')
+        print("Generate and use BPE tokenizer...")
         from tokenizers import Tokenizer, models, pre_tokenizers, decoders, trainers, processors
 
         # Initialize a tokenizer
         tokenizer = Tokenizer(models.BPE())
 
         # Customize pre-tokenization and decoding
-        tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(
-            add_prefix_space=True)
+        tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=True)
         tokenizer.decoder = decoders.ByteLevel()
         tokenizer.post_processor = processors.ByteLevel(trim_offsets=True)
 
         # And then train
         trainer = trainers.BpeTrainer(
-            vocab_size=30522,
-            min_frequency=2,
-            initial_alphabet=pre_tokenizers.ByteLevel.alphabet()
+            vocab_size=30522, min_frequency=2, initial_alphabet=pre_tokenizers.ByteLevel.alphabet()
         )
-        tokenizer.train([
-            output_filename
-        ], trainer=trainer)
+        tokenizer.train([output_filename], trainer=trainer)
 
         # And Save it
         tokenizer.save("gpt2-bpe-tokenizer.json", pretty=True)
@@ -96,10 +89,9 @@ def main(args):
         # Use the generated file
         tokenizer = Tokenizer.from_file("gpt2-bpe-tokenizer.json")
     else:
-        tokenizer = GPT2TokenizerFast.from_pretrained(
-            'gpt2', add_prefix_space=False)
+        tokenizer = GPT2TokenizerFast.from_pretrained("gpt2", add_prefix_space=False)
 
-    data = open(output_filename, 'rb')
+    data = open(output_filename, "rb")
     train_data = data.readlines()
 
     text_len = []
@@ -113,10 +105,9 @@ def main(args):
                 if args.use_bpe:
                     input_ids += tokenizer.encode(utterance).ids
                 else:
-                    input_ids += tokenizer.encode(utterance,
-                                                  add_special_tokens=False)
+                    input_ids += tokenizer.encode(utterance, add_special_tokens=False)
                     # end with eod
-                    input_ids += tokenizer.encode('<|endoftext|>')
+                    input_ids += tokenizer.encode("<|endoftext|>")
             if len(input_ids) >= args.min_length:
                 text_len.append(len(input_ids))
                 text_list.append(input_ids)
@@ -128,17 +119,14 @@ def main(args):
     with open(output_path, "wb") as f:
         pickle.dump(text_list, f)
     print("finish preprocessing data,the result is stored in {}".format(output_path))
-    print("mean of text len:{},median of text len:{},max len:{}".format(
-        len_mean, len_median, len_max))
+    print("mean of text len:{},median of text len:{},max len:{}".format(len_mean, len_median, len_max))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input-file-path', required=True, type=str)
-    parser.add_argument('--output-file-path', required=True, type=str)
-    parser.add_argument('--use-bpe', action='store_true',
-                        help='use bpe or GPT2 tokenizer')
-    parser.add_argument('--min-length', default=10, type=int,
-                        required=False, help='minimal length of dataset')
+    parser.add_argument("--input-file-path", required=True, type=str)
+    parser.add_argument("--output-file-path", required=True, type=str)
+    parser.add_argument("--use-bpe", action="store_true", help="use bpe or GPT2 tokenizer")
+    parser.add_argument("--min-length", default=10, type=int, required=False, help="minimal length of dataset")
     args = parser.parse_args()
     main(args)

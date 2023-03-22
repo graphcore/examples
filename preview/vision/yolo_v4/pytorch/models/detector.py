@@ -53,7 +53,7 @@ class Detector(nn.Module, metaclass=ABCMeta):
                         m.norm.running_var,
                         m.norm.eps,
                         m.norm.weight,
-                        m.norm.bias
+                        m.norm.bias,
                     )
                     m.norm = nn.Identity()
             if fuse_all_layers and isinstance(m, CrossStagePartialBlock):
@@ -67,7 +67,7 @@ class Detector(nn.Module, metaclass=ABCMeta):
                         temp_norm.running_var,
                         temp_norm.eps,
                         temp_norm.weight,
-                        temp_norm.bias
+                        temp_norm.bias,
                     )
 
                     temp_norm = self._split_bn_layer(m.norm, m.hidden, m.hidden * 2)
@@ -78,7 +78,7 @@ class Detector(nn.Module, metaclass=ABCMeta):
                         temp_norm.running_var,
                         temp_norm.eps,
                         temp_norm.weight,
-                        temp_norm.bias
+                        temp_norm.bias,
                     )
                     m.norm = nn.Identity()
 

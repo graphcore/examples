@@ -14,6 +14,7 @@ from poptorch import inferenceModel
 
 class TestDetector:
     """Tests weight fusing of conv and batch norm."""
+
     class MockDetector(Detector):
         def __init__(self, backbone, neck=nn.Identity, detector_head=nn.Identity):
             super().__init__(backbone, neck, detector_head)
@@ -30,7 +31,7 @@ class TestDetector:
     def test_fuse_conv(self):
         input_tensor = torch.Tensor(np.random.randint(0, 255, size=(1, 16, 32, 32)))
         model = self.MockDetector(ConvNormAct)
-        model.backbone = ConvNormAct(16, 32, norm ='batch')
+        model.backbone = ConvNormAct(16, 32, norm="batch")
         model_no_fuse = inferenceModel(model.eval())
         output_no_fuse = model_no_fuse(input_tensor)
 
@@ -42,7 +43,7 @@ class TestDetector:
     def test_fuse_csp(self):
         input_tensor = torch.Tensor(np.random.randint(0, 255, size=(1, 16, 32, 32)))
         model = self.MockDetector(CrossStagePartialBlock)
-        model.backbone = CrossStagePartialBlock(16, 32, norm ='batch')
+        model.backbone = CrossStagePartialBlock(16, 32, norm="batch")
         model_no_fuse = inferenceModel(model.eval())
         output_no_fuse = model_no_fuse(input_tensor)
 

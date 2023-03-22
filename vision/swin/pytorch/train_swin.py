@@ -35,6 +35,7 @@ from timm.models import resume_checkpoint
 import wandb
 import ctypes
 import logging
+
 threads = 4
 os.environ["OMP_NUM_THREADS"] = str(threads)
 os.environ["OPENBLAS_NUM_THREADS"] = str(threads)
@@ -49,7 +50,7 @@ def get_logger(log_path):
     logger.setLevel(level=logging.INFO)
     handler = logging.FileHandler(log_path)
     handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     console = logging.StreamHandler()
     console.setFormatter(formatter)
@@ -66,96 +67,40 @@ class ReturnIndexDataset(datasets.ImageFolder):
 
 
 def parse_option():
-    parser = argparse.ArgumentParser(
-        'Swin Transformer training and evaluation script',
-        add_help=False)
+    parser = argparse.ArgumentParser("Swin Transformer training and evaluation script", add_help=False)
     parser.add_argument(
-        '--cfg',
+        "--cfg",
         type=str,
         required=True,
         metavar="FILE",
-        help='path to config file',
+        help="path to config file",
     )
+    parser.add_argument("--data-path", type=str, required=True, metavar="FILE", help="path to dataset")
     parser.add_argument(
-        '--data-path',
+        "--checkpoint-output-dir", type=str, required=True, metavar="FILE", help="path to save output files"
+    )
+    parser.add_argument("--pretrained-model", type=str, help="path to init checkpoint when fine tune models")
+    parser.add_argument("--batch-size", type=int, help="batch size for single replica")
+    parser.add_argument("--num-workers", type=int, help="worker size for single instance")
+    parser.add_argument("--weights", type=str, help="weights for model")
+    parser.add_argument("--device", type=str, choices=["cpu", "ipu", "gpu"])
+    parser.add_argument("--alignment", action="store_true", help="if alignment fwd or bwd")
+    parser.add_argument("--half", action="store_true", help="use half")
+    parser.add_argument(
+        "--resume",
+        default="",
         type=str,
-        required=True,
-        metavar="FILE",
-        help='path to dataset')
-    parser.add_argument(
-        '--output',
-        type=str,
-        required=True,
-        metavar="FILE",
-        help='path to save output files')
-    parser.add_argument(
-        '--pretrained-model',
-        type=str,
-        help='path to init checkpoint when fine tune models')
-    parser.add_argument(
-        '--batch-size',
-        type=int,
-        help="batch size for single replica")
-    parser.add_argument(
-        '--num-workers',
-        type=int,
-        help="worker size for single instance")
-    parser.add_argument(
-        '--weights',
-        type=str,
-        help='weights for model')
-    parser.add_argument(
-        '--device',
-        type=str,
-        choices=[
-            'cpu',
-            'ipu',
-            'gpu'])
-    parser.add_argument(
-        '--alignment',
-        action='store_true',
-        help='if alignment fwd or bwd')
-    parser.add_argument('--half', action='store_true', help='use half')
-    parser.add_argument(
-        '--resume',
-        default='',
-        type=str,
-        metavar='PATH',
-        help='Resume full model and optimizer state from checkpoint (default: none)')
-    parser.add_argument(
-        '--compile-only', action='store_true', help='Compile only')
-    parser.add_argument(
-        '--ga',
-        type=int,
-        help="Gradient Accumulations Steps")
-    parser.add_argument(
-        '--amp',
-        type=float,
-        help="Available memory proportion")
-    parser.add_argument(
-        '--rts',
-        action='store_true',
-        help="Replicated tensor sharding")
-    parser.add_argument(
-        '--precision',
-        type=str,
-        choices=[
-            'half',
-            'float'
-        ])
-    parser.add_argument(
-        '--wandb',
-        action='store_true',
-        help="Add Weights & Biases logging")
-    parser.add_argument(
-        '--epochs',
-        type=int,
-        default=300,
-        help="Number of training epochs")
-    parser.add_argument(
-        '--training-steps',
-        type=int,
-        help="Number of training steps")
+        metavar="PATH",
+        help="Resume full model and optimizer state from checkpoint (default: none)",
+    )
+    parser.add_argument("--compile-only", action="store_true", help="Compile only")
+    parser.add_argument("--ga", type=int, help="Gradient Accumulations Steps")
+    parser.add_argument("--amp", type=float, help="Available memory proportion")
+    parser.add_argument("--rts", action="store_true", help="Replicated tensor sharding")
+    parser.add_argument("--precision", type=str, choices=["half", "float"])
+    parser.add_argument("--wandb", action="store_true", help="Add Weights & Biases logging")
+    parser.add_argument("--epochs", type=int, default=300, help="Number of training epochs")
+    parser.add_argument("--training-steps", type=int, help="Number of training steps")
     args, unparsed = parser.parse_known_args()
     if args.training_steps is not None:
         args.epochs = 1
@@ -168,43 +113,39 @@ def load_weigths(path, model):
     weights = torch.load(path)
     encoder_keys = []
     for k, v in weights.items():
-        if k.startswith('siamese_encoder') and 'encoder_k' not in k:
+        if k.startswith("siamese_encoder") and "encoder_k" not in k:
             encoder_keys.append(k)
 
-    for key_swin, key_moby_encoder in zip(
-            model.state_dict().keys(), encoder_keys):
+    for key_swin, key_moby_encoder in zip(model.state_dict().keys(), encoder_keys):
         value = weights[key_moby_encoder]
         new_state_dict[key_swin] = value
     model.load_state_dict(new_state_dict)
 
 
 def save_checkpoint(config, epoch, model, optimizer, lr_scheduler, loss):
-    save_state = {'state_dict': model.state_dict(),
-                  'optimizer': optimizer.state_dict(),
-                  'lr_scheduler': lr_scheduler.state_dict(),
-                  'epoch': epoch,
-                  'config': config}
-    if not os.path.exists(os.path.join(config.OUTPUT)):
-        os.makedirs(os.path.join(config.OUTPUT))
-    save_path = os.path.join(
-        config.OUTPUT, f'ckpt_epoch_{epoch}_loss_{str(loss)}.pth')
+    save_state = {
+        "state_dict": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "lr_scheduler": lr_scheduler.state_dict(),
+        "epoch": epoch,
+        "config": config,
+    }
+    if not os.path.exists(os.path.join(config.CHECKPOINT_OUTPUT_DIR)):
+        os.makedirs(os.path.join(config.CHECKPOINT_OUTPUT_DIR))
+    save_path = os.path.join(config.CHECKPOINT_OUTPUT_DIR, f"ckpt_epoch_{epoch}_loss_{str(loss)}.pth")
     torch.save(save_state, save_path)
 
 
 def get_random_datum(config):
     result = []
     batch_size = config.DATA.BATCH_SIZE * config.IPU.NUM_LOCALREPLICA * config.IPU.GRADIENT_ACCUMULATION_STEPS
-    if config.PRECISION[0] == 'half':
+    if config.PRECISION[0] == "half":
         use_half = True
     else:
         use_half = False
     dataset = GeneratedDataset(
-        shape=[
-            3,
-            config.DATA.IMG_SIZE[0],
-            config.DATA.IMG_SIZE[0]],
-        size=batch_size,
-        half_precision=use_half)
+        shape=[3, config.DATA.IMG_SIZE[0], config.DATA.IMG_SIZE[0]], size=batch_size, half_precision=use_half
+    )
     data = (dataset[i] for i in range(batch_size))
     for batches in zip(*data):
         result.append(torch.stack(batches))
@@ -233,8 +174,9 @@ class GeneratedDataset(Dataset):
         return synthetic_data, synthetic_label
 
 
-def compile_model(poptorch_model,  config):
+def compile_model(poptorch_model, config):
     from dataset.ipu_mixup import Mixup
+
     datum = get_random_datum(config)
     (pre_input, pre_label) = datum
     mixup_fn = Mixup(
@@ -245,39 +187,34 @@ def compile_model(poptorch_model,  config):
         switch_prob=config.AUG.MIXUP_SWITCH_PROB,
         mode=config.AUG.MIXUP_MODE,
         label_smoothing=config.MODEL.LABEL_SMOOTHING,
-        num_classes=config.MODEL.NUM_CLASSES)
+        num_classes=config.MODEL.NUM_CLASSES,
+    )
     pre_input, pre_label = mixup_fn(pre_input, pre_label)
     poptorch_model.compile(pre_input, pre_label)
 
 
-
 def train(args, opts, config):
-    log_path = os.path.join(config.OUTPUT, 'logs.log')
+    log_path = os.path.join(config.CHECKPOINT_OUTPUT_DIR, "logs.log")
     try:
-        if not os.path.exists(os.path.join(config.OUTPUT)):
-            os.makedirs(os.path.join(config.OUTPUT))
+        if not os.path.exists(os.path.join(config.CHECKPOINT_OUTPUT_DIR)):
+            os.makedirs(os.path.join(config.CHECKPOINT_OUTPUT_DIR))
     except BaseException:
-        logging.info('OUTPUT dir already exists')
+        logging.info("CHECKPOINT_OUTPUT_DIR dir already exists")
     logger = get_logger(log_path)
     train_start_time = datetime.datetime.now()
 
     if args.wandb:
-        wandb.init(
-            project='SWIN',
-            settings=wandb.Settings(
-                console='off'))
-    if config.AUG.MIXUP > 0.:
+        wandb.init(project="torch-swin", settings=wandb.Settings(console="off"))
+    if config.AUG.MIXUP > 0.0:
         # smoothing is handled with mixup label transform
         criterion = SoftTargetCrossEntropy()
-    elif config.MODEL.LABEL_SMOOTHING > 0.:
-        criterion = LabelSmoothingCrossEntropy(
-            smoothing=config.MODEL.LABEL_SMOOTHING)
+    elif config.MODEL.LABEL_SMOOTHING > 0.0:
+        criterion = LabelSmoothingCrossEntropy(smoothing=config.MODEL.LABEL_SMOOTHING)
     else:
         criterion = torch.nn.CrossEntropyLoss()
     model = build_model(config=config, train_loss_fn=criterion)
-    logger.info(
-        f'use data type:{config.PRECISION[0]}, use model type:{config.PRECISION[1]}\n')
-    if config.PRECISION[1] == 'half':
+    logger.info(f"use data type:{config.PRECISION[0]}, use model type:{config.PRECISION[1]}\n")
+    if config.PRECISION[1] == "half":
         model.half()
     optimizer = build_optimizer(config, model)
     model = poptorch.trainingModel(model.train(), opts, optimizer=optimizer)
@@ -288,16 +225,11 @@ def train(args, opts, config):
     resume_epoch = None
     resume_opt = True
     if args.resume:
-        resume_epoch = resume_checkpoint(
-            model,
-            args.resume,
-            optimizer=optimizer if resume_opt else None
-        )
+        resume_epoch = resume_checkpoint(model, args.resume, optimizer=optimizer if resume_opt else None)
     else:
         if config.PRETRAINED:
             load_pretrained(config, model)
-    dataset_train, data_loader_train, mixup_fn = build_loader(
-        config, opts)
+    dataset_train, data_loader_train, mixup_fn = build_loader(config, opts)
     lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
     start_epoch = 0
     if resume_epoch is not None:
@@ -305,7 +237,7 @@ def train(args, opts, config):
     if lr_scheduler is not None and start_epoch > 0:
         lr_scheduler.step(start_epoch)
 
-    losses = AverageMeter('loss', ':.2f')
+    losses = AverageMeter("loss", ":.2f")
     num_steps = len(data_loader_train)
     epoch_start_time = time.time()
     num_epochs = min(args.epochs, config.TRAIN.EPOCHS)
@@ -326,14 +258,10 @@ def train(args, opts, config):
 
             lr_scheduler.step_update(epoch * num_steps + step)
             if step % 1 == 0:
-                lrl = [param_group['lr']
-                       for param_group in optimizer.param_groups]
+                lrl = [param_group["lr"] for param_group in optimizer.param_groups]
                 lr = sum(lrl) / len(lrl)
                 if args.wandb:
-                    wandb.log({
-                        "Throughput": model_tput / (step + 1),
-                        "Loss": record_loss / (step + 1),
-                        "LR": lr})
+                    wandb.log({"Throughput": model_tput / (step + 1), "Loss": record_loss / (step + 1), "LR": lr})
 
             if step == 0:
                 batch_time = time.time() - loop_start_time
@@ -343,11 +271,11 @@ def train(args, opts, config):
 
             if not popdist.isPopdistEnvSet():
                 logger.info(
-                    f'TRAIN: epoch[{epoch}/{config.TRAIN.EPOCHS}] step[{step}/{len(data_loader_train)}]    model_execution_time:{model_execution_time}    throughput:{model_tput:.4f} samples/sec    batch_time:{batch_time}    batch_tput:{current_batch_tput}   loss:{losses.avg:.6f}\n'
+                    f"TRAIN: epoch[{epoch}/{config.TRAIN.EPOCHS}] step[{step}/{len(data_loader_train)}]    model_execution_time:{model_execution_time}    throughput:{model_tput:.4f} samples/sec    batch_time:{batch_time}    batch_tput:{current_batch_tput}   loss:{losses.avg:.6f}\n"
                 )
             elif popdist.isPopdistEnvSet() and (config.popdist_rank == 0):
                 logger.info(
-                    f'RANK_0 TRAIN: epoch[{epoch}/{config.TRAIN.EPOCHS}] step[{step}/{len(data_loader_train)}]     model_execution_time:{model_execution_time}    throughput:{config.popdist_size*model_tput:.4f} samples/sec    batch_time:{batch_time}    batch_tput:{config.popdist_size*current_batch_tput:.4f}   loss:{losses.avg:.6f}\n'
+                    f"RANK_0 TRAIN: epoch[{epoch}/{config.TRAIN.EPOCHS}] step[{step}/{len(data_loader_train)}]     model_execution_time:{model_execution_time}    throughput:{config.popdist_size*model_tput:.4f} samples/sec    batch_time:{batch_time}    batch_tput:{config.popdist_size*current_batch_tput:.4f}   loss:{losses.avg:.6f}\n"
                 )
             batch_end_time = time.time()
 
@@ -356,45 +284,32 @@ def train(args, opts, config):
 
         epoch_end_time = time.time()
         if not popdist.isPopdistEnvSet():
-            logger.info(
-                f'EPOCH {epoch} TIME: {epoch_end_time-epoch_start_time}\n')
+            logger.info(f"EPOCH {epoch} TIME: {epoch_end_time-epoch_start_time}\n")
         elif popdist.isPopdistEnvSet() and (config.popdist_rank == 0):
-            logger.info(
-                f'RANK_0 EPOCH {epoch} TIME: {epoch_end_time-epoch_start_time}\n')
-
+            logger.info(f"RANK_0 EPOCH {epoch} TIME: {epoch_end_time-epoch_start_time}\n")
 
         if epoch == config.TRAIN.EPOCHS - 1:
             save_start_time = time.time()
-            save_checkpoint(
-                config,
-                epoch,
-                model,
-                optimizer,
-                lr_scheduler,
-                record_loss /
-                len(data_loader_train))
+            save_checkpoint(config, epoch, model, optimizer, lr_scheduler, record_loss / len(data_loader_train))
             save_end_time = time.time()
             if not popdist.isPopdistEnvSet():
-                logger.info(
-                    f'SAVE_MODEL TIME: {save_end_time-save_start_time}\n')
+                logger.info(f"SAVE_MODEL TIME: {save_end_time-save_start_time}\n")
             elif popdist.isPopdistEnvSet() and (config.popdist_rank == 0):
-                logger.info(
-                    f'RANK_0 SAVE_MODEL TIME: {save_end_time-save_start_time}\n')
+                logger.info(f"RANK_0 SAVE_MODEL TIME: {save_end_time-save_start_time}\n")
 
     train_end_time = datetime.datetime.now()
     if not popdist.isPopdistEnvSet():
-        epoch_time_info = f'TOTAL TRAIN TIME: {str(train_end_time-train_start_time)}\n'
+        epoch_time_info = f"TOTAL TRAIN TIME: {str(train_end_time-train_start_time)}\n"
         logger.info(epoch_time_info)
     elif popdist.isPopdistEnvSet() and (config.popdist_rank == 0):
-        epoch_time_info = f'RANK_0 TOTAL TRAIN TIME: {str(train_end_time-train_start_time)}\n'
+        epoch_time_info = f"RANK_0 TOTAL TRAIN TIME: {str(train_end_time-train_start_time)}\n"
         logger.info(epoch_time_info)
 
 
 def init_popdist(config):
     hvd.init()
     if popdist.getNumTotalReplicas() != config.IPU.NUM_LOCALREPLICA:
-        print(f"The number of replicas is overridden by PopRun. "
-              f"The new value is {popdist.getNumTotalReplicas()}.")
+        print(f"The number of replicas is overridden by PopRun. " f"The new value is {popdist.getNumTotalReplicas()}.")
     config.IPU.NUM_LOCALREPLICA = popdist.getNumLocalReplicas()
     config.popdist_rank = popdist.getInstanceIndex()
     config.popdist_size = popdist.getNumInstances()
@@ -412,13 +327,13 @@ def main():
     opts = get_options(config)
 
     global_batch_size = config.DATA.BATCH_SIZE * config.IPU.NUM_LOCALREPLICA * config.IPU.GRADIENT_ACCUMULATION_STEPS
-    config.TRAIN.BASE_LR = config.TRAIN.BASE_LR * (global_batch_size/1024)
+    config.TRAIN.BASE_LR = config.TRAIN.BASE_LR * (global_batch_size / 1024)
     config.TRAIN.WARMUP_LR = config.TRAIN.WARMUP_LR * (global_batch_size / 1024)
     config.TRAIN.MIN_LR = config.TRAIN.MIN_LR * (global_batch_size / 1024)
     config.freeze()
     train(args, opts, config)
 
 
-if __name__ == '__main__':
-    ctypes.cdll.LoadLibrary('./custom_ops.so')
+if __name__ == "__main__":
+    ctypes.cdll.LoadLibrary("./custom_ops.so")
     main()

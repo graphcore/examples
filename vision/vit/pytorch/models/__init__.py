@@ -14,6 +14,5 @@
 
 
 from .modules import VisionTransformer
-from .pipeline_model import (PipelinedViTForImageClassification,
-                             PipelinedViTForImageClassificationPretraining)
+from .pipeline_model import PipelinedViTForImageClassification, PipelinedViTForImageClassificationPretraining
 from .utils import get_layer_ipu, recomputation_checkpoint, weight_init

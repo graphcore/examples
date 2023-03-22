@@ -1,9 +1,9 @@
-# Approximate Bayesian Computation (ABC) 
+# Approximate Bayesian Computation (ABC)
 Approximate Bayesian Computation for probabilistic COVID-19 modelling, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| TensorFlow2 | Simulation | ABC | CSSEGIS COVID-19 | Object detection | ✅ | ✅ | ['Accelerating Simulation-based Inference with Emerging AI Hardware'](https://ieeexplore.ieee.org/document/9325369) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| TensorFlow 2 | Simulation | ABC | CSSEGIS COVID-19 | Object detection | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required | ['Accelerating Simulation-based Inference with Emerging AI Hardware'](https://ieeexplore.ieee.org/document/9325369) |
 
 
 ## Instructions summary
@@ -25,12 +25,12 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -44,7 +44,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -57,6 +57,8 @@ For the CPU architecture you are running on
 cd static_ops && make
 ```
 
+
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
 
 ## Dataset setup
 Download the dataset from [the source](https://github.com/CSSEGISandData/COVID-19), or use the script provided:
@@ -75,11 +77,11 @@ python3 ABC_IPU.py --enqueue-chunk-size 10000 --tolerance 5e5 --n-samples-target
 
 ## Background
 We are looking at data from Italy in the Johns Hopkins University dataset
-over a period of 49 days. 
+over a period of 49 days.
 Data for the USA and New Zealand is also provided.
 The data contains the active confirmed cases (`A`), confirmed recoveries (`R`),
-and confirmed deaths(`D`). The data starts 
-when there is more than 100 recorded cases (2020-02-23 for Italy).
+and confirmed deaths(`D`). The data starts
+when there are more than 100 recorded cases (2020-02-23 for Italy).
 
 The model additionally considers the number of unconfirmed recoveries (`Ru`),
 susceptible people (`S`), and undocumented infected (`I`).
@@ -92,14 +94,14 @@ X = [S, I, A, R, D, Ru]
 
 We initialize with `S = P - A - R - D - I`. An interesting model parameter
 is `k` (kappa) which it the ratio between initial confirmed and unconfirmed cases:
-`I[0] = k * A[0]`. Note the index denotes the time step, 
-that means `I[0]` is the number of undocumented infected people at `t=0`. 
+`I[0] = k * A[0]`. Note the index denotes the time step,
+that means `I[0]` is the number of undocumented infected people at `t=0`.
 The parameter `k` is randomly sampled between 0 and 2 and
 the purpose of the ABC algorithm is to find a good fit/estimate.
 `Ru[0]` is set to zero.
 
 There are several additional hyperparameters to model the COVID-19 spread
-which are all analyzed by the ABC algorithm. 
+which are all analyzed by the ABC algorithm.
 They are managed in a parameter
 vector and randomly sampled from uniform distributions with different
 boundaries:
@@ -128,7 +130,7 @@ Analyzing the change of `g` over time helps to understand certain policies.
 
 With the identification rate, we get that `gamma * I` people change from
 infected (`I`) to active confirmed cases (`A`).
-With the recovery rate, we get that `beta * A` 
+With the recovery rate, we get that `beta * A`
 identified infected people recover (`R`)
 and together with the relative latent recovery rate,
 we get that `beta * eta * I` people become unidentified recovered people (`Ru`).
@@ -146,11 +148,11 @@ with same mean `h` and a standard deviation of `sqrt(h)`.
 Since the values in `h` are sufficiently big, this is a good approximation.
 
 See section A.1 of
-[Hindsight is 2020 vision: a characterisation of the global response to the COVID-19 pandemic](https://link.springer.com/article/10.1186/s12889-020-09972-z) 
+[Hindsight is 2020 vision: a characterisation of the global response to the COVID-19 pandemic](https://link.springer.com/article/10.1186/s12889-020-09972-z)
 for further details of the model and its parameters.
 
 David J. Warne
- 
+
 - School of Mathematical Sciences, Faculty of Science, Queensland University of Technology, Brisbane, Australia
 - Centre for Data Science, Queensland University of Technology, Brisbane, Australia
 - ARC Centre of Excellence for Mathematical and Statistical Frontiers.

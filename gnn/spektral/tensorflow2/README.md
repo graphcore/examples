@@ -1,9 +1,9 @@
 # Spektral
 GNN for molecular heat capacity prediction using the [Spektral](https://github.com/danielegrattarola/spektral) library, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| TensorFlow2 | GNNs | Spektral | QM9 |  | ✅ | ❌ | [Edge Conditioned Convolutional Networks](https://arxiv.org/abs/1704.02901) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| TensorFlow 2 | GNNs | Spektral | QM9 |  | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required | <p style="text-align: center;">❌ | [Edge Conditioned Convolutional Networks](https://arxiv.org/abs/1704.02901) |
 
 
 ## Instructions summary
@@ -25,12 +25,12 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -44,7 +44,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -57,6 +57,8 @@ For the CPU architecture you are running on
 cd static_ops && make
 ```
 
+
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
 
 ## Dataset setup
 ### QM9

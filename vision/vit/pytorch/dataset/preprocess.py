@@ -20,29 +20,32 @@ from dataset.customized_randaugment import ImageNetPolicy
 normalization_parameters = {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}
 
 
-def get_preprocessing_pipeline(train, input_size=224, half_precision=False, normalize=True, extra_aug=None, byteio=False):
+def get_preprocessing_pipeline(
+    train, input_size=224, half_precision=False, normalize=True, extra_aug=None, byteio=False
+):
     """
     Return optimized pipeline, which contains fused transformations.
     """
     pipeline_steps = []
     if train:
-        pipeline_steps.append(transforms.RandomResizedCrop((input_size, input_size),
-                                                           scale=(0.05, 1.0)))
+        pipeline_steps.append(transforms.RandomResizedCrop((input_size, input_size), scale=(0.05, 1.0)))
         if extra_aug is None:
             pass
         elif extra_aug == "imagenet_policy":
             pipeline_steps.append(ImageNetPolicy())
         else:
-            raise NotImplementedError(
-                "Cifar-10, Cifar-100 policies not implemented.")
+            raise NotImplementedError("Cifar-10, Cifar-100 policies not implemented.")
     else:
         pipeline_steps.append(transforms.Resize((256)))
         pipeline_steps.append(transforms.CenterCrop(input_size))
 
     pipeline_steps.append(transforms.ToTensor())
     if normalize:
-        pipeline_steps.append(NormalizeToTensor(
-            mean=normalization_parameters["mean"], std=normalization_parameters["std"], max_normalize=False))
+        pipeline_steps.append(
+            NormalizeToTensor(
+                mean=normalization_parameters["mean"], std=normalization_parameters["std"], max_normalize=False
+            )
+        )
     else:
         # Return tensor
         pipeline_steps.append(NormalizeToTensor.pil_to_tensor)
@@ -58,7 +61,7 @@ def get_preprocessing_pipeline(train, input_size=224, half_precision=False, norm
 
 class ToByte(torch.nn.Module):
     def forward(self, tensor):
-        return torch.clip(tensor*255, 0, 255).byte()
+        return torch.clip(tensor * 255, 0, 255).byte()
 
 
 class ToHalf(torch.nn.Module):
@@ -82,7 +85,7 @@ class NormalizeToTensor(torch.nn.Module):
         mean = torch.as_tensor(mean)
         std = torch.as_tensor(std)
         if max_normalize:
-            self.mul = (1.0/(255.0 * std)).view(-1, 1, 1)
+            self.mul = (1.0 / (255.0 * std)).view(-1, 1, 1)
         else:
             self.mul = (1.0 / std).view(-1, 1, 1)
         self.sub = (mean / std).view(-1, 1, 1)

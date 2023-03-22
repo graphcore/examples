@@ -11,7 +11,7 @@ def remap_tensor(
     x,
     debug_str="",
 ):
-    ctypes.cdll.LoadLibrary('./custom_ops.so')
+    ctypes.cdll.LoadLibrary("./custom_ops.so")
 
     return poptorch.custom_op(
         [x],
@@ -19,12 +19,13 @@ def remap_tensor(
         "ai.graphcore",
         1,
         example_outputs=[x],
-        attributes = {
-            'fwd_grain_size': 16,
-            'bwd_grain_size': 16,
-            'fwd_clone_layout': 0,
-            'bwd_clone_layout': 0,
-            'fwd_after_matmul': 0,
-            'bwd_after_matmul': 0,
-            'debug_str': debug_str}
-        )[0]
+        attributes={
+            "fwd_grain_size": 16,
+            "bwd_grain_size": 16,
+            "fwd_clone_layout": 0,
+            "bwd_clone_layout": 0,
+            "fwd_after_matmul": 0,
+            "bwd_after_matmul": 0,
+            "debug_str": debug_str,
+        },
+    )[0]

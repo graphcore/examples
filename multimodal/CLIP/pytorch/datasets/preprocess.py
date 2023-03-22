@@ -12,7 +12,7 @@ if __name__ == "__main__":
     map_file = "data/imagenet1k/validation/val_official.json"
     images_path = os.path.dirname(map_file)
 
-    with open(map_file, "r", encoding='utf-8') as f:
+    with open(map_file, "r", encoding="utf-8") as f:
 
         all_lines = f.read().splitlines()
         print("read the json file ...")

@@ -23,9 +23,9 @@ from unet import unet
 from utils import set_seed, pretty_print_nested_list, setup_logger
 
 
-logger = logging.getLogger('UNet')
+logger = logging.getLogger("UNet")
 
-if tf.__version__[0] != '2':
+if tf.__version__[0] != "2":
     raise ImportError("TensorFlow 2 is required for this example")
 
 
@@ -64,9 +64,11 @@ def main():
 
         logger.info(f"{args.kfold}-fold cross validation results:")
         logger.info(
-            f"Loss:\n {pretty_print_nested_list(loss_per_fold)}, \n mean:\n {np.mean(np.array(loss_per_fold), axis=0)}.")
+            f"Loss:\n {pretty_print_nested_list(loss_per_fold)}, \n mean:\n {np.mean(np.array(loss_per_fold), axis=0)}."
+        )
         logger.info(
-            f"Accuracy:\n {pretty_print_nested_list(acc_per_fold)}, \n mean:\n {np.mean(np.array(acc_per_fold), axis=0)}.")
+            f"Accuracy:\n {pretty_print_nested_list(acc_per_fold)}, \n mean:\n {np.mean(np.array(acc_per_fold), axis=0)}."
+        )
     else:
         # no cross validation
         ds_train = tf_fit_dataset(args, X[:24], y[:24])
@@ -75,6 +77,6 @@ def main():
         unet(args, ds_train, ds_eval, ds_infer)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     setup_logger(logging.INFO)
     main()

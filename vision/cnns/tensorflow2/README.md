@@ -1,9 +1,9 @@
 # CNNs (TensorFlow2)
 Deep CNN residual learning models for image recognition and classification, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference |
-|-------------|-|------|-------|-------|-------|---|
-| TensorFlow2 | Vision | CNNs | ImageNet LSVRC 2012, CIFAR-10/100, MNIST | Image recognition, Image classification | ✅  | ✅ |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference |
+|-----------|--------|-------|----------|-------|----------|-----------|
+| TensorFlow 2 | Vision | CNNs | ImageNet LSVRC 2012, CIFAR-10/100, MNIST | Image recognition, Image classification | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required |
 
 ## Instructions summary
 
@@ -24,13 +24,13 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 ## Environment setup
 To prepare your environment, follow these steps:
@@ -43,7 +43,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the Tensorflow2 and IPU Tensorflow add-ons wheels:
+3. Install the TensorFlow 2 and IPU TensorFlow add-ons wheels:
 ```bash
 cd <poplar sdk root dir>
 pip3 install tensorflow-2.X.X...<OS_arch>...x86_64.whl
@@ -58,6 +58,8 @@ For the CPU architecture you are running on
 pip3 install -r requirements.txt
 ```
 
+
+More detailed instructions on setting up your TensorFlow 2 environment are available in the [TensorFlow 2 quick start guide](https://docs.graphcore.ai/projects/tensorflow2-quick-start).
 
 ## Dataset setup
 ### ImageNet LSVRC 2012
@@ -103,59 +105,11 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
-## Custom training/inference and other features
+## Custom training
+
 ### Executing training only or validation only
 
 By default, the application will execute training and afterwards it will validate all model checkpoints produced during training. You can disable any of these two phases if necessary. To disable validation, just append `--validation False` to your instruction. This terminates the program immediately after training finishes. Similarly, if you want to disable training, just append `--training False` to your instruction. Note that by default, when training is disabled, validation will be done on a randomly initialized model. However, you can additionally specify a directory of checkpoints to input to validation, with `--checkpoint-input-dir your_previously_generated_directory`, to run validation on the previously trained model without training the model any further.
-
-
-### Periodic host events
-While the bulk of the work is done by the IPUs, there are a number of operations we may want to do on the host CPU throughout the training run, such as logging or saving a checkpoint of the model. How often we want to execute these events has an impact on the throughput of the application. This is because the application is built in a way that the program to be executed on the IPUs is wrapped in a loop such that multiple iterations of the program can be performed on the IPUs before handing back control to the host CPU. By minimizing the handover between the IPUs and the host CPU we can reduce the total execution time of the program. The number of iterations executed on the IPUs can be adjusted to match the period of the host events.  
-
-Note that depending on dataset size and batch configuration, not all frequency values are valid. More specifically, the switching from the IPU to the CPU must happen after a weight update has been completed. For example, a given dataset and batch configuration result in an odd number of weight updates per epoch, it is not possible to log the training metrics 2 times per epoch, because one of the events would happen in the middle of a weight update. To avoid these situations and to facilitate the user experience, the program automatically calculates the closest possible frequency that doesn't attempt to interrupt a weight update. However it is possible that the corresponding event is executed at a higher or lower frequency than originally requested.
-
-Some examples of adjusting the frequency of logging the state of the training run over time:  
-```bash
-python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 1
-```
-
-Sets steps per execution such that it executes one entire epoch on the device before returning to the host, while printing one log per epoch.  
-```bash
-python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 2
-```
-
-It's not possible to execute half an epoch on the device because it would correspond to a partial weight update. It will execute 1 epoch on the device and print 1 log per epoch. It logs a warning to the user highlighting the logging frequency can't be executed and will be adjusted.  
-```bash
-python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 10
-```
-
-It's not possible to execute 1/10 of an epoch on the device. The closest is 1/11. So the generated program executes 1/11 of an epoch before returning to the host and therefore 11 logs per epoch. A warning is logged.  
-```bash
-python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 1/2
-```
-
-The generated program is going to execute 2 epochs on the device before returning to the host. Therefore the program is only repeated for 3 times.  
-```bash
-python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 1/3
-```
-
-The generated program is going to execute 3 epochs on the device before returning to the host. Therefore the program is only repeated for 2 times.  
-```bash
-python3 train.py --model cifar_resnet8 --num-epochs 5 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 1/2
-```
-
-An exception is raised: "ValueError: It is not possible to log 2.0 epochs a time for 5 epochs".  
-```bash
-python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 0
-```
-
-The entire training run is executed on the device and a warning message is logged so the user is notified.  
-
-
-### Synthetic data
-
-It is possible to execute the training program without a real dataset and instead using synthetic data. This is done by using the `--synthetic-data` option. When using synthetic data, the data can be generated on the host CPU and transferred to the IPU or the data can be generated directly on the IPU avoiding the need for any data transfer between the CPU and the IPU. To generate synthetic data on the CPU use `--synthetic-data cpu`, and to generate synthetic data on the IPU use `--synthetic-data ipu`.
-
 
 ### PopDist and PopRun - distributed training on IPU-PODs
 
@@ -175,6 +129,57 @@ Note that the default behaviour when combining distributed training and pipeline
 ```bash
 poprun --num-instance X --num-replicas Y --ipus-per-replica Z python3 train.py --pipeline-splits split1 ... splitN --pipeline-validation-model
 ```
+
+
+## Other features
+
+### Periodic host events
+While the bulk of the work is done by the IPUs, there are a number of operations we may want to do on the host CPU throughout the training run, such as logging or saving a checkpoint of the model. How often we want to execute these events has an impact on the throughput of the application. This is because the application is built in a way that the program to be executed on the IPUs is wrapped in a loop such that multiple iterations of the program can be performed on the IPUs before handing back control to the host CPU. By minimizing the handover between the IPUs and the host CPU we can reduce the total execution time of the program. The number of iterations executed on the IPUs can be adjusted to match the period of the host events.
+
+Note that depending on dataset size and batch configuration, not all frequency values are valid. More specifically, the switching from the IPU to the CPU must happen after a weight update has been completed. For example, a given dataset and batch configuration result in an odd number of weight updates per epoch, it is not possible to log the training metrics 2 times per epoch, because one of the events would happen in the middle of a weight update. To avoid these situations and to facilitate the user experience, the program automatically calculates the closest possible frequency that doesn't attempt to interrupt a weight update. However it is possible that the corresponding event is executed at a higher or lower frequency than originally requested.
+
+Some examples of adjusting the frequency of logging the state of the training run over time:
+```bash
+python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 1
+```
+
+Sets steps per execution such that it executes one entire epoch on the device before returning to the host, while printing one log per epoch.
+```bash
+python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 2
+```
+
+It's not possible to execute half an epoch on the device because it would correspond to a partial weight update. It will execute 1 epoch on the device and print 1 log per epoch. It logs a warning to the user highlighting the logging frequency can't be executed and will be adjusted.
+```bash
+python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 10
+```
+
+It's not possible to execute 1/10 of an epoch on the device. The closest is 1/11. So the generated program executes 1/11 of an epoch before returning to the host and therefore 11 logs per epoch. A warning is logged.
+```bash
+python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 1/2
+```
+
+The generated program is going to execute 2 epochs on the device before returning to the host. Therefore the program is only repeated for 3 times.
+```bash
+python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 1/3
+```
+
+The generated program is going to execute 3 epochs on the device before returning to the host. Therefore the program is only repeated for 2 times.
+```bash
+python3 train.py --model cifar_resnet8 --num-epochs 5 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 1/2
+```
+
+An exception is raised: "ValueError: It is not possible to log 2.0 epochs a time for 5 epochs".
+```bash
+python3 train.py --model cifar_resnet8 --num-epochs 6 --precision 16.16 --micro-batch-size 8 --validation False --half-partials True --gradient-accumulation 8 --logs-per-epoch 0
+```
+
+The entire training run is executed on the device and a warning message is logged so the user is notified.
+
+
+### Synthetic data
+
+It is possible to execute the training program without a real dataset and instead using synthetic data. This is done by using the `--synthetic-data` option. When using synthetic data, the data can be generated on the host CPU and transferred to the IPU or the data can be generated directly on the IPU avoiding the need for any data transfer between the CPU and the IPU. To generate synthetic data on the CPU use `--synthetic-data cpu`, and to generate synthetic data on the IPU use `--synthetic-data ipu`.
+
 
 ### Regularization
 The application allows to apply the squared norm of the weights to the loss in two ways, which are `--weight-decay <lambda>` and `--l2-regularization <lambda>`. They are mathematically equivalent when applied to stateless optimisers (e.g. SGD without the momentum), however, for stateful optimisers they behave differently. `--l2-regularization` affects the optimiser state directly, whereas `--weight-decay` doesn't, i. e.:
@@ -206,7 +211,7 @@ python3 train.py --config resnet50_16ipus_8k_bn_pipeline
 
 Example of TensorFlow Serving usage can be found in `send_request.py` file. Script exports selected model to SavedModel format, initializes serving server, and sends images to server for predictions. Execution ends after given number of prediction requests. The model should be defined using the same options or configuration file that have been provided to `train.py` for training.
 
-Basic usage example for Resnet50 model export in batch-size 16 and serving in batch-size 8: 
+Basic usage example for Resnet50 model export in batch-size 16 and serving in batch-size 8:
 ```bash
 python3 send_request.py --config resnet50_infer_bs16 --dataset-path $DATASETS_DIR/imagenet-data --batch-size 8 --port 8502 --num-threads 32
 ```
@@ -214,7 +219,7 @@ python3 send_request.py --config resnet50_infer_bs16 --dataset-path $DATASETS_DI
 ## License
 The code in this directory is provided under the MIT License (see the license file at the top-level of this repository) with the exception of the following files that are derived work and licensed under the Apache License 2.0.
 
-- `data/imagenet_preprocessing.py` from [TensorFlow Models](https://github.com/tensorflow/models/blob/master/official/legacy/image_classification/resnet/imagenet_preprocessing.py) 
+- `data/imagenet_preprocessing.py` from [TensorFlow Models](https://github.com/tensorflow/models/blob/master/official/legacy/image_classification/resnet/imagenet_preprocessing.py)
 
 - `data/build_imagenet_data.py` from [AWS Labs](https://github.com/awslabs/deeplearning-benchmark/blob/master/tensorflow/inception/inception/data/build_imagenet_data.py)
 

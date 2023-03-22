@@ -39,11 +39,12 @@ def test_bert_pretraining_cmp_huggingface(test_config: BertConfig):
 
     # HF forwards
     sequence_output = torch.rand((micro_bs, seq_len, hidden_size), requires_grad=True)
-    # randperm used to guarentee no duplicate positions
+    # randperm used to guarantee no duplicate positions
     masked_positions = torch.vstack(
-        [torch.randperm(seq_len)[:test_config.model.mlm.mask_tokens] for _ in range(micro_bs)])
+        [torch.randperm(seq_len)[: test_config.model.mlm.mask_tokens] for _ in range(micro_bs)]
+    )
     labels = torch.randint(0, config.vocab_size, (micro_bs, seq_len), dtype=torch.long)
-    nsp_labels = torch.randint(0, 2, (micro_bs, ), dtype=torch.long)
+    nsp_labels = torch.randint(0, 2, (micro_bs,), dtype=torch.long)
     # Set non-masked positions to 0
     for seq, pos in zip(labels, masked_positions):
         not_pos = torch.ones_like(seq).to(torch.bool)
@@ -75,27 +76,38 @@ def test_bert_pretraining_cmp_huggingface(test_config: BertConfig):
     main = ir.main_graph
 
     with main:
-        inputs_data, inputs_host_steam, inputs_tensors = zip(*[
-            addons.host_load(sequence_output.reshape((micro_bs * seq_len, test_config.model.hidden_size)),
-                             popxl.float32,
-                             name="sequence_output"),
-            addons.host_load(labels.reshape((micro_bs, test_config.model.mlm.mask_tokens)), popxl.int32, name="labels"),
-            addons.host_load(masked_positions.reshape((micro_bs, test_config.model.mlm.mask_tokens)),
-                             popxl.int32,
-                             name="masked_positions"),
-            addons.host_load(nsp_labels.reshape((micro_bs, )), popxl.int32, name="nsp_labels"),
-        ])
+        inputs_data, inputs_host_steam, inputs_tensors = zip(
+            *[
+                addons.host_load(
+                    sequence_output.reshape((micro_bs * seq_len, test_config.model.hidden_size)),
+                    popxl.float32,
+                    name="sequence_output",
+                ),
+                addons.host_load(
+                    labels.reshape((micro_bs, test_config.model.mlm.mask_tokens)), popxl.int32, name="labels"
+                ),
+                addons.host_load(
+                    masked_positions.reshape((micro_bs, test_config.model.mlm.mask_tokens)),
+                    popxl.int32,
+                    name="masked_positions",
+                ),
+                addons.host_load(nsp_labels.reshape((micro_bs,)), popxl.int32, name="nsp_labels"),
+            ]
+        )
         sequence_output, labels, masked_positions, nsp_labels = inputs_tensors
         tied_weight = popxl.constant(
-            popxl.utils.to_numpy(hf_cls.predictions.decoder.weight.data.T, test_config.model.dtype))
-        args, head = BertPretrainingLossAndGrad(test_config).create_graph(sequence_output, tied_weight, tied_weight,
-                                                                          masked_positions, labels, nsp_labels)
-        tied_weight_grad_t = popxl.ops.init(tied_weight.shape, tied_weight.dtype, 'word_embedding_grad_t', "zero")
+            popxl.utils.to_numpy(hf_cls.predictions.decoder.weight.data.T, test_config.model.dtype)
+        )
+        args, head = BertPretrainingLossAndGrad(test_config).create_graph(
+            sequence_output, tied_weight, tied_weight, masked_positions, labels, nsp_labels
+        )
+        tied_weight_grad_t = popxl.ops.init(tied_weight.shape, tied_weight.dtype, "word_embedding_grad_t", "zero")
 
         # Forwards
         variables = args.init()
-        loss, dx = head.bind(variables).call(sequence_output, tied_weight, tied_weight_grad_t, masked_positions, labels,
-                                             nsp_labels)
+        loss, dx = head.bind(variables).call(
+            sequence_output, tied_weight, tied_weight_grad_t, masked_positions, labels, nsp_labels
+        )
         loss_out = addons.host_store(loss)
         dx_out = addons.host_store(dx)
 

@@ -5,29 +5,29 @@ input [
         {
                 name: "input_0"
                 data_type: TYPE_INT32
-                dims: [ 384 ] 
+                dims: [ 384 ]
         },
         {
                 name: "input_1"
                 data_type: TYPE_INT32
-                dims: [ 384 ] 
+                dims: [ 384 ]
         },
         {
                 name: "input_2"
                 data_type: TYPE_INT32
-                dims: [ 384 ] 
+                dims: [ 384 ]
         }
 ]
 output [
         {
                 name: "output_0"
                 data_type: TYPE_FP16
-                dims: [ 384 ] 
+                dims: [ 384 ]
         },
         {
                 name: "output_1"
                 data_type: TYPE_FP16
-                dims: [ 384 ] 
+                dims: [ 384 ]
         }
 ]
 

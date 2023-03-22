@@ -18,6 +18,7 @@ import re
 import subprocess
 from pathlib import Path
 import pytest
+
 # Append bert directory
 bert_root_path = str(Path(__file__).parent.parent)
 sys.path.append(bert_root_path)
@@ -27,8 +28,7 @@ bert_root_dir = Path(__file__).parent.parent.resolve()
 
 def pack_sample_text(cmd):
     try:
-        out = subprocess.check_output(
-            cmd, cwd=bert_root_dir, stderr=subprocess.PIPE).decode("utf-8")
+        out = subprocess.check_output(cmd, cwd=bert_root_dir, stderr=subprocess.PIPE).decode("utf-8")
     except subprocess.CalledProcessError as e:
         print(f"TEST FAILED")
         print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
@@ -41,11 +41,17 @@ def pack_sample_text(cmd):
 def test_packing_script():
 
     cmd_pack_sample_text = [
-        "python3", "data/packing/pack_pretraining_data.py",
-        "--input-files", "./data/sample_text.tfrecord",
-        "--output-dir", "./data/packed_usample_text",
-        "--mask-tokens", "20",
-        "--sequence-length", "128"]
+        "python3",
+        "data/packing/pack_pretraining_data.py",
+        "--input-files",
+        "./data/sample_text.tfrecord",
+        "--output-dir",
+        "./data/packed_usample_text",
+        "--mask-tokens",
+        "20",
+        "--sequence-length",
+        "128",
+    ]
 
     out = pack_sample_text(cmd_pack_sample_text)
 
@@ -55,5 +61,5 @@ def test_packing_script():
             print(split)
             time, packs_left = float(split[2]), float(split[4])
             break
-    assert (time > 0)
-    assert (packs_left == 0.0)
+    assert time > 0
+    assert packs_left == 0.0

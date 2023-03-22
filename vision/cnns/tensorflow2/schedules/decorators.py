@@ -7,7 +7,6 @@ from tensorflow.keras.optimizers.schedules import LearningRateSchedule
 
 
 class ShiftWarmup(LearningRateSchedule):
-
     def __init__(self, scheduler: LearningRateSchedule, warmup_weight_updates: int):
         """
         Linearly approaches 'initial_learning_rate' over 'warmup_weight_updates'.
@@ -29,22 +28,18 @@ class ShiftWarmup(LearningRateSchedule):
         lr = tf.cond(
             step >= self._warmup_steps,
             lambda: self._lr_schedule(step - self._warmup_steps),
-            lambda: self._lr_schedule(0) * (step + 1) / (self._warmup_steps + 1)
+            lambda: self._lr_schedule(0) * (step + 1) / (self._warmup_steps + 1),
         )
 
         return lr
 
     def get_config(self) -> Mapping[str, Any]:
         config = self._lr_schedule.get_config()
-        config.update({
-            "warmup_steps": self._warmup_weight_updates,
-            "warmup_lr": self._warmup_lr
-        })
+        config.update({"warmup_steps": self._warmup_weight_updates, "warmup_lr": self._warmup_lr})
         return config
 
 
 class FadingMaskWarmup(LearningRateSchedule):
-
     def __init__(self, scheduler: LearningRateSchedule, warmup_weight_updates: int):
         """
         Applies a mask over the wrapped scheduler's output.
@@ -66,24 +61,21 @@ class FadingMaskWarmup(LearningRateSchedule):
         lr = tf.cond(
             step >= self._warmup_steps,
             lambda: self._lr_schedule(step),
-            lambda: self._lr_schedule(step) * (step + 1) / (self._warmup_steps + 1)
+            lambda: self._lr_schedule(step) * (step + 1) / (self._warmup_steps + 1),
         )
 
         return lr
 
     def get_config(self) -> Mapping[str, Any]:
         config = self._lr_schedule.get_config()
-        config.update({
-            "warmup_steps": self._warmup_weight_updates
-        })
+        config.update({"warmup_steps": self._warmup_weight_updates})
         return config
 
 
 class FP32StepLearningRateSchedule(LearningRateSchedule):
-
     def __init__(self, schedule: LearningRateSchedule):
         super(FP32StepLearningRateSchedule, self).__init__()
-        self.step = tf.Variable(0, trainable=False, dtype=tf.float32, name='fp32_step')
+        self.step = tf.Variable(0, trainable=False, dtype=tf.float32, name="fp32_step")
         self.schedule = schedule
 
     def __call__(self, _):
@@ -92,11 +84,10 @@ class FP32StepLearningRateSchedule(LearningRateSchedule):
         return lr
 
     def get_config(self) -> Mapping[str, Any]:
-        return {'schedule': self._lr_schedule.get_config()}
+        return {"schedule": self._lr_schedule.get_config()}
 
 
 class StairCase(LearningRateSchedule):
-
     def __init__(self, lr_schedule, weight_updates_per_stair_tread: int = 1):
         super(StairCase, self).__init__()
         self.lr_schedule = lr_schedule
@@ -107,5 +98,7 @@ class StairCase(LearningRateSchedule):
         return self.lr_schedule(staircased_step)
 
     def get_config(self) -> Mapping[str, Any]:
-        return {'schedule': self._lr_schedule.get_config(),
-                'weight_updates_per_stair_tread': self.weight_updates_per_stair_tread}
+        return {
+            "schedule": self._lr_schedule.get_config(),
+            "weight_updates_per_stair_tread": self.weight_updates_per_stair_tread,
+        }

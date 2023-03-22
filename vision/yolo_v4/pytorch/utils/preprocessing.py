@@ -26,6 +26,7 @@ class PadNumpy(object):
             img: image padded to self.image_size
             labels: label transformed to match the same bounding box position after the padding
     """
+
     def __init__(self, image_size: int):
         self.image_size = image_size
 
@@ -34,15 +35,17 @@ class PadNumpy(object):
 
         output_image = np.full((self.image_size, self.image_size, 3), 114, dtype=np.uint8)
 
-        pad_width = int(np.round(abs(self.image_size-input_image.shape[1])/2))
-        pad_height = int(np.round(abs(self.image_size-input_image.shape[0])/2))
+        pad_width = int(np.round(abs(self.image_size - input_image.shape[1]) / 2))
+        pad_height = int(np.round(abs(self.image_size - input_image.shape[0]) / 2))
 
-        output_image[pad_height:(input_image.shape[0]+pad_height), pad_width:(input_image.shape[1] + pad_width), :] = input_image
+        output_image[
+            pad_height : (input_image.shape[0] + pad_height), pad_width : (input_image.shape[1] + pad_width), :
+        ] = input_image
 
-        labels[:, [1, 3]] *= input_image.shape[1]/self.image_size
-        labels[:, [2, 4]] *= input_image.shape[0]/self.image_size
-        labels[:, 1] += (pad_width)/self.image_size
-        labels[:, 2] += (pad_height)/self.image_size
+        labels[:, [1, 3]] *= input_image.shape[1] / self.image_size
+        labels[:, [2, 4]] *= input_image.shape[0] / self.image_size
+        labels[:, 1] += (pad_width) / self.image_size
+        labels[:, 2] += (pad_height) / self.image_size
 
         return output_image, labels
 
@@ -59,22 +62,23 @@ class Pad(object):
             img: image padded to self.image_size
             labels: label transformed to match the same bounding box position after the padding
     """
+
     def __init__(self, image_size: int):
         self.image_size = image_size
 
     def __call__(self, item: Tuple[Image.Image, np.array]) -> Tuple[Image.Image, np.array]:
         input_image, labels = item
 
-        pad_width = int(np.round(abs(self.image_size-input_image.width)/2))
-        pad_height = int(np.round(abs(self.image_size-input_image.height)/2))
+        pad_width = int(np.round(abs(self.image_size - input_image.width) / 2))
+        pad_height = int(np.round(abs(self.image_size - input_image.height) / 2))
 
         output_image = Image.new(input_image.mode, (self.image_size, self.image_size), (114, 114, 114))
         output_image.paste(input_image, (pad_width, pad_height))
 
-        labels[:, [1, 3]] *= input_image.width/self.image_size
-        labels[:, [2, 4]] *= input_image.height/self.image_size
-        labels[:, 1] += (pad_width)/self.image_size
-        labels[:, 2] += (pad_height)/self.image_size
+        labels[:, [1, 3]] *= input_image.width / self.image_size
+        labels[:, [2, 4]] *= input_image.height / self.image_size
+        labels[:, 1] += (pad_width) / self.image_size
+        labels[:, 2] += (pad_height) / self.image_size
 
         return output_image, labels
 
@@ -92,6 +96,7 @@ class ResizeImage(object):
             image: resized image
             labels: same labels
     """
+
     def __init__(self, image_size: int):
         self.image_size = image_size
 
@@ -120,6 +125,7 @@ class ToNumpy(object):
             image: numpy image
             labels: same labels
     """
+
     def __call__(self, item: Tuple[Image.Image, np.array]) -> Tuple[np.array, np.array]:
         image, labels = item
         return np.ascontiguousarray(image), labels
@@ -139,6 +145,7 @@ class ToTensor(object):
             image: transformed image
             labels: padded labels
     """
+
     def __init__(self, max_bbox_per_scale: int, image_type: str):
         self.max_bbox_per_scale = max_bbox_per_scale
         self.image_type = image_type
@@ -147,14 +154,14 @@ class ToTensor(object):
         image, input_labels = item
 
         output_labels = torch.zeros((self.max_bbox_per_scale, input_labels.shape[1]))
-        output_labels[:input_labels.shape[0]] = torch.from_numpy(input_labels)
+        output_labels[: input_labels.shape[0]] = torch.from_numpy(input_labels)
 
         image = torch.from_numpy(image).permute(2, 0, 1)
 
         if self.image_type == "half":
-            image = image.half() / 255.
+            image = image.half() / 255.0
         elif self.image_type == "float":
-            image = image.float() / 255.
+            image = image.float() / 255.0
         return image, output_labels
 
 
@@ -171,6 +178,7 @@ class Cutout(object):
             image: image with patches applied
             labels: labels with obscured area > obscured_pct removed
     """
+
     def __init__(self, patch_scales: List[float], obscured_pct: float, scaled_threshold: float = 0.3):
         self.patch_scales = patch_scales
         self.obscured_pct = obscured_pct
@@ -222,6 +230,7 @@ class HSV(object):
             image: HSV enhanced image
             labels: original labels
     """
+
     def __init__(self, h_gain: float, s_gain: float, v_gain: float):
         self.h_gain = h_gain
         self.s_gain = s_gain
@@ -231,18 +240,17 @@ class HSV(object):
         image, labels = item
 
         r = np.random.uniform(-1, 1, 3) * [self.h_gain, self.s_gain, self.v_gain] + 1
-        img_hsv = image.convert('HSV')
+        img_hsv = image.convert("HSV")
         hue, sat, val = img_hsv.split()
 
         x = np.arange(0, 256)
-        lut_hue = ((x * r[0]) % 180)
+        lut_hue = (x * r[0]) % 180
         lut_sat = np.clip(x * r[1], 0, 255)
         lut_val = np.clip(x * r[2], 0, 255)
 
-        img_hsv = Image.merge(
-            mode='HSV',
-            bands=(hue.point(lut_hue), sat.point(lut_sat), val.point(lut_val))
-        ).convert('RGB')
+        img_hsv = Image.merge(mode="HSV", bands=(hue.point(lut_hue), sat.point(lut_sat), val.point(lut_val))).convert(
+            "RGB"
+        )
 
         return img_hsv, labels
 
@@ -282,13 +290,33 @@ class Mosaic(object):
                 # location on the original image to copy to the base_img
                 xmin_o, ymin_o, xmax_o, ymax_o = width - (xmax_b - xmin_b), height - (ymax_b - ymin_b), width, height
             elif i == 1:  # top right
-                xmin_b, ymin_b, xmax_b, ymax_b = center_x, max(center_y - height, 0), min(center_x + width, self.image_size * 2), center_y
+                xmin_b, ymin_b, xmax_b, ymax_b = (
+                    center_x,
+                    max(center_y - height, 0),
+                    min(center_x + width, self.image_size * 2),
+                    center_y,
+                )
                 xmin_o, ymin_o, xmax_o, ymax_o = 0, height - (ymax_b - ymin_b), min(width, xmax_b - xmin_b), height
             elif i == 2:  # bottom left
-                xmin_b, ymin_b, xmax_b, ymax_b = max(center_x - width, 0), center_y, center_x, min(self.image_size * 2, center_y + height)
-                xmin_o, ymin_o, xmax_o, ymax_o = width - (xmax_b - xmin_b), 0, max(center_x, width), min(ymax_b - ymin_b, height)
+                xmin_b, ymin_b, xmax_b, ymax_b = (
+                    max(center_x - width, 0),
+                    center_y,
+                    center_x,
+                    min(self.image_size * 2, center_y + height),
+                )
+                xmin_o, ymin_o, xmax_o, ymax_o = (
+                    width - (xmax_b - xmin_b),
+                    0,
+                    max(center_x, width),
+                    min(ymax_b - ymin_b, height),
+                )
             elif i == 3:  # bottom right
-                xmin_b, ymin_b, xmax_b, ymax_b = center_x, center_y, min(center_x + width, self.image_size * 2), min(self.image_size * 2, center_y + height)
+                xmin_b, ymin_b, xmax_b, ymax_b = (
+                    center_x,
+                    center_y,
+                    min(center_x + width, self.image_size * 2),
+                    min(self.image_size * 2, center_y + height),
+                )
                 xmin_o, ymin_o, xmax_o, ymax_o = 0, 0, min(width, xmax_b - xmin_b), min(ymax_b - ymin_b, height)
 
             base_img[ymin_b:ymax_b, xmin_b:xmax_b] = original_image[ymin_o:ymax_o, xmin_o:xmax_o]
@@ -312,7 +340,6 @@ class Mosaic(object):
         return Image.fromarray(np.uint8(base_img)), base_label
 
 
-
 class RandomPerspective(object):
     """
     Apply transformations, including perspective, rotation, translation, shear on the target image
@@ -326,14 +353,15 @@ class RandomPerspective(object):
             labels: labels of remaining objects after the transformation
     """
 
-    def __init__(self,
-                 degrees: int=10,
-                 translate: float=0.1,
-                 scale: float=0.1,
-                 shear: int=10,
-                 perspective: float=0.0,
-                 border_to_remove: Tuple[int, int]=(0, 0)
-                 ):
+    def __init__(
+        self,
+        degrees: int = 10,
+        translate: float = 0.1,
+        scale: float = 0.1,
+        shear: int = 10,
+        perspective: float = 0.0,
+        border_to_remove: Tuple[int, int] = (0, 0),
+    ):
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
@@ -375,14 +403,25 @@ class RandomPerspective(object):
 
         # Translation
         translation = np.eye(3)
-        translation[0, 2] = np.random.uniform(0.5 - self.translate, 0.5 + self.translate) * target_width  # x translation (pixels)
-        translation[1, 2] = np.random.uniform(0.5 - self.translate, 0.5 + self.translate) * target_height  # y translation (pixels)
+        translation[0, 2] = (
+            np.random.uniform(0.5 - self.translate, 0.5 + self.translate) * target_width
+        )  # x translation (pixels)
+        translation[1, 2] = (
+            np.random.uniform(0.5 - self.translate, 0.5 + self.translate) * target_height
+        )  # y translation (pixels)
 
         # Combined rotation matrix
         combined_matrix = translation @ shear @ rotation @ perspective @ center
-        if (self.border_to_remove[0] != 0) or (self.border_to_remove[1] != 0) or (combined_matrix != np.eye(3)).any():  # check if image changed
+        if (
+            (self.border_to_remove[0] != 0) or (self.border_to_remove[1] != 0) or (combined_matrix != np.eye(3)).any()
+        ):  # check if image changed
             combined_matrix_inv = np.linalg.inv(combined_matrix)
-            image = image.transform((target_width, target_height), Image.AFFINE, combined_matrix_inv.flatten()[:6], fillcolor=(114, 114, 114))
+            image = image.transform(
+                (target_width, target_height),
+                Image.AFFINE,
+                combined_matrix_inv.flatten()[:6],
+                fillcolor=(114, 114, 114),
+            )
 
         if len(labels):
             n = len(labels)
@@ -423,7 +462,7 @@ class RandomPerspective(object):
         boxes2: np.array,
         wh_threshold: float = 2.0,
         aspect_ratio_threshold: float = 20.0,
-        area_threshold: float = 0.2
+        area_threshold: float = 0.2,
     ) -> np.array:
         """
         Remove small boxes by compare the candidate boxes1 (before augment) and boxes2 (after augment)
@@ -440,7 +479,12 @@ class RandomPerspective(object):
         w1, h1 = boxes1[2] - boxes1[0], boxes1[3] - boxes1[1]
         w2, h2 = boxes2[2] - boxes2[0], boxes2[3] - boxes2[1]
         aspect_ratio = np.maximum(w2 / (h2 + 1e-16), h2 / (w2 + 1e-16))
-        return (w2 > wh_threshold) & (h2 > wh_threshold) & (w2 * h2 / (w1 * h1 + 1e-16) > area_threshold) & (aspect_ratio < aspect_ratio_threshold)
+        return (
+            (w2 > wh_threshold)
+            & (h2 > wh_threshold)
+            & (w2 * h2 / (w1 * h1 + 1e-16) > area_threshold)
+            & (aspect_ratio < aspect_ratio_threshold)
+        )
 
 
 class HorizontalFlip(object):
@@ -455,6 +499,7 @@ class HorizontalFlip(object):
             image: flipped image
             labels: flipped labels
     """
+
     def __call__(self, item: Tuple[Image.Image, np.array]) -> Tuple[Image.Image, np.array]:
         image, labels = item
         output_image = image.transpose(Image.FLIP_LEFT_RIGHT)
@@ -474,6 +519,7 @@ class VerticalFlip(object):
             image: flipped image
             labels: flipped labels
     """
+
     def __call__(self, item: Tuple[Image.Image, np.array]) -> Tuple[Image.Image, np.array]:
         image, labels = item
         output_image = image.transpose(Image.FLIP_TOP_BOTTOM)

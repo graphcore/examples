@@ -16,7 +16,8 @@ import numpy as np
 from popxl_addons.named_tensors import NamedTensors
 from popxl_addons.ops.replicated_all_reduce_TP import (
     replicated_all_reduce_identical_inputs,
-    replicated_all_reduce_identical_grad_inputs)
+    replicated_all_reduce_identical_grad_inputs,
+)
 from utils.utils import shard
 
 
@@ -33,18 +34,15 @@ class GPTJFeedForwardTP(addons.Module):
         assert self.ff_size % self.n_shards == 0
         # ----- Layers -----
         # Sharded across devices - column wise
-        self.intermediate = Linear(
-            self.ff_size // self.n_shards, replica_grouping=self.replica_grouping)
+        self.intermediate = Linear(self.ff_size // self.n_shards, replica_grouping=self.replica_grouping)
 
         # Sharded across devices - row wise (bias applied separately)
-        self.output = Linear(config.model.hidden_size,
-                             bias=False, replica_grouping=self.replica_grouping)
+        self.output = Linear(config.model.hidden_size, bias=False, replica_grouping=self.replica_grouping)
 
     def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> List[popxl.Tensor]:
         """Identical input (x, seed) and identical output across shards."""
         # ----- Identical computation -----
-        z = replicated_all_reduce_identical_inputs(
-            x, group=self.replica_grouping.transpose())
+        z = replicated_all_reduce_identical_inputs(x, group=self.replica_grouping.transpose())
 
         # ----- Sharded computation -----
 
@@ -58,14 +56,12 @@ class GPTJFeedForwardTP(addons.Module):
         # and then perform an all reduce
         z = self.output(z)
 
-        z = replicated_all_reduce_identical_grad_inputs(
-            z, group=self.replica_grouping.transpose())
+        z = replicated_all_reduce_identical_grad_inputs(z, group=self.replica_grouping.transpose())
 
         # ----- Identical computation -----
 
         # Output linear layer bias (identical bias on all devices)
-        self.bias = self.add_variable_input(
-            'bias', lambda: np.zeros(z.shape[-1]), z.dtype)
+        self.bias = self.add_variable_input("bias", lambda: np.zeros(z.shape[-1]), z.dtype)
         z = z + self.bias
 
         if not self.config.model.eval and self.config.model.dropout_prob != 0.0:
@@ -81,14 +77,10 @@ class GPTJFeedForwardTP(addons.Module):
 
         return {
             # HF GPTJMLP
-            variables.intermediate.weight:
-            shard(to_numpy(hf_model.fc_in.weight.data.T, dtype), n_shards, axis=-1),
-            variables.intermediate.bias:
-            shard(to_numpy(hf_model.fc_in.bias.data, dtype), n_shards, axis=-1),
-            variables.output.weight:
-            shard(to_numpy(hf_model.fc_out.weight.data.T, dtype), n_shards, axis=0),
-            variables.bias:
-            to_numpy(hf_model.fc_out.bias.data, dtype),
+            variables.intermediate.weight: shard(to_numpy(hf_model.fc_in.weight.data.T, dtype), n_shards, axis=-1),
+            variables.intermediate.bias: shard(to_numpy(hf_model.fc_in.bias.data, dtype), n_shards, axis=-1),
+            variables.output.weight: shard(to_numpy(hf_model.fc_out.weight.data.T, dtype), n_shards, axis=0),
+            variables.bias: to_numpy(hf_model.fc_out.bias.data, dtype),
         }
 
     @staticmethod
@@ -105,13 +97,15 @@ class GPTJFeedForwardTP(addons.Module):
             hf_model.to(device)
         """
         state_dict = {}
-        state_dict['fc_in.weight'] = torch.tensor(np.concatenate(
-            popxl_state_dict.intermediate.weight.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype)
-        state_dict['fc_in.bias'] = torch.tensor(np.concatenate(
-            popxl_state_dict.intermediate.bias, axis=0), dtype=config.torch_dtype)
-        state_dict['fc_out.weight'] = torch.tensor(np.concatenate(
-            popxl_state_dict.output.weight, axis=0).T, dtype=config.torch_dtype)
-        state_dict['fc_out.bias'] = torch.tensor(
-            popxl_state_dict.bias, dtype=config.torch_dtype)
+        state_dict["fc_in.weight"] = torch.tensor(
+            np.concatenate(popxl_state_dict.intermediate.weight.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype
+        )
+        state_dict["fc_in.bias"] = torch.tensor(
+            np.concatenate(popxl_state_dict.intermediate.bias, axis=0), dtype=config.torch_dtype
+        )
+        state_dict["fc_out.weight"] = torch.tensor(
+            np.concatenate(popxl_state_dict.output.weight, axis=0).T, dtype=config.torch_dtype
+        )
+        state_dict["fc_out.bias"] = torch.tensor(popxl_state_dict.bias, dtype=config.torch_dtype)
 
         return state_dict

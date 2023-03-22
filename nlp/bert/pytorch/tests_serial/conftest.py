@@ -37,5 +37,3 @@ def pytest_collection_modifyitems(config, items):
 def pytest_sessionstart(session):
     # Builds the custom ops
     subprocess.run(["make"], cwd=Path(__file__).parent.parent.resolve())
-    # Sets the IPUs to wait before attaching.
-    os.environ["POPTORCH_WAIT_FOR_IPU"] = "1"

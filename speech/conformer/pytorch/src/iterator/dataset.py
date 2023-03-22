@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original WeNet repo found here:
 [
     https://github.com/wenet-e2e/wenet/blob/main/wenet/dataset/dataset.py
@@ -20,7 +20,7 @@ This script has been adapted from some of the original WeNet repo found here:
 Main changes:
     modified the dataset function and IPUCollateFn class
     wenet needs to return 5 features, and then here return 6 values, namely target_in and target_out.
-'''
+"""
 
 
 import random
@@ -45,8 +45,8 @@ class Processor(IterableDataset):
         self.source.set_epoch(epoch)
 
     def __iter__(self):
-        """ Return an iterator over the source dataset processed by the
-            given processor.
+        """Return an iterator over the source dataset processed by the
+        given processor.
         """
         assert self.source is not None
         assert callable(self.f)
@@ -79,22 +79,19 @@ class DistributedSampler:
         else:
             self.worker_id = worker_info.id
             self.num_workers = worker_info.num_workers
-        return dict(rank=self.rank,
-                    world_size=self.world_size,
-                    worker_id=self.worker_id,
-                    num_workers=self.num_workers)
+        return dict(rank=self.rank, world_size=self.world_size, worker_id=self.worker_id, num_workers=self.num_workers)
 
     def set_epoch(self, epoch):
         self.epoch = epoch
 
     def sample(self, data):
-        """ Sample data according to rank/world_size/num_workers
+        """Sample data according to rank/world_size/num_workers
 
-            Args:
-                data(List): input data list
+        Args:
+            data(List): input data list
 
-            Returns:
-                List: data list after sample
+        Returns:
+            List: data list after sample
         """
         data = list(range(len(data)))
         # TODO(Binbin Zhang): fix this
@@ -104,8 +101,8 @@ class DistributedSampler:
         if self.partition:
             if self.shuffle:
                 random.Random(self.epoch).shuffle(data)
-            data = data[self.rank::self.world_size]
-        data = data[self.worker_id::self.num_workers]
+            data = data[self.rank :: self.world_size]
+        data = data[self.worker_id :: self.num_workers]
         return data
 
 
@@ -130,65 +127,60 @@ class DataList(IterableDataset):
             yield data
 
 
-def Dataset(data_type,
-            data_list_file,
-            symbol_table,
-            conf,
-            bpe_model=None,
-            non_lang_syms=None,
-            partition=True):
-    """ Construct dataset from arguments
+def Dataset(data_type, data_list_file, symbol_table, conf, bpe_model=None, non_lang_syms=None, partition=True):
+    """Construct dataset from arguments
 
-        We have two shuffle stage in the Dataset. The first is global
-        shuffle at shards tar/raw file level. The second is global shuffle
-        at training samples level.
+    We have two shuffle stage in the Dataset. The first is global
+    shuffle at shards tar/raw file level. The second is global shuffle
+    at training samples level.
 
-        Args:
-            data_type(str): raw/shard
-            bpe_model(str): model for english bpe part
-            partition(bool): whether to do data partition in terms of rank
+    Args:
+        data_type(str): raw/shard
+        bpe_model(str): model for english bpe part
+        partition(bool): whether to do data partition in terms of rank
     """
-    assert data_type in ['raw', 'shard']
+    assert data_type in ["raw", "shard"]
     lists = read_lists(data_list_file)
-    shuffle = conf.get('shuffle', False)
+    shuffle = conf.get("shuffle", False)
     dataset = DataList(lists, shuffle=shuffle, partition=partition)
-    if data_type == 'shard':
+    if data_type == "shard":
         dataset = Processor(dataset, processor.url_opener)
         dataset = Processor(dataset, processor.tar_file_and_group)
     else:
         dataset = Processor(dataset, processor.parse_raw)
 
-    dataset = Processor(dataset, processor.tokenize, symbol_table, bpe_model,
-                        non_lang_syms, conf.get('split_with_space', False))
+    dataset = Processor(
+        dataset, processor.tokenize, symbol_table, bpe_model, non_lang_syms, conf.get("split_with_space", False)
+    )
 
-    resample_conf = conf.get('resample_conf', {})
+    resample_conf = conf.get("resample_conf", {})
     dataset = Processor(dataset, processor.resample, **resample_conf)
 
-    speed_perturb = conf.get('speed_perturb', True)
+    speed_perturb = conf.get("speed_perturb", True)
     if speed_perturb:
         dataset = Processor(dataset, processor.speed_perturb)
 
-    filter_conf = conf.get('filter_conf', {})
+    filter_conf = conf.get("filter_conf", {})
     dataset = Processor(dataset, processor.filter, **filter_conf)
 
-    fbank_conf = conf.get('fbank_conf', {})
+    fbank_conf = conf.get("fbank_conf", {})
     dataset = Processor(dataset, processor.compute_fbank, **fbank_conf)
 
-    spec_aug = conf.get('spec_aug', True)
+    spec_aug = conf.get("spec_aug", True)
     if spec_aug:
-        spec_aug_conf = conf.get('spec_aug_conf', {})
+        spec_aug_conf = conf.get("spec_aug_conf", {})
         dataset = Processor(dataset, processor.spec_aug, **spec_aug_conf)
 
     if shuffle:
-        shuffle_conf = conf.get('shuffle_conf', {})
+        shuffle_conf = conf.get("shuffle_conf", {})
         dataset = Processor(dataset, processor.shuffle, **shuffle_conf)
 
-    sort = conf.get('sort', True)
+    sort = conf.get("sort", True)
     if sort:
-        sort_conf = conf.get('sort_conf', {})
+        sort_conf = conf.get("sort_conf", {})
         dataset = Processor(dataset, processor.sort, **sort_conf)
 
-    batch_conf = conf.get('batch_conf', {})
+    batch_conf = conf.get("batch_conf", {})
     dataset = Processor(dataset, processor.batch, **batch_conf)
     dataset = Processor(dataset, processor.padding)
     return dataset
@@ -206,21 +198,16 @@ class IPUCollateFn:
         batch_size = len(batch)
         feature_length = torch.cat([i[3] for i in batch])
         target_length = torch.cat([(i[4]) for i in batch])
-        padded_feature = torch.zeros(
-            size=[batch_size, self.max_feature_length, batch[0][1].size(2)])
-        padded_target = torch.zeros(
-            size=[batch_size, self.max_target_length], dtype=torch.long)
+        padded_feature = torch.zeros(size=[batch_size, self.max_feature_length, batch[0][1].size(2)])
+        padded_target = torch.zeros(size=[batch_size, self.max_target_length], dtype=torch.long)
         keys = []
         for index, sample in enumerate(batch):
-            padded_feature[index, :sample[1][0].size(0), :] = sample[1][0]
-            padded_target[index, :sample[2][0].size(0)] = sample[2][0]
+            padded_feature[index, : sample[1][0].size(0), :] = sample[1][0]
+            padded_target[index, : sample[2][0].size(0)] = sample[2][0]
             keys.append(sample[0][0])
         keys = torch.as_tensor(keys)
-        target_out = padded_target.scatter(
-            1, target_length.unsqueeze(1).long(), self.eos)
-        target_in = torch.nn.functional.pad(
-            padded_target, (1, 0), mode='constant', value=self.sos
-        )[:, :-1]
+        target_out = padded_target.scatter(1, target_length.unsqueeze(1).long(), self.eos)
+        target_in = torch.nn.functional.pad(padded_target, (1, 0), mode="constant", value=self.sos)[:, :-1]
         if self.dtype == torch.float16:
             padded_feature = padded_feature.half()
         return keys, padded_feature, feature_length, target_in, target_out, target_length + 1

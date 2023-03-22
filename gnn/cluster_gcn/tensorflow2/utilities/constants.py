@@ -27,6 +27,7 @@ class GraphType(Enum):
 
 class MethodMaxNodesEdges(Enum):
     """Method to estimate the maximum number of nodes/edges per batch."""
+
     AVERAGE = auto()
     AVERAGE_PLUS_STD = auto()
     UPPER_BOUND = auto()

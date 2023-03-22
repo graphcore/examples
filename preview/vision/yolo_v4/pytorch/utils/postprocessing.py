@@ -17,7 +17,7 @@ class IPUPredictionsPostProcessing(nn.Module):
         super().__init__()
         self.score_threshold = inference_cfg.class_conf_threshold
         self.pre_nms_topk_k = inference_cfg.pre_nms_topk_k
-        self.max_image_dimension = torch.tensor([4096.])
+        self.max_image_dimension = torch.tensor([4096.0])
         self.nms = Nms(inference_cfg, cpu_mode)
         self.cpu_mode = cpu_mode
         self.testing_preprocessing = testing_preprocessing
@@ -61,7 +61,7 @@ class IPUPredictionsPostProcessing(nn.Module):
             box_shift (torch.Tensor): classes * self.max_image_dimension to shift the boxes
         """
         batch_size = predictions.shape[0]
-        n_classes = (predictions.shape[-1] - 5)
+        n_classes = predictions.shape[-1] - 5
 
         # We get all the info from the predictions
         boxes = xywh_to_xyxy(predictions[..., :4])
@@ -87,7 +87,7 @@ class IPUPredictionsPostProcessing(nn.Module):
             masked_indices = (all_indices * (multiplied_scores > self.score_threshold)).long()
 
             # From the masked indices the % n_classes will be the classes
-            classes = (masked_indices % n_classes)
+            classes = masked_indices % n_classes
             # and // n_classes will be the box position
             box_indices = (masked_indices // n_classes).long()
 
@@ -112,7 +112,6 @@ class IPUPredictionsPostProcessing(nn.Module):
 
             return scores.view(batch_size, -1, n_classes), boxes, 0
 
-
     def nms_postprocessing(self, scores: torch.Tensor, boxes: torch.Tensor, classes: torch.Tensor) -> torch.Tensor:
         """
         Prepares the predictions from NMS to the predictions returned by the model
@@ -126,14 +125,14 @@ class IPUPredictionsPostProcessing(nn.Module):
         if self.cpu_mode:
             # We de-shift the boxes so they are back to their original positions
             box_shift = (classes * self.max_image_dimension).unsqueeze(axis=-1)
-            boxes = (boxes - box_shift)
+            boxes = boxes - box_shift
 
         # We give final shape to out predictions after nms
         return torch.cat((boxes, scores.unsqueeze(axis=-1), classes.unsqueeze(axis=-1).float()), axis=-1)
 
     def forward(self, predictions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Process the predictions from the model using Non Maximum Supression
+        Process the predictions from the model using Non Maximum Suppression
         Parameters:
             predictions (torch.Tensor): predictions from the YOLOv4 inference model
         Returns:
@@ -143,7 +142,9 @@ class IPUPredictionsPostProcessing(nn.Module):
         scores_pre_nms, boxes_pre_nms, classes_pre_nms = self.nms_preprocessing(predictions)
         if self.testing_preprocessing:
             return scores_pre_nms, boxes_pre_nms
-        _, scores, boxes, classes, true_max_detections = self.nms(scores_pre_nms.float(), boxes_pre_nms.float(), classes_pre_nms)
+        _, scores, boxes, classes, true_max_detections = self.nms(
+            scores_pre_nms.float(), boxes_pre_nms.float(), classes_pre_nms
+        )
         predictions = self.nms_postprocessing(scores, boxes, classes)
         return predictions, true_max_detections
 
@@ -207,7 +208,7 @@ def post_process_labels(labels: torch.Tensor, orig_img_sizes: torch.Tensor, cfg:
     processed_labels = []
     for i, label in enumerate(labels):
         # Remove label padding
-        label = label[torch.abs(label.sum(axis=1)) != 0.]
+        label = label[torch.abs(label.sum(axis=1)) != 0.0]
         label = standardize_labels(label, cfg.model.image_size, cfg.model.image_size)
         scaled_boxes = scale_boxes_to_orig(label[:, 1:], orig_img_sizes[i], cfg.model.image_size)
         label[:, 1:] = scaled_boxes

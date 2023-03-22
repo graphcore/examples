@@ -8,7 +8,7 @@ import torch.nn.utils.rnn as rnn_utils
 from torch.utils.data import Dataset, IterableDataset
 from tfrecord.reader import tfrecord_loader
 
-TFRECORD_KEYS = ['input_ids']  # Torch Model Keys
+TFRECORD_KEYS = ["input_ids"]  # Torch Model Keys
 
 
 def expand_glob_files(files):
@@ -52,8 +52,7 @@ class TFRecordPretrainingDataset(IterableDataset):
 
     def __len__(self):
         if getattr(self, "_len", None) is None:
-            pool = multiprocessing.Pool(
-                min(multiprocessing.cpu_count(), len(self.files)))
+            pool = multiprocessing.Pool(min(multiprocessing.cpu_count(), len(self.files)))
             num_samples = pool.map(self.samples_per_file, self.files)
             pool.close()
             pool.join()
@@ -64,10 +63,11 @@ class TFRecordPretrainingDataset(IterableDataset):
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is not None:
             if popdist.isPopdistEnvSet():
-                self.worker_id = worker_info.id + worker_info.num_workers * popdist.getInstanceIndex(
+                self.worker_id = worker_info.id + worker_info.num_workers * popdist.getInstanceIndex()
+                self.shard = (
+                    worker_info.id + worker_info.num_workers * popdist.getInstanceIndex(),
+                    worker_info.num_workers * popdist.getNumInstances(),
                 )
-                self.shard = worker_info.id + worker_info.num_workers * popdist.getInstanceIndex(
-                ), worker_info.num_workers * popdist.getNumInstances()
             else:
                 self.worker_id = worker_info.id
                 self.shard = worker_info.id, worker_info.num_workers
@@ -87,7 +87,9 @@ class TFRecordPretrainingDataset(IterableDataset):
             self.reader = tfrecord_loader(
                 self.files[self.file_index],
                 self.files[self.file_index].replace(".tfrecord", ".index"),
-                list(TFRECORD_KEYS), self.shard)
+                list(TFRECORD_KEYS),
+                self.shard,
+            )
             self.file_index += 1
             datum = next(self.reader)
         input_ids = torch.tensor(datum[TFRECORD_KEYS[0]], dtype=torch.long)
@@ -102,7 +104,7 @@ class MyDataset(Dataset):
     def __getitem__(self, index):
         input_ids = self.input_list[index]
         if len(input_ids) > self.max_len:
-            input_ids = input_ids[:self.max_len]
+            input_ids = input_ids[: self.max_len]
         input_ids = torch.tensor(input_ids, dtype=torch.long)
         return input_ids
 
@@ -119,13 +121,9 @@ def load_dataset(input_files):
 
 
 def collate_fn(batch):
-    input_ids = rnn_utils.pad_sequence(batch,
-                                       batch_first=True,
-                                       padding_value=0)
-    labels = rnn_utils.pad_sequence(batch,
-                                    batch_first=True,
-                                    padding_value=-100)
-    data = {'input_ids': input_ids[:, :-1], 'labels': labels[:, 1:]}
+    input_ids = rnn_utils.pad_sequence(batch, batch_first=True, padding_value=0)
+    labels = rnn_utils.pad_sequence(batch, batch_first=True, padding_value=-100)
+    data = {"input_ids": input_ids[:, :-1], "labels": labels[:, 1:]}
     return data
 
 

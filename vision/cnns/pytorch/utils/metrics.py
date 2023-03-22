@@ -57,4 +57,4 @@ class Metrics:
         mean_values = []
         for i in range(0, len(values), 2):
             mean_values.append(values[i] / values[i + 1])
-        return mean_values[:len(names)], mean_values[len(names):]
+        return mean_values[: len(names)], mean_values[len(names) :]

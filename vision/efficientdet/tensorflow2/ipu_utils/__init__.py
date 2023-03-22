@@ -56,18 +56,15 @@ def create_app_json(args: argparse.ArgumentParser, config: Config):
     if args.profile_dir is not None:
         arg_vars = vars(args)
 
-        out_dict = {
-            "arguments": arg_vars,
-            "config": config.as_dict()
-        }
+        out_dict = {"arguments": arg_vars, "config": config.as_dict()}
 
         with open(os.path.join(args.profile_dir, "app.json"), "w") as fh:
             json.dump(out_dict, fh, cls=ConfigJsonEncoder)
 
 
-def load_weights_into_model(args: argparse.Namespace,
-                            model: tf.keras.Model,
-                            fp32_weights: Optional[List[tf.Tensor]]=None):
+def load_weights_into_model(
+    args: argparse.Namespace, model: tf.keras.Model, fp32_weights: Optional[List[tf.Tensor]] = None
+):
     if args.model_precision != tf.float16:
         model.load_weights(tf.train.latest_checkpoint(args.model_dir))
     else:
@@ -77,7 +74,7 @@ def load_weights_into_model(args: argparse.Namespace,
 
 def preload_fp32_weights(config: Config, in_shape: Tuple, model_dir: Text) -> List[tf.Tensor]:
     """Create FP32 model, build it and load the latest checkpoint"""
-    K.set_floatx('float32')
+    K.set_floatx("float32")
     fp32_model = efficientdet_keras.EfficientDetNet(config=config)
     fp32_model.build(in_shape)
 
@@ -98,8 +95,7 @@ def set_or_add_env(key: Text, value: Any):
         os.environ[key] = json.dumps(value)
 
 
-def extract_class_box_outputs(step_outputs: Iterable[tf.Tensor]) \
-        -> Tuple[Iterable[tf.Tensor], Iterable[tf.Tensor]]:
+def extract_class_box_outputs(step_outputs: Iterable[tf.Tensor]) -> Tuple[Iterable[tf.Tensor], Iterable[tf.Tensor]]:
     """IPU Keras flattens nested lists to a single list, so we need to manually split
     the outputs back out into classification and bbox outputs"""
     class_outputs = step_outputs[:5]

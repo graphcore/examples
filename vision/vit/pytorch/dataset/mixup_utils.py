@@ -25,11 +25,10 @@ def sample_mixup_coefficients(config, random_generator):
     # need to generate num weight updates lambda coefficients
     coefficients = np.repeat(
         # 1 lambda per weight update
-        random_generator.beta(config.alpha, config.alpha,
-                              size=config.device_iterations),
+        random_generator.beta(config.alpha, config.alpha, size=config.device_iterations),
         # repeat each lambda so there is one per micro batch
-        int(config.samples_per_step / (config.device_iterations * config.micro_batch_size)))
+        int(config.samples_per_step / (config.device_iterations * config.micro_batch_size)),
+    )
     coefficients = coefficients.astype(np.float32, copy=False)
-    coefficients = torch.from_numpy(coefficients.astype(
-        np.float16 if config.precision[:3] == "16." else np.float))
+    coefficients = torch.from_numpy(coefficients.astype(np.float16 if config.precision[:3] == "16." else np.float))
     return coefficients

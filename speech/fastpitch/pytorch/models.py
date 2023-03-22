@@ -33,7 +33,7 @@ from os.path import abspath, dirname
 import torch
 
 # enabling modules discovery from global entrypoint
-sys.path.append(abspath(dirname(__file__)+'/'))
+sys.path.append(abspath(dirname(__file__) + "/"))
 from fastpitch.model import FastPitch as _FastPitch
 from fastpitch.model_jit import FastPitch as _FastPitchJIT
 from tacotron2.model import Tacotron2
@@ -42,14 +42,17 @@ from common.text.symbols import get_symbols, get_pad_idx
 
 
 def parse_model_args(model_name, parser, add_help=False):
-    if model_name == 'Tacotron2':
+    if model_name == "Tacotron2":
         from tacotron2.arg_parser import parse_tacotron2_args
+
         return parse_tacotron2_args(parser, add_help)
-    if model_name == 'WaveGlow':
+    if model_name == "WaveGlow":
         from waveglow.arg_parser import parse_waveglow_args
+
         return parse_waveglow_args(parser, add_help)
-    elif model_name == 'FastPitch':
+    elif model_name == "FastPitch":
         from fastpitch.arg_parser import parse_fastpitch_args
+
         return parse_fastpitch_args(parser, add_help)
     else:
         raise NotImplementedError(model_name)
@@ -72,51 +75,73 @@ def init_bn(module):
         init_bn(child)
 
 
-def get_model(model_name, model_config, device,
-              uniform_initialize_bn_weight=False, forward_is_infer=False,
-              jitable=False):
-    """ Code chooses a model based on name"""
+def get_model(
+    model_name, model_config, device, uniform_initialize_bn_weight=False, forward_is_infer=False, jitable=False
+):
+    """Code chooses a model based on name"""
     model = None
-    if model_name == 'Tacotron2':
+    if model_name == "Tacotron2":
         if forward_is_infer:
+
             class Tacotron2__forward_is_infer(Tacotron2):
                 def forward(self, inputs, input_lengths):
                     return self.infer(inputs, input_lengths)
+
             model = Tacotron2__forward_is_infer(**model_config)
         else:
             model = Tacotron2(**model_config)
 
-    elif model_name == 'WaveGlow':
+    elif model_name == "WaveGlow":
         if forward_is_infer:
+
             class WaveGlow__forward_is_infer(WaveGlow):
                 def forward(self, spect, sigma=1.0):
                     return self.infer(spect, sigma)
+
             model = WaveGlow__forward_is_infer(**model_config)
         else:
             model = WaveGlow(**model_config)
 
-    elif model_name == 'FastPitch':
+    elif model_name == "FastPitch":
         if forward_is_infer:
             if jitable:
+
                 class FastPitch__forward_is_infer(_FastPitchJIT):
-                    def forward(self, inputs, input_lengths, pace: float = 1.0,
-                                dur_tgt: Optional[torch.Tensor] = None,
-                                pitch_tgt: Optional[torch.Tensor] = None,
-                                speaker: int = 0):
-                        return self.infer(inputs, input_lengths, pace=pace,
-                                          dur_tgt=dur_tgt, pitch_tgt=pitch_tgt,
-                                          speaker=speaker)
+                    def forward(
+                        self,
+                        inputs,
+                        input_lengths,
+                        pace: float = 1.0,
+                        dur_tgt: Optional[torch.Tensor] = None,
+                        pitch_tgt: Optional[torch.Tensor] = None,
+                        speaker: int = 0,
+                    ):
+                        return self.infer(
+                            inputs, input_lengths, pace=pace, dur_tgt=dur_tgt, pitch_tgt=pitch_tgt, speaker=speaker
+                        )
+
             else:
+
                 class FastPitch__forward_is_infer(_FastPitch):
-                    def forward(self, inputs, input_lengths, pace: float = 1.0,
-                                dur_tgt: Optional[torch.Tensor] = None,
-                                pitch_tgt: Optional[torch.Tensor] = None,
-                                pitch_transform=None,
-                                speaker: Optional[int] = None):
-                        return self.infer(inputs, input_lengths, pace=pace,
-                                          dur_tgt=dur_tgt, pitch_tgt=pitch_tgt,
-                                          pitch_transform=pitch_transform,
-                                          speaker=speaker)
+                    def forward(
+                        self,
+                        inputs,
+                        input_lengths,
+                        pace: float = 1.0,
+                        dur_tgt: Optional[torch.Tensor] = None,
+                        pitch_tgt: Optional[torch.Tensor] = None,
+                        pitch_transform=None,
+                        speaker: Optional[int] = None,
+                    ):
+                        return self.infer(
+                            inputs,
+                            input_lengths,
+                            pace=pace,
+                            dur_tgt=dur_tgt,
+                            pitch_tgt=pitch_tgt,
+                            pitch_transform=pitch_transform,
+                            speaker=speaker,
+                        )
 
             model = FastPitch__forward_is_infer(**model_config)
         else:
@@ -131,8 +156,8 @@ def get_model(model_name, model_config, device,
 
 
 def get_model_config(model_name, args):
-    """ Code chooses a model based on name"""
-    if model_name == 'Tacotron2':
+    """Code chooses a model based on name"""
+    if model_name == "Tacotron2":
         model_config = dict(
             # optimization
             mask_padding=args.mask_padding,
@@ -166,21 +191,17 @@ def get_model_config(model_name, args):
             decoder_no_early_stopping=args.decoder_no_early_stopping,
         )
         return model_config
-    elif model_name == 'WaveGlow':
+    elif model_name == "WaveGlow":
         model_config = dict(
             n_mel_channels=args.n_mel_channels,
             n_flows=args.flows,
             n_group=args.groups,
             n_early_every=args.early_every,
             n_early_size=args.early_size,
-            WN_config=dict(
-                n_layers=args.wn_layers,
-                kernel_size=args.wn_kernel_size,
-                n_channels=args.wn_channels
-            )
+            WN_config=dict(n_layers=args.wn_layers, kernel_size=args.wn_kernel_size, n_channels=args.wn_channels),
         )
         return model_config
-    elif model_name == 'FastPitch':
+    elif model_name == "FastPitch":
         model_config = dict(
             # io
             n_mel_channels=args.n_mel_channels,
@@ -223,7 +244,7 @@ def get_model_config(model_name, args):
             pitch_embedding_kernel_size=args.pitch_embedding_kernel_size,
             # speakers parameters
             n_speakers=args.n_speakers,
-            speaker_emb_weight=args.speaker_emb_weight
+            speaker_emb_weight=args.speaker_emb_weight,
         )
         return model_config
 

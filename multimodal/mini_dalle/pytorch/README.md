@@ -1,9 +1,9 @@
 # Mini DALL-E
 Mini DALL-E for text-to-image generation, based on the models provided by the [`CompVis`](https://github.com/CompVis/taming-transformers) library and the [lucidrains repo](https://github.com/lucidrains/DALLE-pytorch)
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|-------|
-| Pytorch | Multimodal | Mini DALL-E | | Text-to-image generation | ✅  | ✅ | [Zero-Shot Text-to-Image Generation](https://arxiv.org/abs/2102.12092) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | Multimodal | Mini DALL-E | | Text-to-image generation | <p style="text-align: center;">✅ <br> Min. 4 IPUs (POD4) required  | <p style="text-align: center;">✅ <br> Min. 4 IPUs (POD4) required | [Zero-Shot Text-to-Image Generation](https://arxiv.org/abs/2102.12092) |
 
 
 ## Instructions summary
@@ -25,18 +25,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -50,7 +50,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -81,6 +81,8 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
+
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup
 
@@ -141,7 +143,7 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Other features
 
 ### Text-to-image generation
 To run text-image generation after training, with a checkpoint file (dalle_779.pt here):

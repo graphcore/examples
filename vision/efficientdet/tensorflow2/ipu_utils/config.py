@@ -68,11 +68,14 @@ def ipu_engine_options(args: argparse.ArgumentParser):
 
         get_execution_report = str(not args.skip_execution_report).lower()
 
-        engine_opts = {**engine_opts, **{
-            "autoReport.all": "true",
-            "autoReport.directory": args.profile_dir,
-            "debug.instrument": get_execution_report
-        }}
+        engine_opts = {
+            **engine_opts,
+            **{
+                "autoReport.all": "true",
+                "autoReport.directory": args.profile_dir,
+                "debug.instrument": get_execution_report,
+            },
+        }
 
     if args.opt_internal_exchange_target is not None:
         engine_opts["opt.internalExchangeOptimisationTarget"] = args.opt_internal_exchange_target

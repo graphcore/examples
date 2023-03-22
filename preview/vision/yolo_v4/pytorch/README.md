@@ -57,13 +57,13 @@ make
 
 To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
 Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
@@ -174,7 +174,7 @@ To run inference with the weights:
 python run.py --weights weights/yolov4_p5_reference_weights/yolov4-p5-sd.pt
 ```
 
-### Evalution
+### Evaluation
 
 To compute evaluation metrics run:
 ``` console
@@ -188,7 +188,7 @@ You can use the `--verbose` flag if you want to print the metrics per class. Her
 |  GPU  | 896        | FP16 | all     | 0.44997   | 0.7663 | 0.68663 | 0.49037     |
 |  IPU  | 896        | FP16 | all     | 0.45032   | 0.7674 | 0.68674 | 0.49159     |
 
-We generate the numbers for the GPU by re-running the Scaled-YOLOv4 repo code on an AWS instance. Please note that these numbers are slightly different from what they report in their repo. This is attributed to the `rect` parameter. In their inference, this is set to be `True`. The IPU currently can not support different sized images, and therefore, we set this to `False` in their evaluation in order to draw a fair comparison. In that regard, we do perform at par with SOTA. 
+We generate the numbers for the GPU by re-running the Scaled-YOLOv4 repo code on an AWS instance. Please note that these numbers are slightly different from what they report in their repo. This is attributed to the `rect` parameter. In their inference, this is set to be `True`. The IPU currently can not support different sized images, and therefore, we set this to `False` in their evaluation in order to draw a fair comparison. In that regard, we do perform at par with SOTA.
 
 
 ### Running the tests
@@ -216,5 +216,3 @@ Any checkpoint can be validated with the following command:
 python run.py --weights <path/checkpoint.pt> --epochs 0
 ```
 It loads the pretrained model and skips the training.
-
-

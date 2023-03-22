@@ -4,8 +4,7 @@ import tensorflow as tf
 
 
 class LossScalingFactorLoggerCallback(tf.keras.callbacks.Callback):
-
-    def __init__(self, auto_loss_scaling, name='loss_scaling_factor'):
+    def __init__(self, auto_loss_scaling, name="loss_scaling_factor"):
         super().__init__()
         self.name = name
         self.auto_loss_scaling = auto_loss_scaling

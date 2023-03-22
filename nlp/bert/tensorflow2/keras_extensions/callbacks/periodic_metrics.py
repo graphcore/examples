@@ -3,7 +3,6 @@ from typing import List, Dict
 
 
 class PeriodicMetrics:
-
     def __init__(self, metrics_keys: List[str]):
         self.accumulators = {metric: 0.0 for metric in metrics_keys}
         self.counters = {metric: 0 for metric in metrics_keys}
@@ -15,7 +14,7 @@ class PeriodicMetrics:
 
     def reset(self) -> None:
         for metric in self.accumulators:
-            self.accumulators[metric] = 0.
+            self.accumulators[metric] = 0.0
             self.counters[metric] = 0
 
     def get_normalized(self) -> Dict[str, float]:

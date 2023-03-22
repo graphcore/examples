@@ -44,17 +44,23 @@ if __name__ == "__main__":
     # Warnings for configs where embeddings may not fit
     if config.embedding_serialization_factor == 1:
         if config.replication_factor == 1:
-            logger("[warning] With replication_factor == 1 you may need to set "
-                   "embedding_serialization_factor > 1 for the model to fit")
+            logger(
+                "[warning] With replication_factor == 1 you may need to set "
+                "embedding_serialization_factor > 1 for the model to fit"
+            )
         elif not config.replicated_tensor_sharding:
-            logger("[warning] With replicated_tensor_sharding=False you may need to set "
-                   "embedding_serialization_factor > 1 for the model to fit")
+            logger(
+                "[warning] With replicated_tensor_sharding=False you may need to set "
+                "embedding_serialization_factor > 1 for the model to fit"
+            )
     # prevent overwriting of existing checkpoints
     if checkpoints_exist(config.checkpoint_output_dir):
-        raise RuntimeError("Found previously saved checkpoint(s) at checkpoint-dir. "
-                           "Overwriting checkpoints is not supported. "
-                           "Please specify a different checkpoint-dir to "
-                           "save checkpoints from this run.")
+        raise RuntimeError(
+            "Found previously saved checkpoint(s) at checkpoint-dir. "
+            "Overwriting checkpoints is not supported. "
+            "Please specify a different checkpoint-dir to "
+            "save checkpoints from this run."
+        )
 
     # When using the packed sequence data format, the number of mask_tokens is
     # increased by the number of sequences per pack - 1.
@@ -68,7 +74,7 @@ if __name__ == "__main__":
     if config.wandb and (not config.use_popdist or config.popdist_rank == 0):
         wandb.init(project="torch-bert", settings=wandb.Settings(console="wrap"))
         wandb_config = vars(config)
-        wandb_config['sdk_version'] = get_sdk_version()
+        wandb_config["sdk_version"] = get_sdk_version()
         wandb.config.update(wandb_config)
 
     # Dataloader
@@ -78,8 +84,10 @@ if __name__ == "__main__":
     steps_per_epoch = len(loader)
     loader = cycle(loader)
     if steps_per_epoch < 1:
-        raise RuntimeError("Not enough data in input_files for current configuration, "
-                           "try reducing deviceIterations or gradientAccumulation.")
+        raise RuntimeError(
+            "Not enough data in input_files for current configuration, "
+            "try reducing deviceIterations or gradientAccumulation."
+        )
     duration_loader = time.perf_counter() - start_loading
     logger(f"Data loaded in {duration_loader} secs")
     logger("-----------------------------------------------------------")
@@ -90,12 +98,21 @@ if __name__ == "__main__":
         config.checkpoint_input_dir = resolve_checkpoint_input_dir(config.checkpoint_input_dir)
         # Load from checkpoint
         if config.packed_data:
-            model = PipelinedPackedBertForPretraining.from_pretrained(config.checkpoint_input_dir, config=config).parallelize().half().train()
+            model = (
+                PipelinedPackedBertForPretraining.from_pretrained(config.checkpoint_input_dir, config=config)
+                .parallelize()
+                .half()
+                .train()
+            )
         else:
-            model = PipelinedBertForPretraining.from_pretrained(config.checkpoint_input_dir, config=config).parallelize().half().train()
+            model = (
+                PipelinedBertForPretraining.from_pretrained(config.checkpoint_input_dir, config=config)
+                .parallelize()
+                .half()
+                .train()
+            )
         optimizer = get_optimizer(config, model)
-        scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
-                                     config.lr_warmup, config.training_steps)
+        scheduler = get_lr_scheduler(optimizer, config.lr_schedule, config.lr_warmup, config.training_steps)
 
         if config.resume_training_from_checkpoint:
             training_state = torch.load(Path(config.checkpoint_input_dir) / "training_state.pt")
@@ -117,8 +134,7 @@ if __name__ == "__main__":
         else:
             model = PipelinedBertForPretraining(config).parallelize().half().train()
         optimizer = get_optimizer(config, model)
-        scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
-                                     config.lr_warmup, config.training_steps)
+        scheduler = get_lr_scheduler(optimizer, config.lr_schedule, config.lr_warmup, config.training_steps)
 
     poptorch_model = trainingModel(model, opts, optimizer=optimizer)
 
@@ -143,8 +159,11 @@ if __name__ == "__main__":
     logger("--------------------- Training Started --------------------")
     factor = config.gradient_accumulation * config.device_iterations
     start_train = time.perf_counter()
-    train_iterator = tqdm(range(steps_finished, config.training_steps),
-                          desc="Training", disable=config.disable_progress_bar or (config.use_popdist and not(config.popdist_rank == 0)))
+    train_iterator = tqdm(
+        range(steps_finished, config.training_steps),
+        desc="Training",
+        disable=config.disable_progress_bar or (config.use_popdist and not (config.popdist_rank == 0)),
+    )
     for step in train_iterator:
         start_step = time.perf_counter()
         outputs = poptorch_model(*next(loader))
@@ -161,7 +180,8 @@ if __name__ == "__main__":
                 f"mlm_loss: {outputs_sync[1]:3.3f} - "
                 f"nsp_loss: {outputs_sync[2]:3.3f} - "
                 f"mlm_acc: {outputs_sync[3]:3.3f} % - "
-                f"nsp_acc: {outputs_sync[4]:3.3f} %")
+                f"nsp_acc: {outputs_sync[4]:3.3f} %"
+            )
             num_instances = config.popdist_size if config.use_popdist else 1
             if config.packed_data:
                 step_throughput = config.samples_per_step * num_instances / step_length * outputs_sync[5]
@@ -173,14 +193,16 @@ if __name__ == "__main__":
                 logger(f"{train_iterator.desc} {train_iterator.postfix}")
 
             if config.wandb:
-                wandb_log = {"Loss": outputs_sync[0],
-                             "Loss/MLM": outputs_sync[1],
-                             "Loss/NSP": outputs_sync[2],
-                             "Acc/MLM": outputs_sync[3],
-                             "Acc/NSP": outputs_sync[4],
-                             "LR": scheduler.get_last_lr()[0],
-                             "Step": step,
-                             "Throughput": step_throughput}
+                wandb_log = {
+                    "Loss": outputs_sync[0],
+                    "Loss/MLM": outputs_sync[1],
+                    "Loss/NSP": outputs_sync[2],
+                    "Acc/MLM": outputs_sync[3],
+                    "Acc/NSP": outputs_sync[4],
+                    "LR": scheduler.get_last_lr()[0],
+                    "Step": step,
+                    "Throughput": step_throughput,
+                }
                 if config.packed_data:
                     wandb_log.update({"Packing ratio": outputs_sync[5]})
                 wandb.log(wandb_log)
@@ -190,20 +212,30 @@ if __name__ == "__main__":
                         wandb.run.history.torch.log_tensor_stats(parameter.data, name)
 
             if config.checkpoint_steps and (step % config.checkpoint_steps) == 0:
-                save_checkpoint(config, model, step, optimizer,
-                                metrics={"Loss": outputs_sync[0],
-                                         "Acc/MLM": outputs_sync[3],
-                                         "Acc/NSP": outputs_sync[4]})
+                save_checkpoint(
+                    config,
+                    model,
+                    step,
+                    optimizer,
+                    metrics={"Loss": outputs_sync[0], "Acc/MLM": outputs_sync[3], "Acc/NSP": outputs_sync[4]},
+                )
 
         if step + 1 == config.training_steps:
             break  # Training finished mid-epoch
     stop_train = time.perf_counter()
     # Checkpoint at end of run
     if not config.use_popdist or config.popdist_rank == 0:
-        save_checkpoint(config, model, step, optimizer,
-                        metrics={"Loss": outputs[0].mean().item(),
-                                 "Acc/MLM": outputs[3].mean().item(),
-                                 "Acc/NSP": outputs[4].mean().item()})
+        save_checkpoint(
+            config,
+            model,
+            step,
+            optimizer,
+            metrics={
+                "Loss": outputs[0].mean().item(),
+                "Acc/MLM": outputs[3].mean().item(),
+                "Acc/NSP": outputs[4].mean().item(),
+            },
+        )
     logger("-----------------------------------------------------------")
 
     logger("-------------------- Training Metrics ---------------------")

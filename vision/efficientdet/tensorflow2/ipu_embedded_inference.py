@@ -65,8 +65,7 @@ def create_output_path(args):
         tmp_dir = tempfile.mkdtemp()
         poplar_exec_filepath = Path(tmp_dir) / exec_filename
     else:
-        poplar_exec_filepath = Path(
-            args.exec_output_dir) / exec_filename
+        poplar_exec_filepath = Path(args.exec_output_dir) / exec_filename
         poplar_exec_filepath.parent.mkdir(exist_ok=True, parents=True)
     return poplar_exec_filepath
 
@@ -82,14 +81,13 @@ def main(args: argparse.Namespace, exec_path: Path):
     create_app_json(args, config)
 
     ipu_configure(args)
-    in_shape = (args.micro_batch_size, ) + \
-        input_tensor_shape(args, config.image_size)
+    in_shape = (args.micro_batch_size,) + input_tensor_shape(args, config.image_size)
 
     with tf.keras.backend.get_session() as sess:
         K.set_session(sess)
 
         if args.model_precision == tf.float16:
-            set_precision_policy('float16')
+            set_precision_policy("float16")
 
         detnet = efficientdet_keras.EfficientDetNet(config=config)
         detnet.build(in_shape)
@@ -101,35 +99,31 @@ def main(args: argparse.Namespace, exec_path: Path):
         outfeed_queue = ipu.ipu_outfeed_queue.IPUOutfeedQueue(buffer_depth=3)
 
         def step(inputs):
-            cast_input = preprocess_normalize_image(
-                inputs, args.model_precision)
+            cast_input = preprocess_normalize_image(inputs, args.model_precision)
             outputs = detnet(cast_input, training=False)
             if args.onchip_nms:
                 outputs = ipu_postprocessing(config, outputs, scales)
             return outfeed_queue.enqueue([tf.cast(o, args.model_precision) for o in outputs])
 
         def loop():
-            return ipu.loops.repeat(args.benchmark_repeats,
-                                    step,
-                                    infeed_queue=infeed_queue)
+            return ipu.loops.repeat(args.benchmark_repeats, step, infeed_queue=infeed_queue)
 
         init = tf.compat.v1.initialize_all_variables()
         sess.run(init)
         sess.run(infeed_queue.initializer)
 
         compile_op = application_compile_op.experimental_application_compile_op(
-            loop, output_path=str(exec_path), freeze_variables=True)
+            loop, output_path=str(exec_path), freeze_variables=True
+        )
 
         sess.run(compile_op)
 
         inputs = []
         engine_name = args.model_name + "_engine"
-        ctx = embedded_runtime.embedded_runtime_start(str(exec_path), inputs,
-                                                      engine_name)
+        ctx = embedded_runtime.embedded_runtime_start(str(exec_path), inputs, engine_name)
 
         input_placeholder = tf.placeholder(tf.uint8, shape=in_shape)
-        call_result = embedded_runtime.embedded_runtime_call(
-            [input_placeholder], ctx)
+        call_result = embedded_runtime.embedded_runtime_call([input_placeholder], ctx)
 
         with tf.Session() as sess:
             logging.info("Warmup run...")
@@ -150,8 +144,7 @@ def main(args: argparse.Namespace, exec_path: Path):
                     for i in range(args.benchmark_repeats):
                         with pvti.Tracepoint(channel, f"session_run_{i}"):
                             st = time.perf_counter()
-                            output = sess.run(call_result,
-                                              feed_dict={input_placeholder: input_data[i]})
+                            output = sess.run(call_result, feed_dict={input_placeholder: input_data[i]})
                             nd = time.perf_counter()
 
                         step_time_s = nd - st
@@ -164,13 +157,14 @@ def main(args: argparse.Namespace, exec_path: Path):
 
                 mean_throughput, mean_latency = result.get_stats(safe_mean)
 
-                logging.info(f"End of repeat. Avg latency: {mean_latency:.2f}ms, "
-                             f"Avg per-step FPS: {mean_throughput:.2f}")
+                logging.info(
+                    f"End of repeat. Avg latency: {mean_latency:.2f}ms, " f"Avg per-step FPS: {mean_throughput:.2f}"
+                )
 
             BenchmarkResult.print_report(all_results)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ert_args, remaining_args = parse_embedded_rt_args()
     args = parse_args(remaining_args)
     logging.info(args)

@@ -5,12 +5,10 @@ import tensorflow as tf
 from tensorflow.python import ipu
 
 
-def wrap_loss_in_enqueuer(obj_class: Type[tf.keras.losses.Loss],
-                          loss_outfeed_queue: ipu.ipu_outfeed_queue.IPUOutfeedQueue
-                          ) -> Type[tf.keras.losses.Loss]:
-
+def wrap_loss_in_enqueuer(
+    obj_class: Type[tf.keras.losses.Loss], loss_outfeed_queue: ipu.ipu_outfeed_queue.IPUOutfeedQueue
+) -> Type[tf.keras.losses.Loss]:
     class OutfeedEnqueuer(obj_class):
-
         def __init__(self, *args, **kwargs):
             super(OutfeedEnqueuer, self).__init__(*args, **kwargs)
             self.loss_outfeed_queue = loss_outfeed_queue
@@ -28,9 +26,7 @@ def wrap_loss_in_allreduce_enqueuer(
     outfeed_queue: ipu.ipu_outfeed_queue.IPUOutfeedQueue,
     num_replicas: int,
 ) -> Type[tf.keras.losses.Loss]:
-
     class AllReduceEnqueuer(obj_class):
-
         def __init__(self, *args, **kwargs):
             super(AllReduceEnqueuer, self).__init__(*args, **kwargs)
             self.outfeed_queue = outfeed_queue
@@ -45,12 +41,10 @@ def wrap_loss_in_allreduce_enqueuer(
     return AllReduceEnqueuer
 
 
-def wrap_loss_in_pred_enqueuer(obj_class: Type[tf.keras.losses.Loss],
-                               pred_outfeed_queue: ipu.ipu_outfeed_queue.IPUOutfeedQueue
-                               ) -> Type[tf.keras.losses.Loss]:
-
+def wrap_loss_in_pred_enqueuer(
+    obj_class: Type[tf.keras.losses.Loss], pred_outfeed_queue: ipu.ipu_outfeed_queue.IPUOutfeedQueue
+) -> Type[tf.keras.losses.Loss]:
     class PredOutfeedEnqueuer(obj_class):
-
         def __init__(self, *args, **kwargs):
             super(PredOutfeedEnqueuer, self).__init__(*args, **kwargs)
             self.pred_outfeed_queue = pred_outfeed_queue
@@ -63,12 +57,10 @@ def wrap_loss_in_pred_enqueuer(obj_class: Type[tf.keras.losses.Loss],
     return PredOutfeedEnqueuer
 
 
-def wrap_loss_in_label_enqueuer(obj_class: Type[tf.keras.losses.Loss],
-                                label_outfeed_queue: ipu.ipu_outfeed_queue.IPUOutfeedQueue
-                                ) -> Type[tf.keras.losses.Loss]:
-
+def wrap_loss_in_label_enqueuer(
+    obj_class: Type[tf.keras.losses.Loss], label_outfeed_queue: ipu.ipu_outfeed_queue.IPUOutfeedQueue
+) -> Type[tf.keras.losses.Loss]:
     class LabelOutfeedEnqueuer(obj_class):
-
         def __init__(self, *args, **kwargs):
             super(LabelOutfeedEnqueuer, self).__init__(*args, **kwargs)
             self.label_outfeed_queue = label_outfeed_queue

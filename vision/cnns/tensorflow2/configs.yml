@@ -65,7 +65,7 @@ resnet8_16ipus_bn: &resnet8_16ipus_bn
   stochastic-rounding: 'ON'
   eight-bit-transfer: True
   l2-regularization: 0.0001
-  accelerator-side-preprocess: True 
+  accelerator-side-preprocess: True
 
 resnet50_16ipus_16k_bn_pipeline:
   <<: *imagenet
@@ -74,13 +74,13 @@ resnet50_16ipus_16k_bn_pipeline:
   recomputation: True
   logs-per-epoch: 1
   eight-bit-transfer: True
-  accelerator-side-preprocess: True 
+  accelerator-side-preprocess: True
   num-epochs: 100
   validation: True
   micro-batch-size: 16
   global-batch-size: 16384
-  num-replicas: 4 
-  optimizer-params: 
+  num-replicas: 4
+  optimizer-params:
     'momentum': 0.9
   pipeline-schedule: Grouped
   pipeline-splits: [
@@ -117,7 +117,7 @@ resnet50_16ipus_8k_bn_pipeline: &resnet50_16ipus_8k_bn_pipeline
   logs-per-epoch: 1
   eight-bit-transfer: True
   accelerator-side-preprocess: True
-  optimizer-params: 
+  optimizer-params:
     'momentum': 0.9
   loss-scaling: 128
   l2-regularization: 0.0001
@@ -137,12 +137,12 @@ resnet50_16ipus_8k_bn_pipeline: &resnet50_16ipus_8k_bn_pipeline
     'warmup_epochs': 5
   lr-staircase: True
 
-resnet56_16ipus_8k_bn_pipeline: 
+resnet56_16ipus_8k_bn_pipeline:
   <<: *resnet50_16ipus_8k_bn_pipeline
   model: cifar_resnet56
   available-memory-proportion: [13.5]
   micro-batch-size: 16
-  pipeline-validation-model: True 
+  pipeline-validation-model: True
   pipeline-splits: [
     conv2_block4_post_addition_relu,
     conv2_block7_post_addition_relu,
@@ -162,7 +162,7 @@ resnet50_mlperf_bs16: &resnet50_mlperf_bs16
   loss-scaling: 128
   num-replicas: 16
   optimizer: sgd
-  optimizer-params: 
+  optimizer-params:
     'momentum': 0.9
   num-epochs: 44
   l2-regularization: 2.5e-05
@@ -201,7 +201,7 @@ resnet50_mlperf_bs16: &resnet50_mlperf_bs16
   ckpts-per-epoch: 1/4
   validation-micro-batch-size: 108
 
-resnet50_mlperf_pod16_bs20:
+resnet50_mlperf_pod16_bs20: &resnet50_mlperf_pod16_bs20
   <<: *resnet50_mlperf_bs16
   micro-batch-size: 20
   global-batch-size: 1920
@@ -218,9 +218,13 @@ resnet50_mlperf_pod16_bs20:
   device-mapping: [0, 0, 0, 0, 0, 0, 0]
   validation-micro-batch-size: 115
 
+resnet50_mlperf_pod4_bs20:
+  <<: *resnet50_mlperf_pod16_bs20
+  num-replicas: 4
+  global-batch-size: 480
+
 resnet50_mlperf_pod16_lars: &resnet50_mlperf_pod16_lars
-  <<: *imagenet
-  <<: *resnet50_mlperf_bs16
+  <<: [*imagenet, *resnet50_mlperf_bs16]
   micro-batch-size: 18
   global-batch-size: 3520
   pipeline-splits: [
@@ -251,13 +255,12 @@ resnet50_mlperf_pod16_lars: &resnet50_mlperf_pod16_lars
   first-ckpt-epoch: 2
   max-reduce-many-buffer-size: 216
 
-resnet50_infer_bs1: &resnet50_infer_bs1
-  <<: *imagenet
+resnet50_infer_base: &resnet50_infer_base
   model-name: resnet50
   micro-batch-size: 1
   global-batch-size: 1
   optimizer: sgd
-  optimizer-params: 
+  optimizer-params:
     'momentum': 0.9
   num-epochs: 1
   l2-regularization: 2.5e-05
@@ -265,7 +268,7 @@ resnet50_infer_bs1: &resnet50_infer_bs1
   lr-schedule-params:
     'initial_learning_rate': 0.001991319444444
     'epochs_to_total_decay': 39
-    'end_learning_rate_ratio': 0.0000218 
+    'end_learning_rate_ratio': 0.0000218
     'power': 2
   lr-warmup-params:
     'warmup_mode': 'shift'
@@ -286,18 +289,18 @@ resnet50_infer_bs1: &resnet50_infer_bs1
   min-remote-tensor-size: 128
   fused-preprocessing: True
 
+resnet50_infer_bs1:
+  <<: [*imagenet, *resnet50_infer_base]
+
 resnet50_infer_bs16:
-  <<: *imagenet
-  <<: *resnet50_infer_bs1
+  <<: [*imagenet, *resnet50_infer_base]
   micro-batch-size: 16
   global-batch-size: 16
 
 resnet50_infer_bs32:
-  <<: *imagenet
-  <<: *resnet50_infer_bs1
+  <<: [*imagenet, *resnet50_infer_base]
   micro-batch-size: 32
   global-batch-size: 32
 
 resnet50_infer_test:
-  <<: *resnet50_infer_bs1
-  <<: *cifar10
+  <<: [*imagenet, *resnet50_infer_base]

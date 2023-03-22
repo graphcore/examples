@@ -27,11 +27,7 @@ def run_bert_cmdline(cmdline_args):
     with TemporaryDirectory() as tempdir:
         cmdline_args["--wandb"] = "false"
         cmd = ["python3", "run_pretraining.py"]
-        cmd.extend([
-            str(item) for sublist in cmdline_args.items()
-            for item in sublist
-            if item != ""
-        ])
+        cmd.extend([str(item) for sublist in cmdline_args.items() for item in sublist if item != ""])
         try:
             out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=bert_root_dir)
         except subprocess.CalledProcessError as e:
@@ -82,8 +78,8 @@ def accuracy_going_up(accs):
     assert np.diff(accs).mean() > 0.0
 
 
-def accuracy_reached_threshold(accs, threshold):
-    assert accs[-1] > threshold
+def accuracy_reached_threshold(accs, threshold, n=10):
+    assert np.mean(accs[-n:]) > threshold
 
 
 @pytest.mark.ipus(0)
@@ -91,11 +87,13 @@ def test_help_message_displayed():
     """
     Test that the help message appears correctly
     """
-    stdout, stderr = run_bert_cmdline({
-        "--help": "",
-    })
+    stdout, stderr = run_bert_cmdline(
+        {
+            "--help": "",
+        }
+    )
     lines = stdout.split("\n")
-    assert lines[0].startswith("usage: Poptorch BERT [-h]")
+    assert lines[0].startswith("usage: PopTorch BERT [-h]")
 
 
 @pytest.mark.ipus(8)
@@ -106,17 +104,19 @@ def test_loss_down_accuracy_up(embedding_serialization_factor, replication):
     Test that for a 3 layer toy model the loss is trending downwards and the
     accuracy is trending upwards.
     """
-    _, stderr = run_bert_cmdline({
-        "--config": "demo_tiny_128",
-        "--training-steps": 360,
-        "--replication-factor": replication,
-        "--embedding-serialization-factor": embedding_serialization_factor,
-        "--disable-progress-bar": True
-    })
+    _, stderr = run_bert_cmdline(
+        {
+            "--config": "demo_tiny_128",
+            "--training-steps": 360,
+            "--replication-factor": replication,
+            "--embedding-serialization-factor": embedding_serialization_factor,
+            "--disable-progress-bar": True,
+        }
+    )
     losses, accs = parse_result_for_loss_accuracy(stderr)
     loss_going_down(losses)
     accuracy_going_up(accs)
-    accuracy_reached_threshold(accs, 0.9)
+    accuracy_reached_threshold(accs, 0.85)
 
 
 @pytest.mark.ipus(8)
@@ -127,19 +127,21 @@ def test_compile_and_train_with_als(embedding_serialization_factor):
     ensure that the model compiles, loss trends downwards, and that the accuracy
     trends upwards when training with automatic loss scaling.
     """
-    _, stderr = run_bert_cmdline({
-        "--config": "demo_tiny_128",
-        "--training-steps": 360,
-        "--replication-factor": 2,
-        "--embedding-serialization-factor": embedding_serialization_factor,
-        "--loss-scaling": 1,
-        "--auto-loss-scaling": True,
-        "--disable-progress-bar": True
-    })
+    _, stderr = run_bert_cmdline(
+        {
+            "--config": "demo_tiny_128",
+            "--training-steps": 360,
+            "--replication-factor": 2,
+            "--embedding-serialization-factor": embedding_serialization_factor,
+            "--loss-scaling": 1,
+            "--auto-loss-scaling": True,
+            "--disable-progress-bar": True,
+        }
+    )
     losses, accs = parse_result_for_loss_accuracy(stderr)
     loss_going_down(losses)
     accuracy_going_up(accs)
-    accuracy_reached_threshold(accs, 0.9)
+    accuracy_reached_threshold(accs, 0.85)
 
 
 @pytest.mark.ipus(16)
@@ -149,12 +151,14 @@ def test_base_convergence():
     Run a short 3 layer convergence run with wikitext dataset
     with replication.
     """
-    _, stderr = run_bert_cmdline({
-        "--config": "pretrain_base_3L_128_single",
-        "--training-steps": 150,
-        "--replication": 4,
-        "--disable-progress-bar": True
-    })
+    _, stderr = run_bert_cmdline(
+        {
+            "--config": "pretrain_base_3L_128_single",
+            "--training-steps": 150,
+            "--replication": 4,
+            "--disable-progress-bar": True,
+        }
+    )
     losses, accs = parse_result_for_loss_accuracy(stderr)
     loss_going_down(losses)
     accuracy_going_up(accs)

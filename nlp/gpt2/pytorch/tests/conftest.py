@@ -26,8 +26,3 @@ def cleanup():
     # Explicitly clean up to make sure we detach from the IPU and
     # free the graph before the next test starts.
     gc.collect()
-
-
-def pytest_sessionstart(session):
-    # Sets the IPUs to wait before attaching.
-    os.environ["POPTORCH_WAIT_FOR_IPU"] = "1"

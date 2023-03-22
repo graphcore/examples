@@ -42,15 +42,10 @@ def assert_result_equals_tensor_value(output, tensor):
 
     contents = first_line[1:-1]
     if not re.match(np_array_str_regex, contents):
-        raise AssertionError(
-            "Expecting numpy representation "
-            "array with dtype "
-            "eg. array([3., 8.], dtype=float32)"
-        )
+        raise AssertionError("Expecting numpy representation " "array with dtype " "eg. array([3., 8.], dtype=float32)")
 
-    assert contents == np.array_repr(tensor), (
-        "Output value {} does not "
-        "equal expected value {}".format(np.array_repr(contents), tensor)
+    assert contents == np.array_repr(tensor), "Output value {} does not " "equal expected value {}".format(
+        np.array_repr(contents), tensor
     )
 
 
@@ -69,7 +64,4 @@ def assert_result_equals_string(output, expected):
             string
     """
 
-    assert output == expected, (
-        "Output string {} does not "
-        "equal expected string {}".format(output, expected)
-    )
+    assert output == expected, "Output string {} does not " "equal expected string {}".format(output, expected)

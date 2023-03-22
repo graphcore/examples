@@ -8,8 +8,7 @@ import traceback
 
 
 def IsModelPathValid(path_candidate):
-    ts_model_configs = glob.glob(
-        path_candidate + '/*/*.pbtxt')
+    ts_model_configs = glob.glob(path_candidate + "/*/*.pbtxt")
     return len(ts_model_configs) > 0
 
 
@@ -28,15 +27,12 @@ def GetModelPath(config, optionsKey):
         if not IsModelPathValid(optionsPath):
             optionsPath = os.path.abspath(config.args[0]) + "/models"
             if not IsModelPathValid(optionsPath):
-                optionsPath = os.path.abspath(
-                    config.args[0]) + "/tritonserver/models"
+                optionsPath = os.path.abspath(config.args[0]) + "/tritonserver/models"
                 if not IsModelPathValid(optionsPath):
-                    optionsPath = str(invParDir) + "/" + \
-                        config.args[0] + "/models"
+                    optionsPath = str(invParDir) + "/" + config.args[0] + "/models"
 
     if not IsModelPathValid(optionsPath):
-        pytest.fail("Model repo path: " +
-                    optionsPath + " doesn't exist!")
+        pytest.fail("Model repo path: " + optionsPath + " doesn't exist!")
 
     return optionsPath
 
@@ -54,7 +50,7 @@ class PoolLogExceptions:
 
 
 class Timeout:
-    def __init__(self, seconds=1, process=None, error_message='Timeout'):
+    def __init__(self, seconds=1, process=None, error_message="Timeout"):
         self.seconds = seconds
         self.error_message = error_message
         self.process = process

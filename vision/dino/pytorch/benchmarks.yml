@@ -81,5 +81,4 @@ pytorch_dino_train_real_pod64_conv:
       --executable-cache-dir $PYTORCH_EXE_DIR
       --wandb
       --wandb-run-name pytorch_dino_train_real_pod64_conv
-
-
+      --checkpoint-output-dir output

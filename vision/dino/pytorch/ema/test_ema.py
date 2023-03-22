@@ -19,17 +19,17 @@ import popart
 
 
 def create_model_and_dataflow_for_training(builder, conf, input, ema_factor):
-    """ builds the conformer model, loss function and dataflow for training """
+    """builds the conformer model, loss function and dataflow for training"""
 
-    weights1 = builder.addInitializedInputTensor(
-        np.ones([conf.input_dim, conf.output_dim], np.float32), "weights1")
-    weights2 = builder.addInitializedInputTensor(
-        np.ones([conf.input_dim, conf.output_dim], np.float32), "weights2")
+    weights1 = builder.addInitializedInputTensor(np.ones([conf.input_dim, conf.output_dim], np.float32), "weights1")
+    weights2 = builder.addInitializedInputTensor(np.ones([conf.input_dim, conf.output_dim], np.float32), "weights2")
 
     exp_avg_weights1 = builder.addInitializedInputTensor(
-        np.ones([conf.input_dim, conf.output_dim], np.float32), "ema_weights1")
+        np.ones([conf.input_dim, conf.output_dim], np.float32), "ema_weights1"
+    )
     exp_avg_weights2 = builder.addInitializedInputTensor(
-        np.ones([conf.input_dim, conf.output_dim], np.float32), "ema_weights2")
+        np.ones([conf.input_dim, conf.output_dim], np.float32), "ema_weights2"
+    )
 
     # The ExpMovAvg op will create new weights tensors with ID prefix "exp_mov_avg_"..
     # These new weight tensors will hold the data for exponential moving
@@ -52,8 +52,9 @@ def create_model_and_dataflow_for_training(builder, conf, input, ema_factor):
         numOutputs=1,
     )
 
-    model_output = builder.aiOnnx.add([builder.aiOnnx.matmul(
-        [input, weights1]), builder.aiOnnx.matmul([input, weights2])])
+    model_output = builder.aiOnnx.add(
+        [builder.aiOnnx.matmul([input, weights1]), builder.aiOnnx.matmul([input, weights2])]
+    )
 
     l1_loss = builder.aiGraphcore.l1loss([model_output], 2.0)
 
@@ -64,25 +65,20 @@ def create_model_and_dataflow_for_training(builder, conf, input, ema_factor):
     proto = builder.getModelProto()
     dataflow = popart.DataFlow(conf.device_iterations, anchor_types_dict)
 
-    return proto, model_output, l1_loss, dataflow, [
-        weights1, weights2], [
-        exp_avg_weights1, exp_avg_weights2]
+    return proto, model_output, l1_loss, dataflow, [weights1, weights2], [exp_avg_weights1, exp_avg_weights2]
 
 
 def add_conf_args():
-    """ define the argument parser object """
+    """define the argument parser object"""
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--batch_size', type=int, default=4,
-                        help="Batch Size")
-    parser.add_argument('--input_dim', type=int, default=512,
-                        help="Input Dimension")
-    parser.add_argument('--output_dim', type=int, default=512,
-                        help="Output Dimension")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch Size")
+    parser.add_argument("--input_dim", type=int, default=512, help="Input Dimension")
+    parser.add_argument("--output_dim", type=int, default=512, help="Output Dimension")
     return parser
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = add_conf_args()
     conf = parser.parse_args()
     conf.device_iterations = 1
@@ -97,22 +93,20 @@ if __name__ == '__main__':
 
     # building model and dataflow
     builder = popart.Builder()
-    model_input = builder.addInputTensor(popart.TensorInfo("FLOAT",
-                                                           [conf.batch_size,
-                                                            conf.input_dim]),
-                                         "test_input")
+    model_input = builder.addInputTensor(popart.TensorInfo("FLOAT", [conf.batch_size, conf.input_dim]), "test_input")
 
-    ema_input = builder.addInputTensor(
-        popart.TensorInfo("FLOAT", [1]), "test_ema")
+    ema_input = builder.addInputTensor(popart.TensorInfo("FLOAT", [1]), "test_ema")
 
     proto, model_output, l1_loss, dataflow, weights, exp_weights = create_model_and_dataflow_for_training(
-        builder, conf, model_input, ema_input)
+        builder, conf, model_input, ema_input
+    )
 
-    optimizer_options = {"defaultLearningRate": (1.0, True),
-                         "defaultMomentum": (0.0, True),
-                         "defaultWeightDecay": (0.0, True),
-                         "lossScaling": (1.0, True),
-                         }
+    optimizer_options = {
+        "defaultLearningRate": (1.0, True),
+        "defaultMomentum": (0.0, True),
+        "defaultWeightDecay": (0.0, True),
+        "lossScaling": (1.0, True),
+    }
 
     optimizer = popart.SGD(optimizer_options)
     for i in exp_weights:
@@ -127,23 +121,26 @@ if __name__ == '__main__':
         session_options.accumulationFactor = conf.gradient_accumulation_factor
 
     session_options.optimizerStateTensorLocationSettings.location.storage = popart.TensorStorage.OffChip
-    session_options.optimizerStateTensorLocationSettings.location.replicatedTensorSharding = popart.ReplicatedTensorSharding.On
+    session_options.optimizerStateTensorLocationSettings.location.replicatedTensorSharding = (
+        popart.ReplicatedTensorSharding.On
+    )
 
     tensor_location_override_dict = dict()
     for wname in weights:
-        tensor_location_override_dict["exp_mov_avg_" +
-                                      wname] = popart.TensorLocation(popart.TensorStorage.OffChip)
+        tensor_location_override_dict["exp_mov_avg_" + wname] = popart.TensorLocation(popart.TensorStorage.OffChip)
     session_options.tensorLocationSettingsOverride = tensor_location_override_dict
 
     device = popart.DeviceManager().acquireAvailableDevice(conf.replication_factor)
 
     # create training session
-    session = popart.TrainingSession(fnModel=proto,
-                                     loss=l1_loss,
-                                     deviceInfo=device,
-                                     optimizer=optimizer,
-                                     dataFlow=dataflow,
-                                     userOptions=session_options)
+    session = popart.TrainingSession(
+        fnModel=proto,
+        loss=l1_loss,
+        deviceInfo=device,
+        optimizer=optimizer,
+        dataFlow=dataflow,
+        userOptions=session_options,
+    )
 
     session.prepareDevice()
 
@@ -151,19 +148,18 @@ if __name__ == '__main__':
     stepio = popart.PyStepIO(
         {
             model_input: np.random.random(
-                (conf.replication_factor *
-                 conf.batch_size *
-                 conf.device_iterations,
-                 conf.gradient_accumulation_factor,
-                 conf.input_dim)).astype(
-                np.float32),
+                (
+                    conf.replication_factor * conf.batch_size * conf.device_iterations,
+                    conf.gradient_accumulation_factor,
+                    conf.input_dim,
+                )
+            ).astype(np.float32),
             ema_input: np.ones(
-                (conf.replication_factor *
-                 conf.device_iterations,
-                 conf.gradient_accumulation_factor,
-                 1)).astype(
-                np.float32) *
-            0.9},
-        anchors)
+                (conf.replication_factor * conf.device_iterations, conf.gradient_accumulation_factor, 1)
+            ).astype(np.float32)
+            * 0.9,
+        },
+        anchors,
+    )
     session.weightsFromHost()
     session.run(stepio)

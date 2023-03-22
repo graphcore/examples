@@ -53,9 +53,7 @@ def run(config):
 
     # Set how the adjacency matrix is expressed,
     # namely dense tensor, sparse tensor, or tuple.
-    adjacency_form_training = get_adjacency_form(
-        config.training.device,
-        config.training.use_sparse_representation)
+    adjacency_form_training = get_adjacency_form(config.training.device, config.training.use_sparse_representation)
 
     # Check if `poprun` has initiated distributed training.
     distributed_training = popdist.isPopdistEnvSet()
@@ -77,10 +75,7 @@ def run(config):
     # Initialise Weights & Biases logging
     # For distributed training, only initialize for instance index 0 to avoid duplicated logging
     if config.wandb and popdist.getInstanceIndex() == 0:
-        wandb.init(entity="sw-apps",
-                   project="TF2-Cluster-GCN",
-                   name=universal_run_name,
-                   config=config.dict())
+        wandb.init(entity="sw-apps", project="TF2-Cluster-GCN", name=universal_run_name, config=config.dict())
 
     logging.info(f"Config: {pformat(config.dict())}")
 
@@ -89,9 +84,7 @@ def run(config):
     tf.keras.mixed_precision.set_global_policy(precision.policy)
 
     # Decide on the dtype of the adjacency matrix
-    adjacency_dtype_training = get_adjacency_dtype(
-        config.training.device,
-        config.training.use_sparse_representation)
+    adjacency_dtype_training = get_adjacency_dtype(config.training.device, config.training.use_sparse_representation)
 
     method_max_edges = get_method_max(config.method_max_edges)
     method_max_nodes = get_method_max(config.method_max_nodes)
@@ -128,7 +121,7 @@ def run(config):
             inter_cluster_ratio=config.inter_cluster_ratio,
             method_max_nodes=method_max_nodes,
             method_max_edges=method_max_edges,
-            node_edge_imbalance_ratio=config.cluster_node_edge_imbalance_ratio
+            node_edge_imbalance_ratio=config.cluster_node_edge_imbalance_ratio,
         )
         training_clusters.cluster_graph()
 
@@ -139,7 +132,8 @@ def run(config):
             clustering_statistics = ClusteringStatistics(
                 training_clusters.adjacency,
                 training_clusters.clusters,
-                num_clusters_per_batch=config.training.clusters_per_batch)
+                num_clusters_per_batch=config.training.clusters_per_batch,
+            )
             clustering_statistics.get_statistics(wandb=config.wandb)
 
         # Create dataset generators for training
@@ -159,10 +153,9 @@ def run(config):
             seed=config.seed,
             prefetch_depth=config.training.dataset_prefetch_depth,
             distributed_worker_count=popdist.getNumInstances(),
-            distributed_worker_index=popdist.getInstanceIndex()
+            distributed_worker_index=popdist.getInstanceIndex(),
         )
-        logging.info(
-            f"Created batch generator for training: {data_generator_training}")
+        logging.info(f"Created batch generator for training: {data_generator_training}")
 
         # Create a batch config object for training to help number of steps etc.
         batch_config_training = BatchConfig(
@@ -176,7 +169,8 @@ def run(config):
             epochs_per_execution=config.training.epochs_per_execution,
             distributed_training=distributed_training,
             num_real_nodes_per_epoch=num_real_nodes_per_epoch,
-            num_epochs=config.training.epochs)
+            num_epochs=config.training.epochs,
+        )
         logging.info(f"Training batch config:\n{batch_config_training}")
 
         # Calculate the number of pipeline stages and the number of required IPUs per replica.
@@ -184,17 +178,23 @@ def run(config):
         num_ipus_per_replica_training = max(config.training.ipu_config.pipeline_device_mapping) + 1
 
         # Create a IPU strategy scopy for training
-        strategy_training_scope = create_ipu_strategy(
-            num_ipus_per_replica=num_pipeline_stages_training,
-            num_replicas=config.training.replicas,
-            distributed_training=distributed_training,
-            matmul_available_memory_proportion=config.training.ipu_config.matmul_available_memory_proportion_per_pipeline_stage[0],
-            matmul_partials_type=precision.matmul_partials_type,
-            compile_only=config.compile_only,
-            enable_recomputation=config.training.ipu_config.enable_recomputation,
-            fp_exceptions=config.fp_exceptions,
-            num_io_tiles=config.training.ipu_config.num_io_tiles
-        ).scope() if config.training.device == "ipu" else tf.device("/cpu:0")
+        strategy_training_scope = (
+            create_ipu_strategy(
+                num_ipus_per_replica=num_pipeline_stages_training,
+                num_replicas=config.training.replicas,
+                distributed_training=distributed_training,
+                matmul_available_memory_proportion=config.training.ipu_config.matmul_available_memory_proportion_per_pipeline_stage[
+                    0
+                ],
+                matmul_partials_type=precision.matmul_partials_type,
+                compile_only=config.compile_only,
+                enable_recomputation=config.training.ipu_config.enable_recomputation,
+                fp_exceptions=config.fp_exceptions,
+                num_io_tiles=config.training.ipu_config.num_io_tiles,
+            ).scope()
+            if config.training.device == "ipu"
+            else tf.device("/cpu:0")
+        )
 
         set_random_seeds(config.seed)
 
@@ -220,7 +220,7 @@ def run(config):
                 inter_cluster_ratio=config.inter_cluster_ratio,
                 method_max_nodes=method_max_nodes,
                 method_max_edges=method_max_edges,
-                node_edge_imbalance_ratio=config.cluster_node_edge_imbalance_ratio
+                node_edge_imbalance_ratio=config.cluster_node_edge_imbalance_ratio,
             )
             live_validation_clusters.cluster_graph()
 
@@ -238,7 +238,7 @@ def run(config):
                 adjacency_dtype=adjacency_dtype_training,
                 adjacency_form=adjacency_form_training,
                 micro_batch_size=config.training.micro_batch_size,
-                seed=config.seed
+                seed=config.seed,
             )
 
             # Create a batch config object for live validation to help number of steps etc.
@@ -249,26 +249,26 @@ def run(config):
                 max_nodes_per_batch=live_validation_clusters.max_nodes_per_batch,
                 executions_per_epoch=config.training.executions_per_epoch,
                 gradient_accumulation_steps_per_replica=config.training.gradient_accumulation_steps_per_replica,
-                num_replicas=config.validation.replicas)
+                num_replicas=config.validation.replicas,
+            )
 
             # Need to ensure steps per epoch is divisible by the training
             # steps per execution the model will be compiled with.
             steps_per_epoch_live_validation = (
-                ((batch_config_live_validation.steps_per_epoch //
-                  batch_config_training.steps_per_execution) + 1) *
-                batch_config_training.steps_per_execution
-            )
+                (batch_config_live_validation.steps_per_epoch // batch_config_training.steps_per_execution) + 1
+            ) * batch_config_training.steps_per_execution
             logging.info(
                 "Steps per epoch for validation during training"
                 f" is {steps_per_epoch_live_validation}. This is to ensure"
                 " it is divisible by the training steps per execution while"
-                " ensuring all nodes are seen.")
+                " ensuring all nodes are seen."
+            )
 
             # kwargs passed to model.fit if live validation is required
             validation_during_training_kwargs = dict(
                 validation_data=data_generator_validation,
                 validation_steps=steps_per_epoch_live_validation,
-                validation_freq=config.training.validation_frequency
+                validation_freq=config.training.validation_frequency,
             )
 
         with strategy_training_scope:
@@ -286,7 +286,7 @@ def run(config):
                 cast_model_inputs_to_dtype=precision.cast_model_inputs_to_dtype,
                 first_layer_precalculation=config.model.first_layer_precalculation,
                 use_ipu_layers=(config.training.device == "ipu"),
-                adjacency_form=adjacency_form_training
+                adjacency_form=adjacency_form_training,
             )
             model_training.summary(print_fn=logging.info)
             # Set the infeed and outfeed options.
@@ -295,17 +295,20 @@ def run(config):
 
             if num_pipeline_stages_training > 1 and config.training.device == "ipu":
                 # Pipeline the model if required
-                pipeline_model(model=model_training,
-                               config=config.training,
-                               pipeline_names=PIPELINE_NAMES,
-                               pipeline_allocate_previous=PIPELINE_ALLOCATE_PREVIOUS,
-                               num_ipus_per_replica=num_ipus_per_replica_training,
-                               matmul_partials_type=precision.matmul_partials_type)
+                pipeline_model(
+                    model=model_training,
+                    config=config.training,
+                    pipeline_names=PIPELINE_NAMES,
+                    pipeline_allocate_previous=PIPELINE_ALLOCATE_PREVIOUS,
+                    num_ipus_per_replica=num_ipus_per_replica_training,
+                    matmul_partials_type=precision.matmul_partials_type,
+                )
             elif config.training.gradient_accumulation_steps_per_replica > 1:
                 # Set gradient accumulation if requested. If the model is pipelined
                 # this is done through the pipeline API above.
                 model_training.set_gradient_accumulation_options(
-                    gradient_accumulation_steps_per_replica=config.training.gradient_accumulation_steps_per_replica)
+                    gradient_accumulation_steps_per_replica=config.training.gradient_accumulation_steps_per_replica
+                )
 
             # Get the loss function and other metrics
             loss, accuracy, f1_score_macro, f1_score_micro = get_loss_and_metrics(
@@ -313,7 +316,8 @@ def run(config):
                 num_labels=dataset.num_labels,
                 adjacency_form=adjacency_form_training,
                 metrics_precision=precision.metrics_precision,
-                enable_loss_outfeed=(config.training.device == "ipu"))
+                enable_loss_outfeed=(config.training.device == "ipu"),
+            )
 
             # Get the optimizer
             optimizer = get_optimizer(
@@ -321,7 +325,7 @@ def run(config):
                 num_replicas=popdist.getNumTotalReplicas() if distributed_training else config.training.replicas,
                 learning_rate=tf.cast(config.training.lr, dtype=tf.float32),
                 loss_scaling=config.training.loss_scaling,
-                optimizer_compute_precision=precision.optimizer_compute_precision
+                optimizer_compute_precision=precision.optimizer_compute_precision,
             )
 
             # Compile the model
@@ -344,7 +348,7 @@ def run(config):
                 executions_per_log=config.executions_per_log,
                 executions_per_ckpt=config.executions_per_ckpt,
                 outfeed_queues=[loss.outfeed_queue],
-                distributed_training=distributed_training
+                distributed_training=distributed_training,
             )
 
             # Train the model
@@ -354,7 +358,7 @@ def run(config):
                 steps_per_epoch=batch_config_training.steps_per_epoch,
                 callbacks=callbacks_training,
                 verbose=0,
-                **validation_during_training_kwargs
+                **validation_during_training_kwargs,
             )
             trained_weights = model_training.get_weights()
             logging.info("Training complete")
@@ -370,12 +374,12 @@ def run(config):
         # Set how the adjacency matrix is expressed,
         # namely dense tensor, sparse tensor, or tuple.
         adjacency_form_validation = get_adjacency_form(
-            config.validation.device,
-            config.validation.use_sparse_representation)
+            config.validation.device, config.validation.use_sparse_representation
+        )
         # Decide on the dtype of the adjacency matrix
         adjacency_dtype_validation = get_adjacency_dtype(
-            config.validation.device,
-            config.validation.use_sparse_representation)
+            config.validation.device, config.validation.use_sparse_representation
+        )
 
         # Cluster the validation graph
         end_validation_clusters = ClusterGraph(
@@ -393,7 +397,7 @@ def run(config):
             inter_cluster_ratio=config.inter_cluster_ratio,
             method_max_nodes=method_max_nodes,
             method_max_edges=method_max_edges,
-            node_edge_imbalance_ratio=config.cluster_node_edge_imbalance_ratio
+            node_edge_imbalance_ratio=config.cluster_node_edge_imbalance_ratio,
         )
         end_validation_clusters.cluster_graph()
 
@@ -411,10 +415,9 @@ def run(config):
             adjacency_dtype=adjacency_dtype_validation,
             adjacency_form=adjacency_form_validation,
             micro_batch_size=config.validation.micro_batch_size,
-            seed=config.seed
+            seed=config.seed,
         )
-        logging.info(
-            f"Created batch generator for validation: {end_data_generator_validation}")
+        logging.info(f"Created batch generator for validation: {end_data_generator_validation}")
 
         # Create a batch config object for validation to help number of steps etc.
         batch_config_end_validation = BatchConfig(
@@ -424,7 +427,8 @@ def run(config):
             max_nodes_per_batch=end_validation_clusters.max_nodes_per_batch,
             executions_per_epoch=config.validation.executions_per_epoch,
             gradient_accumulation_steps_per_replica=config.validation.gradient_accumulation_steps_per_replica,
-            num_replicas=config.validation.replicas)
+            num_replicas=config.validation.replicas,
+        )
         logging.info(f"Validation batch config:\n{batch_config_end_validation}")
 
         # Calculate the number of pipeline stages and the number of required IPUs per replica.
@@ -432,18 +436,24 @@ def run(config):
         num_ipus_per_replica_validation = max(config.validation.ipu_config.pipeline_device_mapping) + 1
 
         # Create a IPU strategy scopy for validation
-        strategy_validation_scope = create_ipu_strategy(
-            num_ipus_per_replica=num_pipeline_stages_validation,
-            num_replicas=config.validation.replicas,
-            matmul_available_memory_proportion=config.validation.ipu_config.matmul_available_memory_proportion_per_pipeline_stage[0],
-            matmul_partials_type=precision.matmul_partials_type,
-            enable_recomputation=config.validation.ipu_config.enable_recomputation,
-            fp_exceptions=config.fp_exceptions,
-            compile_only=config.compile_only,
-            num_io_tiles=config.validation.ipu_config.num_io_tiles
-        ).scope() if config.validation.device == "ipu" else tf.device("/cpu:0")
+        strategy_validation_scope = (
+            create_ipu_strategy(
+                num_ipus_per_replica=num_pipeline_stages_validation,
+                num_replicas=config.validation.replicas,
+                matmul_available_memory_proportion=config.validation.ipu_config.matmul_available_memory_proportion_per_pipeline_stage[
+                    0
+                ],
+                matmul_partials_type=precision.matmul_partials_type,
+                enable_recomputation=config.validation.ipu_config.enable_recomputation,
+                fp_exceptions=config.fp_exceptions,
+                compile_only=config.compile_only,
+                num_io_tiles=config.validation.ipu_config.num_io_tiles,
+            ).scope()
+            if config.validation.device == "ipu"
+            else tf.device("/cpu:0")
+        )
 
-        set_random_seeds(config.seed+1)
+        set_random_seeds(config.seed + 1)
 
         with strategy_validation_scope:
             # Create the model for validation
@@ -460,7 +470,7 @@ def run(config):
                 cast_model_inputs_to_dtype=precision.cast_model_inputs_to_dtype,
                 first_layer_precalculation=config.model.first_layer_precalculation,
                 use_ipu_layers=(config.validation.device == "ipu"),
-                adjacency_form=adjacency_form_validation
+                adjacency_form=adjacency_form_validation,
             )
 
             # Load weights from training model or from checkpoint
@@ -470,17 +480,18 @@ def run(config):
             else:
                 # Load weights from a checkpoint file
                 if not config.load_ckpt_path:
-                    raise ValueError("Training has been skipped but no"
-                                     " checkpoint has been provided.")
+                    raise ValueError("Training has been skipped but no" " checkpoint has been provided.")
                 load_checkpoint_into_model(model_validation, config.load_ckpt_path)
 
             # Pipeline the model if required
             if num_pipeline_stages_validation > 1 and config.validation.device == "ipu":
-                pipeline_model(model=model_validation,
-                               config=config.validation,
-                               pipeline_names=PIPELINE_NAMES,
-                               pipeline_allocate_previous=PIPELINE_ALLOCATE_PREVIOUS,
-                               num_ipus_per_replica=num_ipus_per_replica_validation)
+                pipeline_model(
+                    model=model_validation,
+                    config=config.validation,
+                    pipeline_names=PIPELINE_NAMES,
+                    pipeline_allocate_previous=PIPELINE_ALLOCATE_PREVIOUS,
+                    num_ipus_per_replica=num_ipus_per_replica_validation,
+                )
 
             # Get the loss function and other metrics
             _, accuracy, f1_score_macro, f1_score_micro = get_loss_and_metrics(
@@ -488,24 +499,28 @@ def run(config):
                 num_labels=dataset.num_labels,
                 adjacency_form=adjacency_form_validation,
                 metrics_precision=precision.metrics_precision,
-                enable_loss_outfeed=False)
+                enable_loss_outfeed=False,
+            )
 
             # Compile the model
-            model_validation.compile(metrics=[accuracy, f1_score_macro, f1_score_micro],
-                                     steps_per_execution=batch_config_end_validation.steps_per_execution)
+            model_validation.compile(
+                metrics=[accuracy, f1_score_macro, f1_score_micro],
+                steps_per_execution=batch_config_end_validation.steps_per_execution,
+            )
 
             # Run validation
-            results = model_validation.evaluate(end_data_generator_validation,
-                                                steps=batch_config_end_validation.steps_per_epoch,
-                                                verbose=0)
-            logging.info(f"Validation Accuracy: {results[1]},"
-                         f" Validation F1 macro: {results[2]},"
-                         f" Validation F1 micro: {results[3]}")
+            results = model_validation.evaluate(
+                end_data_generator_validation, steps=batch_config_end_validation.steps_per_epoch, verbose=0
+            )
+            logging.info(
+                f"Validation Accuracy: {results[1]},"
+                f" Validation F1 macro: {results[2]},"
+                f" Validation F1 micro: {results[3]}"
+            )
             if config.wandb and popdist.getInstanceIndex() == 0:
                 wandb.log(
-                    dict(validation_acc=results[1],
-                         validation_f1_macro=results[2],
-                         validation_f1_micro=results[3]))
+                    dict(validation_acc=results[1], validation_f1_macro=results[2], validation_f1_micro=results[3])
+                )
             logging.info("Validation complete")
 
     if config.do_test and popdist.getInstanceIndex() == 0:
@@ -517,13 +532,9 @@ def run(config):
 
         # Set how the adjacency matrix is expressed,
         # namely dense tensor, sparse tensor, or tuple.
-        adjacency_form_test = get_adjacency_form(
-            config.test.device,
-            config.test.use_sparse_representation)
+        adjacency_form_test = get_adjacency_form(config.test.device, config.test.use_sparse_representation)
         # Decide on the dtype of the adjacency matrix
-        adjacency_dtype_test = get_adjacency_dtype(
-            config.test.device,
-            config.test.use_sparse_representation)
+        adjacency_dtype_test = get_adjacency_dtype(config.test.device, config.test.use_sparse_representation)
 
         # Cluster the test graph
         test_clusters = ClusterGraph(
@@ -541,7 +552,7 @@ def run(config):
             inter_cluster_ratio=config.inter_cluster_ratio,
             method_max_nodes=method_max_nodes,
             method_max_edges=method_max_edges,
-            node_edge_imbalance_ratio=config.cluster_node_edge_imbalance_ratio
+            node_edge_imbalance_ratio=config.cluster_node_edge_imbalance_ratio,
         )
         test_clusters.cluster_graph()
 
@@ -559,10 +570,9 @@ def run(config):
             adjacency_dtype=adjacency_dtype_test,
             adjacency_form=adjacency_form_test,
             micro_batch_size=config.test.micro_batch_size,
-            seed=config.seed
+            seed=config.seed,
         )
-        logging.info(
-            f"Created batch generator for test: {data_generator_test}")
+        logging.info(f"Created batch generator for test: {data_generator_test}")
 
         # Create a batch config object for test to help number of steps etc.
         batch_config_test = BatchConfig(
@@ -572,7 +582,8 @@ def run(config):
             max_nodes_per_batch=test_clusters.max_nodes_per_batch,
             executions_per_epoch=config.test.executions_per_epoch,
             gradient_accumulation_steps_per_replica=config.test.gradient_accumulation_steps_per_replica,
-            num_replicas=config.test.replicas)
+            num_replicas=config.test.replicas,
+        )
         logging.info(f"Test batch config:\n{batch_config_test}")
 
         # Calculate the number of pipeline stages and the number of required IPUs per replica.
@@ -580,16 +591,22 @@ def run(config):
         num_ipus_per_replica_test = max(config.test.ipu_config.pipeline_device_mapping) + 1
 
         # Create a IPU strategy scopy for test
-        strategy_test_scope = create_ipu_strategy(
-            num_ipus_per_replica=num_pipeline_stages_test,
-            num_replicas=config.test.replicas,
-            matmul_available_memory_proportion=config.test.ipu_config.matmul_available_memory_proportion_per_pipeline_stage[0],
-            matmul_partials_type=precision.matmul_partials_type,
-            compile_only=config.compile_only,
-            enable_recomputation=config.test.ipu_config.enable_recomputation,
-            fp_exceptions=config.fp_exceptions,
-            num_io_tiles=config.test.ipu_config.num_io_tiles
-        ).scope() if config.test.device == "ipu" else tf.device("/cpu:0")
+        strategy_test_scope = (
+            create_ipu_strategy(
+                num_ipus_per_replica=num_pipeline_stages_test,
+                num_replicas=config.test.replicas,
+                matmul_available_memory_proportion=config.test.ipu_config.matmul_available_memory_proportion_per_pipeline_stage[
+                    0
+                ],
+                matmul_partials_type=precision.matmul_partials_type,
+                compile_only=config.compile_only,
+                enable_recomputation=config.test.ipu_config.enable_recomputation,
+                fp_exceptions=config.fp_exceptions,
+                num_io_tiles=config.test.ipu_config.num_io_tiles,
+            ).scope()
+            if config.test.device == "ipu"
+            else tf.device("/cpu:0")
+        )
 
         set_random_seeds(config.seed + 1)
 
@@ -608,7 +625,7 @@ def run(config):
                 cast_model_inputs_to_dtype=precision.cast_model_inputs_to_dtype,
                 first_layer_precalculation=config.model.first_layer_precalculation,
                 use_ipu_layers=(config.test.device == "ipu"),
-                adjacency_form=adjacency_form_test
+                adjacency_form=adjacency_form_test,
             )
 
             # Load weights from training model or from checkpoint
@@ -618,17 +635,18 @@ def run(config):
             else:
                 # Load weights from a checkpoint file
                 if not config.load_ckpt_path:
-                    raise ValueError("Training has been skipped but no"
-                                     " checkpoint has been provided.")
+                    raise ValueError("Training has been skipped but no" " checkpoint has been provided.")
                 load_checkpoint_into_model(model_test, config.load_ckpt_path)
 
             # Pipeline the model if required
             if num_pipeline_stages_test > 1 and config.test.device == "ipu":
-                pipeline_model(model=model_test,
-                               config=config.test,
-                               pipeline_names=PIPELINE_NAMES,
-                               pipeline_allocate_previous=PIPELINE_ALLOCATE_PREVIOUS,
-                               num_ipus_per_replica=num_ipus_per_replica_test)
+                pipeline_model(
+                    model=model_test,
+                    config=config.test,
+                    pipeline_names=PIPELINE_NAMES,
+                    pipeline_allocate_previous=PIPELINE_ALLOCATE_PREVIOUS,
+                    num_ipus_per_replica=num_ipus_per_replica_test,
+                )
 
             # Get the loss function and other metrics
             _, accuracy, f1_score_macro, f1_score_micro = get_loss_and_metrics(
@@ -636,32 +654,29 @@ def run(config):
                 num_labels=dataset.num_labels,
                 adjacency_form=adjacency_form_test,
                 metrics_precision=precision.metrics_precision,
-                enable_loss_outfeed=False)
+                enable_loss_outfeed=False,
+            )
 
             # Compile the model
-            model_test.compile(metrics=[accuracy, f1_score_macro, f1_score_micro],
-                               steps_per_execution=batch_config_test.steps_per_execution)
+            model_test.compile(
+                metrics=[accuracy, f1_score_macro, f1_score_micro],
+                steps_per_execution=batch_config_test.steps_per_execution,
+            )
 
             # Run test
-            results = model_test.evaluate(data_generator_test,
-                                          steps=batch_config_test.steps_per_epoch,
-                                          verbose=0)
+            results = model_test.evaluate(data_generator_test, steps=batch_config_test.steps_per_epoch, verbose=0)
 
-            logging.info(f"Test Accuracy: {results[1]},"
-                         f" Test F1 macro: {results[2]},"
-                         f" Test F1 micro: {results[3]}")
+            logging.info(
+                f"Test Accuracy: {results[1]}," f" Test F1 macro: {results[2]}," f" Test F1 micro: {results[3]}"
+            )
             if config.wandb and popdist.getInstanceIndex() == 0:
-                wandb.log(
-                    dict(test_acc=results[1],
-                         test_f1_macro=results[2],
-                         test_f1_micro=results[3]))
+                wandb.log(dict(test_acc=results[1], test_f1_macro=results[2], test_f1_micro=results[3]))
             logging.info("Test complete")
 
 
 if __name__ == "__main__":
     # Setup logging
-    logging.basicConfig(format="%(asctime)s %(levelname)-8s %(message)s",
-                        datefmt="%Y-%m-%d %H:%M:%S")
+    logging.basicConfig(format="%(asctime)s %(levelname)-8s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
     # Prevent doubling of TF logs.
     tf.get_logger().propagate = False
 

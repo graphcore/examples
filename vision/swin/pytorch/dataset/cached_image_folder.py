@@ -50,10 +50,7 @@ def has_file_allowed_extension(filename, extensions):
 
 
 def find_classes(dir):
-    classes = [
-        d for d in os.listdir(dir) if os.path.isdir(
-            os.path.join(
-                dir, d))]
+    classes = [d for d in os.listdir(dir) if os.path.isdir(os.path.join(dir, d))]
     classes.sort()
     class_to_idx = {classes[i]: i for i in range(len(classes))}
     return classes, class_to_idx
@@ -82,7 +79,7 @@ def make_dataset_with_ann(ann_file, img_prefix, extensions):
     with open(ann_file, "r") as f:
         contents = f.readlines()
         for line_str in contents:
-            path_contents = [c for c in line_str.split('\t')]
+            path_contents = [c for c in line_str.split("\t")]
             im_file_name = path_contents[0]
             class_index = int(path_contents[1])
 
@@ -116,33 +113,34 @@ class DatasetFolder(data.Dataset):
     """
 
     def __init__(
-            self,
-            root,
-            loader,
-            extensions,
-            ann_file='',
-            img_prefix='',
-            transform=None,
-            target_transform=None,
-            cache_mode="no"):
+        self,
+        root,
+        loader,
+        extensions,
+        ann_file="",
+        img_prefix="",
+        transform=None,
+        target_transform=None,
+        cache_mode="no",
+    ):
         # image folder mode
-        if ann_file == '':
+        if ann_file == "":
             _, class_to_idx = find_classes(root)
             samples = make_dataset(root, class_to_idx, extensions)
         # zip mode
         else:
-            samples = make_dataset_with_ann(os.path.join(root, ann_file),
-                                            os.path.join(root, img_prefix),
-                                            extensions)
+            samples = make_dataset_with_ann(os.path.join(root, ann_file), os.path.join(root, img_prefix), extensions)
 
         if len(samples) == 0:
             raise (
                 RuntimeError(
-                    "Found 0 files in subfolders of: " +
-                    root +
-                    "\n" +
-                    "Supported extensions are: " +
-                    ",".join(extensions)))
+                    "Found 0 files in subfolders of: "
+                    + root
+                    + "\n"
+                    + "Supported extensions are: "
+                    + ",".join(extensions)
+                )
+            )
 
         self.root = root
         self.loader = loader
@@ -170,7 +168,7 @@ class DatasetFolder(data.Dataset):
         for index in range(n_sample):
             if index % (n_sample // 10) == 0:
                 t = time.time() - start_time
-                print(f'global_rank {dist.get_rank()} cached {index}/{n_sample} takes {t:.2f}s per block')
+                print(f"global_rank {dist.get_rank()} cached {index}/{n_sample} takes {t:.2f}s per block")
                 start_time = time.time()
             path, target = self.samples[index]
             if self.cache_mode == "full":
@@ -201,21 +199,17 @@ class DatasetFolder(data.Dataset):
         return len(self.samples)
 
     def __repr__(self):
-        fmt_str = 'Dataset ' + self.__class__.__name__ + '\n'
-        fmt_str += '    Number of datapoints: {}\n'.format(self.__len__())
-        fmt_str += '    Root Location: {}\n'.format(self.root)
-        tmp = '    Transforms (if any): '
-        fmt_str += '{0}{1}\n'.format(tmp,
-                                     self.transform.__repr__().replace('\n',
-                                                                       '\n' + ' ' * len(tmp)))
-        tmp = '    Target Transforms (if any): '
-        fmt_str += '{0}{1}'.format(tmp,
-                                   self.target_transform.__repr__().replace('\n',
-                                                                            '\n' + ' ' * len(tmp)))
+        fmt_str = "Dataset " + self.__class__.__name__ + "\n"
+        fmt_str += "    Number of datapoints: {}\n".format(self.__len__())
+        fmt_str += "    Root Location: {}\n".format(self.root)
+        tmp = "    Transforms (if any): "
+        fmt_str += "{0}{1}\n".format(tmp, self.transform.__repr__().replace("\n", "\n" + " " * len(tmp)))
+        tmp = "    Target Transforms (if any): "
+        fmt_str += "{0}{1}".format(tmp, self.target_transform.__repr__().replace("\n", "\n" + " " * len(tmp)))
         return fmt_str
 
 
-IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif']
+IMG_EXTENSIONS = [".jpg", ".jpeg", ".png", ".ppm", ".bmp", ".pgm", ".tif"]
 
 
 def pil_loader(path):
@@ -227,13 +221,14 @@ def pil_loader(path):
         data = ZipReader.read(path)
         img = Image.open(io.BytesIO(data))
     else:
-        with open(path, 'rb') as f:
+        with open(path, "rb") as f:
             img = Image.open(f)
-    return img.convert('RGB')
+    return img.convert("RGB")
 
 
 def accimage_loader(path):
     import accimage
+
     try:
         return accimage.Image(path)
     except IOError:
@@ -243,7 +238,8 @@ def accimage_loader(path):
 
 def default_img_loader(path):
     from torchvision import get_image_backend
-    if get_image_backend() == 'accimage':
+
+    if get_image_backend() == "accimage":
         return accimage_loader(path)
     else:
         return pil_loader(path)
@@ -269,17 +265,16 @@ class CachedImageFolder(DatasetFolder):
     """
 
     def __init__(
-            self,
-            root,
-            ann_file='',
-            img_prefix='',
-            transform=None,
-            target_transform=None,
-            loader=default_img_loader,
-            cache_mode="no"):
-        super(
-            CachedImageFolder,
-            self).__init__(
+        self,
+        root,
+        ann_file="",
+        img_prefix="",
+        transform=None,
+        target_transform=None,
+        loader=default_img_loader,
+        cache_mode="no",
+    ):
+        super(CachedImageFolder, self).__init__(
             root,
             loader,
             IMG_EXTENSIONS,
@@ -287,7 +282,8 @@ class CachedImageFolder(DatasetFolder):
             img_prefix=img_prefix,
             transform=transform,
             target_transform=target_transform,
-            cache_mode=cache_mode)
+            cache_mode=cache_mode,
+        )
         self.imgs = self.samples
 
     def __getitem__(self, index):

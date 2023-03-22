@@ -5,7 +5,6 @@ from tensorflow.python import ipu
 
 
 class DebugCallback(tf.keras.callbacks.Callback):
-
     def __init__(self, queue: ipu.ipu_outfeed_queue.IPUOutfeedQueue, name: str):
         self._queue = queue
         self.name = name
@@ -19,4 +18,4 @@ class DebugCallback(tf.keras.callbacks.Callback):
     def dequeue_data(self):
         if self._queue.enqueued:
             value = self._queue.dequeue()
-            print(f'{self.name}: {value}')
+            print(f"{self.name}: {value}")

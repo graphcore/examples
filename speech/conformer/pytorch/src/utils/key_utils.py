@@ -14,16 +14,17 @@
 
 import string
 
+
 class AishellKeyMapper:
     """
-    Mapper for aishell keys of the form BAC009S0723W0395 to integers. This 
-    is needed in order to be compatible with the poptorch dataloader that 
+    Mapper for aishell keys of the form BAC009S0723W0395 to integers. This
+    is needed in order to be compatible with the poptorch dataloader that
     requires 1D flat container of tensor (so list[str] is not allowed).
 
-    The function enocde() removes characters [BAC00SW] from keys so that 
+    The function encode() removes characters [BAC00SW] from keys so that
     an integer is left
 
-    The function decode() adds these characters back to retrieve the original 
+    The function decode() adds these characters back to retrieve the original
     key
     """
 

@@ -27,26 +27,8 @@ synth_options: &synth_options
 
 config_options: &config_options
   requirements_path: requirements.txt
-  required_apt_packages_path: required_apt_packages.txt 
+  required_apt_packages_path: required_apt_packages.txt
   pre_run_commands: [make install, make install-turbojpeg]
-
-pytorch_resnet50_infer_synth_pod4:
-  <<: [*synth_options, *config_options]
-  description: |
-    Resnet50 micro-batch-sizes 1 to 80 inference on 4 IPUs using synthetic data
-    created on the IPU
-  parameters:
-    batchsize: 1,4,16,32,64,80
-  cmd: >-
-    poprun
-      -vv
-      --num-instances=4
-      --num-replicas=4
-    python3 run_benchmark.py
-      --config resnet50
-      --data synthetic
-      --micro-batch-size {batchsize}
-      --iterations 100
 
 pytorch_resnet50_infer_gen_pod4:
   <<: [*common_options, *regex_options, *config_options]
@@ -65,7 +47,7 @@ pytorch_resnet50_infer_gen_pod4:
       --config resnet50
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 100
+      --iterations 20
       --num-io-tiles 64
 
 pytorch_resnet50_minlatency_infer_gen_pod4:
@@ -87,68 +69,10 @@ pytorch_resnet50_minlatency_infer_gen_pod4:
       --config resnet50
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 200
+      --iterations 20
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
     POPDIST_RUN_DISABLE_SYNC: '1'
-
-
-pytorch_resnext101_infer_gen_pod4:
-  <<: [*common_options, *regex_options, *config_options]
-  description: |
-    PyTorch Resnext101 micro-batch-sizes 1 to 16 inference on 4 IPUs using data
-    generated on the host.
-  parameters:
-    batchsize: 1,2,4,8,16
-  cmd: >-
-    poprun
-      -vv
-      --mpi-local-args="-x POPLAR_RUNTIME_OPTIONS"
-      --num-instances=4
-      --num-replicas=4
-    python3 run_benchmark.py
-      --data generated
-      --micro-batch-size {batchsize}
-      --model resnext101
-      --device-iterations 128
-      --norm-type batch
-      --precision 16.16
-      --half-partial
-      --eight-bit-io
-      --normalization-location ipu
-      --iterations 200
-      --num-io-tiles 32
-
-pytorch_resnext101_minlatency_infer_gen_pod4:
-  <<: [*common_options, *regex_options, *config_options]
-  description: |
-    PyTorch Resnext101 micro-batch-sizes 1 to 4 inference on 4 IPUs using data
-    generated on the host with minimum latency.
-  parameters:
-    batchsize: 1,2,4
-  cmd: >-
-    poprun
-      -vv
-      --mpi-local-args="
-        -x POPLAR_RUNTIME_OPTIONS
-        -x POPLAR_ENGINE_OPTIONS"
-      --num-instances=4
-      --num-replicas=4
-    python3 run_benchmark.py
-      --data generated
-      --micro-batch-size {batchsize}
-      --model resnext101
-      --device-iterations 128
-      --norm-type batch
-      --precision 16.16
-      --half-partial
-      --eight-bit-io
-      --normalization-location ipu
-      --iterations 200
-  env:
-    POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
-    POPDIST_RUN_DISABLE_SYNC: '1'
-
 
 pytorch_efficientnet_b0_infer_gen_pod4:
   <<: [*common_options, *regex_options, *config_options]
@@ -167,7 +91,7 @@ pytorch_efficientnet_b0_infer_gen_pod4:
       --config efficientnet-b0
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 200
+      --iterations 20
       --num-io-tiles 64
       --dataloader-worker 16
 
@@ -190,12 +114,10 @@ pytorch_efficientnet_b0_minlatency_infer_gen_pod4:
       --config efficientnet-b0
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 200
+      --iterations 20
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
     POPDIST_RUN_DISABLE_SYNC: '1'
-
-
 
 pytorch_efficientnet_b0_gn_infer_gen_pod4:
   <<: [*common_options, *regex_options, *config_options]
@@ -214,33 +136,8 @@ pytorch_efficientnet_b0_gn_infer_gen_pod4:
       --config efficientnet-b0-g16-gn
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 200
+      --iterations 20
       --num-io-tiles 64
-
-pytorch_resnext101_minlatency_gn_infer_gen_pod4:
-  <<: [*common_options, *regex_options, *config_options]
-  description: |
-    EfficientNet-B0-G16-GN micro-batch-sizes 1 to 4 inference on 4 IPUs
-    using data generated on the host, configured for min latency
-  parameters:
-    batchsize: 1,2,4
-  cmd: >-
-    poprun
-      -vv
-      --mpi-local-args="
-        -x POPLAR_RUNTIME_OPTIONS
-        -x POPLAR_ENGINE_OPTIONS"
-      --num-instances=4
-      --num-replicas=4
-    python3 run_benchmark.py
-      --config efficientnet-b0-g16-gn
-      --data generated
-      --micro-batch-size {batchsize}
-      --iterations 200
-  env:
-    POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
-    POPDIST_RUN_DISABLE_SYNC: '1'
-
 
 pytorch_efficientnet_b4_infer_gen_pod4:
   <<: [*common_options, *regex_options, *config_options]
@@ -259,7 +156,7 @@ pytorch_efficientnet_b4_infer_gen_pod4:
       --config efficientnet-b4
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 200
+      --iterations 20
       --num-io-tiles 32
 
 pytorch_efficientnet_b4_minlatency_infer_gen_pod4:
@@ -281,11 +178,10 @@ pytorch_efficientnet_b4_minlatency_infer_gen_pod4:
       --config efficientnet-b4
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 200
+      --iterations 20
   env:
     POPLAR_ENGINE_OPTIONS: '{"exchange.enablePrefetch":"false"}'
     POPDIST_RUN_DISABLE_SYNC: '1'
-
 
 pytorch_efficientnet_b4_gn_infer_gen_pod4:
   <<: [*common_options, *regex_options, *config_options]
@@ -304,50 +200,50 @@ pytorch_efficientnet_b4_gn_infer_gen_pod4:
       --config efficientnet-b4-g16-gn
       --data generated
       --micro-batch-size {batchsize}
-      --iterations 200
+      --iterations 20
       --num-io-tiles 32
 
 pytorch_resnet50_tritonserver_infer_real_pod4:
   <<: [*common_options, *regex_options, *config_options]
   description: |
-    Resnet50 in its default configuration (read from configs.yml) 
+    Resnet50 in its default configuration (read from configs.yml)
     which is hosted by Triton server.
   parameters:
     request_type: SYNC,ASYNC
     parallel_processes: 1,4,8
   cmd: >-
-    python3 run_benchmark_with_triton_server.py 
+    python3 run_benchmark_with_triton_server.py
       -s
       -k test_single_model[resnet50-resnet50-RequestType.{request_type}-{parallel_processes}]
       --benchmark_only=true
-      ../tests_serial/tritonserver/
+      ../tests/tritonserver/
 
 pytorch_efficientnet_b0_tritonserver_infer_real_pod4:
   <<: [*common_options, *regex_options, *config_options]
   description: |
-    EfficientNet-b0 in its default configuration (read from configs.yml) 
+    EfficientNet-b0 in its default configuration (read from configs.yml)
     which is hosted by Triton server.
   parameters:
     request_type: SYNC,ASYNC
     parallel_processes: 1,4,8
   cmd: >-
-    python3 run_benchmark_with_triton_server.py 
+    python3 run_benchmark_with_triton_server.py
       -s
       -k test_single_model[efficientnet-b0-efficientnet-b0-RequestType.{request_type}-{parallel_processes}]
       --benchmark_only=true
-      ../tests_serial/tritonserver/
+      ../tests/tritonserver/
 
 pytorch_efficientnet_b4_tritonserver_infer_real_pod4:
   <<: [*common_options, *regex_options, *config_options]
   description: |
-    EfficientNet-b4 in its default configuration (read from configs.yml) 
+    EfficientNet-b4 in its default configuration (read from configs.yml)
     which is hosted by Triton server.
   parameters:
     request_type: SYNC,ASYNC
     parallel_processes: 1,4,8
   cmd: >-
-    python3 run_benchmark_with_triton_server.py 
+    python3 run_benchmark_with_triton_server.py
       -s
       -k test_single_model[efficientnet-b4-efficientnet-b4-RequestType.{request_type}-{parallel_processes}]
       --benchmark_only=true
-      ../tests_serial/tritonserver/
+      ../tests/tritonserver/

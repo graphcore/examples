@@ -1,6 +1,8 @@
 metis==0.2a5
+# Adding numpy to prevent OGB -> Pandas getting numpy>=1.24 which is incompatible with gc-tensorflow
+numpy==1.23.5
 networkx==2.5.1
-ogb==1.3.3
+ogb==1.3.5
 plotly==5.7.0
 pydantic==1.9.0
 pytest==6.2.5
@@ -15,7 +17,8 @@ scikit-learn==0.24.2
 tensorflow-addons==0.14.0
 # Workaround for OGB issue on Python3.9
 --find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.13.0+cu116; python_version >= '3.9'
+torch==1.13.1+cu116; python_version >= '3.9'
 trainlog==0.2
+typeguard==2.13.3
 wandb==0.12.8
 git+https://github.com/graphcore/examples-utils@latest_stable

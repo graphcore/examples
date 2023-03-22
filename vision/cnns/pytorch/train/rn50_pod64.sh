@@ -9,7 +9,7 @@ HOST4=$OCT123.`expr $OCT4 + 3`
 HOSTS=$HOST1,$HOST2,$HOST3,$HOST4
 VIPU_SERVER=${VIPU_SERVER:=$HOST1}
 FIRST_PARTITION=`vipu-admin list partitions --api-host $VIPU_SERVER| grep ACTIVE | cut -d '|' -f 3 | cut -d ' ' -f 2 | head -1`
-PARTITON=${PARTITION:=$FIRST_PARTITION}
+PARTITION=${PARTITION:=$FIRST_PARTITION}
 # POPLAR options saves a bit of memory.
 POPLAR_ENGINE_OPTIONS='{"opt.enableMultiAccessCopies":"false", "target.hostSyncTimeout": 900}' \
 poprun --vv \

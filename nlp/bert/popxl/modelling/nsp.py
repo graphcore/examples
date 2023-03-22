@@ -5,7 +5,9 @@ import popxl
 from popxl import ops
 from popxl.utils import to_numpy
 from transformers.models.bert.modeling_bert import (
-    BertPreTrainingHeads as HFBertPreTrainingHeads, BertPooler as HFBertPooler)
+    BertPreTrainingHeads as HFBertPreTrainingHeads,
+    BertPooler as HFBertPooler,
+)
 from typing import Dict
 
 import popxl_addons as addons
@@ -41,7 +43,7 @@ class BertNSP(addons.Module):
 
     @staticmethod
     def hf_mapping(
-            config: BertConfig, variables: NamedTensors, hf_model: HFBertPreTrainingHeads, hf_model_pooler: HFBertPooler
+        config: BertConfig, variables: NamedTensors, hf_model: HFBertPreTrainingHeads, hf_model_pooler: HFBertPooler
     ) -> Dict[popxl.Tensor, np.ndarray]:
         dtype = config.model.dtype
 

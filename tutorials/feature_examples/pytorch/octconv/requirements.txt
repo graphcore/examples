@@ -1,0 +1,6 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torchvision==0.14.1
+tqdm==4.46.1
+pytest~=6.2
+pytest-pythonpath==0.7.3
+octconv==0.1.0

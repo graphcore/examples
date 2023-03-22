@@ -3,14 +3,11 @@
 from argparse import ArgumentParser, Namespace
 
 from tests.utils import get_app_root_dir
-from utilities.argparser import (add_arguments,
-                                 combine_config_file_with_args,
-                                 merge_args_with_options)
+from utilities.argparser import add_arguments, combine_config_file_with_args, merge_args_with_options
 from utilities.options import Options
 
 
 class TestConfigs:
-
     @classmethod
     def setup_class(cls):
         cls.app_dir = get_app_root_dir()
@@ -31,21 +28,12 @@ class TestConfigs:
 
         for config in train_configs + test_train_configs:
             print(f"Testing config: {config}")
-            combine_config_file_with_args(Namespace(config=config),
-                                          Options)
+            combine_config_file_with_args(Namespace(config=config), Options)
 
 
 def test_merge_args_with_options():
-    args = {"a.b.c": 5,
-            "d": 3,
-            "e.f": "."}
-    config = {"a": {"b": {"c": 6}},
-              "d": 4,
-              "e": {"g": 2},
-              "h": 3}
-    expected_merged_options = {"a": {"b": {"c": 5}},
-                               "d": 3,
-                               "e": {"g": 2, "f": "."},
-                               "h": 3}
+    args = {"a.b.c": 5, "d": 3, "e.f": "."}
+    config = {"a": {"b": {"c": 6}}, "d": 4, "e": {"g": 2}, "h": 3}
+    expected_merged_options = {"a": {"b": {"c": 5}}, "d": 3, "e": {"g": 2, "f": "."}, "h": 3}
     merged_options = merge_args_with_options(args, config)
     assert expected_merged_options == merged_options

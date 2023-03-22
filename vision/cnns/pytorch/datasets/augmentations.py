@@ -7,26 +7,23 @@ class AugmentationModel(torch.nn.Module):
     def __init__(self, model, use_mixup, use_cutmix, args=None):
         super().__init__()
         self.model = model
-        assert use_mixup or use_cutmix, (
-            "AugmentationModel needs to use at least one "
-            "augmentation technique.")
+        assert use_mixup or use_cutmix, "AugmentationModel needs to use at least one " "augmentation technique."
         self.use_mixup = use_mixup
         self.use_cutmix = use_cutmix
         if self.use_mixup:
-            assert args is not None and\
-                hasattr(args, 'mixup_alpha'), (
-                    "If using mixup, mixup_alpha must be defined."
-                )
+            assert args is not None and hasattr(args, "mixup_alpha"), "If using mixup, mixup_alpha must be defined."
             self.mixup_alpha = args.mixup_alpha
 
         if self.use_cutmix:
-            assert args is not None and\
-                hasattr(args, 'cutmix_lambda_low') and\
-                hasattr(args, 'cutmix_lambda_high') and\
-                hasattr(args, 'cutmix_disable_prob'), (
-                    "If using cutmix, cutmix parameters (lambda_low/high "
-                    "and disable_prob) must be passed to the AugmentationModel."
-                )
+            assert (
+                args is not None
+                and hasattr(args, "cutmix_lambda_low")
+                and hasattr(args, "cutmix_lambda_high")
+                and hasattr(args, "cutmix_disable_prob")
+            ), (
+                "If using cutmix, cutmix parameters (lambda_low/high "
+                "and disable_prob) must be passed to the AugmentationModel."
+            )
             if args.cutmix_lambda_low == args.cutmix_lambda_high:
                 self._sample_cutmix = torch.tensor(args.cutmix_lambda_low)
             else:
@@ -76,12 +73,13 @@ class AugmentationModel(torch.nn.Module):
         ys = torch.arange(height)
         xs_mask = (xs >= cut_x1).to(torch.int32) * (xs < cut_x2).to(torch.int32)
         ys_mask = (ys >= cut_y1).to(torch.int32) * (ys < cut_y2).to(torch.int32)
-        mask = (xs_mask * ys_mask.reshape((height, 1)))
+        mask = xs_mask * ys_mask.reshape((height, 1))
 
         coeff = 1.0 - torch.mean(mask.to(torch.float32))
-        batch_cutmixed = torch.where(torch.broadcast_to(mask.to(torch.bool), batch.shape), self._permute(batch, 2), batch)
+        batch_cutmixed = torch.where(
+            torch.broadcast_to(mask.to(torch.bool), batch.shape), self._permute(batch, 2), batch
+        )
         return batch_cutmixed, coeff
-
 
     def _sample_mixup_coefficients(self, batch_size):
         # This sampling method work well only for alpha <= 1.0
@@ -107,12 +105,13 @@ class AugmentationModel(torch.nn.Module):
         Y2 = clip(torch.pow((1.0 - V), 1.0 / self.mixup_alpha))
         XpY = X + Y
         XpY2 = X2 + Y2
-        result = torch.where((XpY <= torch.ones(1, dtype=dtype)) & (XpY > torch.zeros(1, dtype=dtype)), X / XpY, X2 / XpY2)
+        result = torch.where(
+            (XpY <= torch.ones(1, dtype=dtype)) & (XpY > torch.zeros(1, dtype=dtype)), X / XpY, X2 / XpY2
+        )
         # Original image is the foreground image (i.e. coefficient >= 0.5),
         # each image is once an original image and once a target image
         # within the batch.
         return torch.max(result, 1.0 - result)
-
 
     def _sample_cutmix_coeff(self):
         # Cutmix coefficient is the same for all images within a batch and is
@@ -173,10 +172,7 @@ class AugmentationModel(torch.nn.Module):
             weights = [cutmix_coeffs, (1.0 - cutmix_coeffs)]
             return all_labels, weights
 
-        raise ValueError(
-            "AugmentationModel needs to use at least one "
-            "augmentation technique.")
-
+        raise ValueError("AugmentationModel needs to use at least one " "augmentation technique.")
 
     @staticmethod
     def _permute(tensor, shifts):

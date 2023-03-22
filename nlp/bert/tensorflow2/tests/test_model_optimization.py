@@ -15,13 +15,13 @@ from transformers.models.bert.modeling_tf_bert import (
     TFBertEmbeddings,
     TFBertLMPredictionHead,
     TFBertSelfOutput,
-    TFBertSelfAttention
+    TFBertSelfAttention,
 )
 from model.convert_bert_model import (
     copy_weights_layer_with_input_shape_hidden_states_func,
     copy_lm_prediction_head_weights_func,
     copy_self_attention_weights_func,
-    copy_self_output_weights_func
+    copy_self_output_weights_func,
 )
 from model.ipu_custom_keras_layers import IpuDropoutCustom
 from model.ipu_self_output import IpuTFBertSelfOutput
@@ -34,33 +34,23 @@ from keras_extensions.model_transformations import (
     ModelAddRecomputationCheckpoints,
     ModelExpansion,
     ModelOutlining,
-    ModelReplacing
+    ModelReplacing,
 )
-from tests.utils import (
-    create_sample,
-    EmbeddingModel,
-    LMPredictionHeadModel,
-    TFBertSelfOutputModel,
-    SelfAttentionModel
-)
+from tests.utils import create_sample, EmbeddingModel, LMPredictionHeadModel, TFBertSelfOutputModel, SelfAttentionModel
 
 
 class CustomLayer(tf.keras.layers.Layer):
-    def __init__(
-            self,
-            dtype=tf.float32,
-            mock_custom_param=None  # Used to test
-    ):
+    def __init__(self, dtype=tf.float32, mock_custom_param=None):  # Used to test
         super().__init__()
         self.mock_custom_param = mock_custom_param
-        self.dense_1 = Dense(8, activation='relu', dtype=dtype, name='dense_1')
-        self.dropout_1 = Dropout(0.3, name='dropout_1')
-        self.norm_1 = LayerNormalization(axis=0, name='norm_1')
-        self.dense_2 = Dense(24, activation='relu', name='dense_2')
-        self.dropout_2 = Dropout(0.2, name='dropout_2')
-        self.norm_2 = LayerNormalization(axis=(0, 1, 2), name='norm_2')
-        self.dense_3 = Dense(4, activation='softmax', name='dense_3')
-        self.norm_3 = LayerNormalization(axis=(0, 2), name='norm_3')
+        self.dense_1 = Dense(8, activation="relu", dtype=dtype, name="dense_1")
+        self.dropout_1 = Dropout(0.3, name="dropout_1")
+        self.norm_1 = LayerNormalization(axis=0, name="norm_1")
+        self.dense_2 = Dense(24, activation="relu", name="dense_2")
+        self.dropout_2 = Dropout(0.2, name="dropout_2")
+        self.norm_2 = LayerNormalization(axis=(0, 1, 2), name="norm_2")
+        self.dense_3 = Dense(4, activation="softmax", name="dense_3")
+        self.norm_3 = LayerNormalization(axis=(0, 2), name="norm_3")
 
     def call(self, inputs, **kwargs):
         x = self.dense_1(inputs)
@@ -85,7 +75,7 @@ class CustomTFBertEmbeddings(TFBertEmbeddings):
 
 class SimpleCustomLayer(tf.keras.layers.Layer):
     def __init__(self, name=None):
-        self.dense = Dense(8, activation='softmax')
+        self.dense = Dense(8, activation="softmax")
         super().__init__(name=name)
 
     def call(self, inputs, **kwargs):
@@ -94,7 +84,7 @@ class SimpleCustomLayer(tf.keras.layers.Layer):
 
 class SimpleCustomModel(tf.keras.Model):
     def __init__(self):
-        self.dense = tf.keras.layers.Dense(4, activation='softmax')
+        self.dense = tf.keras.layers.Dense(4, activation="softmax")
         super().__init__()
 
     def call(self, inputs, training=None, mask=None):
@@ -113,8 +103,8 @@ def func_model_with_no_dense(batch_size):
 def func_model_with_dense(batch_size):
     input_shape = (4, 32)
     input_layer = tf.keras.Input(shape=input_shape, batch_size=batch_size)
-    x = tf.keras.layers.Dense(32, activation='relu')(input_layer)
-    out = tf.keras.layers.Dense(6, activation='softmax')(x)
+    x = tf.keras.layers.Dense(32, activation="relu")(input_layer)
+    out = tf.keras.layers.Dense(6, activation="softmax")(x)
     model = tf.keras.Model(input_layer, out)
     x_val = tf.random.normal((batch_size, *input_shape))
     return model, x_val
@@ -123,7 +113,7 @@ def func_model_with_dense(batch_size):
 def func_model_with_dense_dropout_and_layer_normalization(batch_size):
     input_shape = (4, 32)
     input_layer = tf.keras.Input(shape=input_shape, batch_size=batch_size)
-    x = tf.keras.layers.Dense(32, activation='relu')(input_layer)
+    x = tf.keras.layers.Dense(32, activation="relu")(input_layer)
     x = tf.keras.layers.Dropout(0.5)(x)
     out = tf.keras.layers.LayerNormalization()(x)
     model = tf.keras.Model(input_layer, out)
@@ -133,8 +123,8 @@ def func_model_with_dense_dropout_and_layer_normalization(batch_size):
 
 def func_model_with_custom_subclass(batch_size):
     input_shape = (3, 13)
-    input_layer = tf.keras.Input(shape=input_shape, batch_size=batch_size, name='input_1')
-    out = CustomLayer(mock_custom_param='Mock!')(input_layer)
+    input_layer = tf.keras.Input(shape=input_shape, batch_size=batch_size, name="input_1")
+    out = CustomLayer(mock_custom_param="Mock!")(input_layer)
     model = tf.keras.Model(input_layer, out)
     x_val = tf.random.normal((batch_size, *input_shape))
     return model, x_val
@@ -142,12 +132,12 @@ def func_model_with_custom_subclass(batch_size):
 
 def func_model_with_multiple_custom_subclass_and_heads(batch_size):
     input_shape = (3, 13)
-    input_layer = tf.keras.Input(shape=input_shape, batch_size=batch_size, name='input_1')
-    x1 = SimpleCustomLayer(name='custom_1')(input_layer)
-    x2 = SimpleCustomLayer(name='custom_2')(input_layer)
-    x = tf.keras.layers.Add(name='add')([x1, x2])
-    out1 = tf.keras.layers.Dense(4, name='out_1')(x)
-    out2 = tf.keras.layers.Dense(5, name='out_2')(x)
+    input_layer = tf.keras.Input(shape=input_shape, batch_size=batch_size, name="input_1")
+    x1 = SimpleCustomLayer(name="custom_1")(input_layer)
+    x2 = SimpleCustomLayer(name="custom_2")(input_layer)
+    x = tf.keras.layers.Add(name="add")([x1, x2])
+    out1 = tf.keras.layers.Dense(4, name="out_1")(x)
+    out2 = tf.keras.layers.Dense(5, name="out_2")(x)
     model = tf.keras.Model(input_layer, [out1, out2])
     x_val = tf.random.normal((batch_size, *input_shape))
     return model, x_val
@@ -206,16 +196,16 @@ def check_replace_layers(to_replace_dict, model_func, model_func_args=dict(), ba
     y = model(x_val)
 
     model_replacing = ModelReplacing(to_replace_dict)
-    new_outputs, _ = model_replacing.get_outputs_processed_model(model, 'all')
+    new_outputs, _ = model_replacing.get_outputs_processed_model(model, "all")
     new_model = tf.keras.Model(model.inputs, new_outputs)
     new_model.compile()
     layers_per_type_2 = count_layers(new_model.submodules)
     y_2 = new_model(x_val)
-    tf.debugging.assert_near(y, y_2, atol=10 ** -decimal)
+    tf.debugging.assert_near(y, y_2, atol=10**-decimal)
     assert len(layers_per_type) == len(layers_per_type_2)
     for t in layers_per_type:
         if t in to_replace_dict:
-            new_class_t = to_replace_dict[t]['new_class']
+            new_class_t = to_replace_dict[t]["new_class"]
             assert layers_per_type[t] == layers_per_type_2[new_class_t]
         else:
             assert layers_per_type[t] == layers_per_type_2[t]
@@ -223,15 +213,29 @@ def check_replace_layers(to_replace_dict, model_func, model_func_args=dict(), ba
         recursive_check_layer(layer, assert_fn)
 
 
-@pytest.mark.parametrize('func, expected_names', [
-    (func_model_with_custom_subclass, [
-        'input_1', 'custom_layer.dense_1', 'custom_layer.dropout_1', 'custom_layer.norm_1', 'custom_layer.dense_2',
-        'custom_layer.dropout_2', 'custom_layer.norm_2', 'custom_layer.dense_3', 'custom_layer.norm_3'
-    ]),
-    (func_model_with_multiple_custom_subclass_and_heads, [
-        'input_1', 'custom_1', 'custom_2', 'add', 'out_1', 'out_2'
-    ])
-])
+@pytest.mark.parametrize(
+    "func, expected_names",
+    [
+        (
+            func_model_with_custom_subclass,
+            [
+                "input_1",
+                "custom_layer.dense_1",
+                "custom_layer.dropout_1",
+                "custom_layer.norm_1",
+                "custom_layer.dense_2",
+                "custom_layer.dropout_2",
+                "custom_layer.norm_2",
+                "custom_layer.dense_3",
+                "custom_layer.norm_3",
+            ],
+        ),
+        (
+            func_model_with_multiple_custom_subclass_and_heads,
+            ["input_1", "custom_1", "custom_2", "add", "out_1", "out_2"],
+        ),
+    ],
+)
 def test_model_expansion(func, expected_names):
     model, x_val = func(batch_size=32)
     expanded_model = ModelExpansion().process_model(CustomLayer, deepcopy(model))
@@ -242,24 +246,26 @@ def test_model_expansion(func, expected_names):
     assert names == expected_names
 
 
-@pytest.mark.parametrize('func', [
-    func_model_with_dense,
-    func_model_with_dense_dropout_and_layer_normalization,
-    func_model_with_no_dense,
-])
+@pytest.mark.parametrize(
+    "func",
+    [
+        func_model_with_dense,
+        func_model_with_dense_dropout_and_layer_normalization,
+        func_model_with_no_dense,
+    ],
+)
 def test_replace_standard_layers(func):
     to_replace_dict = {
         Dense: {
             "new_class": SerialDense,
             "new_params": {"serialization_factor": 2, "serialization_dimension": "kernel_rows"},
-            "copy_weights": True
+            "copy_weights": True,
         },
-        Dropout: {'new_class': IpuDropout},
-        LayerNormalization: {'new_class': IpuLayerNormalization, "copy_weights": True}
+        Dropout: {"new_class": IpuDropout},
+        LayerNormalization: {"new_class": IpuLayerNormalization, "copy_weights": True},
     }
 
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -271,32 +277,31 @@ def test_replace_standard_layers_in_custom_layer():
         Dense: {
             "new_class": SerialDense,
             "new_params": {"serialization_factor": 2, "serialization_dimension": "kernel_rows"},
-            "copy_weights": True
+            "copy_weights": True,
         },
-        Dropout: {'new_class': IpuDropout},
-        LayerNormalization: {'new_class': IpuLayerNormalization}
+        Dropout: {"new_class": IpuDropout},
+        LayerNormalization: {"new_class": IpuLayerNormalization},
     }
 
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
         check_replace_layers(to_replace_dict, func_model_with_custom_subclass)
 
 
-@pytest.mark.parametrize('func', [
-    func_model_with_dense,
-    func_model_with_dense_dropout_and_layer_normalization,
-    func_model_with_no_dense,
-])
+@pytest.mark.parametrize(
+    "func",
+    [
+        func_model_with_dense,
+        func_model_with_dense_dropout_and_layer_normalization,
+        func_model_with_no_dense,
+    ],
+)
 def test_replace_standard_layers_with_extended_keras_layers(func):
-    to_replace_dict = {
-        Dropout: {'new_class': IpuDropoutCustom}
-    }
+    to_replace_dict = {Dropout: {"new_class": IpuDropoutCustom}}
 
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -313,9 +318,9 @@ def test_replace_custom_layer():
 
     to_replace_dict = {
         CustomLayer: {
-            'new_class': CustomLayerFp16,
+            "new_class": CustomLayerFp16,
             "copy_weights": True,
-            "copy_weights_func": copy_weights_custom_layer_fp16
+            "copy_weights_func": copy_weights_custom_layer_fp16,
         }
     }
     check_replace_layers(to_replace_dict, func_model_with_custom_subclass, batch_size=batch_size, decimal=2)
@@ -349,7 +354,6 @@ def test_replace_embeddings():
     model_func_args = {"len_seq": sequence_length, "config": config}
 
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -367,7 +371,6 @@ def test_replace_lm_prediction_head():
     use_prediction_bias = True
     config = BertConfig()
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -376,12 +379,7 @@ def test_replace_lm_prediction_head():
 
         def copy_weights_tf_bert_lm_prediction_head(layer, new_layer):
             copy_lm_prediction_head_weights_func(
-                layer,
-                new_layer,
-                batch_size,
-                sequence_length,
-                use_cls_layer,
-                use_prediction_bias
+                layer, new_layer, batch_size, sequence_length, use_cls_layer, use_prediction_bias
             )
 
         set_random_seeds()
@@ -396,16 +394,11 @@ def test_replace_lm_prediction_head():
                     "serialization_factor": 2,
                 },
                 "copy_weights": True,
-                "copy_weights_func": copy_weights_tf_bert_lm_prediction_head
+                "copy_weights_func": copy_weights_tf_bert_lm_prediction_head,
             },
         }
-        model_func_args = {"len_seq": sequence_length,
-                           "config": config,
-                           "model": model}
-        check_replace_layers(to_replace_dict,
-                             func_model_tf_bert_lm_prediction_head,
-                             model_func_args,
-                             batch_size)
+        model_func_args = {"len_seq": sequence_length, "config": config, "model": model}
+        check_replace_layers(to_replace_dict, func_model_tf_bert_lm_prediction_head, model_func_args, batch_size)
 
 
 @pytest.mark.parametrize("use_qkv_bias_flag, use_qkv_split_flag", [(True, True), (False, True)])
@@ -420,7 +413,6 @@ def test_replace_self_attention(use_qkv_bias_flag, use_qkv_split_flag):
     use_qkv_split = use_qkv_split_flag
     config = BertConfig()
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -432,20 +424,13 @@ def test_replace_self_attention(use_qkv_bias_flag, use_qkv_split_flag):
         to_replace_dict = {
             TFBertSelfAttention: {
                 "new_class": IpuTFBertSelfAttention,
-                "new_params": {
-                    "config": config,
-                    "use_qkv_bias": use_qkv_bias,
-                    "use_qkv_split": use_qkv_split},
+                "new_params": {"config": config, "use_qkv_bias": use_qkv_bias, "use_qkv_split": use_qkv_split},
                 "copy_weights": True,
-                "copy_weights_func": copy_weights_tf_bert_self_attention
+                "copy_weights_func": copy_weights_tf_bert_self_attention,
             },
         }
-        model_func_args = {"len_seq": sequence_length,
-                           "config": config}
-        check_replace_layers(to_replace_dict,
-                             func_model_tf_bert_self_attention,
-                             model_func_args,
-                             batch_size)
+        model_func_args = {"len_seq": sequence_length, "config": config}
+        check_replace_layers(to_replace_dict, func_model_tf_bert_self_attention, model_func_args, batch_size)
 
 
 def test_replace_self_output():
@@ -458,7 +443,6 @@ def test_replace_self_output():
     use_projection_bias = True
     config = BertConfig()
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -475,21 +459,14 @@ def test_replace_self_output():
                     "use_projection_bias": use_projection_bias,
                 },
                 "copy_weights": True,
-                "copy_weights_func": copy_weights_self_output
+                "copy_weights_func": copy_weights_self_output,
             },
         }
-        model_func_args = {"len_seq": sequence_length,
-                           "config": config}
-        check_replace_layers(to_replace_dict,
-                             func_model_tf_bert_self_output,
-                             model_func_args,
-                             batch_size)
+        model_func_args = {"len_seq": sequence_length, "config": config}
+        check_replace_layers(to_replace_dict, func_model_tf_bert_self_output, model_func_args, batch_size)
 
 
-def check_replaced_layers_are_trackable(to_replace_dict,
-                                        model_func,
-                                        model_func_args=dict(),
-                                        batch_size=32):
+def check_replaced_layers_are_trackable(to_replace_dict, model_func, model_func_args=dict(), batch_size=32):
     model, _ = model_func(batch_size=batch_size, **model_func_args)
 
     def append_id(layer, list_of_layers, to_replace_dict, cond):
@@ -500,42 +477,46 @@ def check_replaced_layers_are_trackable(to_replace_dict,
                 append_id(submodule, list_of_layers, to_replace_dict, cond)
 
     list_of_layers_for_replacing = []
-    append_id(model,
-              list_of_layers_for_replacing,
-              to_replace_dict,
-              lambda to_replace_dict, submodule: any(isinstance(submodule, key)
-                                                     for key in to_replace_dict))
+    append_id(
+        model,
+        list_of_layers_for_replacing,
+        to_replace_dict,
+        lambda to_replace_dict, submodule: any(isinstance(submodule, key) for key in to_replace_dict),
+    )
 
     model_replacing = ModelReplacing(to_replace_dict)
-    new_outputs, _ = model_replacing.get_outputs_processed_model(model, 'all')
+    new_outputs, _ = model_replacing.get_outputs_processed_model(model, "all")
     new_model = tf.keras.Model(model.inputs, new_outputs)
 
     list_of_new_layers = []
-    append_id(new_model,
-              list_of_new_layers,
-              to_replace_dict,
-              lambda to_replace_dict, submodule: any(isinstance(submodule, v["new_class"])
-                                                     for v in to_replace_dict.values()))
+    append_id(
+        new_model,
+        list_of_new_layers,
+        to_replace_dict,
+        lambda to_replace_dict, submodule: any(isinstance(submodule, v["new_class"]) for v in to_replace_dict.values()),
+    )
 
     for trackable_reference in new_model._trackable_saver._graph_view._breadth_first_traversal()[0]:
         assert id(trackable_reference) not in list_of_layers_for_replacing
     for new_layer in list_of_new_layers:
-        assert new_layer in [id(t_ref) for t_ref in new_model._trackable_saver._graph_view._breadth_first_traversal()[0]]
+        assert new_layer in [
+            id(t_ref) for t_ref in new_model._trackable_saver._graph_view._breadth_first_traversal()[0]
+        ]
 
 
-@pytest.mark.parametrize("func", [
-    func_model_with_no_dense,
-    func_model_with_dense,
-    func_model_with_custom_subclass,
-    func_model_with_dense_dropout_and_layer_normalization,
-])
+@pytest.mark.parametrize(
+    "func",
+    [
+        func_model_with_no_dense,
+        func_model_with_dense,
+        func_model_with_custom_subclass,
+        func_model_with_dense_dropout_and_layer_normalization,
+    ],
+)
 def test_replaced_standard_layer_is_trackable(func):
-    to_replace_dict = {
-        LayerNormalization: {'new_class': IpuLayerNormalization}
-    }
+    to_replace_dict = {LayerNormalization: {"new_class": IpuLayerNormalization}}
 
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -565,31 +546,32 @@ def test_replaced_custom_layer_is_trackable():
     model_func_args = {"len_seq": sequence_length, "config": config}
 
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
-        check_replaced_layers_are_trackable(to_replace_dict,
-                                            func_model_tf_bert_embeddings,
-                                            model_func_args,
-                                            batch_size)
+        check_replaced_layers_are_trackable(to_replace_dict, func_model_tf_bert_embeddings, model_func_args, batch_size)
 
 
-@pytest.mark.parametrize("func", [
-    func_model_with_no_dense,
-    func_model_with_dense,
-    func_model_with_custom_subclass,
-])
-@pytest.mark.parametrize("to_outline_dict", [
-    {Dense: {"outline_kwargs": {}}, Dropout: {"outline_kwargs": {}}},
-    {Dense: {"outline_kwargs": {"unique_sharding": True}}},
-])
+@pytest.mark.parametrize(
+    "func",
+    [
+        func_model_with_no_dense,
+        func_model_with_dense,
+        func_model_with_custom_subclass,
+    ],
+)
+@pytest.mark.parametrize(
+    "to_outline_dict",
+    [
+        {Dense: {"outline_kwargs": {}}, Dropout: {"outline_kwargs": {}}},
+        {Dense: {"outline_kwargs": {"unique_sharding": True}}},
+    ],
+)
 def test_outline_layer(func, to_outline_dict):
     set_random_seeds()
     batch_size = 32
 
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -599,7 +581,7 @@ def test_outline_layer(func, to_outline_dict):
         y = model.predict(x_val)
 
         model_outlining = ModelOutlining(to_outline_dict)
-        new_outputs, new_names = model_outlining.get_outputs_processed_model(model, 'all')
+        new_outputs, new_names = model_outlining.get_outputs_processed_model(model, "all")
         new_model = tf.keras.Model(model.inputs, new_outputs)
         model_outlining.rename_outputs(new_names, new_model)
         new_model.compile()
@@ -616,21 +598,26 @@ def test_outline_layer(func, to_outline_dict):
         recursive_check_layer(layer, assert_fn)
 
 
-@pytest.mark.parametrize("func", [
-    func_model_with_no_dense,
-    func_model_with_dense,
-    func_model_with_custom_subclass,
-])
-@pytest.mark.parametrize("to_checkpoint", [
-    [Dense, Dropout],
-    [Dense],
-])
+@pytest.mark.parametrize(
+    "func",
+    [
+        func_model_with_no_dense,
+        func_model_with_dense,
+        func_model_with_custom_subclass,
+    ],
+)
+@pytest.mark.parametrize(
+    "to_checkpoint",
+    [
+        [Dense, Dropout],
+        [Dense],
+    ],
+)
 def test_insert_recomputation_checkpoint_after_layer(func, to_checkpoint):
     set_random_seeds()
     batch_size = 32
 
     cfg = ipu.config.IPUConfig()
-    cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
     cfg.configure_ipu_system()
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -640,7 +627,7 @@ def test_insert_recomputation_checkpoint_after_layer(func, to_checkpoint):
         y = model.predict(x_val)
 
         model_outlining = ModelAddRecomputationCheckpoints(to_checkpoint)
-        new_outputs, new_names = model_outlining.get_outputs_processed_model(model, 'all')
+        new_outputs, new_names = model_outlining.get_outputs_processed_model(model, "all")
         new_model = tf.keras.Model(model.inputs, new_outputs)
         model_outlining.rename_outputs(new_names, new_model)
         new_model.compile()

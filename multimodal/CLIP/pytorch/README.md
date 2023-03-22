@@ -1,9 +1,9 @@
 # CLIP
 CLIP (ViT-B/32) based on the models provided by the [openai-CLIP](https://github.com/openai/CLIP) models, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|-------|
-| Pytorch | Vision | CLIP | Conceptual Captions (cc3m), Imagenet LSVRC 2012, CIFAR-100 | Image recognition | ✅  | ❌ | [Learning Transferable Visual Models From Natural Language Supervision](https://arxiv.org/abs/2103.00020) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | Vision | CLIP | Conceptual Captions (cc3m), Imagenet LSVRC 2012, CIFAR-100 | Image recognition | <p style="text-align: center;">✅ <br> Min. 8 IPUs (POD16) required  | <p style="text-align: center;">❌ | [Learning Transferable Visual Models From Natural Language Supervision](https://arxiv.org/abs/2103.00020) |
 
 
 ## Instructions summary
@@ -24,18 +24,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -49,7 +49,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -61,6 +61,8 @@ pip3 install poptorch...x86_64.whl
 ```bash
 pip3 install -r requirements.txt
 ```
+
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup
 ### Conceptual Captions (cc3m)
@@ -130,9 +132,9 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Other features
 
-### Zero-shot evaluation  
+### Zero-shot evaluation
 After training CLIP on cc3m dataset, you can apply zeroshot classification prediction on the validation set of ImageNet1k and CIFAR100 dataset to valify the performance of trained model. You can choose to use a checkpoint saved from the IPU by setting the `is_ipu_ckpt` to `True` or the official checkpoint by setting it to `False`. Zeroshot evaluation is performed on the validation set of ImageNet1k by default. If you want to perform zeroshot evaluation on CIFAR100, please set `zeroshot_dataset` to CIFAR100.
 
 ```bash
@@ -151,11 +153,11 @@ python zero_shot.py \
     --ckpt_file output/ckpt/CLIP_epoch_K.pt
 ```
 
-## Licensing  
+## Licensing
 
-This application is licensed under MIT license. Please see the LICENSE file in this directory for full details of the license conditions.  
+This application is licensed under MIT license. Please see the LICENSE file in this directory for full details of the license conditions.
 
-The following files are created by Graphcore and are licensed under MIT License (<sup>*</sup> means additional license information stated following this list):  
+The following files are created by Graphcore and are licensed under MIT License (<sup>*</sup> means additional license information stated following this list):
 
 * log.py
 * args.py
@@ -173,17 +175,17 @@ The following files are created by Graphcore and are licensed under MIT License 
 * datasets/preprocess.py
 * datasets/text_templates.pt
 
-The following file include code from this [`repo`](https://github.com/openai/CLIP) which uses MIT license:  
+The following file include code from this [`repo`](https://github.com/openai/CLIP) which uses MIT license:
 
 * model.py
 * datasets/simple_tokenizer.py
 
-The following file include code from this [`repo`](https://github.com/mlfoundations/open_clip).  
+The following file include code from this [`repo`](https://github.com/mlfoundations/open_clip).
 
 * zers_shot.py
 * datasets/dataset.py
 * datasets/download.py
 
-External packages:  
+External packages:
 * `wandb`, `pytest`, `pyyaml`, `transformers` are licensed under MIT License
 * `torchvision` is licensed under BSD 3-Clause License

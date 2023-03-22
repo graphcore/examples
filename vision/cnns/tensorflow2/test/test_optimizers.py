@@ -10,21 +10,21 @@ from optimizers.l2_regularizer import add_l2_regularization
 
 
 class TestOptimizerOptionsOnIPU(unittest.TestCase):
-
     @staticmethod
     def get_model():
         input_layer = tf.keras.Input(shape=1)
-        x = tf.keras.layers.Dense(1, kernel_initializer='ones', use_bias=False,
-                                  trainable=True, name='dense')(input_layer)
+        x = tf.keras.layers.Dense(1, kernel_initializer="ones", use_bias=False, trainable=True, name="dense")(
+            input_layer
+        )
         return tf.keras.Model(input_layer, x)
 
     def test_weight_decay(self):
-        weight_decay = .1
+        weight_decay = 0.1
 
         model = self.get_model()
         optimizer = tfa.optimizers.SGDW(weight_decay=weight_decay)
 
-        grads = [tf.constant([0.], shape=(1, 1), dtype=tf.float32)]
+        grads = [tf.constant([0.0], shape=(1, 1), dtype=tf.float32)]
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
         assert model.trainable_variables[0].numpy() == 1 - weight_decay
@@ -36,9 +36,9 @@ class TestOptimizerOptionsOnIPU(unittest.TestCase):
 
         optimizer_class = tfa.optimizers.SGDW
         optimizer_class = add_l2_regularization(optimizer_class, l2_regularization)
-        optimizer = optimizer_class(weight_decay=0, learning_rate=1.)
+        optimizer = optimizer_class(weight_decay=0, learning_rate=1.0)
 
-        grads = [tf.constant([0.], shape=(1, 1), dtype=tf.float32)]
+        grads = [tf.constant([0.0], shape=(1, 1), dtype=tf.float32)]
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
         assert model.trainable_variables[0].numpy() == 1 - l2_regularization
@@ -50,7 +50,6 @@ class TestOptimizerOptionsOnIPU(unittest.TestCase):
         cfg = ipu.config.IPUConfig()
         cfg.auto_select_ipus = 1
         cfg.device_connection.enable_remote_buffers = True
-        cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
         cfg.configure_ipu_system()
 
         ds = tf.data.Dataset.from_tensors(np.ones(input_shape))
@@ -58,15 +57,13 @@ class TestOptimizerOptionsOnIPU(unittest.TestCase):
         ds = ds.map(lambda x: (tf.cast(x, tf.float32), (0.001,)))
         ds = ds.batch(micro_batch_size, drop_remainder=True)
 
-        tf.keras.mixed_precision.set_global_policy('mixed_float16')
+        tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
         iterator = iter(ds)
         loss_fn = tf.keras.losses.MSE
         optimizer_unscaled = tf.optimizers.SGD()
         optimizer_scaled = tf.keras.mixed_precision.LossScaleOptimizer(
-            optimizer_unscaled,
-            dynamic=False,
-            initial_scale=9000
+            optimizer_unscaled, dynamic=False, initial_scale=9000
         )
 
         @tf.function
@@ -86,8 +83,9 @@ class TestOptimizerOptionsOnIPU(unittest.TestCase):
         with strategy.scope():
 
             input_layer = tf.keras.Input(shape=input_shape)
-            x = tf.keras.layers.Dense(1, kernel_initializer='zeros', use_bias=False,
-                                      trainable=True, name='dense')(input_layer)
+            x = tf.keras.layers.Dense(1, kernel_initializer="zeros", use_bias=False, trainable=True, name="dense")(
+                input_layer
+            )
             model = tf.keras.Model(input_layer, x)
 
             model.build(input_shape=(micro_batch_size, input_shape))

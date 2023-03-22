@@ -21,10 +21,7 @@ import pytest
 
 def pytest_sessionstart(session):
     try:
-        subprocess.check_output(
-            "sh make_ema.sh",
-            shell=True,
-            cwd=Path(__file__).parent.parent.resolve())
+        subprocess.check_output("sh make_ema.sh", shell=True, cwd=Path(__file__).parent.parent.resolve())
     except subprocess.CalledProcessError as e:
         print(f"Make custom op FAILED")
         print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")

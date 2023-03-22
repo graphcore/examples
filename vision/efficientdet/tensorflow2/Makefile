@@ -1,7 +1,7 @@
 all: nms multinms
 
 nms:
-	$(MAKE) -C NMS/tf 
+	$(MAKE) -C NMS/tf
 
 multinms:
 	$(MAKE) -C NMS/tf_multi

@@ -2,15 +2,18 @@
 One line summary of example, as well as any images.
 
 (Table that summarises app usage and capability)
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---| --------|
-| one of them | NLP | name | list| Q&A / Classification, etc.. | ✅  | ✅ | link to paper/original implementation|
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| one of them | NLP | name | list| Q&A / Classification, etc.. | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required  | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required | POD4/POD16/POD64 | link to paper/original implementation|
 
-## Instructions summary: 
+## (Optional) Extended introduction:
+~3-10 lines about the example, method/tech used, applications, tasks etc. To act as an extended introduction to the example.
+
+## Instructions summary:
 Before you can run this model for training or inference you will need to:
 
 1. Install and enable the Poplar SDK (see Poplar SDK setup)
-2. Install the system and python requirements (see Environment setup)
+2. Install the system and Python requirements (see Environment setup)
 3. Download the XX dataset (See Dataset setup)
 4. etc.
 
@@ -24,7 +27,7 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 cd poplar-<OS version>-<SDK version>-<hash>
@@ -32,7 +35,7 @@ cd poplar-<OS version>-<SDK version>-<hash>
 ```
 
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your poplar environment are available in the [poplar quick start guide] (https://docs.graphcore.ai/projects/poplar-quick-start)
 
 ## Environment setup
 To prepare your environment, follow these steps:
@@ -51,11 +54,11 @@ cd <poplar sdk root dir>
 pip3 install ...
 pip3 install ...
 ```
-For the CPU architecture you are running on (For tensorflow only)
+For the CPU architecture you are running on (For TensorFlow 1/2 only)
 
 4. Navigate to this example's root directory
 
-5. Pre-requirements build stepsL
+5. Pre-requirements build steps
 ```bash
 make
 ```
@@ -78,6 +81,10 @@ sudo apt-get install xxx
 make clean && make
 ```
 
+More detailed instructions on setting up your <framework> environment are available in the [<framework> quick start guide] (link from below)
+PyTorch - https://docs.graphcore.ai/projects/pytorch-quick-start
+TensorFlow 2 - https://docs.graphcore.ai/projects/tensorflow2-quick-start
+
 ## Dataset setup
 
 ### Dataset name
@@ -86,7 +93,7 @@ disk space required: XXGB
 ```bash
 bash prep_data.sh etc.
 ```
-File struture tree for dataset in tree form, using "tree -L 3 --filelimit 5"
+File structure tree for dataset in tree form, using "tree -L 3 --filelimit 5"
 dataset_dir
 ├── README.md
 ├── train
@@ -102,7 +109,7 @@ disk space required: XXGB
 ```bash
 bash prep_data.sh etc.
 ```
-File struture tree for dataset in tree form, using "tree -L 3 --filelimit 5"
+File structure tree for dataset in tree form, using "tree -L 3 --filelimit 5"
 dataset_dir
 ├── README.md
 ├── train
@@ -113,48 +120,33 @@ dataset_dir
     └── subdir_2
 
 
-## Running and benchmark
+## Running and benchmarking
 
-Here are the following benchmarks that can be reproduced using this example:
-| Model	| Num IPUs | Task |
-|--------------|-------|----------|
-| EfficientNet | M2000 | Training |
-| EfficientNet | POD16 | Training |
-| EfficientNet | POD64 | Training |
-For a full list of all benchmarks available, please see our [performance results page](https://www.graphcore.ai/performance-results)
+To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. The benchmarks are provided in the `benchmarks.yml` file in this example's root directory.
 
-Specifying both default way to run the app and also how to benchmark due to benchmarks available on our site being tested setups/configs pre-release that are more likely to work well for all users.some explanation on examples_utils benchmarking and yaml files. Link to perf results page.
+For example:
+
 ```bash
-cd to root dir of a benchmarks.yml file
-python3 -m examples_utils benchmark --benchmark <benchmark name> etc. or simpler commands
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
-## Custom training/inference and other features
-Statement on this section being about some basic info on how to run your own custom training/validation/inference commands and how to use other nice features
+Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-### Training
-Some explanation here
 ```bash
-some commands perhaps or args to add
+python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
-### Validation
-Some explanation here
-```bash
-some commands perhaps or args to add
-```
+For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
-### Inference
-Some explanation here
-```bash
-some commands perhaps or args to add
-```
 
-### Additional feature
-Some explanation here
-```bash
-some commands perhaps or args to add
-```
+## Custom training
+Statements in this section being about some basic info on how to run your own custom training with commands
+
+## Custom Inference
+Statements in this section being about some basic info on how to run your own custom inference with commands
+
+## Other features
+Any explanation/demonstration about other things that dont fit in sections above or how to use the app otherwise
 
 
 ## License

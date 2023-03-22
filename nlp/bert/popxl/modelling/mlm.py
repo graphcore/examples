@@ -24,8 +24,9 @@ class BertMLM(addons.Module):
         self.transform = Linear(self.config.model.hidden_size)
         self.norm = LayerNorm()
 
-    def build(self, x: popxl.Tensor, word_embedding_t: popxl.Tensor,
-              masked_positions: Optional[popxl.Tensor] = None) -> popxl.Tensor:
+    def build(
+        self, x: popxl.Tensor, word_embedding_t: popxl.Tensor, masked_positions: Optional[popxl.Tensor] = None
+    ) -> popxl.Tensor:
 
         if masked_positions is not None:
             masked_positions = masked_positions.reshape((-1, self.config.model.mlm.mask_tokens))
@@ -43,8 +44,9 @@ class BertMLM(addons.Module):
         return logits
 
     @staticmethod
-    def hf_mapping(config: BertConfig, variables: NamedTensors,
-                   hf_model: HFBertPreTrainingHeads) -> Dict[popxl.Tensor, np.ndarray]:
+    def hf_mapping(
+        config: BertConfig, variables: NamedTensors, hf_model: HFBertPreTrainingHeads
+    ) -> Dict[popxl.Tensor, np.ndarray]:
         dtype = config.model.dtype
 
         return {

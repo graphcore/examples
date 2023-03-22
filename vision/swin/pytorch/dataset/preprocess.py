@@ -27,18 +27,12 @@ class IgnoreBboxIfPresent(torch.nn.Module):
 
 class LoadJpeg(torch.nn.Module):
     def forward(self, img):
-        if isinstance(
-                img,
-                Image.Image) or isinstance(
-                img,
-                type(Image)) or isinstance(
-                img,
-                torch.Tensor):
+        if isinstance(img, Image.Image) or isinstance(img, type(Image)) or isinstance(img, torch.Tensor):
             return img
         else:
             try:
 
-                img_array = simplejpeg.decode_jpeg(img, colorspace='RGB')
+                img_array = simplejpeg.decode_jpeg(img, colorspace="RGB")
 
                 return Image.fromarray(img_array)
             except BaseException:

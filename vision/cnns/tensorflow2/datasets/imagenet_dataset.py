@@ -25,7 +25,7 @@ from custom_exceptions import DimensionError
 from . import image_normalization
 from . import application_dataset
 
-IMAGENET_DS_SIZE = {'train': 1281167, 'test': 50000, 'validation': 50000}
+IMAGENET_DS_SIZE = {"train": 1281167, "test": 50000, "validation": 50000}
 
 DEFAULT_IMAGE_SIZE = 224
 NUM_CHANNELS = 3
@@ -36,30 +36,33 @@ NORMALISATION_STD = [0.229, 0.224, 0.225]
 
 
 def tfrecord_prefix_from_split(split: str) -> str:
-    return 'train' if 'train' in split else 'validation'
+    return "train" if "train" in split else "validation"
 
 
 def expected_num_files_with_prefix(tfrecord_prefix: str) -> int:
-    return 1024 if tfrecord_prefix == 'train' else 128
+    return 1024 if tfrecord_prefix == "train" else 128
 
 
 class ImagenetDataset(abstract_dataset.AbstractDataset):
 
-    logger = logging.getLogger('imagenet_dataset')
+    logger = logging.getLogger("imagenet_dataset")
 
-    def __init__(self,
-                 dataset_path: str,
-                 split: str,
-                 shuffle: bool = True,
-                 deterministic: bool = False,
-                 seed: Optional[int] = None,
-                 img_datatype: tf.dtypes.DType = tf.float32,
-                 accelerator_side_preprocess: bool = False,
-                 fused_preprocessing: bool = False):
+    def __init__(
+        self,
+        dataset_path: str,
+        split: str,
+        shuffle: bool = True,
+        deterministic: bool = False,
+        seed: Optional[int] = None,
+        img_datatype: tf.dtypes.DType = tf.float32,
+        accelerator_side_preprocess: bool = False,
+        fused_preprocessing: bool = False,
+    ):
 
         if fused_preprocessing is True and accelerator_side_preprocess is False:
-            raise ValueError('Fused preprocessing can only be done on the IPU. '
-                             'Please enable preprocessing on the IPU.')
+            raise ValueError(
+                "Fused preprocessing can only be done on the IPU. " "Please enable preprocessing on the IPU."
+            )
 
         self.dataset_path = dataset_path
         self.split = split
@@ -77,41 +80,44 @@ class ImagenetDataset(abstract_dataset.AbstractDataset):
 
         # The path is the one of dataset under TFRecord format
         if not os.path.exists(self.dataset_path):
-            raise NameError(f'Directory {self.dataset_path} does not exist')
+            raise NameError(f"Directory {self.dataset_path} does not exist")
 
         tfrecord_prefix = tfrecord_prefix_from_split(self.split)
 
-        filenames = glob.glob1(self.dataset_path, f'{tfrecord_prefix}*')
+        filenames = glob.glob1(self.dataset_path, f"{tfrecord_prefix}*")
 
         num_files = len(filenames)
         expected_num_files = expected_num_files_with_prefix(tfrecord_prefix)
         if num_files != expected_num_files:
-            raise ValueError(f'{self.split} dataset should contain {expected_num_files} '
-                             f'files but it contains {num_files} instead')
+            raise ValueError(
+                f"{self.split} dataset should contain {expected_num_files} "
+                f"files but it contains {num_files} instead"
+            )
 
-        filenames = list(
-            map(lambda filename: os.path.join(self.dataset_path, filename), filenames))
-        ImagenetDataset.logger.debug(f'filenames = {filenames}')
+        filenames = list(map(lambda filename: os.path.join(self.dataset_path, filename), filenames))
+        ImagenetDataset.logger.debug(f"filenames = {filenames}")
         ds = tf.data.Dataset.from_tensor_slices(filenames)
 
         if popdist.getNumInstances() > 1:
             ds = ds.shard(num_shards=popdist.getNumInstances(), index=popdist.getInstanceIndex())
 
-        if self.split == 'train' and self.shuffle:
+        if self.split == "train" and self.shuffle:
             # Shuffle the input files
             ds = ds.shuffle(buffer_size=num_files // popdist.getNumInstances(), seed=self.seed)
 
-        ds = ds.interleave(tf.data.TFRecordDataset,
-                           cycle_length=self.cycle_length,
-                           block_length=self.block_length,
-                           num_parallel_calls=self.cycle_length,
-                           deterministic=self.deterministic)
+        ds = ds.interleave(
+            tf.data.TFRecordDataset,
+            cycle_length=self.cycle_length,
+            block_length=self.block_length,
+            num_parallel_calls=self.cycle_length,
+            deterministic=self.deterministic,
+        )
 
-        ImagenetDataset.logger.info(f'dataset = {ds}')
+        ImagenetDataset.logger.info(f"dataset = {ds}")
 
         ds = ds.cache()
 
-        if self.split == 'train' and self.shuffle:
+        if self.split == "train" and self.shuffle:
             ds = ds.shuffle(self.shuffle_buffer, seed=self.seed)
 
         return ds
@@ -123,7 +129,7 @@ class ImagenetDataset(abstract_dataset.AbstractDataset):
     def image_shape(self) -> Tuple:
         return (224, 224, 3)
 
-    def num_classes(self) ->int:
+    def num_classes(self) -> int:
         return 1000
 
     def cpu_preprocessing_fn(self) -> Callable:
@@ -133,8 +139,10 @@ class ImagenetDataset(abstract_dataset.AbstractDataset):
         else:
             cpu_preprocess_fn = _imagenet_normalize
 
-        def processing_fn(raw_record): return parse_imagenet_record(
-            raw_record, self.split == 'train', self.img_datatype, cpu_preprocess_fn, self.seed)
+        def processing_fn(raw_record):
+            return parse_imagenet_record(
+                raw_record, self.split == "train", self.img_datatype, cpu_preprocess_fn, self.seed
+            )
 
         return processing_fn
 
@@ -152,15 +160,11 @@ class ImagenetDataset(abstract_dataset.AbstractDataset):
 
 
 def _imagenet_normalize(image):
-    return image_normalization.image_normalisation(image,
-                                                   NORMALISATION_MEAN,
-                                                   NORMALISATION_STD)
+    return image_normalization.image_normalisation(image, NORMALISATION_MEAN, NORMALISATION_STD)
 
 
 def _imagenet_fused_normalize(image):
-    return image_normalization.fused_image_normalisation(image,
-                                                         NORMALISATION_MEAN,
-                                                         NORMALISATION_STD)
+    return image_normalization.fused_image_normalisation(image, NORMALISATION_MEAN, NORMALISATION_STD)
 
 
 def parse_imagenet_record(raw_record, is_training, dtype, cpu_preprocess_fn=None, seed=None):
@@ -186,14 +190,13 @@ def parse_imagenet_record(raw_record, is_training, dtype, cpu_preprocess_fn=None
         num_channels=NUM_CHANNELS,
         cpu_preprocess_fn=cpu_preprocess_fn,
         is_training=is_training,
-        seed=seed)
+        seed=seed,
+    )
     image = tf.cast(image, dtype)
 
     # Subtract one so that labels are in [0, 1000), and cast to int32 for
     # Keras model.
-    label = tf.cast(
-        tf.cast(tf.reshape(label, shape=[1]), dtype=tf.int32) - 1,
-        dtype=tf.int32)
+    label = tf.cast(tf.cast(tf.reshape(label, shape=[1]), dtype=tf.int32) - 1, dtype=tf.int32)
     return image, label
 
 
@@ -229,30 +232,31 @@ def parse_example_proto(example_serialized):
     """
     # Dense features in Example proto.
     feature_map = {
-        'image/encoded':
-            tf.io.FixedLenFeature([], dtype=tf.string, default_value=''),
-        'image/class/label':
-            tf.io.FixedLenFeature([], dtype=tf.int64, default_value=-1),
-        'image/class/text':
-            tf.io.FixedLenFeature([], dtype=tf.string, default_value=''),
+        "image/encoded": tf.io.FixedLenFeature([], dtype=tf.string, default_value=""),
+        "image/class/label": tf.io.FixedLenFeature([], dtype=tf.int64, default_value=-1),
+        "image/class/text": tf.io.FixedLenFeature([], dtype=tf.string, default_value=""),
     }
     sparse_float32 = tf.io.VarLenFeature(dtype=tf.float32)
     # Sparse features in Example proto.
-    feature_map.update({
-        k: sparse_float32 for k in [
-            'image/object/bbox/xmin', 'image/object/bbox/ymin',
-            'image/object/bbox/xmax', 'image/object/bbox/ymax'
-        ]
-    })
+    feature_map.update(
+        {
+            k: sparse_float32
+            for k in [
+                "image/object/bbox/xmin",
+                "image/object/bbox/ymin",
+                "image/object/bbox/xmax",
+                "image/object/bbox/ymax",
+            ]
+        }
+    )
 
-    features = tf.io.parse_single_example(
-        serialized=example_serialized, features=feature_map)
-    label = tf.cast(features['image/class/label'], dtype=tf.int32)
+    features = tf.io.parse_single_example(serialized=example_serialized, features=feature_map)
+    label = tf.cast(features["image/class/label"], dtype=tf.int32)
 
-    xmin = tf.expand_dims(features['image/object/bbox/xmin'].values, 0)
-    ymin = tf.expand_dims(features['image/object/bbox/ymin'].values, 0)
-    xmax = tf.expand_dims(features['image/object/bbox/xmax'].values, 0)
-    ymax = tf.expand_dims(features['image/object/bbox/ymax'].values, 0)
+    xmin = tf.expand_dims(features["image/object/bbox/xmin"].values, 0)
+    ymin = tf.expand_dims(features["image/object/bbox/ymin"].values, 0)
+    xmax = tf.expand_dims(features["image/object/bbox/xmax"].values, 0)
+    ymax = tf.expand_dims(features["image/object/bbox/ymax"].values, 0)
 
     # Note that we impose an ordering of (y, x) just to make life difficult.
     bbox = tf.concat([ymin, xmin, ymax, xmax], 0)
@@ -262,17 +266,12 @@ def parse_example_proto(example_serialized):
     bbox = tf.expand_dims(bbox, 0)
     bbox = tf.transpose(a=bbox, perm=[0, 2, 1])
 
-    return features['image/encoded'], label, bbox
+    return features["image/encoded"], label, bbox
 
 
-def preprocess_image(image_buffer,
-                     bbox,
-                     output_height,
-                     output_width,
-                     num_channels,
-                     cpu_preprocess_fn=None,
-                     is_training=False,
-                     seed=None):
+def preprocess_image(
+    image_buffer, bbox, output_height, output_width, num_channels, cpu_preprocess_fn=None, is_training=False, seed=None
+):
     """Preprocesses the given image.
     Preprocessing includes decoding, cropping, and resizing for both training
     and eval images. Training preprocessing, however, introduces some random
@@ -297,7 +296,7 @@ def preprocess_image(image_buffer,
         image = _resize_image(image, output_height, output_width)
     else:
         # For validation, we want to decode, resize, then just crop the middle.
-        image = tf.image.decode_jpeg(image_buffer, channels=num_channels, dct_method='INTEGER_FAST')
+        image = tf.image.decode_jpeg(image_buffer, channels=num_channels, dct_method="INTEGER_FAST")
         # The lower bound for the smallest side of the image for aspect-preserving
         # resizing. Originally set to 256 for 224x224 image sizes. Now scaled by the
         # prescribed image size.
@@ -342,7 +341,8 @@ def _decode_crop(image_buffer, bbox, num_channels, seed=None):
         area_range=[0.05, 1.0],
         max_attempts=100,
         use_image_if_no_bounding_boxes=True,
-        seed=seed)
+        seed=seed,
+    )
     bbox_begin, bbox_size, _ = sample_distorted_bounding_box
 
     # Reassemble the bounding box in the format the crop op requires.
@@ -351,8 +351,7 @@ def _decode_crop(image_buffer, bbox, num_channels, seed=None):
     crop_window = tf.stack([offset_y, offset_x, target_height, target_width])
 
     # Use the fused decode and crop op here, which is faster than each in series.
-    cropped = tf.image.decode_and_crop_jpeg(
-        image_buffer, crop_window, channels=num_channels, dct_method='INTEGER_FAST')
+    cropped = tf.image.decode_and_crop_jpeg(image_buffer, crop_window, channels=num_channels, dct_method="INTEGER_FAST")
 
     return cropped
 
@@ -373,10 +372,7 @@ def _resize_image(image, height, width):
       resized_image: A 3-D tensor containing the resized image. The first two
         dimensions have the shape [height, width].
     """
-    return tf.compat.v1.image.resize(
-        image, [height, width],
-        method=tf.image.ResizeMethod.BILINEAR,
-        align_corners=False)
+    return tf.compat.v1.image.resize(image, [height, width], method=tf.image.ResizeMethod.BILINEAR, align_corners=False)
 
 
 def _aspect_preserving_resize(image, resize_min):
@@ -436,9 +432,8 @@ def _central_crop(image, crop_height, crop_width):
     shape = tf.shape(input=image)
     height, width = shape[0], shape[1]
 
-    amount_to_be_cropped_h = (height - crop_height)
+    amount_to_be_cropped_h = height - crop_height
     crop_top = amount_to_be_cropped_h // 2
-    amount_to_be_cropped_w = (width - crop_width)
+    amount_to_be_cropped_w = width - crop_width
     crop_left = amount_to_be_cropped_w // 2
-    return tf.slice(image, [crop_top, crop_left, 0],
-                    [crop_height, crop_width, -1])
+    return tf.slice(image, [crop_top, crop_left, 0], [crop_height, crop_width, -1])

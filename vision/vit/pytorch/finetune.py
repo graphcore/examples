@@ -42,9 +42,9 @@ if __name__ == "__main__":
     # W&B
     if config.wandb:
         if not config.use_popdist or (config.use_popdist and config.popdist_rank == 0):
-            wandb.init(project=config.wandb_project_name,
-                       name=config.wandb_run_name,
-                       settings=wandb.Settings(console="wrap"))
+            wandb.init(
+                project=config.wandb_project_name, name=config.wandb_run_name, settings=wandb.Settings(console="wrap")
+            )
             wandb.config.update(vars(config))
 
     # Execution parameters
@@ -55,42 +55,43 @@ if __name__ == "__main__":
 
     steps_per_epoch = len(train_loader)
     if steps_per_epoch < 1:
-        raise RuntimeError(
-            "Not enough data in input_files for current configuration")
+        raise RuntimeError("Not enough data in input_files for current configuration")
 
     # IPU Model and Optimizer
-    model = PipelinedViTForImageClassification.from_pretrained(
-        config.pretrained_checkpoint, config=config).parallelize().train()
+    model = (
+        PipelinedViTForImageClassification.from_pretrained(config.pretrained_checkpoint, config=config)
+        .parallelize()
+        .train()
+    )
     model.print_device_allocation()
     if config.precision.startswith("16."):
         model.half()
     optimizer = get_optimizer(config, model)
-    scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
-                                 config.warmup_steps, config.training_steps)
+    scheduler = get_lr_scheduler(optimizer, config.lr_schedule, config.warmup_steps, config.training_steps)
 
     # Restore model from checkpoint
     steps_finished = 0
     if config.pretrained_checkpoint:
         # Load from checkpoint
-        model = PipelinedViTForImageClassification.from_pretrained(
-            config.pretrained_checkpoint, config=config).parallelize().half().train()
+        model = (
+            PipelinedViTForImageClassification.from_pretrained(config.pretrained_checkpoint, config=config)
+            .parallelize()
+            .half()
+            .train()
+        )
         optimizer = get_optimizer(config, model)
-        scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
-                                     config.warmup_steps, config.training_steps)
+        scheduler = get_lr_scheduler(optimizer, config.lr_schedule, config.warmup_steps, config.training_steps)
 
         if config.resume_training_from_checkpoint:
-            training_state = torch.load(
-                Path(config.pretrained_checkpoint) / "training_state.pt")
+            training_state = torch.load(Path(config.pretrained_checkpoint) / "training_state.pt")
             scheduler.last_epoch = steps_finished = training_state["step"]
             checkpoint_metrics = training_state["metrics"]
     else:
         # Train model from scratch
         logger.info("Training from scratch")
-        model = PipelinedViTForImageClassification(
-            config).parallelize().half().train()
+        model = PipelinedViTForImageClassification(config).parallelize().half().train()
         optimizer = get_optimizer(config, model)
-        scheduler = get_lr_scheduler(optimizer, config.lr_schedule,
-                                     config.lr_warmup, config.training_steps)
+        scheduler = get_lr_scheduler(optimizer, config.lr_schedule, config.lr_warmup, config.training_steps)
 
     train_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
 
@@ -131,45 +132,50 @@ if __name__ == "__main__":
             data_consumption_ratio = data_duration / step_duration
 
             if config.use_popdist:
-                step_throughput = mpi_utils.mpi_reduce(
-                    step_throughput, average=False)
-                step_duration = mpi_utils.mpi_reduce(
-                    step_duration, average=True)
-                data_consumption_ratio = mpi_utils.mpi_reduce(
-                    data_consumption_ratio, average=True)
+                step_throughput = mpi_utils.mpi_reduce(step_throughput, average=False)
+                step_duration = mpi_utils.mpi_reduce(step_duration, average=True)
+                data_consumption_ratio = mpi_utils.mpi_reduce(data_consumption_ratio, average=True)
 
             if not config.use_popdist or (config.use_popdist and config.popdist_rank == 0):
-                msg = ("Epoch: {:.2f}/{} "
-                       "Step: {}/{} "
-                       "Lr: {:.6f} "
-                       "loss: {:.3f} "
-                       "accuracy: {:.3f} "
-                       "throughput: {:.2f} samples/sec "
-                       "Mean step duration: {:.2f} second "
-                       "Mean data consumption ratio: {:.2f}"
-                       ).format(epoch, epochs,
-                                current_step, training_steps,
-                                scheduler.get_last_lr()[0],
-                                mean_loss,
-                                acc,
-                                step_throughput,
-                                step_duration,
-                                data_consumption_ratio)
+                msg = (
+                    "Epoch: {:.2f}/{} "
+                    "Step: {}/{} "
+                    "Lr: {:.6f} "
+                    "loss: {:.3f} "
+                    "accuracy: {:.3f} "
+                    "throughput: {:.2f} samples/sec "
+                    "Mean step duration: {:.2f} second "
+                    "Mean data consumption ratio: {:.2f}"
+                ).format(
+                    epoch,
+                    epochs,
+                    current_step,
+                    training_steps,
+                    scheduler.get_last_lr()[0],
+                    mean_loss,
+                    acc,
+                    step_throughput,
+                    step_duration,
+                    data_consumption_ratio,
+                )
                 logger.info(msg)
                 if config.wandb:
-                    wandb.log({"LR": scheduler.get_last_lr()[0],
-                               "Throughput": step_throughput,
-                               "Loss": mean_loss,
-                               "Accuracy": acc})
+                    wandb.log(
+                        {
+                            "LR": scheduler.get_last_lr()[0],
+                            "Throughput": step_throughput,
+                            "Loss": mean_loss,
+                            "Accuracy": acc,
+                        }
+                    )
 
             if current_step + 1 == training_steps:
                 break  # Training finished mid-epoch
             save_every = current_step % config.checkpoint_save_steps == 0
-            finished = (current_step + 1 == training_steps)
+            finished = current_step + 1 == training_steps
             if config.checkpoint_output_dir and (save_every or finished):
                 model.deparallelize()
-                save_checkpoint(config, model, optimizer, current_step,
-                                metrics={"Loss": mean_loss})
+                save_checkpoint(config, model, optimizer, current_step, metrics={"Loss": mean_loss})
                 model.parallelize()
 
     stop_train = time.perf_counter()

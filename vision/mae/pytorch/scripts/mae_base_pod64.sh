@@ -18,11 +18,11 @@ helpFunction()
 {
    echo ""
    echo "Usage (int the case of 4 hosts): $0 -n host1,host2,host3,host4 " \
-        "-s host0 -o interface1 -b interface2 -p partition_name -c cluster_name"
+        "-s host0 -o interface1 -b interface2 -p partition_name -c allocation_name"
    echo -e "\t-n Hostnames/IPs of the hosts"
    echo -e "\t-s Hostname/IP of the controller server"
    echo -e "\t-p partition name"
-   echo -e "\t-c cluster name"
+   echo -e "\t-c allocation name"
    exit 1
 }
 
@@ -37,7 +37,7 @@ do
    esac
 done
 
-if [ -z "$hosts" ] || [ -z "$server" ] || [ -z "$partition" ] || [ -z "$cluster" ]
+if [ -z "$hosts" ] || [ -z "$server" ] || [ -z "$partition" ] || [ -z "$allocation" ]
 then
    echo "Some or all of the parameters are empty";
    helpFunction
@@ -64,7 +64,7 @@ poprun -vv \
         --host=$hosts \
         --ipus-per-replica=4 \
         --vipu-server-host=$server \
-        --vipu-cluster=$cluster \
+        --vipu-allocation=$allocation \
         --vipu-server-timeout=3600 \
         --vipu-partition=$partition \
         --mpi-local-args=" -x OPAL_PREFIX -x LD_LIBRARY_PATH -x PATH -x PYTHONPATH -x CPATH -x \

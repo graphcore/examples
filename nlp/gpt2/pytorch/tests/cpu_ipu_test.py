@@ -38,8 +38,7 @@ class cpu_wrapper(nn.Module):
         super().__init__()
         self.model = GPT2LMHeadModel(config=config)
         for layer in self.model.transformer.h:
-            gpt2_attn = OptimizedGPT2Attention(
-                self.model.config, layer_idx=layer.attn.layer_idx)
+            gpt2_attn = OptimizedGPT2Attention(self.model.config, layer_idx=layer.attn.layer_idx)
             gpt2_attn.load_state_dict(layer.attn.state_dict())
             layer.attn = gpt2_attn
 
@@ -48,8 +47,7 @@ class cpu_wrapper(nn.Module):
         hidden_states = transformer_outputs[0]
         lm_logits = self.model.lm_head(hidden_states)
         loss_fct = CrossEntropyLoss()
-        loss = loss_fct(
-            lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
+        loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
         loss = poptorch.identity_loss(loss, reduction="none")
         acc = torch.Tensor(0)
         return loss, acc
@@ -73,8 +71,8 @@ def test_ipu_cpu_match():
     args = set_args(cmd_line)
 
     batch_size = args.batch_size
-    config = GPT2Config.from_json_file(base_dir + '/../config/config.json')
-    config.model = 'gpt2'
+    config = GPT2Config.from_json_file(base_dir + "/../config/config.json")
+    config.model = "gpt2"
     config.attn_pdrop = 0.0
     config.embd_pdrop = 0.0
     config.resid_pdrop = 0.0
@@ -88,8 +86,7 @@ def test_ipu_cpu_match():
 
     # Models and options
     opts = poptorch.Options().deviceIterations(1)
-    opts.setExecutionStrategy(poptorch.ShardedExecution(
-        poptorch.AutoStage.AutoIncrement))
+    opts.setExecutionStrategy(poptorch.ShardedExecution(poptorch.AutoStage.AutoIncrement))
     opts.Training.gradientAccumulation(1)
     opts.replicationFactor(1)
     opts.Precision.setPartialsType(torch.float32)
@@ -102,17 +99,14 @@ def test_ipu_cpu_match():
 
     # Check that copy was successful
     assert model_ipu is not model_cpu
-    assert all([(a == b).all() for a, b in zip(
-        model_cpu.parameters(), model_ipu.parameters())]) is True
+    assert all([(a == b).all() for a, b in zip(model_cpu.parameters(), model_ipu.parameters())]) is True
 
     optimizer_cpu = torch.optim.AdamW(model_cpu.parameters(), lr=0.001)
-    optimizer_ipu = poptorch.optim.AdamW(
-        model_ipu.model.parameters(), lr=0.001, loss_scaling=1.0)
-    poptorch_model = poptorch.trainingModel(
-        model_ipu, opts, optimizer=optimizer_ipu)
+    optimizer_ipu = poptorch.optim.AdamW(model_ipu.model.parameters(), lr=0.001, loss_scaling=1.0)
+    poptorch_model = poptorch.trainingModel(model_ipu, opts, optimizer=optimizer_ipu)
 
     # Input
-    tokens = torch.randint(0, 20256, (129, ))
+    tokens = torch.randint(0, 20256, (129,))
     labels = torch.tensor(tokens[1:])
     tokens = torch.tensor(tokens[:-1])
     batch_input = (tokens.repeat(batch_size, 1), labels.repeat(batch_size, 1))

@@ -10,8 +10,7 @@ from typing import List, Union
 import numpy as np
 
 
-def pack_using_dlpfhp(data_list, max_edges_per_pack, max_nodes_per_pack, max_graphs_per_pack,
-                      heuristic=np.multiply):
+def pack_using_dlpfhp(data_list, max_edges_per_pack, max_nodes_per_pack, max_graphs_per_pack, heuristic=np.multiply):
     """Dual Longest-pack-first histogram-packing algorithm."""
     assert len(data_list[0]) == 3, "make sure the data-list has three parts per entry"
 
@@ -37,20 +36,24 @@ def pack_using_dlpfhp(data_list, max_edges_per_pack, max_nodes_per_pack, max_gra
                 # reversed so the 'pop' is easier to index
                 for i in reversed(range(len(tmp_strategies_per_length[size + offset]))):
                     len_edges, len_nodes, n_sequences_to_pack = tmp_strategies_per_length[size + offset][i]
-                    if ((edges_length + sum(len_edges)) <= max_edges_per_pack and
-                            (nodes_length + sum(len_nodes)) <= max_nodes_per_pack and
-                            len(len_edges) < max_graphs_per_pack):
+                    if (
+                        (edges_length + sum(len_edges)) <= max_edges_per_pack
+                        and (nodes_length + sum(len_nodes)) <= max_nodes_per_pack
+                        and len(len_edges) < max_graphs_per_pack
+                    ):
                         tmp_strategies_per_length[size + offset].pop(i)
                         new_len_edges = len_edges + [edges_length]
                         new_len_nodes = len_nodes + [nodes_length]
 
-                        new_size = heuristic(max_edges_per_pack - sum(new_len_edges),
-                                             max_nodes_per_pack - sum(new_len_nodes))
+                        new_size = heuristic(
+                            max_edges_per_pack - sum(new_len_edges), max_nodes_per_pack - sum(new_len_nodes)
+                        )
                         new_count = min(n_sequences_to_pack, n_sequences_to_bin)
                         # adjust strategies
                         if n_sequences_to_pack > new_count:
                             tmp_strategies_per_length[size + offset].append(
-                                (len_edges, len_nodes, n_sequences_to_pack - new_count))
+                                (len_edges, len_nodes, n_sequences_to_pack - new_count)
+                            )
 
                         # get rid of the key if the value is []
                         if not tmp_strategies_per_length[size + offset]:
@@ -98,7 +101,8 @@ def pack_using_dlpfhp(data_list, max_edges_per_pack, max_nodes_per_pack, max_gra
         f"Token efficiency:\n"
         f"Nodes: {token_efficiency[0]:.2f}%\n"
         f"Edges: {token_efficiency[1]:.2f}%\n"
-        f"Graphs: {token_efficiency[2]:.2f}%")
+        f"Graphs: {token_efficiency[2]:.2f}%"
+    )
 
     return strategy_set, np.array(strategy_repeat_count), token_efficiency
 
@@ -116,10 +120,14 @@ class StrategyPlanner:
     def __post_init__(self):
         # recording which ids go with which shapes
         max_edges, max_nodes = max(self.n_edges), max(self.n_nodes)
-        assert max_edges < self.max_edges_per_pack, f"you have {max_edges} edges in one graph, which will not fit in " \
-                                                    f"{self.max_edges_per_pack} max_edges_per_pack"
-        assert max_nodes < self.max_nodes_per_pack, f"you have {max_nodes} nodes in one graph, which will not fit in " \
-                                                    f"{self.max_nodes_per_pack} max_edges_per_pack"
+        assert max_edges < self.max_edges_per_pack, (
+            f"you have {max_edges} edges in one graph, which will not fit in "
+            f"{self.max_edges_per_pack} max_edges_per_pack"
+        )
+        assert max_nodes < self.max_nodes_per_pack, (
+            f"you have {max_nodes} nodes in one graph, which will not fit in "
+            f"{self.max_nodes_per_pack} max_edges_per_pack"
+        )
 
         shape_to_idx_orig = defaultdict(list)
         for idx, (n_edge, n_node) in enumerate(zip(self.n_edges, self.n_nodes)):
@@ -129,10 +137,9 @@ class StrategyPlanner:
         self.shape_to_idx_orig = shape_to_idx_orig
         # data list
         data_list = [(e, n, len(shape_to_idx_orig[(e, n)])) for e, n in shape_to_idx_orig]
-        self.strategy_set, self.strategy_repeat_count, self.efficiency = pack_using_dlpfhp(data_list,
-                                                                                           self.max_edges_per_pack,
-                                                                                           self.max_nodes_per_pack,
-                                                                                           self.max_graphs_per_pack)
+        self.strategy_set, self.strategy_repeat_count, self.efficiency = pack_using_dlpfhp(
+            data_list, self.max_edges_per_pack, self.max_nodes_per_pack, self.max_graphs_per_pack
+        )
         self.packs_per_epoch = sum(self.strategy_repeat_count)
 
     def pack_indices_generator(self):

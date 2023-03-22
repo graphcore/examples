@@ -20,6 +20,7 @@ def recomputation_checkpoint(module):
     """
     Annotates the output of a module to be checkpointed instead of recomputed
     """
+
     def recompute_outputs(module, inputs, outputs):
         if type(outputs) is tuple:
             return tuple(poptorch.recomputationCheckpoint(y) for y in outputs)
@@ -36,11 +37,15 @@ class ResidualAttentionBlock(nn.Module):
         self.attn = nn.MultiheadAttention(d_model, n_head)
         self.ln_1 = nn.LayerNorm(d_model)
 
-        self.mlp = nn.Sequential(OrderedDict([
-            ("c_fc", nn.Linear(d_model, d_model * 4)),
-            ("gelu", QuickGELU()),
-            ("c_proj", nn.Linear(d_model * 4, d_model))
-        ]))
+        self.mlp = nn.Sequential(
+            OrderedDict(
+                [
+                    ("c_fc", nn.Linear(d_model, d_model * 4)),
+                    ("gelu", QuickGELU()),
+                    ("c_proj", nn.Linear(d_model * 4, d_model)),
+                ]
+            )
+        )
 
         self.ln_2 = nn.LayerNorm(d_model)
         self.attn_mask = attn_mask
@@ -74,7 +79,7 @@ class VisionTransformer(nn.Module):
         self.output_dim = output_dim
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=width, kernel_size=patch_size, stride=patch_size, bias=False)
 
-        scale = width ** -0.5
+        scale = width**-0.5
         self.class_embedding = nn.Parameter(scale * torch.randn(width))
         self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
         self.ln_pre = nn.LayerNorm(width)
@@ -91,7 +96,9 @@ class VisionTransformer(nn.Module):
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
 
-        x = torch.cat([self.class_embedding + torch.zeros(x.shape[0], 1, x.shape[-1], device=x.device, dtype=x.dtype), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        x = torch.cat(
+            [self.class_embedding + torch.zeros(x.shape[0], 1, x.shape[-1], device=x.device, dtype=x.dtype), x], dim=1
+        )  # shape = [*, grid ** 2 + 1, width]
         x = x + self.positional_embedding
 
         x = self.ln_pre(x)
@@ -142,8 +149,22 @@ class CLIP(nn.Module):
         self.initialize_parameters()
 
         # Allocate the register buffers to store the features of the passed steps
-        self.register_buffer("image_fea_queue", torch.normal(mean=0.0, std=(self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5), size=(self.memory_size * self.batch_size, self.embed_dim)))
-        self.register_buffer("text_fea_queue", torch.normal(mean=0.0, std=(self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5), size=(self.memory_size * self.batch_size, self.embed_dim)))
+        self.register_buffer(
+            "image_fea_queue",
+            torch.normal(
+                mean=0.0,
+                std=(self.transformer.width**-0.5) * ((2 * self.transformer.layers) ** -0.5),
+                size=(self.memory_size * self.batch_size, self.embed_dim),
+            ),
+        )
+        self.register_buffer(
+            "text_fea_queue",
+            torch.normal(
+                mean=0.0,
+                std=(self.transformer.width**-0.5) * ((2 * self.transformer.layers) ** -0.5),
+                size=(self.memory_size * self.batch_size, self.embed_dim),
+            ),
+        )
 
         # Loss
         self.loss = nn.CrossEntropyLoss()
@@ -152,8 +173,8 @@ class CLIP(nn.Module):
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
 
-        proj_std = (self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5)
-        attn_std = self.transformer.width ** -0.5
+        proj_std = (self.transformer.width**-0.5) * ((2 * self.transformer.layers) ** -0.5)
+        attn_std = self.transformer.width**-0.5
         fc_std = (2 * self.transformer.width) ** -0.5
         for block in self.transformer.resblocks:
             nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
@@ -162,17 +183,17 @@ class CLIP(nn.Module):
             nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
 
         if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.transformer.width ** -0.5)
+            nn.init.normal_(self.text_projection, std=self.transformer.width**-0.5)
 
     @torch.no_grad()
     def dequeue_enqueue(self, image_fea, text_fea):
         # Update the image features encoded in the current step to the register buffer
-        last_image = self.image_fea_queue[: (self.memory_size-1) * self.batch_size, :]
+        last_image = self.image_fea_queue[: (self.memory_size - 1) * self.batch_size, :]
         update_image = torch.cat([image_fea, last_image], dim=0)
         self.image_fea_queue.copy_(update_image)
 
         # Update the text features encoded in the current step to the register buffer
-        last_text = self.text_fea_queue[: (self.memory_size-1) * self.batch_size, :]
+        last_text = self.text_fea_queue[: (self.memory_size - 1) * self.batch_size, :]
         update_text = torch.cat([text_fea, last_text], dim=0)
         self.text_fea_queue.copy_(update_text)
 
@@ -221,31 +242,41 @@ class CLIP(nn.Module):
         for index in range(1):
             layer = self.visual.transformer.resblocks[index]
             recomputation_checkpoint(layer)
-            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(layer, f"image_encoder_layer{index}", ipu_id=0)
+            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(
+                layer, f"image_encoder_layer{index}", ipu_id=0
+            )
 
         log.logger.info("image_encoder 1 ~ 3 --> IPU 1")
         for index in range(1, 4):
             layer = self.visual.transformer.resblocks[index]
             recomputation_checkpoint(layer)
-            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(layer, f"image_encoder_layer{index}", ipu_id=1)
+            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(
+                layer, f"image_encoder_layer{index}", ipu_id=1
+            )
 
         log.logger.info("image_encoder 4 ~ 6 --> IPU 2")
         for index in range(4, 7):
             layer = self.visual.transformer.resblocks[index]
             recomputation_checkpoint(layer)
-            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(layer, f"image_encoder_layer{index}", ipu_id=2)
+            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(
+                layer, f"image_encoder_layer{index}", ipu_id=2
+            )
 
         log.logger.info("image_encoder 7 ~ 9 --> IPU 3")
         for index in range(7, 10):
             layer = self.visual.transformer.resblocks[index]
             recomputation_checkpoint(layer)
-            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(layer, f"image_encoder_layer{index}", ipu_id=3)
+            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(
+                layer, f"image_encoder_layer{index}", ipu_id=3
+            )
 
         log.logger.info("image_encoder 10 ~ 11 --> IPU 4")
         for index in range(10, 12):
             layer = self.visual.transformer.resblocks[index]
             recomputation_checkpoint(layer)
-            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(layer, f"image_encoder_layer{index}", ipu_id=4)
+            self.visual.transformer.resblocks[index] = poptorch.BeginBlock(
+                layer, f"image_encoder_layer{index}", ipu_id=4
+            )
 
         log.logger.info("token_embedding --> IPU 5")
         self.token_embedding = poptorch.BeginBlock(self.token_embedding, "embedding", ipu_id=5)
@@ -315,6 +346,6 @@ class CLIP(nn.Module):
                 image_features = self.encode_image(images)
                 image_features = image_features / image_features.norm(dim=1, keepdim=True)
 
-                logits_per_image = 100. * self.logit_scale.exp() * image_features @ texts
+                logits_per_image = 100.0 * self.logit_scale.exp() * image_features @ texts
 
                 return logits_per_image

@@ -6,7 +6,7 @@ from transformers.models.bert.modeling_tf_bert import (
     TFBertLayer,
     TFBertMLMHead,
     TFBertNSPHead,
-    TFBertPooler
+    TFBertPooler,
 )
 
 from model.ipu_embeddings_layer import IpuTFBertEmbeddings
@@ -25,6 +25,6 @@ PIPELINE_NAMES = {
     "pool": [TFBertPooler],
     "enc_out": [GatherSubsetOutput],
     "heads": [TFBertNSPHead, TFBertMLMHead],
-    "qa_head": ["qa_outputs", 'start_positions', 'end_positions'],
-    "glue_head": ["labels"]
+    "qa_head": ["qa_outputs", "start_positions", "end_positions"],
+    "glue_head": ["labels"],
 }

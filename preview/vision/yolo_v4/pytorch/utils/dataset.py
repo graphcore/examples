@@ -13,7 +13,17 @@ from PIL import Image
 from tqdm import tqdm
 from typing import Tuple, List, Any
 from torchvision.transforms import Compose
-from utils.preprocessing import HSV, ToNumpy, Pad, ToTensor, ResizeImage, Mosaic, RandomPerspective, HorizontalFlip, VerticalFlip
+from utils.preprocessing import (
+    HSV,
+    ToNumpy,
+    Pad,
+    ToTensor,
+    ResizeImage,
+    Mosaic,
+    RandomPerspective,
+    HorizontalFlip,
+    VerticalFlip,
+)
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -33,7 +43,7 @@ class Dataset(torch.utils.data.Dataset):
         self.labels_path = None
         self.img_data = None
 
-        # Change the data type of the dataloader depeding of the options
+        # Change the data type of the dataloader depending of the options
         if self.cfg.model.uint_io:
             image_type = "uint"
         elif not self.cfg.model.ipu or not self.cfg.model.half:
@@ -46,21 +56,25 @@ class Dataset(torch.utils.data.Dataset):
         self.mosaic = Mosaic(self.cfg.model.image_size, self.cfg.model.input_channels)
         # We create two perspective transforms, one for the case with mosaic, and one without.
         # The difference is only in the border_to_remove parameter.
-        self.random_perspective_mosaic = RandomPerspective(self.cfg.dataset.train.degrees,
-                                                           self.cfg.dataset.train.translate,
-                                                           self.cfg.dataset.train.scale,
-                                                           self.cfg.dataset.train.shear,
-                                                           self.cfg.dataset.train.perspective,
-                                                           border_to_remove=[self.cfg.model.image_size, self.cfg.model.image_size])
-        self.random_perspective_augment = RandomPerspective(self.cfg.dataset.train.degrees,
-                                                            self.cfg.dataset.train.translate,
-                                                            self.cfg.dataset.train.scale,
-                                                            self.cfg.dataset.train.shear,
-                                                            self.cfg.dataset.train.perspective,
-                                                            border_to_remove=[0, 0])
-        self.hsv_augment = HSV(self.cfg.dataset.train.hsv_h_gain,
-                               self.cfg.dataset.train.hsv_s_gain,
-                               self.cfg.dataset.train.hsv_v_gain)
+        self.random_perspective_mosaic = RandomPerspective(
+            self.cfg.dataset.train.degrees,
+            self.cfg.dataset.train.translate,
+            self.cfg.dataset.train.scale,
+            self.cfg.dataset.train.shear,
+            self.cfg.dataset.train.perspective,
+            border_to_remove=[self.cfg.model.image_size, self.cfg.model.image_size],
+        )
+        self.random_perspective_augment = RandomPerspective(
+            self.cfg.dataset.train.degrees,
+            self.cfg.dataset.train.translate,
+            self.cfg.dataset.train.scale,
+            self.cfg.dataset.train.shear,
+            self.cfg.dataset.train.perspective,
+            border_to_remove=[0, 0],
+        )
+        self.hsv_augment = HSV(
+            self.cfg.dataset.train.hsv_h_gain, self.cfg.dataset.train.hsv_s_gain, self.cfg.dataset.train.hsv_v_gain
+        )
         self.horizontal_flip = HorizontalFlip()
         self.vertical_flip = VerticalFlip()
         self.pad = Pad(self.cfg.model.image_size)
@@ -69,7 +83,7 @@ class Dataset(torch.utils.data.Dataset):
         self.maximum_synthetic_data = 10000
 
         if self.mode == "test_inference":
-            url_sample_image = 'http://images.cocodataset.org/train2017/000000001072.jpg'
+            url_sample_image = "http://images.cocodataset.org/train2017/000000001072.jpg"
             img_data = requests.get(url_sample_image).content
             self.img_data = Image.open(io.BytesIO(img_data))
             height, width = self.img_data.size
@@ -78,24 +92,28 @@ class Dataset(torch.utils.data.Dataset):
         else:
             path += self.cfg.dataset.name + "/" + self.dataset.file
             loaded = False
-            if os.path.isfile((self.dataset.cache_path + '.id.npy')):
-                images_path, labels_path = np.load(self.dataset.cache_path + '.npy')
-                images_id = np.load(self.dataset.cache_path + '.id.npy')
+            if os.path.isfile((self.dataset.cache_path + ".id.npy")):
+                images_path, labels_path = np.load(self.dataset.cache_path + ".npy")
+                images_id = np.load(self.dataset.cache_path + ".id.npy")
                 paths_pos = [m.start() for m in re.finditer(r"/", images_path[0])]
-                if images_path[0][:paths_pos[-3]] == path[:path.rfind("/")]:
-                    images_shapes = np.load(self.dataset.cache_path + '.shape.npy')
-                    self.images_path, self.images_shapes, self.images_id = images_path.tolist(), images_shapes.tolist(), images_id.tolist()
+                if images_path[0][: paths_pos[-3]] == path[: path.rfind("/")]:
+                    images_shapes = np.load(self.dataset.cache_path + ".shape.npy")
+                    self.images_path, self.images_shapes, self.images_id = (
+                        images_path.tolist(),
+                        images_shapes.tolist(),
+                        images_id.tolist(),
+                    )
                     self.labels_path = labels_path.tolist()
                     loaded = True
             if not loaded:
                 self.images_path, self.images_shapes, self.images_id = self.get_image_names_shapes(path)
                 self.labels_path = self.get_labels_names()
-                dir_pos = self.dataset.cache_path.rfind('/')
+                dir_pos = self.dataset.cache_path.rfind("/")
                 if not os.path.isdir(self.dataset.cache_path[:dir_pos]):
                     os.mkdir(self.dataset.cache_path[:dir_pos])
                 np.save(self.dataset.cache_path, (np.array(self.images_path), np.array(self.labels_path)))
-                np.save(self.dataset.cache_path + '.id', (np.array(self.images_id)))
-                np.save(self.dataset.cache_path + '.shape', (np.array(self.images_shapes)))
+                np.save(self.dataset.cache_path + ".id", (np.array(self.images_id)))
+                np.save(self.dataset.cache_path + ".shape", (np.array(self.images_shapes)))
 
             self.labels = self.get_labels()
 
@@ -104,9 +122,9 @@ class Dataset(torch.utils.data.Dataset):
 
         if not self.dataset.data_aug:
             if self.cfg.dataset.mosaic:
-                print("Warning: mosaic augmentation won\'t be applied to a dataset with disabled data_aug.")
+                print("Warning: mosaic augmentation won't be applied to a dataset with disabled data_aug.")
             if self.cfg.dataset.color:
-                print("Warning: color augmentation won\'t be applied to a dataset with disabled data_aug.")
+                print("Warning: color augmentation won't be applied to a dataset with disabled data_aug.")
 
     def get_image_names_shapes(self, path: str) -> Tuple[List[str], List[Tuple[int, int]]]:
         """
@@ -122,14 +140,17 @@ class Dataset(torch.utils.data.Dataset):
             if os.path.isfile(path):
                 files = []
                 # If the reference to the files is local then we need the global direction
-                if path.startswith('./'):
-                    parent_global_location = os.path.abspath(path)[:len(path)]
+                if path.startswith("./"):
+                    parent_global_location = os.path.abspath(path)[: len(path)]
                 else:
-                    end_last_word = path.rfind('/')
-                    parent_global_location = os.path.abspath(path)[:end_last_word+1]
-                with open(path, 'r') as lines:
+                    end_last_word = path.rfind("/")
+                    parent_global_location = os.path.abspath(path)[: end_last_word + 1]
+                with open(path, "r") as lines:
                     lines = lines.read().splitlines()
-                    files += [_file.replace('./', parent_global_location) if _file.startswith('./') else _file for _file in lines]
+                    files += [
+                        _file.replace("./", parent_global_location) if _file.startswith("./") else _file
+                        for _file in lines
+                    ]
                 images_path = sorted(files)
             else:
                 raise Exception("File: " + path + " doesn't exist.")
@@ -141,7 +162,6 @@ class Dataset(torch.utils.data.Dataset):
 
         return self.verify_images(images_path)
 
-
     def get_labels_names(self) -> List[str]:
         """
         Returns a list with each individual label path
@@ -150,13 +170,15 @@ class Dataset(torch.utils.data.Dataset):
         """
         labels_path = []
         if self.labels_path is None:
-            labels_path = [_file.replace('images', 'labels').replace(os.path.splitext(_file)[-1], '.txt') for _file in self.images_path]
+            labels_path = [
+                _file.replace("images", "labels").replace(os.path.splitext(_file)[-1], ".txt")
+                for _file in self.images_path
+            ]
             if not os.path.isfile(labels_path[0]):
                 raise Exception("File: " + labels_path[0] + " doesn't exist.")
         else:
             labels_path = self.labels_path
         return labels_path
-
 
     def get_labels(self) -> List[np.array]:
         """
@@ -165,22 +187,24 @@ class Dataset(torch.utils.data.Dataset):
             labels: a list of np.array containing the values of all the labels per image
         """
         labels = []
-        pbar = tqdm(self.labels_path, desc='Loading labels', total=len(self.labels_path))
+        pbar = tqdm(self.labels_path, desc="Loading labels", total=len(self.labels_path))
         for label in pbar:
             try:
                 label_value = []
                 if os.path.isfile(label):
-                    with open(label, 'r') as _file:
-                        label_value = np.array([line.split() for line in _file.read().splitlines()], dtype=np.float32)  # labels
+                    with open(label, "r") as _file:
+                        label_value = np.array(
+                            [line.split() for line in _file.read().splitlines()], dtype=np.float32
+                        )  # labels
                 if len(label_value) == 0:
                     label_value = np.zeros((0, 5), dtype=np.float32)
                 # When in training mode shift label from 0-79 to 1-80 because loss uses 0 to pad
-                if self.mode == 'train':
+                if self.mode == "train":
                     label_value[:, 0] = label_value[:, 0] + 1
                 labels.append(label_value)
             except Exception as e:
                 labels.append(None)
-                print('WARNING: %s' % (e))
+                print("WARNING: %s" % (e))
         return labels
 
     def verify_images(self, images_path: str) -> Tuple[List[str], List[Tuple[int, int]]]:
@@ -195,7 +219,7 @@ class Dataset(torch.utils.data.Dataset):
         tmp_images_path = []
         tmp_images_shapes = []
         tmp_images_id = []
-        pbar = tqdm(images_path, desc='Verifying images', total=len(images_path))
+        pbar = tqdm(images_path, desc="Verifying images", total=len(images_path))
         for image_path in pbar:
             try:
                 image = Image.open(image_path)
@@ -211,7 +235,6 @@ class Dataset(torch.utils.data.Dataset):
             except Exception as e:
                 print("Warning!!! Invalid image: " + image_path + str(e))
         return tmp_images_path, tmp_images_shapes, tmp_images_id
-
 
     def __len__(self) -> int:
         """
@@ -232,7 +255,9 @@ class Dataset(torch.utils.data.Dataset):
             labels: transformed labels in the index position
         """
         image = self.get_image(index)
-        labels = self.labels[index].copy()  # Format: [0] is the Class, [1, 2] is the Center x, y point and [3, 4] is the width and height of the box
+        labels = self.labels[
+            index
+        ].copy()  # Format: [0] is the Class, [1, 2] is the Center x, y point and [3, 4] is the width and height of the box
         size = torch.as_tensor(image.size)
 
         transformed_image, transformed_labels = self.resize_image((image, labels))
@@ -240,12 +265,12 @@ class Dataset(torch.utils.data.Dataset):
         if self.cfg.dataset.mosaic and self.dataset.data_aug:
             # sample other 3 images to stitch with the current image
             indices = np.random.randint(0, self.__len__(), 3)
-            mosaic_candidates = [
-                self.resize_image((self.get_image(i), self.labels[i].copy())) for i in indices
-            ]
+            mosaic_candidates = [self.resize_image((self.get_image(i), self.labels[i].copy())) for i in indices]
             mosaic_candidates = [(transformed_image, transformed_labels)] + mosaic_candidates
             transformed_image, transformed_labels = self.mosaic(tuple(mosaic_candidates))
-            transformed_image, transformed_labels = self.random_perspective_mosaic((transformed_image, transformed_labels))
+            transformed_image, transformed_labels = self.random_perspective_mosaic(
+                (transformed_image, transformed_labels)
+            )
 
         else:
             # Pad if we don't do the mosaic
@@ -253,7 +278,9 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.dataset.data_aug:
             if not self.cfg.dataset.mosaic:
-                transformed_image, transformed_labels = self.random_perspective_augment((transformed_image, transformed_labels))
+                transformed_image, transformed_labels = self.random_perspective_augment(
+                    (transformed_image, transformed_labels)
+                )
 
             # HSV color augmentation
             if self.cfg.dataset.color:
@@ -284,10 +311,9 @@ class Dataset(torch.utils.data.Dataset):
         else:
             image = Image.open(self.images_path[index])
 
-
         if self.cfg.model.input_channels == 3:
-            return image.convert('RGB')
+            return image.convert("RGB")
         elif self.cfg.model.input_channels == 1:
-            return image.convert('LA')
+            return image.convert("LA")
         else:
             raise RuntimeError("Unsupported number of channels! Supported: [1, 3]")

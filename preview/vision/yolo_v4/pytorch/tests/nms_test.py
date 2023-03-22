@@ -12,6 +12,7 @@ from tests.test_tools import get_image_and_label, prepare_model, get_cfg, post_p
 
 class TestNms:
     """Tests nms custom op"""
+
     def prepare_test(self):
         cfg = get_cfg()
         cfg.model.ipu = False
@@ -59,7 +60,7 @@ class TestNms:
         classes_cpu = cpu_preprocessing[2]
 
         cpu_nms_output = cpu_model(scores_cpu, boxes_cpu, classes_cpu)
-        shifting = 4096.
+        shifting = 4096.0
         box_shift = (cpu_nms_output[3].float() * shifting).unsqueeze(axis=-1).float()
 
         assert torch.all((ipu_nms_output[1] - cpu_nms_output[1]) < 1e-04)
@@ -85,16 +86,20 @@ class TestNms:
         max_detections_cpu = result_nms_cpu[1]
 
         for i, (prediction_ipu, prediction_cpu) in enumerate(zip(predictions_ipu, predictions_cpu)):
-            true_detections_ipu = prediction_ipu[:max_detections_ipu[i]]
-            true_detections_cpu = prediction_cpu[:max_detections_cpu[i]]
+            true_detections_ipu = prediction_ipu[: max_detections_ipu[i]]
+            true_detections_cpu = prediction_cpu[: max_detections_cpu[i]]
 
             scores_ipu = true_detections_ipu[:, 4]
             scores_cpu = true_detections_cpu[:, 4]
 
             assert torch.all((scores_ipu - scores_cpu) < 1e-04)
 
-        seen, nt, m_precision, m_recall, m_ap50, m_ap = post_process_and_eval(cfg, result_nms_ipu, image_sizes, transformed_labels)
-        seen_cpu, nt_cpu, m_precision_cpu, m_recall_cpu, m_ap50_cpu, m_ap_cpu = post_process_and_eval(cfg, result_nms_cpu, image_sizes, transformed_labels)
+        seen, nt, m_precision, m_recall, m_ap50, m_ap = post_process_and_eval(
+            cfg, result_nms_ipu, image_sizes, transformed_labels
+        )
+        seen_cpu, nt_cpu, m_precision_cpu, m_recall_cpu, m_ap50_cpu, m_ap_cpu = post_process_and_eval(
+            cfg, result_nms_cpu, image_sizes, transformed_labels
+        )
 
         assert seen == seen_cpu
         assert nt == nt_cpu

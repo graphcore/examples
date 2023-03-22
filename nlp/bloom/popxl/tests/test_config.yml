@@ -1,0 +1,13 @@
+model:
+  sequence_length: 64
+  embedding:
+    vocab_size: 128
+  hidden_size: 256
+  layers: 2
+  attention:
+    heads: 4
+  eval: True
+  precision: "float32"
+execution:
+  tensor_parallel_1: 2
+  tensor_parallel_2: 2

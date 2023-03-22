@@ -4,11 +4,11 @@ Temporal graph networks for link prediction in dynamic graphs, based on [`exampl
 
 Run our TGN on paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3CG1WqL)
+[![Gradient](../../../gradient-badge.svg)](https://ipu.dev/3CG1WqL)
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| Pytorch | GNNs | TGN | JODIE | Link prediction | ✅ | ❌ | [Temporal Graph Networks for Deep Learning on Dynamic Graphs](https://arxiv.org/abs/2006.10637v3) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | GNNs | TGN | JODIE | Link prediction | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required | <p style="text-align: center;">❌ | [Temporal Graph Networks for Deep Learning on Dynamic Graphs](https://arxiv.org/abs/2006.10637v3) |
 
 
 ## Instructions summary
@@ -33,13 +33,13 @@ cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
+3. Additionally, enable PopART with:
 ```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -53,7 +53,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -66,6 +66,7 @@ pip3 install poptorch...x86_64.whl
 pip3 install -r requirements.txt
 ```
 
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Running and benchmarking
 

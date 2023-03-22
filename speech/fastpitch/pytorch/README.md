@@ -1,9 +1,9 @@
 # FastPitch
 FastPitch for mel-spectrogram generation based on the [fastpitch project](https://github.com/NVIDIA/DeepLearningExamples/tree/793027c9da94eb8449ddda3f33543967269aa480/PyTorch/SpeechSynthesis/FastPitch), optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| Pytorch | Speech | FastPitch | LJ-Speech | mel-spectrogram generation | ✅  | ❌ | [FastPitch: Parallel Text-to-speech with Pitch Prediction](https://arxiv.org/abs/2006.06873) | 
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | Speech | FastPitch | LJ-Speech | mel-spectrogram generation | <p style="text-align: center;">✅ <br> Min. 16 IPU (POD16) required  | <p style="text-align: center;">❌ | [FastPitch: Parallel Text-to-speech with Pitch Prediction](https://arxiv.org/abs/2006.06873) |
 
 ## Instructions summary
 
@@ -24,18 +24,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -54,6 +54,8 @@ source <venv path>/bin/activate
 pip3 install -r requirements.txt
 ```
 
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
+
 ## Dataset setup
 Download the LJ-Speech dataset from [the source](https://keithito.com/LJ-Speech-Dataset/) or using the scripts provided:
 ```bash
@@ -71,7 +73,7 @@ Disk space required: 2.6GB
 
 ```bash
 .
-├── 
+├──
  directories, file
 ```
 
@@ -95,7 +97,7 @@ For more information on using the examples-utils benchmarking module, please ref
 
 
 ## License
- 
+
 The example in this directory is licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file in this directory.
 This license applies to the following files:
 - dataset.py
@@ -106,6 +108,6 @@ This license applies to the following files:
 - README.md
 - tests/test_layers.py
 - tests/unit_tester.py
- 
+
 The other files come from the original [FastPitch](https://github.com/NVIDIA/DeepLearningExamples/tree/793027c9da94eb8449ddda3f33543967269aa480/PyTorch/SpeechSynthesis/FastPitch) repository which is licensed under the 3-clause BSD license. The license from that repository is reproduced here as [ORIGINAL-FASTPITCH-LICENSE](ORIGINAL-FASTPITCH-LICENSE).
 Some of the files in the `common/text` subdirectory are based on content from https://github.com/keithito/tacotron which is licensed under the MIT license. See the [LICENSE](common/text/LICENSE) file in that subdirectory for details.

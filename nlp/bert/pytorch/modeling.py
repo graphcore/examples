@@ -29,6 +29,7 @@ class OnehotGather(nn.Module):
     Gathers selected indices from a tensor by transforming the list of indices
     into a one-hot matrix and then multiplying the tensor by that matrix.
     """
+
     def forward(self, sequence, positions):
         """
         Gather the vectors at the specific positions over a batch.
@@ -60,8 +61,10 @@ class SerializedLinear(nn.Linear):
             * OutputChannels: Split across the output channels (dimension p).
             * Disabled: Same as an ordinary matrix multiplication.
     """
-    def __init__(self, in_features, out_features, factor, bias=False,
-                 mode=poptorch.MatMulSerializationMode.OutputChannels):
+
+    def __init__(
+        self, in_features, out_features, factor, bias=False, mode=poptorch.MatMulSerializationMode.OutputChannels
+    ):
         super().__init__(in_features, out_features, bias)
         self.mode = mode
         self.factor = factor
@@ -156,11 +159,13 @@ class PipelinedBertForPretraining(transformers.BertForPreTraining):
             layer.attention.self = fused
 
         if self.config.embedding_serialization_factor > 1:
-            serialized_decoder = SerializedLinear(self.config.hidden_size,
-                                                  self.config.vocab_size,
-                                                  self.config.embedding_serialization_factor,
-                                                  bias=True,
-                                                  mode=poptorch.MatMulSerializationMode.OutputChannels)
+            serialized_decoder = SerializedLinear(
+                self.config.hidden_size,
+                self.config.vocab_size,
+                self.config.embedding_serialization_factor,
+                bias=True,
+                mode=poptorch.MatMulSerializationMode.OutputChannels,
+            )
             serialized_decoder.load_state_dict(self.cls.predictions.decoder.state_dict())
             self.cls.predictions.decoder = serialized_decoder
             self.tie_weights()
@@ -191,6 +196,7 @@ class PipelinedBertForPretraining(transformers.BertForPreTraining):
 
     def _init_weights(self, module):
         """Initialize the weights"""
+
         def truncated_normal_(tensor, mean=0, std=1):
             """
             Truncated Normal distribution, truncated at 2 sigma
@@ -210,29 +216,41 @@ class PipelinedBertForPretraining(transformers.BertForPreTraining):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def forward(self, input_ids, attention_mask, token_type_ids, masked_lm_positions, masked_lm_labels=None, next_sentence_label=None):
-        outputs = self.bert(input_ids=input_ids,
-                            attention_mask=attention_mask,
-                            token_type_ids=token_type_ids)
+    def forward(
+        self,
+        input_ids,
+        attention_mask,
+        token_type_ids,
+        masked_lm_positions,
+        masked_lm_labels=None,
+        next_sentence_label=None,
+    ):
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
         sequence_output, pooled_output = outputs[:2]
 
         # Select only the masked tokens for the classifier
         masked_output = self.gather_indices(sequence_output, masked_lm_positions)
 
         prediction_scores, sequential_relationship_score = self.cls(masked_output, pooled_output)
-        outputs = (prediction_scores, sequential_relationship_score,) + outputs[2:]
+        outputs = (
+            prediction_scores,
+            sequential_relationship_score,
+        ) + outputs[2:]
 
         if masked_lm_labels is not None and next_sentence_label is not None:
             masked_lm_loss = F.cross_entropy(
-                prediction_scores.view(-1, self.config.vocab_size),
-                masked_lm_labels.view(-1),
-                ignore_index=0).float()
-            next_sentence_loss = F.cross_entropy(sequential_relationship_score.view(-1, 2), next_sentence_label.view(-1)).float()
+                prediction_scores.view(-1, self.config.vocab_size), masked_lm_labels.view(-1), ignore_index=0
+            ).float()
+            next_sentence_loss = F.cross_entropy(
+                sequential_relationship_score.view(-1, 2), next_sentence_label.view(-1)
+            ).float()
             total_loss = poptorch.identity_loss(masked_lm_loss + next_sentence_loss, reduction="none")
 
             next_sentence_acc = accuracy(sequential_relationship_score.view([-1, 2]), next_sentence_label.view(-1))
             # masked_lm_labels: 0 if corresponding token not masked, original value otherwise
-            masked_lm_acc = accuracy_masked(prediction_scores.view([-1, self.config.mask_tokens, self.config.vocab_size]), masked_lm_labels, 0)
+            masked_lm_acc = accuracy_masked(
+                prediction_scores.view([-1, self.config.mask_tokens, self.config.vocab_size]), masked_lm_labels, 0
+            )
             outputs = (total_loss, masked_lm_loss, next_sentence_loss, masked_lm_acc, next_sentence_acc)
 
         return outputs
@@ -246,37 +264,57 @@ class PipelinedPackedBertForPretraining(PipelinedBertForPretraining):
         # Since we're redefining the output embedding in self.cls, we need to make sure we are sharing the input and output embeddings.
         self.tie_weights()
 
-    def forward(self, packed_input_ids, packed_input_mask, packed_segment_ids, packed_position_ids, packed_masked_lm_positions,
-                packed_masked_lm_ids, packed_masked_lm_mask, packed_next_sentence_labels, packed_next_sentence_mask):
+    def forward(
+        self,
+        packed_input_ids,
+        packed_input_mask,
+        packed_segment_ids,
+        packed_position_ids,
+        packed_masked_lm_positions,
+        packed_masked_lm_ids,
+        packed_masked_lm_mask,
+        packed_next_sentence_labels,
+        packed_next_sentence_mask,
+    ):
         bs, seq_len = packed_input_mask.shape
         # bs, seq_len -> bs, 1, seq_len -> bs, seq_len, seq_len
         attention_mask = packed_input_mask[:, None, :].repeat(1, seq_len, 1)
         attention_mask = attention_mask == attention_mask.transpose(1, 2)
 
-        outputs = self.bert(input_ids=packed_input_ids,
-                            attention_mask=attention_mask,
-                            token_type_ids=packed_segment_ids,
-                            position_ids=packed_position_ids)
+        outputs = self.bert(
+            input_ids=packed_input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=packed_segment_ids,
+            position_ids=packed_position_ids,
+        )
         sequence_output, pooled_output_list = outputs[:2]
 
         # Select only the masked tokens for the classifier
         masked_output = self.gather_indices(sequence_output, packed_masked_lm_positions)
 
         prediction_scores, seq_relationship_scores = self.cls(masked_output, pooled_output_list)
-        outputs = (prediction_scores, seq_relationship_scores,) + outputs[2:]
+        outputs = (
+            prediction_scores,
+            seq_relationship_scores,
+        ) + outputs[2:]
 
         if packed_masked_lm_ids is not None and packed_next_sentence_labels is not None:
             masked_lm_loss = F.cross_entropy(
-                prediction_scores.view(-1, self.config.vocab_size),
-                packed_masked_lm_ids.view(-1),
-                ignore_index=0).float()
-            next_sentence_loss = F.cross_entropy(seq_relationship_scores.transpose(1, 2), packed_next_sentence_labels, reduction='none').float()
+                prediction_scores.view(-1, self.config.vocab_size), packed_masked_lm_ids.view(-1), ignore_index=0
+            ).float()
+            next_sentence_loss = F.cross_entropy(
+                seq_relationship_scores.transpose(1, 2), packed_next_sentence_labels, reduction="none"
+            ).float()
             next_sentence_loss *= packed_next_sentence_mask
             next_sentence_loss = next_sentence_loss.sum() / packed_next_sentence_mask.sum()
             total_loss = poptorch.identity_loss(masked_lm_loss + next_sentence_loss, reduction="none")
 
-            next_sentence_acc = accuracy_packed(seq_relationship_scores.transpose(1, 2), packed_next_sentence_labels, packed_next_sentence_mask)
-            masked_lm_acc = accuracy_masked(prediction_scores.view([-1, self.config.mask_tokens, self.config.vocab_size]), packed_masked_lm_ids, 0)
+            next_sentence_acc = accuracy_packed(
+                seq_relationship_scores.transpose(1, 2), packed_next_sentence_labels, packed_next_sentence_mask
+            )
+            masked_lm_acc = accuracy_masked(
+                prediction_scores.view([-1, self.config.mask_tokens, self.config.vocab_size]), packed_masked_lm_ids, 0
+            )
             packing_ratio = torch.mean(torch.sum(packed_next_sentence_mask, 1))
             outputs = (total_loss, masked_lm_loss, next_sentence_loss, masked_lm_acc, next_sentence_acc, packing_ratio)
 
@@ -305,7 +343,7 @@ class PackedBertPooler(nn.Module):
         # sequences is lower than max_sequences_per_pack, we still slice out
         # the last max_sequences_per_pack tokens, but we will not use all of
         # them during loss calculation.
-        last_tokens_tensors = hidden_states[:, -self.max_sequences_per_pack:]
+        last_tokens_tensors = hidden_states[:, -self.max_sequences_per_pack :]
         pooled_output_list = []
         for i in range(self.max_sequences_per_pack):
             output = self.dense(last_tokens_tensors[:, i])
@@ -341,6 +379,7 @@ class SerializedEmbedding(nn.Module):
         embedding: A `nn.Embedding` to wrap
         serialization_factor: The number of serialized embedding look-ups
     """
+
     def __init__(self, embedding: nn.Embedding, serialization_factor: int):
         super().__init__()
         self.serialization_factor = serialization_factor
@@ -350,10 +389,15 @@ class SerializedEmbedding(nn.Module):
         assert self.num_embeddings % self.serialization_factor == 0
         self.split_size = self.num_embeddings // self.serialization_factor
         self.split_embeddings = nn.ModuleList(
-            [nn.Embedding.from_pretrained(embedding.weight[i*self.split_size:(i+1)*self.split_size, :].detach(),
-                                          freeze=False,
-                                          padding_idx=embedding.padding_idx if i == 0 else None)
-             for i in range(self.serialization_factor)])
+            [
+                nn.Embedding.from_pretrained(
+                    embedding.weight[i * self.split_size : (i + 1) * self.split_size, :].detach(),
+                    freeze=False,
+                    padding_idx=embedding.padding_idx if i == 0 else None,
+                )
+                for i in range(self.serialization_factor)
+            ]
+        )
 
     def deserialize(self):
         """
@@ -414,8 +458,9 @@ class PipelinedBertForQuestionAnswering(transformers.BertForQuestionAnswering):
         logger("-------------------- Device Allocation --------------------")
         logger("Embedding  --> IPU 0")
         if self.config.embedding_serialization_factor > 1:
-            self.bert.embeddings.word_embeddings = SerializedEmbedding(self.bert.embeddings.word_embeddings,
-                                                                       self.config.embedding_serialization_factor)
+            self.bert.embeddings.word_embeddings = SerializedEmbedding(
+                self.bert.embeddings.word_embeddings, self.config.embedding_serialization_factor
+            )
         self.bert.embeddings = poptorch.BeginBlock(self.bert.embeddings, "Embedding", ipu_id=0)
         hs = outline_attribute(self.bert.embeddings.LayerNorm, "embedding")
         self._hooks.extend(hs)
@@ -458,11 +503,13 @@ class PipelinedBertForQuestionAnswering(transformers.BertForQuestionAnswering):
         return self
 
     def forward(self, input_ids, attention_mask, token_type_ids, start_positions=None, end_positions=None):
-        output = super().forward(input_ids=input_ids,
-                                 attention_mask=attention_mask,
-                                 token_type_ids=token_type_ids,
-                                 start_positions=start_positions,
-                                 end_positions=end_positions)
+        output = super().forward(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            start_positions=start_positions,
+            end_positions=end_positions,
+        )
         if self.training:
             final_loss = poptorch.identity_loss(output.loss, reduction="none")
             return final_loss, output.start_logits, output.end_logits

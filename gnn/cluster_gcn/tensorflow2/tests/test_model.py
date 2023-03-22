@@ -10,13 +10,13 @@ from model.model import AdjacencyProcessing, GcnLayer, create_model
 from utilities.constants import AdjacencyForm
 
 
-@pytest.mark.parametrize('num_labels', [1, 2, 10])
+@pytest.mark.parametrize("num_labels", [1, 2, 10])
 def test_create_model_num_labels(num_labels):
     model = create_model(1, num_labels, 3, 4, 10, 5, 6, 0.0, {"transform_mode": "self_connections_scaled_by_degree"})
     assert model.output.shape[-1] == num_labels
 
 
-@pytest.mark.parametrize('num_features', [1, 2, 10])
+@pytest.mark.parametrize("num_features", [1, 2, 10])
 def test_create_model_num_features(num_features):
     model = create_model(1, 3, num_features, 4, 10, 5, 6, 0.0, {"transform_mode": "self_connections_scaled_by_degree"})
     for input_tensor in model.inputs:
@@ -24,7 +24,7 @@ def test_create_model_num_features(num_features):
             assert input_tensor.shape[-1] == num_features
 
 
-@pytest.mark.parametrize('num_nodes', [4, 10])
+@pytest.mark.parametrize("num_nodes", [4, 10])
 def test_create_model_num_nodes(num_nodes):
     model = create_model(1, 2, 3, num_nodes, 10, 5, 6, 0.0, {"transform_mode": "self_connections_scaled_by_degree"})
     for input_tensor in model.inputs:
@@ -34,15 +34,24 @@ def test_create_model_num_nodes(num_nodes):
             assert input_tensor.shape[0] == num_nodes
 
 
-@pytest.mark.parametrize('max_num_edges', [10, 20])
-@pytest.mark.parametrize('adjacency_form', [AdjacencyForm.DENSE,
-                                            AdjacencyForm.SPARSE_TENSOR,
-                                            AdjacencyForm.SPARSE_TUPLE])
+@pytest.mark.parametrize("max_num_edges", [10, 20])
+@pytest.mark.parametrize(
+    "adjacency_form", [AdjacencyForm.DENSE, AdjacencyForm.SPARSE_TENSOR, AdjacencyForm.SPARSE_TUPLE]
+)
 def test_create_model_num_edges(max_num_edges, adjacency_form):
     num_nodes = 4
-    model = create_model(1, 2, 3, num_nodes, max_num_edges, 5, 6, 0.0,
-                         {"transform_mode": "self_connections_scaled_by_degree"},
-                         adjacency_form=adjacency_form)
+    model = create_model(
+        1,
+        2,
+        3,
+        num_nodes,
+        max_num_edges,
+        5,
+        6,
+        0.0,
+        {"transform_mode": "self_connections_scaled_by_degree"},
+        adjacency_form=adjacency_form,
+    )
     for input_var in model.inputs:
         if input_var.name == "adjacency":
             if adjacency_form == AdjacencyForm.DENSE:
@@ -60,28 +69,46 @@ def test_create_model_num_edges(max_num_edges, adjacency_form):
                 assert input_var[2]
 
 
-@pytest.mark.parametrize('hidden_size', [1, 2, 10])
-@pytest.mark.parametrize('adjacency_form', [AdjacencyForm.DENSE,
-                                            AdjacencyForm.SPARSE_TENSOR,
-                                            AdjacencyForm.SPARSE_TUPLE])
+@pytest.mark.parametrize("hidden_size", [1, 2, 10])
+@pytest.mark.parametrize(
+    "adjacency_form", [AdjacencyForm.DENSE, AdjacencyForm.SPARSE_TENSOR, AdjacencyForm.SPARSE_TUPLE]
+)
 def test_create_model_hidden_size(hidden_size, adjacency_form):
-    model = create_model(1, 2, 3, 4, 10, hidden_size, 6, 0.0,
-                         {"transform_mode": "self_connections_scaled_by_degree"},
-                         adjacency_form=adjacency_form)
+    model = create_model(
+        1,
+        2,
+        3,
+        4,
+        10,
+        hidden_size,
+        6,
+        0.0,
+        {"transform_mode": "self_connections_scaled_by_degree"},
+        adjacency_form=adjacency_form,
+    )
     for layer in model.layers:
         if isinstance(layer, GcnLayer) and layer.name != "output":
             for weight in layer.transform.weights:
                 assert weight.shape[-1] == hidden_size
 
 
-@pytest.mark.parametrize('num_layers', [1, 2, 10])
-@pytest.mark.parametrize('adjacency_form', [AdjacencyForm.DENSE,
-                                            AdjacencyForm.SPARSE_TENSOR,
-                                            AdjacencyForm.SPARSE_TUPLE])
+@pytest.mark.parametrize("num_layers", [1, 2, 10])
+@pytest.mark.parametrize(
+    "adjacency_form", [AdjacencyForm.DENSE, AdjacencyForm.SPARSE_TENSOR, AdjacencyForm.SPARSE_TUPLE]
+)
 def test_create_model_num_layers(num_layers, adjacency_form):
-    model = create_model(1, 2, 3, 4, 10, 5, num_layers, 0.0,
-                         {"transform_mode": "self_connections_scaled_by_degree"},
-                         adjacency_form=adjacency_form)
+    model = create_model(
+        1,
+        2,
+        3,
+        4,
+        10,
+        5,
+        num_layers,
+        0.0,
+        {"transform_mode": "self_connections_scaled_by_degree"},
+        adjacency_form=adjacency_form,
+    )
     counter = 0
     for layer in model.layers:
         if isinstance(layer, GcnLayer) or layer.name == "output":
@@ -89,28 +116,40 @@ def test_create_model_num_layers(num_layers, adjacency_form):
     assert counter == num_layers
 
 
-@pytest.mark.parametrize('dropout_rate', [0, 0.5, 1])
-@pytest.mark.parametrize('adjacency_form', [AdjacencyForm.DENSE,
-                                            AdjacencyForm.SPARSE_TENSOR,
-                                            AdjacencyForm.SPARSE_TUPLE])
+@pytest.mark.parametrize("dropout_rate", [0, 0.5, 1])
+@pytest.mark.parametrize(
+    "adjacency_form", [AdjacencyForm.DENSE, AdjacencyForm.SPARSE_TENSOR, AdjacencyForm.SPARSE_TUPLE]
+)
 def test_create_model_dropout(dropout_rate, adjacency_form):
-    model = create_model(1, 2, 3, 4, 10, 5, 6, dropout_rate,
-                         {"transform_mode": "self_connections_scaled_by_degree"},
-                         adjacency_form=adjacency_form)
+    model = create_model(
+        1,
+        2,
+        3,
+        4,
+        10,
+        5,
+        6,
+        dropout_rate,
+        {"transform_mode": "self_connections_scaled_by_degree"},
+        adjacency_form=adjacency_form,
+    )
     for layer in model.layers:
         if isinstance(layer, GcnLayer):
             assert layer.dropout.rate == dropout_rate
 
 
-@pytest.mark.parametrize('adjacency_params', [
-    {"transform_mode": "normalised_regularised", "regularisation": 0.001},
-    {"transform_mode": "self_connections_scaled_by_degree"},
-    {"transform_mode": "normalised_regularised_self_connections_scaled_by_degree", "regularisation": 0.001},
-    {"transform_mode": "self_connections_scaled_by_degree_with_diagonal_enhancement", "diag_lambda": 0.001},
-])
-@pytest.mark.parametrize('adjacency_form', [AdjacencyForm.DENSE,
-                                            AdjacencyForm.SPARSE_TENSOR,
-                                            AdjacencyForm.SPARSE_TUPLE])
+@pytest.mark.parametrize(
+    "adjacency_params",
+    [
+        {"transform_mode": "normalised_regularised", "regularisation": 0.001},
+        {"transform_mode": "self_connections_scaled_by_degree"},
+        {"transform_mode": "normalised_regularised_self_connections_scaled_by_degree", "regularisation": 0.001},
+        {"transform_mode": "self_connections_scaled_by_degree_with_diagonal_enhancement", "diag_lambda": 0.001},
+    ],
+)
+@pytest.mark.parametrize(
+    "adjacency_form", [AdjacencyForm.DENSE, AdjacencyForm.SPARSE_TENSOR, AdjacencyForm.SPARSE_TUPLE]
+)
 def test_create_model_adjacency_params(adjacency_params, adjacency_form):
     model = create_model(1, 2, 3, 4, 10, 5, 6, 0.0, adjacency_params, adjacency_form=adjacency_form)
     for layer in model.layers:
@@ -120,31 +159,49 @@ def test_create_model_adjacency_params(adjacency_params, adjacency_form):
             assert layer.regularisation == adjacency_params.get("regularisation", None)
 
 
-@pytest.mark.parametrize('adjacency_form', [AdjacencyForm.DENSE,
-                                            AdjacencyForm.SPARSE_TENSOR,
-                                            AdjacencyForm.SPARSE_TUPLE])
+@pytest.mark.parametrize(
+    "adjacency_form", [AdjacencyForm.DENSE, AdjacencyForm.SPARSE_TENSOR, AdjacencyForm.SPARSE_TUPLE]
+)
 def test_create_model_gcn_layers(adjacency_form):
-    model = create_model(1, 2, 3, 4, 10, 5, 6, 0.5,
-                         {"transform_mode": "self_connections_scaled_by_degree"},
-                         adjacency_form=adjacency_form)
+    model = create_model(
+        1,
+        2,
+        3,
+        4,
+        10,
+        5,
+        6,
+        0.5,
+        {"transform_mode": "self_connections_scaled_by_degree"},
+        adjacency_form=adjacency_form,
+    )
     for layer in model.layers:
         if isinstance(layer, GcnLayer):
             if layer.name != "output":
                 assert len(layer.submodules) == 4
                 assert isinstance(layer.layer_norm, IpuLayerNormalization)
-                tf.keras.activations.serialize(layer.activation_fn) == 'relu'
+                tf.keras.activations.serialize(layer.activation_fn) == "relu"
             else:
                 assert len(layer.submodules) == 3
                 for sub_layer in layer.submodules:
                     assert not isinstance(sub_layer, IpuLayerNormalization)
-                    tf.keras.activations.serialize(layer.activation_fn) == 'linear'
+                    tf.keras.activations.serialize(layer.activation_fn) == "linear"
 
 
 def expand_gcn_layer(adjacency_form):
     num_nodes = 4
-    model = create_model(1, 2, 3, num_nodes, 10, 5, 6, 0.5,
-                         {"transform_mode": "self_connections_scaled_by_degree"},
-                         adjacency_form=adjacency_form)
+    model = create_model(
+        1,
+        2,
+        3,
+        num_nodes,
+        10,
+        5,
+        6,
+        0.5,
+        {"transform_mode": "self_connections_scaled_by_degree"},
+        adjacency_form=adjacency_form,
+    )
     for layer in model.layers:
         if isinstance(layer, GcnLayer):
 
@@ -170,16 +227,11 @@ def expand_gcn_layer(adjacency_form):
     return gcn_layer_model
 
 
-@pytest.mark.parametrize('adjacency_form', [AdjacencyForm.DENSE,
-                                            AdjacencyForm.SPARSE_TENSOR,
-                                            AdjacencyForm.SPARSE_TUPLE])
+@pytest.mark.parametrize(
+    "adjacency_form", [AdjacencyForm.DENSE, AdjacencyForm.SPARSE_TENSOR, AdjacencyForm.SPARSE_TUPLE]
+)
 def test_gcn_layer(adjacency_form):
-    expected_order = ['sparse_dense_matmul',
-                      'concatenate',
-                      'dropout',
-                      'dense',
-                      'layer_norm',
-                      'tf.nn.relu']
+    expected_order = ["sparse_dense_matmul", "concatenate", "dropout", "dense", "layer_norm", "tf.nn.relu"]
     gcn_layer_model = expand_gcn_layer(adjacency_form)
 
     order_sub_layers = list()

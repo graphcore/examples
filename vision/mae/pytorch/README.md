@@ -42,13 +42,13 @@ imagenet1k
 
 To run a tested and optimised configuration and to reproduce the performance shown on our [performance results page](https://www.graphcore.ai/performance-results), please follow the setup instructions in this README to setup the environment, and then use the `examples_utils` module (installed automatically as part of the environment setup) to run one or more benchmarks. For example:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file>
 ```
 
 Or to run a specific benchmark in the `benchmarks.yml` file provided:
 
-```python
+```bash
 python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --benchmark <name of benchmark>
 ```
 
@@ -89,13 +89,13 @@ Once the training finishes, you can validate with finetune accuracy:
 
 ## Run finetune
 
-```python
+```bash
 python main_finetune.py --finetune ${MODEL_DIR} --data_path ${IMAGENET_DIR} \
 ```
 
 ## Run validate
 
-```python
+```bash
 python finetune_validate.py --resume ${MODEL_DIR}  --batch_size 16 --data_path ${IMAGENET_DIR}
 ```
 
@@ -130,7 +130,7 @@ The following files are created by Graphcore and are licensed under Apache Licen
 
 
 
-The following files include code derived from this [repo](https://github.com/facebookresearch/mae) which uses Attribution-NonCommercial 4.0 International license: 
+The following files include code derived from this [repo](https://github.com/facebookresearch/mae) which uses Attribution-NonCommercial 4.0 International license:
 * util/log.py
 * util/lr_decay.py
 * util/lr_sched.py

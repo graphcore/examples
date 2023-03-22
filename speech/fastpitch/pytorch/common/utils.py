@@ -66,15 +66,15 @@ def load_filepaths_and_text(dataset_path, fnames, has_speakers=False, split="|")
         return tuple(str(Path(root, p)) for p in paths) + tuple(non_paths)
 
     fpaths_and_text = []
-    for fname in fnames.split(','):
-        with open(fname, encoding='utf-8') as f:
+    for fname in fnames.split(","):
+        with open(fname, encoding="utf-8") as f:
             fpaths_and_text += [split_line(dataset_path, line) for line in f]
     return fpaths_and_text
 
 
 def stats_filename(dataset_path, filelist_path, feature_name):
     stem = Path(filelist_path).stem
-    return Path(dataset_path, f'{feature_name}_stats__{stem}.json')
+    return Path(dataset_path, f"{feature_name}_stats__{stem}.json")
 
 
 def to_gpu(x):

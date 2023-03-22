@@ -1,9 +1,9 @@
 # GPT-3 2.7B
 GPT-3 2.7B for NLP pre-training and text generation, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| PopXL | NLP | GPT-3 | Wikipedia | Next sentence prediction, Question/Answering | ✅  | ✅ | [Language Models are Few-Shot Learners](https://arxiv.org/pdf/2005.14165.pdf) | 
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PopXL | NLP | GPT-3 | Wikipedia | Next sentence prediction, Question/Answering | <p style="text-align: center;">✅ <br> Min. 64 IPUs (POD64) required  | <p style="text-align: center;">✅ <br> Min. 64 IPU (POD64) required | [Language Models are Few-Shot Learners](https://arxiv.org/pdf/2005.14165.pdf) |
 
 
 # Instructions summary
@@ -25,18 +25,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -54,7 +54,6 @@ source <venv path>/bin/activate
 ```bash
 pip3 install -r requirements.txt
 ```
-
 
 ## Dataset setup
 To obtain the data used for pre-training follow the below instructions.
@@ -110,18 +109,18 @@ Then you need to generate the indices for the TFRecords
 ```bash
 cd wikipedia_tf
 for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .tfrecord`.index; done
-``` 
+```
 
 
-## Custom training/inference and other features
+## Custom training
 
 ### Pre-training with GPT on IPU
 You can run pre-training for GPT with settings defined in `pretraining.yml` by using the script below. You need to provide the data files to `--input_files`.
 ```shell
 python3 demo/pretraining.py --input_files {path to your wikipedia data}/*.tfrecord
 ```
-The default model size in demo pre-training is GPT-3 2.7B on POD64 (named `gpt3_2.7B_pod64`). You can change it to other sizes that are avaible in the 
-configuration file `config/pretraining.yml` using the `--config` CLI parameter like so. 
+The default model size in demo pre-training is GPT-3 2.7B on POD64 (named `gpt3_2.7B_pod64`). You can change it to other sizes that are available in the
+configuration file `config/pretraining.yml` using the `--config` CLI parameter like so.
 ```
 python3 run_pretraining.py --config gpt3_2.7B_pod64 --input_files {path to your wikipedia data}/*.tfrecord
 ```
@@ -132,6 +131,9 @@ python3 pretraining.py
 ```
 
 When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable saving/loading from the cache store, use the environment variable `POPXL_CACHE_DIR=<PATH/TO/CACHE>` when running the application.
+
+
+## Other features
 
 ### View the pre-training results in Weights & Biases
 This project supports Weights & Biases, a platform to keep track of machine learning experiments. A client for Weights&Biases will be installed by default and can be used during training by passing the `--wandb` flag. You will need to manually log in (see the quickstart guide [here](https://docs.wandb.ai/quickstart)) and configure the project name with `--wandb-name`.) For more information please see https://www.wandb.com/.
@@ -145,8 +147,8 @@ You can find configuration options for GPT in class `GPTConfig` in the file `con
 * Models
 
     You can set the parameters used in the GPT model.
-    - general parameters: 
-        1. `layers` the number of decoder layers in the model, 
+    - general parameters:
+        1. `layers` the number of decoder layers in the model,
         2. `hidden_size` the hidden size of the layers,
         3. `sequence_length` number of tokens in a sample,
         4. `eval` to enable the model to be built for inference or validation which will disable dropout and optimisation,
@@ -158,16 +160,16 @@ You can find configuration options for GPT in class `GPTConfig` in the file `con
 
 * Training
 
-    You can configure the training options that have impact on training. 
-    - `steps`: number of steps, 
-    - `epochs`: number of epochs, 
+    You can configure the training options that have impact on training.
+    - `steps`: number of steps,
+    - `epochs`: number of epochs,
     - `global_batch_size`: the number of samples that contribute to an optimizer step,
     - `stochastic_rounding`: a flag to enable stochastic rounding,
     - `optimizer`: an optimizer with the following settings.
         - `name`: name of the optimizer, by default, AdamW.
         - `learning_rate`: to set up the learning rate including `function` used in scheduler, `maximum` learning rate, and `warmup_proportion` to set the proportion of the warmup step,
-        - `beta1`: by default 0.9, 
-        - `beta2`: by default 0.999, 
+        - `beta1`: by default 0.9,
+        - `beta2`: by default 0.999,
         - `weight_decay`: weight decay factor by default 0.0.
 
 * Data
@@ -211,12 +213,12 @@ Data-parallel training involves breaking the training dataset up into multiple p
 
 First of all, we build the training graphs for each phase, represented in the class `Graphs`. A phase can include one layer or consecutive layers. The execution of a phase can be for the forward graph, gradient graph, optimizer graph or a combination of them. We need to build the graphs used in each phase before we define the phases in [Build the main computational graph](#main).
 
-The graphs required for each phase can be represented in class `Graphs`. 
+The graphs required for each phase can be represented in class `Graphs`.
 * The `fwd` and `bwd` are respectively the forward and backward pass graphs. The `bwd` graph is obtained directly by using `autodiff_with_accumulation` from the forward graph `fwd`.
-* The `facts` has the required variable factories in the forward graph and optimizer graph. The `grad_facts` has the required variable factories for the backward graph. 
+* The `facts` has the required variable factories in the forward graph and optimizer graph. The `grad_facts` has the required variable factories for the backward graph.
 * The `optim` contains the optimizer graphs for each variable.
-* The `buffers` are remote buffers used to handle the loading and offloading of the activations, trainable weights, and optimiser states. 
-* To handle the remote load and store for the remote buffers, we also need the:      
+* The `buffers` are remote buffers used to handle the loading and offloading of the activations, trainable weights, and optimiser states.
+* To handle the remote load and store for the remote buffers, we also need the:
     - graph `_fwd_load` that loads variables from `fwd` buffers and returns `_fwd_load_names`,
     - graph `_optim_fwd_load` that loads all forward and optimiser state from buffers
     - graph `_optim_fwd_store` that stores all forward and optimiser state to buffers

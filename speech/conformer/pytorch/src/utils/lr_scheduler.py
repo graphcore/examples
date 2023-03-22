@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
    https://github.com/espnet/espnet/blob/master/espnet2/schedulers/warmup_lr.py
@@ -20,7 +20,7 @@ This script has been adapted from some of the original EspNet found here:
 Main changes:
     modified the part of parameters of WarmupLR class
     add device_factor into the calculation formula of lr
-'''
+"""
 
 import torch
 from torch.optim.lr_scheduler import _LRScheduler
@@ -54,7 +54,7 @@ class WarmupLR(_LRScheduler):
         self.current_epoch = 0
         self.steps_per_epoch = 0
         self.device_factor = device_factor
-        self.warmup_steps = round(warmup_steps / (device_factor ** 2))
+        self.warmup_steps = round(warmup_steps / (device_factor**2))
         # __init__() must be invoked before setting field
         # because step() is also invoked in __init__()
         super().__init__(optimizer, last_epoch)
@@ -70,7 +70,10 @@ class WarmupLR(_LRScheduler):
             self._step_count = step_num
             step_num /= self.device_factor
 
-        return [lr * self.warmup_steps ** 0.5 * min(step_num ** -0.5, step_num * self.warmup_steps ** -1.5) for lr in self.base_lrs]
+        return [
+            lr * self.warmup_steps**0.5 * min(step_num**-0.5, step_num * self.warmup_steps**-1.5)
+            for lr in self.base_lrs
+        ]
 
     @property
     def global_step(self):

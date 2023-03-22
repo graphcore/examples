@@ -2,12 +2,12 @@
 
 ## Overview
 
-This is an efficient reimplementation of the main algorithm 
+This is an efficient reimplementation of the main algorithm
 described in the paper:
-[Adversarial Generalized Method of Moments](https://arxiv.org/abs/1803.07164) 
+[Adversarial Generalized Method of Moments](https://arxiv.org/abs/1803.07164)
 by Greg Lewis and Vasilis Syrgkanis
 The model has a variety of applications like balanced regression,
-ordinary least squares, instrumental variables regression, 
+ordinary least squares, instrumental variables regression,
 maximum likelihood estimation, and non-linear least squares.
 
 
@@ -33,12 +33,12 @@ The file `logging_utils.py` provides some improved logging capability.
 
 ### 1) Download the Poplar SDK
 
-Install the Poplar SDK following the instructions 
+Install the Poplar SDK following the instructions
 in the Getting Started guide for your IPU system.
 Make sure to run the `enable.sh` script for Poplar.
 
 ### 2) Prepare the TensorFlow environment
- 
+
 Create and activate a Python virtualenv with the version of tensorflow-2 from
 the Poplar SDK installed.
 ```
@@ -57,26 +57,26 @@ The main file, can be started using:
 
 ```
 python tf2_AdGMoM.py
-``` 
+```
 
 ## Parameters
 
-The main parameters of the algorithm are self-explanatory 
+The main parameters of the algorithm are self-explanatory
 (after reading the paper) and can be changed
 in the respective yaml file (`AdGMoM_conf_default.yaml`).
 The file also provides some explanation of the parameters.
 
-So far, the code has been tested only for a dimension of one 
+So far, the code has been tested only for a dimension of one
 for all the variables.
 There is no full regularization framework added yet for the critic.
-According to the 
-[Minimax Estimation of Conditional Moment Models](https://arxiv.org/abs/2006.07201) 
+According to the
+[Minimax Estimation of Conditional Moment Models](https://arxiv.org/abs/2006.07201)
 follow up paper, regularization is important
 to make the minmax problem behave more stable.
 
 ## License
 
-This example is licensed under the MIT license - see the LICENSE file 
+This example is licensed under the MIT license - see the LICENSE file
 at the top-level of this repository.
 
 This directory includes derived work from the following:
@@ -104,4 +104,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-

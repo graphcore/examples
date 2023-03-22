@@ -16,13 +16,13 @@ def inference_settings(args, opts):
     # Use the faster GroupNorm implementation or compatible version.
     opts._Popart.set("groupNormStridedChannelGrouping", args.enable_fast_groupnorm)
     engine_options = {"target.deterministicWorkers": "portable"}  # avoid replica weight drift
-    if args.profile and (not(hasattr(args, "popdist_rank")) or args.popdist_rank == 0):
+    if args.profile and (not (hasattr(args, "popdist_rank")) or args.popdist_rank == 0):
         logging.info(f"Profile files will be available in {Logger.logdirname}.")
         engine_options = {
-                "debug.allowOutOfMemory": "true",
-                "autoReport.directory": Logger.logdirname,
-                "profiler.format": "v3",
-                "autoReport.all": "true",
+            "debug.allowOutOfMemory": "true",
+            "autoReport.directory": Logger.logdirname,
+            "profiler.format": "v3",
+            "autoReport.all": "true",
         }
     if args.exchange_memory_target is not None:
         engine_options["opt.internalExchangeOptimisationTarget"] = args.exchange_memory_target
@@ -47,7 +47,7 @@ def train_settings(args, opts):
     opts.enableStableNorm(not args.disable_stable_batchnorm)
     opts.Precision.enableFloatingPointExceptions(args.enable_fp_exceptions)
 
-    if not(args.recompute_mode == "none") and len(args.pipeline_splits) == 0:
+    if not (args.recompute_mode == "none") and len(args.pipeline_splits) == 0:
         opts._Popart.set("explicitRecomputation", True)
         if args.recompute_mode == "auto":
             opts._Popart.set("autoRecomputation", int(popart.RecomputationType.Standard))
@@ -63,18 +63,20 @@ def train_settings(args, opts):
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
     opts._Popart.set("disableOptimizerStateTensorStreams", True)
 
-    num_stages = len(args.pipeline_splits)+1
+    num_stages = len(args.pipeline_splits) + 1
     if len(args.available_memory_proportion) == 1:
-        opts.setAvailableMemoryProportion({f'IPU{i}': args.available_memory_proportion[0] for i in range(num_stages)})
+        opts.setAvailableMemoryProportion({f"IPU{i}": args.available_memory_proportion[0] for i in range(num_stages)})
     elif len(args.available_memory_proportion) > 1:
-        opts.setAvailableMemoryProportion({f'IPU{i}': amp for i, amp in enumerate(args.available_memory_proportion)})
+        opts.setAvailableMemoryProportion({f"IPU{i}": amp for i, amp in enumerate(args.available_memory_proportion)})
 
     if args.auto_loss_scaling:
         opts.Training.setAutomaticLossScaling(True)
 
     opts.outputMode(poptorch.OutputMode.Sum)
     # merge all tensors before communication
-    opts._Popart.set("accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
+    opts._Popart.set(
+        "accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized)
+    )
     opts._Popart.set("replicatedCollectivesSettings.prepareScheduleForMergingCollectives", True)
     opts._Popart.set("replicatedCollectivesSettings.mergeAllReduceCollectives", True)
     return opts

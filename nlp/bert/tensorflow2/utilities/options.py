@@ -6,8 +6,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, root_validator, validator
 
-from keras_extensions.learning_rate.scheduler_builder import \
-    AVAILABLE_SCHEDULERS
+from keras_extensions.learning_rate.scheduler_builder import AVAILABLE_SCHEDULERS
 from keras_extensions.optimization import ALLOWED_OPTIMIZERS
 from utilities.argparser import ALLOWED_GLUE_TASKS
 
@@ -35,8 +34,7 @@ class LearningRateOptions(BaseModel):
     @validator("schedule_name", always=True)
     def name_match(cls, v):
         if v not in AVAILABLE_SCHEDULERS.keys():
-            raise ValueError(f"Unrecognised learning rate schedule: `{v}`."
-                             f" Choose one of {AVAILABLE_SCHEDULERS}")
+            raise ValueError(f"Unrecognised learning rate schedule: `{v}`." f" Choose one of {AVAILABLE_SCHEDULERS}")
         return v
 
 
@@ -49,8 +47,7 @@ class OptimizerOptions(BaseModel):
     @validator("name", always=True)
     def name_match(cls, v):
         if v not in ALLOWED_OPTIMIZERS:
-            raise ValueError(f"Unrecognised optimizer name: `{v}`."
-                             f" Choose one of {ALLOWED_OPTIMIZERS}")
+            raise ValueError(f"Unrecognised optimizer name: `{v}`." f" Choose one of {ALLOWED_OPTIMIZERS}")
         return v
 
 
@@ -161,16 +158,17 @@ class SharedOptions(BaseModel):
     @root_validator()
     def qkv_flag_match(cls, values):
         if values.get("use_qkv_bias") and not values.get("use_qkv_split"):
-            raise ValueError("Unrecognised combination of flag options,"
-                             "use_qkv_bias should be disabled when not using use_qkv_split.")
+            raise ValueError(
+                "Unrecognised combination of flag options,"
+                "use_qkv_bias should be disabled when not using use_qkv_split."
+            )
         return values
 
     @validator("matmul_partials_type", always=True)
     def matmul_partials_type_match(cls, v):
         allowed = ["half", "float"]
         if v not in allowed:
-            raise ValueError(f"Unrecognised matmul partials type: `{v}`."
-                             f" Choose one of {allowed}")
+            raise ValueError(f"Unrecognised matmul partials type: `{v}`." f" Choose one of {allowed}")
         return v
 
 
@@ -212,6 +210,5 @@ class GLUEOptions(SharedOptions):
     @validator("glue_task", always=True)
     def glue_task_match(cls, v):
         if v not in ALLOWED_GLUE_TASKS:
-            raise ValueError(f"Unrecognised GLUE task: `{v}`."
-                             f" Choose one of {ALLOWED_GLUE_TASKS}")
+            raise ValueError(f"Unrecognised GLUE task: `{v}`." f" Choose one of {ALLOWED_GLUE_TASKS}")
         return v

@@ -3,11 +3,11 @@ Vision Transformer for image recognition, optimised for Graphcore's IPU.  Based 
 
 Run our ViT on Paperspace.
 <br>
-[![Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3W2Ru39)
+[![Gradient](../../gradient-badge.svg)](https://ipu.dev/3W2Ru39)
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|-------|
-| Pytorch | Vision | ViT | ImageNet LSVRC 2012, CIFAR-10 | Image recognition | ✅  | ✅ | [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929) |
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch | Vision | ViT | ImageNet LSVRC 2012, CIFAR-10 | Image recognition | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">❌ | [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929) |
 
 
 ## Instructions summary
@@ -34,13 +34,13 @@ cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
+3. Additionally, enable PopART with:
 ```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -54,7 +54,7 @@ source <venv path>/bin/activate
 
 2. Navigate to the Poplar SDK root directory
 
-3. Install the PopTorch (Pytorch) wheel:
+3. Install the PopTorch (PyTorch) wheel:
 ```bash
 cd <poplar sdk root dir>
 pip3 install poptorch...x86_64.whl
@@ -66,6 +66,8 @@ pip3 install poptorch...x86_64.whl
 ```bash
 pip3 install -r requirements.txt
 ```
+
+More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup
 ### ImageNet LSVRC 2012
@@ -102,7 +104,8 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Custom training
+
 ### Pretraining
 In pre-training Imagenet1k, `micro_batch_size` is set to 8, and all other parameters are tuned to reach a validation accuracy that is higher than 74.79% (released in [google official repository](https://github.com/google-research/vision_transformer/issues/62#issuecomment-888993463)). To achieve maximum throughput, `micro_batch_size` can be set to 14, then hyperparameters tuning is required to reach this validation accuracy.
 
@@ -130,6 +133,9 @@ Afterwards run ImageNet1k validation:
 ```console
 python validation.py --config b16_imagenet1k_valid
 ```
+
+## Other features
+
 ### Employing automatic loss scaling (ALS) for half precision training
 
 ALS is a feature in the Poplar SDK which brings stability to training large models in half precision, specially when gradient accumulation and reduction across replicas also happen in half precision.

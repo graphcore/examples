@@ -28,16 +28,16 @@ from tools import logger
 
 def load_custom_ops():
     logger("Building (if necessary) and loading remap_tensor_ce.")
-    load_lib(os.path.dirname(__file__) + '/custom_ops/remap_tensor_ce.cpp')
+    load_lib(os.path.dirname(__file__) + "/custom_ops/remap_tensor_ce.cpp")
     logger("Building (if necessary) and loading residual_add_inplace_pattern.")
-    load_lib(os.path.dirname(__file__) + '/custom_ops/workarounds/residual_add_inplace_pattern.cpp')
+    load_lib(os.path.dirname(__file__) + "/custom_ops/workarounds/residual_add_inplace_pattern.cpp")
 
 
 def get_options(config):
-    '''
+    """
     Set ipu specific options for the model, see documentation:
     https://docs.graphcore.ai/en/latest/
-    '''
+    """
 
     # Numpy options
     np.random.seed(config.seed)
@@ -46,11 +46,10 @@ def get_options(config):
     if config.custom_ops:
         load_custom_ops()
 
-    # Poptorch options
+    # PopTorch options
     if config.use_popdist:
         # Use popdist.poptorch options if running in distributed mode
-        opts = popdist.poptorch.Options(
-            ipus_per_replica=config.ipus_per_replica)
+        opts = popdist.poptorch.Options(ipus_per_replica=config.ipus_per_replica)
     else:
         opts = poptorch.Options()
         # Set the replication factor
@@ -59,8 +58,7 @@ def get_options(config):
     opts.autoRoundNumIPUs(True)
     opts.deviceIterations(config.device_iterations)
     opts.Training.gradientAccumulation(config.gradient_accumulation)
-    opts.Training.accumulationAndReplicationReductionType(
-        poptorch.ReductionType.Mean)
+    opts.Training.accumulationAndReplicationReductionType(poptorch.ReductionType.Mean)
 
     # Enable automatic loss scaling
     # Note that it expects accumulationAndReplicationReductionType to be set
@@ -70,19 +68,17 @@ def get_options(config):
         opts.Training.setAutomaticLossScaling(True)
 
     opts.outputMode(poptorch.OutputMode.Sum)
-    opts.TensorLocations.setOptimizerLocation(poptorch.TensorLocationSettings()
-                                              .useOnChipStorage(not config.optimizer_state_offchip)
-                                              .useReplicatedTensorSharding(config.replicated_tensor_sharding))
+    opts.TensorLocations.setOptimizerLocation(
+        poptorch.TensorLocationSettings()
+        .useOnChipStorage(not config.optimizer_state_offchip)
+        .useReplicatedTensorSharding(config.replicated_tensor_sharding)
+    )
     opts.randomSeed(config.seed)
-    opts.setExecutionStrategy(
-        poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
+    opts.setExecutionStrategy(poptorch.PipelinedExecution(poptorch.AutoStage.AutoIncrement))
     if config.compile_only:
         opts.useOfflineIpuTarget()
 
-    mem_prop = {
-        f'IPU{i}': config.matmul_proportion[i]
-        for i in range(config.ipus_per_replica)
-    }
+    mem_prop = {f"IPU{i}": config.matmul_proportion[i] for i in range(config.ipus_per_replica)}
     opts.setAvailableMemoryProportion(mem_prop)
     if config.executable_cache_dir:
         opts.enableExecutableCaching(config.executable_cache_dir)
@@ -95,17 +91,15 @@ def get_options(config):
     # PopART options
     opts._Popart.set("disableGradAccumulationTensorStreams", True)
     opts._Popart.set("outlineThreshold", 10.0)
-    opts._Popart.set("accumulateOuterFragmentSettings.schedule",
-                     int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized))
     opts._Popart.set(
-        "accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
+        "accumulateOuterFragmentSettings.schedule", int(popart.AccumulateOuterFragmentSchedule.OverlapMemoryOptimized)
+    )
+    opts._Popart.set("accumulateOuterFragmentSettings.excludedVirtualGraphs", ["0"])
     # Enable patterns for better throughput and memory reduction
-    opts._Popart.set("subgraphCopyingStrategy", int(
-        popart.SubgraphCopyingStrategy.JustInTime))
+    opts._Popart.set("subgraphCopyingStrategy", int(popart.SubgraphCopyingStrategy.JustInTime))
     opts._Popart.set("decomposeGradSum", True)
     opts._Popart.set("scheduleNonWeightUpdateGradientConsumersEarly", True)
-    opts._Popart.setPatterns(
-        {"TiedGather": True, "TiedGatherAccumulate": True, "UpdateInplacePrioritiesForIpu": True})
+    opts._Popart.setPatterns({"TiedGather": True, "TiedGatherAccumulate": True, "UpdateInplacePrioritiesForIpu": True})
 
     opts._Popart.set("saveInitializersToFile", "weights.bin")
 

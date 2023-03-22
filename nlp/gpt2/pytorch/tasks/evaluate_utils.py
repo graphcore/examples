@@ -26,8 +26,8 @@ import numpy as np
 def process_batch(batch):
     """Process batch and produce inputs for the model."""
 
-    loss_mask = batch['pad_mask'].long().contiguous().byte()
-    tokens_ = batch['text'].long().contiguous()
+    loss_mask = batch["pad_mask"].long().contiguous().byte()
+    tokens_ = batch["text"].long().contiguous()
     labels = tokens_[:, 1:].contiguous()
     tokens = tokens_[:, :-1].contiguous()
 
@@ -35,9 +35,7 @@ def process_batch(batch):
 
 
 class _LMDataset(torch.utils.data.Dataset):
-
-    def __init__(self, tokens, seq_len, pad_idx, num_original_tokens,
-                 num_tokenized_tokens, overlapping_eval=None):
+    def __init__(self, tokens, seq_len, pad_idx, num_original_tokens, num_tokenized_tokens, overlapping_eval=None):
         self.tokens = tokens
         self.seq_len = seq_len
         self.pad_idx = pad_idx
@@ -50,8 +48,7 @@ class _LMDataset(torch.utils.data.Dataset):
         self.total_targets = len(self.tokens) - 1
         # remove first sequence tokens
         targets = max(self.total_targets - self.overlapping_eval, 0)
-        self.total_sequences = max(
-            math.ceil(targets / self.overlapping_eval) + 1, 1)
+        self.total_sequences = max(math.ceil(targets / self.overlapping_eval) + 1, 1)
 
     def __len__(self):
         return self.total_sequences
@@ -59,24 +56,23 @@ class _LMDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         start_idx = idx * self.overlapping_eval
         end_idx = start_idx + self.seq_len
-        tokens = self.tokens[start_idx:end_idx + 1]
+        tokens = self.tokens[start_idx : end_idx + 1]
         num_tokens = len(tokens)
         pad_mask = [1] * num_tokens
         if num_tokens < self.seq_len + 1:
-            num_pad = (self.seq_len + 1 - num_tokens)
+            num_pad = self.seq_len + 1 - num_tokens
             pad_mask += [0] * (num_pad)
             tokens += [self.pad_idx] * num_pad
         pad_mask = np.array(pad_mask[1:])
         if self.overlapping_eval != self.seq_len and idx != 0:
-            pad_mask[:-self.overlapping_eval] *= 0
+            pad_mask[: -self.overlapping_eval] *= 0
 
-        return {'text': np.array(tokens), 'pad_mask': pad_mask}
+        return {"text": np.array(tokens), "pad_mask": pad_mask}
 
 
 class _LambadaDataset(torch.utils.data.Dataset):
-
     def __init__(self, path, pad_idx, tokenizer, seq_len, strict=False):
-        print('> building lambada dataset from {} ...'.format(path))
+        print("> building lambada dataset from {} ...".format(path))
         self.seq_len = seq_len
         self.pad_idx = pad_idx
         self.tokenizer = tokenizer
@@ -84,9 +80,9 @@ class _LambadaDataset(torch.utils.data.Dataset):
 
         self.tokens = []
         self.labels = []
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             for line in f.readlines():
-                text = json.loads(line)['text']
+                text = json.loads(line)["text"]
                 tokens, labels = self.get_tokens(text)
                 if tokens:
                     self.tokens.append(tokens)
@@ -96,12 +92,12 @@ class _LambadaDataset(torch.utils.data.Dataset):
         if not self.strict:
             tokens = self.tokenizer.encode(text)
             if len(tokens) > self.seq_len:
-                tokens = tokens[:self.seq_len]
+                tokens = tokens[: self.seq_len]
             return tokens[:-1], [tokens[-1]]
         last_token = text.split()[-1]
         start_idx = text.rfind(last_token)
         beginning_tokens = self.tokenizer.encode(text[:start_idx].strip())
-        last_token = self.tokenizer.encode(' ' + last_token)
+        last_token = self.tokenizer.encode(" " + last_token)
         if len(beginning_tokens) + len(last_token) > self.seq_len:
             return None, None
         return beginning_tokens, last_token
@@ -118,9 +114,9 @@ class _LambadaDataset(torch.utils.data.Dataset):
         tokens = tokens + labels
         num_tokens = len(tokens)
         if num_tokens < self.seq_len + 1:
-            num_pad = (self.seq_len + 1 - num_tokens)
+            num_pad = self.seq_len + 1 - num_tokens
             pad_mask += [0] * (num_pad)
             tokens += [self.pad_idx] * num_pad
         pad_mask = np.array(pad_mask[1:])
 
-        return {'text': np.array(tokens), 'pad_mask': pad_mask}
+        return {"text": np.array(tokens), "pad_mask": pad_mask}

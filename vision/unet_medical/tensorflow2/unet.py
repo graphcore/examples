@@ -36,22 +36,21 @@ def get_optimizer(args):
 
     if args.optimizer == "adam":
         optimizer_instance = keras.optimizers.Adam(
-            learning_rate=args.learning_rate, epsilon=1e-4, gradient_transformers=[gradient_normalizer])
+            learning_rate=args.learning_rate, epsilon=1e-4, gradient_transformers=[gradient_normalizer]
+        )
     else:
         # Create learning rate schedule
         learning_rate_fn = tf.keras.optimizers.schedules.ExponentialDecay(
-            args.learning_rate,
-            decay_steps=args.num_epochs,
-            decay_rate=args.decay_rate,
-            staircase=False)
+            args.learning_rate, decay_steps=args.num_epochs, decay_rate=args.decay_rate, staircase=False
+        )
 
         optimizer_instance = keras.optimizers.SGD(
-            learning_rate=learning_rate_fn, momentum=args.momentum, gradient_transformers=[gradient_normalizer])
+            learning_rate=learning_rate_fn, momentum=args.momentum, gradient_transformers=[gradient_normalizer]
+        )
 
     # Use loss scaling for FP16
-    if args.dtype == 'float16':
-        optimizer_instance = tf.keras.mixed_precision.LossScaleOptimizer(
-            optimizer_instance, False, args.loss_scale)
+    if args.dtype == "float16":
+        optimizer_instance = tf.keras.mixed_precision.LossScaleOptimizer(optimizer_instance, False, args.loss_scale)
     return optimizer_instance
 
 
@@ -61,12 +60,17 @@ def create_model(args):
         set_pipeline_options(model, args)
         model.print_pipeline_stage_assignment_summary()
     elif args.nb_ipus_per_replica == 1:
-        model.set_gradient_accumulation_options(gradient_accumulation_steps_per_replica=args.gradient_accumulation_count,
-                                                offload_weight_update_variables=False)
-    model.compile(optimizer=get_optimizer(args), loss=dice_ce_loss,
-                  # Number of micro batches to process sequentially in a single execution
-                  steps_per_execution=args.steps_per_execution if args.nb_ipus_per_replica > 0 else None,
-                  metrics=[dice_coef_accuracy_fn, ce_loss])
+        model.set_gradient_accumulation_options(
+            gradient_accumulation_steps_per_replica=args.gradient_accumulation_count,
+            offload_weight_update_variables=False,
+        )
+    model.compile(
+        optimizer=get_optimizer(args),
+        loss=dice_ce_loss,
+        # Number of micro batches to process sequentially in a single execution
+        steps_per_execution=args.steps_per_execution if args.nb_ipus_per_replica > 0 else None,
+        metrics=[dice_coef_accuracy_fn, ce_loss],
+    )
 
     return model
 
@@ -75,8 +79,7 @@ def train_model(args, model, ds_train, ds_eval):
     callbacks = []
 
     # Record throughput
-    callbacks.append(PerfCallback(
-        steps_per_execution=args.steps_per_execution, batch_size=args.micro_batch_size))
+    callbacks.append(PerfCallback(steps_per_execution=args.steps_per_execution, batch_size=args.micro_batch_size))
     eval_accuracy = None
     eval_loss = None
     if args.nb_ipus_per_replica <= 1:
@@ -88,7 +91,8 @@ def train_model(args, model, ds_train, ds_eval):
                 f"The steps per execution is reduced to the total number of steps ({total_num_steps})."
                 f"To keep the user-defined steps per execution, gradient accumulation count"
                 f" * nb of epochs ({args.gradient_accumulation_count * args.num_epochs}) "
-                f"needs to be at least the nb of steps per execution ({args.steps_per_execution})")
+                f"needs to be at least the nb of steps per execution ({args.steps_per_execution})"
+            )
             executions = 1
             args.steps_per_execution = total_num_steps
         else:
@@ -96,33 +100,42 @@ def train_model(args, model, ds_train, ds_eval):
 
     additional_args = {}
     if args.eval:
-        callbacks.append(keras.callbacks.ModelCheckpoint(filepath=os.path.join(args.model_dir, 'checkpoints'),
-                                                         monitor='val_dice_coef_accuracy_fn',
-                                                         save_best_only=True,
-                                                         save_weights_only=True))
+        callbacks.append(
+            keras.callbacks.ModelCheckpoint(
+                filepath=os.path.join(args.model_dir, "checkpoints"),
+                monitor="val_dice_coef_accuracy_fn",
+                save_best_only=True,
+                save_weights_only=True,
+            )
+        )
         if args.eval_freq > executions:
             logger.warning(
-                f"The number of executions in model.fit ({executions}) needs to be at least the validation frequency ({args.eval_freq}).")
+                f"The number of executions in model.fit ({executions}) needs to be at least the validation frequency ({args.eval_freq})."
+            )
             args.eval_freq = min(args.eval_freq, executions)
 
-        additional_args = {"validation_data": ds_eval,
-                           "validation_steps": args.gradient_accumulation_count,
-                           "validation_freq": args.eval_freq}
+        additional_args = {
+            "validation_data": ds_eval,
+            "validation_steps": args.gradient_accumulation_count,
+            "validation_freq": args.eval_freq,
+        }
 
     elif not args.benchmark:
-        callbacks.append(keras.callbacks.ModelCheckpoint(filepath=os.path.join(args.model_dir, 'checkpoints'),
-                                                         monitor='dice_coef_accuracy_fn',
-                                                         save_best_only=True,
-                                                         save_weights_only=True))
+        callbacks.append(
+            keras.callbacks.ModelCheckpoint(
+                filepath=os.path.join(args.model_dir, "checkpoints"),
+                monitor="dice_coef_accuracy_fn",
+                save_best_only=True,
+                save_weights_only=True,
+            )
+        )
 
-    train_result = model.fit(ds_train,
-                             steps_per_epoch=args.steps_per_execution,
-                             epochs=executions,
-                             callbacks=callbacks,
-                             **additional_args)
+    train_result = model.fit(
+        ds_train, steps_per_epoch=args.steps_per_execution, epochs=executions, callbacks=callbacks, **additional_args
+    )
     if args.eval:
-        eval_accuracy = train_result.history['val_dice_coef_accuracy_fn']
-        eval_loss = train_result.history['val_loss']
+        eval_accuracy = train_result.history["val_dice_coef_accuracy_fn"]
+        eval_loss = train_result.history["val_loss"]
     return eval_accuracy, eval_loss
 
 
@@ -137,24 +150,24 @@ def infer_model(args, model, ds_infer):
         duration = t1 - t0
         total_nb_samples = args.steps_per_execution * args.micro_batch_size
         tput = f"{total_nb_samples / duration:0.15f}"
-        logger.info(
-            f'Inference\t Time: {duration} seconds\t throughput: {tput} samples/sec.')
+        logger.info(f"Inference\t Time: {duration} seconds\t throughput: {tput} samples/sec.")
     else:
         if args.model_dir:
-            model.load_weights(os.path.join(
-                args.model_dir, 'checkpoints')).expect_partial()
+            model.load_weights(os.path.join(args.model_dir, "checkpoints")).expect_partial()
         predictions = model.predict(ds_infer, steps=args.steps_per_execution)
-        binary_masks = [
-            np.argmax(p, axis=-1).astype(np.uint8) * 255 for p in predictions]
-        prediction_tif = [Image.fromarray(mask).resize(size=(512, 512), resample=Image.BILINEAR)
-                          for mask in binary_masks]
-        output_dir = os.path.join(args.model_dir, 'predictions')
+        binary_masks = [np.argmax(p, axis=-1).astype(np.uint8) * 255 for p in predictions]
+        prediction_tif = [
+            Image.fromarray(mask).resize(size=(512, 512), resample=Image.BILINEAR) for mask in binary_masks
+        ]
+        output_dir = os.path.join(args.model_dir, "predictions")
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        prediction_tif[0].save(os.path.join(output_dir, 'test-masks.tif'),
-                               compression="tiff_deflate",
-                               save_all=True,
-                               append_images=prediction_tif[1:])
+        prediction_tif[0].save(
+            os.path.join(output_dir, "test-masks.tif"),
+            compression="tiff_deflate",
+            save_all=True,
+            append_images=prediction_tif[1:],
+        )
 
         logger.info(f"Predictions saved at {output_dir}.")
 
@@ -184,8 +197,7 @@ def unet(args, ds_train, ds_eval, ds_infer):
         model.summary()
         if args.train:
             logger.info("Training model...")
-            eval_accuracy, eval_loss = train_model(
-                args, model, ds_train, ds_eval)
+            eval_accuracy, eval_loss = train_model(args, model, ds_train, ds_eval)
             logger.info("Training complete")
 
         if args.infer:

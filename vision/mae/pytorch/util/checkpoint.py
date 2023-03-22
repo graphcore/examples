@@ -17,19 +17,17 @@ import sys
 
 
 def save_checkpoint(epoch, model, optimizer, path):
-    save_state = {'model': model.state_dict(),
-                  'optimizer': optimizer.state_dict(),
-                  'epoch': epoch}
-    torch.save(save_state, f'{path}/model_{epoch}.pth')
-    torch.save(save_state, f'{path}/checkpoint.pth')
+    save_state = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": epoch}
+    torch.save(save_state, f"{path}/model_{epoch}.pth")
+    torch.save(save_state, f"{path}/checkpoint.pth")
 
 
 def load_checkpoint(model, optimizer, path):
-    assert os.path.exists(path), f'{path} not exists'
+    assert os.path.exists(path), f"{path} not exists"
     model_state = torch.load(path)
-    epoch = model_state['epoch']
-    weights = model_state['model']
-    optimizer_weights = model_state['optimizer']
+    epoch = model_state["epoch"]
+    weights = model_state["model"]
+    optimizer_weights = model_state["optimizer"]
 
     model.load_state_dict(weights)
     optimizer.load_state_dict(optimizer_weights)

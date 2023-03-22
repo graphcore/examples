@@ -16,6 +16,7 @@ import os
 import gc
 import sys
 from pathlib import Path
+
 # Append bert directory
 bert_root_path = str(Path(__file__).parent.parent)
 sys.path.append(bert_root_path)
@@ -39,25 +40,17 @@ bert_root_dir = Path(__file__).parent.parent.resolve()
 def run_poprun_cmdline(poprun_args, cmdline_args, script):
     cmdline_args["--wandb"] = "false"
     cmd = ["poprun"]
-    cmd.extend([
-        str(item) for sublist in poprun_args.items()
-        for item in sublist
-        if item != ""
-    ])
+    cmd.extend([str(item) for sublist in poprun_args.items() for item in sublist if item != ""])
     cmd.append("python3")
     cmd.append(script)
-    cmd.extend([
-        str(item) for sublist in cmdline_args.items()
-        for item in sublist
-        if item != ""
-    ])
+    cmd.extend([str(item) for sublist in cmdline_args.items() for item in sublist if item != ""])
     try:
         out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=bert_root_dir)
     except subprocess.CalledProcessError as e:
-            print(f"TEST FAILED")
-            print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
-            print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
-            raise
+        print(f"TEST FAILED")
+        print(f"stdout={e.stdout.decode('utf-8',errors='ignore')}")
+        print(f"stderr={e.stderr.decode('utf-8',errors='ignore')}")
+        raise
     return out, out.stdout.decode("utf-8"), out.stderr.decode("utf-8")
 
 
@@ -76,6 +69,7 @@ def dataset():
 
     # MPI to broadcast data in root=1 to root=0
     from mpi4py import MPI
+
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     loader_list_copy = np.copy(loader_list)
@@ -83,7 +77,7 @@ def dataset():
 
     # Assert if data broadcast to root=0 is different
     if comm.Get_rank() == 0 and not np.all(loader_list_copy == loader_list):
-        print('Passed test: instances have different data')
+        print("Passed test: instances have different data")
 
     # Wait until both roots are finished
     time.sleep(2)
@@ -95,15 +89,12 @@ def test_poprun_dataset():
     Launch poprun as subprocess and assert output from poprun_utils.py
     """
     gc.collect()
-    out, stdout, stderr = run_poprun_cmdline({
-        "--num-instances": 2,
-        "--num-replicas": 2,
-        "--ipus-per-replica": 4
-        },
+    out, stdout, stderr = run_poprun_cmdline(
+        {"--num-instances": 2, "--num-replicas": 2, "--ipus-per-replica": 4},
         {},
-        os.path.dirname(os.path.abspath(__file__)) + "/poprun_test.py"
+        os.path.dirname(os.path.abspath(__file__)) + "/poprun_test.py",
     )
-    assert 'Passed test: instances have different data' in stdout
+    assert "Passed test: instances have different data" in stdout
 
 
 @pytest.mark.ipus(4)
@@ -113,19 +104,21 @@ def test_poprun_loss_down_accuracy_up():
     accuracy is trending upwards.
     """
     gc.collect()
-    out, stdout, stderr = run_poprun_cmdline({
-        "--num-instances": 2,
-        "--num-replicas": 2,
-        "--ipus-per-replica": 2,
+    out, stdout, stderr = run_poprun_cmdline(
+        {
+            "--num-instances": 2,
+            "--num-replicas": 2,
+            "--ipus-per-replica": 2,
         },
         {
-        "--config": "demo_tiny_128",
-        "--training-steps": 25,
-        "--ipus-per-replica": 2,
-        "--layers-per-ipu": 0, "": 3,
-        "--disable-progress-bar": "True"
+            "--config": "demo_tiny_128",
+            "--training-steps": 25,
+            "--ipus-per-replica": 2,
+            "--layers-per-ipu": 0,
+            "": 3,
+            "--disable-progress-bar": "True",
         },
-        "run_pretraining.py"
+        "run_pretraining.py",
     )
     print(f"'\nOutput was:\n{stderr}")
     assert out.returncode == 0

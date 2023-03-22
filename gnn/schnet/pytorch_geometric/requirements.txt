@@ -1,0 +1,11 @@
+--find-links https://data.pyg.org/whl/torch-1.13.1+cpu.html
+
+
+pandas==1.5.3; python_version >= '3.8'
+pandas==1.2.0; python_version < '3.8'
+matplotlib==3.6.2; python_version >= '3.8'
+matplotlib==3.5.3; python_version < '3.8'
+periodictable==1.6.1
+py3Dmol==1.8.1
+seaborn==0.12.1
+torch-cluster==1.6.0+pt113cpu

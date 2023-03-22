@@ -1,0 +1,42 @@
+"bloom_176B": &bloom_176B
+  model:
+    sequence_length: 1024 # 2048 -> 1024
+    layers: 70
+    hidden_size: 14336
+    attention:
+      heads: 112
+    embedding:
+      vocab_size: 250880
+
+"bloom_560M": &bloom_560M  # BERT sized model
+  model:
+    sequence_length: 1024
+    embedding:
+      vocab_size: 250880
+    hidden_size: 1024
+    layers: 24
+    attention:
+      heads: 16
+
+# -------------------------
+
+
+# ------- Execution -------
+release:
+  "bloom_176B_pod16":
+    <<: *bloom_176B
+    execution:
+      io_tiles: 64
+      tensor_parallel_1: 4
+      tensor_parallel_2: 4
+      available_memory_proportion: [0.18]
+      disable_fc_pass: true
+      memmap_dir: 'bloom-176b-memmap'
+
+  "bloom_560M_pod16":
+    <<: *bloom_560M
+    execution:
+      io_tiles: 64
+      tensor_parallel_1: 4
+      tensor_parallel_2: 4
+      disable_fc_pass: true

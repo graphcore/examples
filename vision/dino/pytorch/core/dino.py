@@ -30,19 +30,13 @@ class DINOLoss(nn.Module):
         self.student_temp = student_temp
         self.ncrops = ncrops
 
-    def forward(
-            self,
-            student_output,
-            teacher_output,
-            center,
-            teacher_temp_factor):
+    def forward(self, student_output, teacher_output, center, teacher_temp_factor):
         """
         Cross-entropy between softmax outputs of the teacher and student networks.
         """
         student_out = student_output / self.student_temp
         student_out = student_out.chunk(self.ncrops)
-        teacher_out = F.softmax(
-            (teacher_output - center) / teacher_temp_factor, dim=-1)
+        teacher_out = F.softmax((teacher_output - center) / teacher_temp_factor, dim=-1)
         teacher_out = teacher_out.detach().chunk(2)
 
         total_loss = 0
@@ -53,8 +47,7 @@ class DINOLoss(nn.Module):
                     # we skip cases where student and teacher operate on the
                     # same view
                     continue
-                loss = torch.sum(-q *
-                                 F.log_softmax(student_out[v], dim=-1), dim=-1)
+                loss = torch.sum(-q * F.log_softmax(student_out[v], dim=-1), dim=-1)
                 total_loss += loss.mean()
                 n_loss_terms += 1
 
@@ -65,16 +58,17 @@ class DINOLoss(nn.Module):
 
 class DINOHead(nn.Module):
     def __init__(
-            self,
-            in_dim,
-            out_dim,
-            use_bn=False,
-            norm_last_layer=True,
-            nlayers=3,
-            hidden_dim=2048,
-            bottleneck_dim=256,
-            act_layer=nn.GELU,
-            precision=Precision.FP32):
+        self,
+        in_dim,
+        out_dim,
+        use_bn=False,
+        norm_last_layer=True,
+        nlayers=3,
+        hidden_dim=2048,
+        bottleneck_dim=256,
+        act_layer=nn.GELU,
+        precision=Precision.FP32,
+    ):
         super().__init__()
         nlayers = max(nlayers, 1)
         self.precision = precision
@@ -93,22 +87,14 @@ class DINOHead(nn.Module):
             layers.append(nn.Linear(hidden_dim, bottleneck_dim))
             self.mlp = nn.Sequential(*layers)
         self.apply(self._init_weights)
-        self.last_layer1 = weight_norm(
-            nn.Linear(
-                bottleneck_dim,
-                out_dim // 2,
-                bias=False))
+        self.last_layer1 = weight_norm(nn.Linear(bottleneck_dim, out_dim // 2, bias=False))
         self.last_layer1.weight_g.data.fill_(1)
-        self.last_layer2 = weight_norm(
-            nn.Linear(
-                bottleneck_dim,
-                out_dim // 2,
-                bias=False))
+        self.last_layer2 = weight_norm(nn.Linear(bottleneck_dim, out_dim // 2, bias=False))
         self.last_layer2.weight_g.data.fill_(1)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            trunc_normal_(m.weight, std=0.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
@@ -142,17 +128,19 @@ class MultiCropWrapper(nn.Module):
     concatenated features.
     """
 
-    def __init__(self,
-                 student,
-                 teacher,
-                 student_head,
-                 teacher_head,
-                 loss,
-                 momentum,
-                 device='ipu',
-                 pipeline=None,
-                 precision=Precision.FP32,
-                 alignment=False):
+    def __init__(
+        self,
+        student,
+        teacher,
+        student_head,
+        teacher_head,
+        loss,
+        momentum,
+        device="ipu",
+        pipeline=None,
+        precision=Precision.FP32,
+        alignment=False,
+    ):
         super(MultiCropWrapper, self).__init__()
         self.student = student
         self.student_head = student_head
@@ -177,21 +165,15 @@ class MultiCropWrapper(nn.Module):
         for p in self.teacher_head.parameters():
             p.requires_grad = False
 
-    def forward(
-            self,
-            global_imgs,
-            crops,
-            ema_factor,
-            center,
-            teacher_temp_factor):
+    def forward(self, global_imgs, crops, ema_factor, center, teacher_temp_factor):
         bs, global_count = global_imgs.shape[:2]
         crop_count = crops.shape[1]
         global_imgs = torch.chunk(global_imgs, global_count, dim=1)
         crops = torch.chunk(crops, crop_count, dim=1)
         global_imgs = torch.cat([img.squeeze(1) for img in global_imgs])
         crops = torch.cat([img.squeeze(1) for img in crops])
-        global_imgs = global_imgs / 255.
-        crops = crops / 255.
+        global_imgs = global_imgs / 255.0
+        crops = crops / 255.0
         mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
         var = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
         global_imgs = (global_imgs - mean) / var
@@ -203,8 +185,7 @@ class MultiCropWrapper(nn.Module):
         student_output_global = self.student(global_imgs)
         student_output_crop = self.student(crops)
 
-        student_output = torch.cat(
-            (student_output_global, student_output_crop))
+        student_output = torch.cat((student_output_global, student_output_crop))
         student_output = self.student_head(student_output)
 
         with torch.no_grad():
@@ -213,43 +194,33 @@ class MultiCropWrapper(nn.Module):
             teacher_output = self.teacher_head(teacher_output)
             teacher_output = teacher_output.detach()
 
-        batch_center, loss = self.loss(
-            student_output.float(), teacher_output.float(), center, teacher_temp_factor)
+        batch_center, loss = self.loss(student_output.float(), teacher_output.float(), center, teacher_temp_factor)
         if self.alignment:
-            return torch.cat([student_output, teacher_output],
-                             dim=0), poptorch.identity_loss(loss, reduction='mean')
+            return torch.cat([student_output, teacher_output], dim=0), poptorch.identity_loss(loss, reduction="mean")
         else:
-            return batch_center, poptorch.identity_loss(loss, reduction='mean')
+            return batch_center, poptorch.identity_loss(loss, reduction="mean")
 
     @torch.no_grad()
     def gpu_update_teacher(self):
-        for param_q, param_k in zip(
-                self.student.parameters(), self.teacher.parameters()):
-            param_k.data.mul_(
-                self.momentum).add_(
-                (1 - self.momentum) * param_q.detach().data)
-        for param_q, param_k in zip(
-                self.student_head.parameters(), self.teacher_head.parameters()):
-            param_k.data.mul_(
-                self.momentum).add_(
-                (1 - self.momentum) * param_q.detach().data)
+        for param_q, param_k in zip(self.student.parameters(), self.teacher.parameters()):
+            param_k.data.mul_(self.momentum).add_((1 - self.momentum) * param_q.detach().data)
+        for param_q, param_k in zip(self.student_head.parameters(), self.teacher_head.parameters()):
+            param_k.data.mul_(self.momentum).add_((1 - self.momentum) * param_q.detach().data)
 
     @torch.no_grad()
     def _momentum_update_teacher(self, ema_factor):
         """
         Momentum update of the key encoder
         """
-        if self.device == 'ipu':
+        if self.device == "ipu":
             self._momentum_update_pipeline(ema_factor)
 
     def set_vit(self, vit, layer_ipu, index_list):
-        vit.patch_embed = poptorch.BeginBlock(
-            vit.patch_embed, 'ipu0', ipu_id=0)
+        vit.patch_embed = poptorch.BeginBlock(vit.patch_embed, "ipu0", ipu_id=0)
         for i, block in enumerate(vit.blocks):
             ipu = layer_ipu[i]
             if i in index_list:
-                vit.blocks[i] = poptorch.BeginBlock(
-                    block, f'ipu{ipu}', ipu_id=ipu)
+                vit.blocks[i] = poptorch.BeginBlock(block, f"ipu{ipu}", ipu_id=ipu)
 
     def set_pipeline(self):
         layer_ipu = _get_layer_ipu(self.pipeline)
@@ -261,21 +232,22 @@ class MultiCropWrapper(nn.Module):
         self.set_vit(self.student, layer_ipu, index_list)
         self.set_vit(self.teacher, layer_ipu, index_list)
 
-        self.student_head.mlp = poptorch.BeginBlock(
-            self.student_head.mlp, f'ipu{last_id-1}', ipu_id=last_id - 1)
-        self.teacher_head.mlp = poptorch.BeginBlock(
-            self.teacher_head.mlp, f'ipu{last_id-1}', ipu_id=last_id - 1)
+        self.student_head.mlp = poptorch.BeginBlock(self.student_head.mlp, f"ipu{last_id-1}", ipu_id=last_id - 1)
+        self.teacher_head.mlp = poptorch.BeginBlock(self.teacher_head.mlp, f"ipu{last_id-1}", ipu_id=last_id - 1)
 
         self.student_head.last_layer1 = poptorch.BeginBlock(
-            self.student_head.last_layer1, f'ipu{last_id}', ipu_id=last_id)
+            self.student_head.last_layer1, f"ipu{last_id}", ipu_id=last_id
+        )
         self.teacher_head.last_layer1 = poptorch.BeginBlock(
-            self.teacher_head.last_layer1, f'ipu{last_id}', ipu_id=last_id)
+            self.teacher_head.last_layer1, f"ipu{last_id}", ipu_id=last_id
+        )
         self.student_head.last_layer2 = poptorch.BeginBlock(
-            self.student_head.last_layer2, f'ipu{last_id}', ipu_id=last_id)
+            self.student_head.last_layer2, f"ipu{last_id}", ipu_id=last_id
+        )
         self.teacher_head.last_layer2 = poptorch.BeginBlock(
-            self.teacher_head.last_layer2, f'ipu{last_id}', ipu_id=last_id)
-        self.loss = poptorch.BeginBlock(
-            self.loss, f'ipu{last_id}', ipu_id=last_id)
+            self.teacher_head.last_layer2, f"ipu{last_id}", ipu_id=last_id
+        )
+        self.loss = poptorch.BeginBlock(self.loss, f"ipu{last_id}", ipu_id=last_id)
 
     @torch.no_grad()
     def _momentum_update_pipeline(self, ema_factor):
@@ -283,62 +255,26 @@ class MultiCropWrapper(nn.Module):
         ipu_count = len(self.pipeline)
         last_id = len(self.pipeline) - 1
 
-        self.ema_update(
-            self.student.cls_token,
-            self.teacher.cls_token,
-            ema_factor,
-            0)
-        self.ema_update(
-            self.student.pos_embed,
-            self.teacher.pos_embed,
-            ema_factor,
-            0)
-        self.single_ema_update(
-            self.student.patch_embed,
-            self.teacher.patch_embed,
-            ema_factor,
-            0)
+        self.ema_update(self.student.cls_token, self.teacher.cls_token, ema_factor, 0)
+        self.ema_update(self.student.pos_embed, self.teacher.pos_embed, ema_factor, 0)
+        self.single_ema_update(self.student.patch_embed, self.teacher.patch_embed, ema_factor, 0)
 
         for i, layer in enumerate(self.student.blocks):
             ipu = layer_ipu[i]
-            self.single_ema_update(
-                self.student.blocks[i],
-                self.teacher.blocks[i],
-                ema_factor,
-                ipu)
-        self.single_ema_update(
-            self.student.norm,
-            self.teacher.norm,
-            ema_factor,
-            ipu)
-        self.single_ema_update(
-            self.student_head.mlp,
-            self.teacher_head.mlp,
-            ema_factor,
-            last_id - 1)
-        self.single_ema_update(
-            self.student_head.last_layer1,
-            self.teacher_head.last_layer1,
-            ema_factor,
-            last_id)
-        self.single_ema_update(
-            self.student_head.last_layer2,
-            self.teacher_head.last_layer2,
-            ema_factor,
-            last_id)
+            self.single_ema_update(self.student.blocks[i], self.teacher.blocks[i], ema_factor, ipu)
+        self.single_ema_update(self.student.norm, self.teacher.norm, ema_factor, ipu)
+        self.single_ema_update(self.student_head.mlp, self.teacher_head.mlp, ema_factor, last_id - 1)
+        self.single_ema_update(self.student_head.last_layer1, self.teacher_head.last_layer1, ema_factor, last_id)
+        self.single_ema_update(self.student_head.last_layer2, self.teacher_head.last_layer2, ema_factor, last_id)
 
     @torch.no_grad()
     def single_ema_update(self, modeule_q, module_k, ema_factor, ipu_id):
-        for param_q, param_k in zip(
-                modeule_q.parameters(), module_k.parameters()):
+        for param_q, param_k in zip(modeule_q.parameters(), module_k.parameters()):
             self.ema_update(param_q, param_k, ema_factor, ipu_id)
 
     @torch.no_grad()
     def ema_update(self, param_q, param_k, ema_factor, ipu_id):
-        with poptorch.Block(f'ipu{ipu_id}', ipu_id):
-            poptorch.custom_op([param_q, param_k, ema_factor],
-                               'ExpMovAvg',
-                               'com.acme',
-                               1,
-                               example_outputs=[param_q],
-                               attributes={})
+        with poptorch.Block(f"ipu{ipu_id}", ipu_id):
+            poptorch.custom_op(
+                [param_q, param_k, ema_factor], "ExpMovAvg", "com.acme", 1, example_outputs=[param_q], attributes={}
+            )

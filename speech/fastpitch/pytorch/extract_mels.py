@@ -48,64 +48,55 @@ def parse_args(parser):
     """
     Parse commandline arguments.
     """
-    parser.add_argument('--tacotron2-checkpoint', type=str,
-                        help='full path to the generator checkpoint file')
-    parser.add_argument('-b', '--batch-size', default=32, type=int)
-    parser.add_argument('--log-file', type=str, default='nvlog.json',
-                        help='Filename for logging')
+    parser.add_argument("--tacotron2-checkpoint", type=str, help="full path to the generator checkpoint file")
+    parser.add_argument("-b", "--batch-size", default=32, type=int)
+    parser.add_argument("--log-file", type=str, default="nvlog.json", help="Filename for logging")
     # Mel extraction
-    parser.add_argument('-d', '--dataset-path', type=str,
-                        default='./', help='Path to dataset')
-    parser.add_argument('--wav-text-filelist', required=True,
-                        type=str, help='Path to file with audio paths and text')
-    parser.add_argument('--text-cleaners', nargs='*',
-                        default=['english_cleaners'], type=str,
-                        help='Type of text cleaners for input text')
-    parser.add_argument('--symbol-set', type=str, default='english_basic',
-                        help='Define symbol set for input text')
-    parser.add_argument('--max-wav-value', default=32768.0, type=float,
-                        help='Maximum audiowave value')
-    parser.add_argument('--sampling-rate', default=22050, type=int,
-                        help='Sampling rate')
-    parser.add_argument('--filter-length', default=1024, type=int,
-                        help='Filter length')
-    parser.add_argument('--hop-length', default=256, type=int,
-                        help='Hop (stride) length')
-    parser.add_argument('--win-length', default=1024, type=int,
-                        help='Window length')
-    parser.add_argument('--mel-fmin', default=0.0, type=float,
-                        help='Minimum mel frequency')
-    parser.add_argument('--mel-fmax', default=8000.0, type=float,
-                        help='Maximum mel frequency')
+    parser.add_argument("-d", "--dataset-path", type=str, default="./", help="Path to dataset")
+    parser.add_argument("--wav-text-filelist", required=True, type=str, help="Path to file with audio paths and text")
+    parser.add_argument(
+        "--text-cleaners",
+        nargs="*",
+        default=["english_cleaners"],
+        type=str,
+        help="Type of text cleaners for input text",
+    )
+    parser.add_argument("--symbol-set", type=str, default="english_basic", help="Define symbol set for input text")
+    parser.add_argument("--max-wav-value", default=32768.0, type=float, help="Maximum audiowave value")
+    parser.add_argument("--sampling-rate", default=22050, type=int, help="Sampling rate")
+    parser.add_argument("--filter-length", default=1024, type=int, help="Filter length")
+    parser.add_argument("--hop-length", default=256, type=int, help="Hop (stride) length")
+    parser.add_argument("--win-length", default=1024, type=int, help="Window length")
+    parser.add_argument("--mel-fmin", default=0.0, type=float, help="Minimum mel frequency")
+    parser.add_argument("--mel-fmax", default=8000.0, type=float, help="Maximum mel frequency")
     # Duration extraction
-    parser.add_argument('--extract-mels', action='store_true',
-                        help='Calculate spectrograms from .wav files')
-    parser.add_argument('--extract-mels-teacher', action='store_true',
-                        help='Extract Taco-generated mel-spectrograms for KD')
-    parser.add_argument('--extract-durations', action='store_true',
-                        help='Extract char durations from attention matrices')
-    parser.add_argument('--extract-attentions', action='store_true',
-                        help='Extract full attention matrices')
-    parser.add_argument('--extract-pitch-mel', action='store_true',
-                        help='Extract pitch')
-    parser.add_argument('--extract-pitch-char', action='store_true',
-                        help='Extract pitch averaged over input characters')
-    parser.add_argument('--extract-pitch-trichar', action='store_true',
-                        help='Extract pitch averaged over input characters')
-    parser.add_argument('--train-mode', action='store_true',
-                        help='Run the model in .train() mode')
-    parser.add_argument('--cuda', action='store_true',
-                        help='Extract mels on a GPU using CUDA')
+    parser.add_argument("--extract-mels", action="store_true", help="Calculate spectrograms from .wav files")
+    parser.add_argument(
+        "--extract-mels-teacher", action="store_true", help="Extract Taco-generated mel-spectrograms for KD"
+    )
+    parser.add_argument(
+        "--extract-durations", action="store_true", help="Extract char durations from attention matrices"
+    )
+    parser.add_argument("--extract-attentions", action="store_true", help="Extract full attention matrices")
+    parser.add_argument("--extract-pitch-mel", action="store_true", help="Extract pitch")
+    parser.add_argument(
+        "--extract-pitch-char", action="store_true", help="Extract pitch averaged over input characters"
+    )
+    parser.add_argument(
+        "--extract-pitch-trichar", action="store_true", help="Extract pitch averaged over input characters"
+    )
+    parser.add_argument("--train-mode", action="store_true", help="Run the model in .train() mode")
+    parser.add_argument("--cuda", action="store_true", help="Extract mels on a GPU using CUDA")
     return parser
 
 
 class FilenamedLoader(TextMelLoader):
     def __init__(self, filenames, **kwargs):
         # dict_args = vars(args)
-        kwargs['audiopaths_and_text'] = kwargs['wav_text_filelist']
-        kwargs['load_mel_from_disk'] = False
+        kwargs["audiopaths_and_text"] = kwargs["wav_text_filelist"]
+        kwargs["load_mel_from_disk"] = False
         super(FilenamedLoader, self).__init__(**kwargs)
-        self.tp = TextProcessing(kwargs['symbol_set'], kwargs['text_cleaners'])
+        self.tp = TextProcessing(kwargs["symbol_set"], kwargs["text_cleaners"])
         self.filenames = filenames
 
     def __getitem__(self, index):
@@ -130,7 +121,7 @@ def dur_chunk_sizes(n, ary):
       dur_chunk(5, 3) --> [2, 2, 1]
     """
     ret = np.ones((ary,), dtype=np.int32) * (n // ary)
-    ret[:n % ary] = n // ary + 1
+    ret[: n % ary] = n // ary + 1
     assert ret.sum() == n
     return ret
 
@@ -139,8 +130,7 @@ def calculate_pitch(wav, durs):
     mel_len = durs.sum()
     durs_cum = np.cumsum(np.pad(durs, (1, 0)))
     snd = parselmouth.Sound(wav)
-    pitch = snd.to_pitch(time_step=snd.duration / (mel_len + 3)
-                         ).selected_array['frequency']
+    pitch = snd.to_pitch(time_step=snd.duration / (mel_len + 3)).selected_array["frequency"]
     assert np.abs(mel_len - pitch.shape[0]) <= 1.0
 
     # Average pitch over characters
@@ -167,8 +157,7 @@ def calculate_pitch(wav, durs):
 
 
 def normalize_pitch_vectors(pitch_vecs):
-    nonzeros = np.concatenate([v[np.where(v != 0.0)[0]]
-                               for v in pitch_vecs.values()])
+    nonzeros = np.concatenate([v[np.where(v != 0.0)[0]] for v in pitch_vecs.values()])
     mean, std = np.mean(nonzeros), np.std(nonzeros)
 
     for v in pitch_vecs.values():
@@ -182,29 +171,33 @@ def normalize_pitch_vectors(pitch_vecs):
 
 def save_stats(dataset_path, wav_text_filelist, feature_name, mean, std):
     fpath = utils.stats_filename(dataset_path, wav_text_filelist, feature_name)
-    with open(fpath, 'w') as f:
-        json.dump({'mean': mean, 'std': std}, f, indent=4)
+    with open(fpath, "w") as f:
+        json.dump({"mean": mean, "std": std}, f, indent=4)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='PyTorch TTS Data Pre-processing')
+    parser = argparse.ArgumentParser(description="PyTorch TTS Data Pre-processing")
     parser = parse_args(parser)
     args, unk_args = parser.parse_known_args()
     if len(unk_args) > 0:
-        raise ValueError(f'Invalid options {unk_args}')
+        raise ValueError(f"Invalid options {unk_args}")
 
     if args.extract_pitch_char:
         assert args.extract_durations, "Durations required for pitch extraction"
 
-    DLLogger.init(backends=[JSONStreamBackend(Verbosity.DEFAULT, args.log_file),
-                            StdOutBackend(Verbosity.VERBOSE)])
+    DLLogger.init(backends=[JSONStreamBackend(Verbosity.DEFAULT, args.log_file), StdOutBackend(Verbosity.VERBOSE)])
     for k, v in vars(args).items():
         DLLogger.log(step="PARAMETER", data={k: v})
 
     model = load_and_setup_model(
-        'Tacotron2', parser, args.tacotron2_checkpoint, amp=False,
-        device=torch.device('cuda' if args.cuda else 'cpu'),
-        forward_is_infer=False, ema=False)
+        "Tacotron2",
+        parser,
+        args.tacotron2_checkpoint,
+        amp=False,
+        device=torch.device("cuda" if args.cuda else "cpu"),
+        forward_is_infer=False,
+        ema=False,
+    )
 
     if args.train_mode:
         model.train()
@@ -212,23 +205,27 @@ def main():
     # n_mel_channels arg has been consumed by model's arg parser
     args.n_mel_channels = model.n_mel_channels
 
-    for datum in ('mels', 'mels_teacher', 'attentions', 'durations',
-                  'pitch_mel', 'pitch_char', 'pitch_trichar'):
-        if getattr(args, f'extract_{datum}'):
+    for datum in ("mels", "mels_teacher", "attentions", "durations", "pitch_mel", "pitch_char", "pitch_trichar"):
+        if getattr(args, f"extract_{datum}"):
             Path(args.dataset_path, datum).mkdir(parents=False, exist_ok=True)
 
-    filenames = [Path(l.split('|')[0]).stem
-                 for l in open(args.wav_text_filelist, 'r')]
+    filenames = [Path(l.split("|")[0]).stem for l in open(args.wav_text_filelist, "r")]
     # Compatibility with Tacotron2 Data loader
     args.n_speakers = 1
     dataset = FilenamedLoader(filenames, **vars(args))
     # TextMelCollate supports only n_frames_per_step=1
-    data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False,
-                             sampler=None, num_workers=0,
-                             collate_fn=TextMelCollate(1),
-                             pin_memory=False, drop_last=False)
-    pitch_vecs = {'mel': {}, 'char': {}, 'trichar': {}}
-    print('started iter')
+    data_loader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        sampler=None,
+        num_workers=0,
+        collate_fn=TextMelCollate(1),
+        pin_memory=False,
+        drop_last=False,
+    )
+    pitch_vecs = {"mel": {}, "char": {}, "trichar": {}}
+    print("started iter")
     for i, batch in enumerate(data_loader):
         tik = time.time()
         fnames = batch[-1]
@@ -236,65 +233,63 @@ def main():
         _, text_lens, mels_padded, _, mel_lens = x
 
         for j, mel in enumerate(mels_padded):
-            fpath = Path(args.dataset_path, 'mels', fnames[j] + '.pt')
-            torch.save(mel[:, :mel_lens[j]].cpu(), fpath)
+            fpath = Path(args.dataset_path, "mels", fnames[j] + ".pt")
+            torch.save(mel[:, : mel_lens[j]].cpu(), fpath)
 
         with torch.no_grad():
             out_mels, out_mels_postnet, _, alignments = model.forward(x)
 
         if args.extract_mels_teacher:
             for j, mel in enumerate(out_mels_postnet):
-                fpath = Path(args.dataset_path, 'mels_teacher', fnames[j] + '.pt')
-                torch.save(mel[:, :mel_lens[j]].cpu(), fpath)
+                fpath = Path(args.dataset_path, "mels_teacher", fnames[j] + ".pt")
+                torch.save(mel[:, : mel_lens[j]].cpu(), fpath)
         if args.extract_attentions:
             for j, ali in enumerate(alignments):
-                ali = ali[:mel_lens[j], :text_lens[j]]
-                fpath = Path(args.dataset_path, 'attentions', fnames[j] + '.pt')
+                ali = ali[: mel_lens[j], : text_lens[j]]
+                fpath = Path(args.dataset_path, "attentions", fnames[j] + ".pt")
                 torch.save(ali.cpu(), fpath)
         durations = []
         if args.extract_durations:
             for j, ali in enumerate(alignments):
                 text_len = text_lens[j]
-                ali = ali[:mel_lens[j], :text_len]
-                dur = torch.histc(torch.argmax(ali, dim=1).float(), min=0,
-                                  max=text_len-1, bins=text_len).int()
+                ali = ali[: mel_lens[j], :text_len]
+                dur = torch.histc(torch.argmax(ali, dim=1).float(), min=0, max=text_len - 1, bins=text_len).int()
                 durations.append(dur)
-                fpath = Path(args.dataset_path, 'durations', fnames[j] + '.pt')
+                fpath = Path(args.dataset_path, "durations", fnames[j] + ".pt")
                 torch.save(dur.cpu().int(), fpath)
         if args.extract_pitch_mel or args.extract_pitch_char or args.extract_pitch_trichar:
             for j, dur in enumerate(durations):
-                fpath = Path(args.dataset_path, 'pitch_char', fnames[j] + '.pt')
-                wav = Path(args.dataset_path, 'wavs', fnames[j] + '.wav')
+                fpath = Path(args.dataset_path, "pitch_char", fnames[j] + ".pt")
+                wav = Path(args.dataset_path, "wavs", fnames[j] + ".wav")
                 p_mel, p_char, p_trichar = calculate_pitch(str(wav), dur.cpu().numpy())
-                pitch_vecs['mel'][fnames[j]] = p_mel
-                pitch_vecs['char'][fnames[j]] = p_char
-                pitch_vecs['trichar'][fnames[j]] = p_trichar
+                pitch_vecs["mel"][fnames[j]] = p_mel
+                pitch_vecs["char"][fnames[j]] = p_char
+                pitch_vecs["trichar"][fnames[j]] = p_trichar
 
         nseconds = time.time() - tik
-        DLLogger.log(step=f'{i+1}/{len(data_loader)} ({nseconds:.2f}s)', data={})
+        DLLogger.log(step=f"{i+1}/{len(data_loader)} ({nseconds:.2f}s)", data={})
 
     if args.extract_pitch_mel:
-        normalize_pitch_vectors(pitch_vecs['mel'])
-        for fname, pitch in pitch_vecs['mel'].items():
-            fpath = Path(args.dataset_path, 'pitch_mel', fname + '.pt')
+        normalize_pitch_vectors(pitch_vecs["mel"])
+        for fname, pitch in pitch_vecs["mel"].items():
+            fpath = Path(args.dataset_path, "pitch_mel", fname + ".pt")
             torch.save(torch.from_numpy(pitch), fpath)
 
     if args.extract_pitch_char:
-        mean, std = normalize_pitch_vectors(pitch_vecs['char'])
-        for fname, pitch in pitch_vecs['char'].items():
-            fpath = Path(args.dataset_path, 'pitch_char', fname + '.pt')
+        mean, std = normalize_pitch_vectors(pitch_vecs["char"])
+        for fname, pitch in pitch_vecs["char"].items():
+            fpath = Path(args.dataset_path, "pitch_char", fname + ".pt")
             torch.save(torch.from_numpy(pitch), fpath)
-        save_stats(args.dataset_path, args.wav_text_filelist, 'pitch_char',
-                   mean, std)
+        save_stats(args.dataset_path, args.wav_text_filelist, "pitch_char", mean, std)
 
     if args.extract_pitch_trichar:
-        normalize_pitch_vectors(pitch_vecs['trichar'])
-        for fname, pitch in pitch_vecs['trichar'].items():
-            fpath = Path(args.dataset_path, 'pitch_trichar', fname + '.pt')
+        normalize_pitch_vectors(pitch_vecs["trichar"])
+        for fname, pitch in pitch_vecs["trichar"].items():
+            fpath = Path(args.dataset_path, "pitch_trichar", fname + ".pt")
             torch.save(torch.from_numpy(pitch), fpath)
 
     DLLogger.flush()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

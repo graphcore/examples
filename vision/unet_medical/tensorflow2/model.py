@@ -24,14 +24,12 @@ def encoder(x, filters, crop_sizes, args):
     for i, filter in enumerate(filters):
         conv = double_conv_layer(filter, x, args.dtype, f"encoder_block_{i}")
         if i > 3:
-            conv = IPUDropout(
-                args.drop_rate, name=f"encoder_block_{i}_IPU_dropout")(conv)
+            conv = IPUDropout(args.drop_rate, name=f"encoder_block_{i}_IPU_dropout")(conv)
         else:
             # Crop the activation to concatenate later
             cropped_conv = crop(conv, crop_sizes[i], args.nb_ipus_per_replica)
             skip_connections.append(cropped_conv)
-            x = MaxPooling2D(pool_size=(
-                2, 2), name=f"encoder_block_{i}_maxpooling")(conv)
+            x = MaxPooling2D(pool_size=(2, 2), name=f"encoder_block_{i}_maxpooling")(conv)
 
     return conv, skip_connections
 
@@ -50,6 +48,5 @@ def model_fn(args):
     crop_sizes = [392, 200, 104, 56]
     encoder_result, skip_connections = encoder(inputs, filters, crop_sizes, args)
     decoder_result = decoder(encoder_result, filters, skip_connections, args.dtype)
-    conv = Conv2D(args.nb_classes, 1, activation=None,
-                  kernel_initializer='he_normal')(decoder_result)
+    conv = Conv2D(args.nb_classes, 1, activation=None, kernel_initializer="he_normal")(decoder_result)
     return inputs, conv

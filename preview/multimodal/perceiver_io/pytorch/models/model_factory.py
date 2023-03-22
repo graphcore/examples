@@ -10,8 +10,7 @@ from models.modelling_perceiver import register_subclass
 
 def get_model(model_args: ModelArguments):
     model_cls = AVAILABLE_MODELS[model_args.model_name]
-    register_subclass(huggingface_cls=model_cls,
-                      recomputation=model_args.recomputation)
+    register_subclass(huggingface_cls=model_cls, recomputation=model_args.recomputation)
     # update the base config
     model_config = PerceiverConfig.from_pretrained(model_args.model_name)
     model_config.update(asdict(model_args))

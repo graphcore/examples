@@ -57,3 +57,4 @@ pytorch_minidalle_train_real_pod64_conv:
       --wandb
       --wandb-project-name torch-miniDALL-E
       --wandb-run-name pytorch_minidalle_train_real_pod64_conv
+      --checkpoint-output-dir output/ckpt

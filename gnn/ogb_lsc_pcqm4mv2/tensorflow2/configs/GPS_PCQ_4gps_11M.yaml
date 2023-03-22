@@ -1,0 +1,129 @@
+
+model:
+  micro_batch_size: 6
+  target_total_batch_size: 900
+  n_nodes_per_pack: 60
+  n_edges_per_pack: 120
+  n_graphs_per_pack: 8
+
+  layer_specs: [MPNN+MHSA+FFN]
+  layer_repeats: [4]
+
+  node_latent: 256
+  node_exp_ratio: 4
+  node_mlp_layers: 2
+  node_dropout: 0.3
+  use_edges: true
+  edge_latent: 128
+  edge_dropout: 0.0035
+  edge_dropout_loc: before_scatter_w_dna
+  use_globals: true
+  global_latent: 64
+  global_dropout: 0.35
+
+  ffn_dim: 1024
+  n_attn_heads: 32
+  ffn_dropout_rate: 0.0
+  graph_dropout_rate: 0.3 # stochastic depth
+  attention_dropout_rate: 0.3
+  gnn_output_dropout_rate: 0.0
+  mhsa_output_dropout_rate: 0.0
+  ffn_output_dropout_rate: 0.0
+  override_graph_dropout_rate.MPNN: 0.0
+  hybrid_mpnn_extra_node_residual: false
+
+  encoder_latent: 32
+  encoder_exp_ratio: 2
+  encoder_act_fn: relu
+  encoder_prenorm: true
+  encoder_dropout: 0.18
+  n_embedding_channels: 64
+  epochs: 100
+  opt: adam
+  adam_m_dtype: float16
+  adam_v_dtype: float32
+  lr: 4e-4
+  grad_clip_value: 5
+  lr_warmup_epochs: 10
+  learning_rate_schedule: linear
+  loss_scaling: 1024
+  dtype: mixed_float16
+  use_noisy_nodes: true
+  noisy_nodes_noise_prob: 0.01
+  noisy_nodes_weight: 1.2
+  use_noisy_edges: true
+  noisy_edges_noise_prob: 0.01
+  noisy_edges_weight: 1.2
+
+  num_gaussian_kernels: 128
+  gaussian_kernel_epsilon: 0.01
+  gaussian_kernel_scale: 0.1
+layer:
+  weight_dtype: float16
+  rn_multiplier: none
+  decoder_mode: node
+  activation_function: gelu
+  mlp_norm: layer_hidden
+  gather_scatter: grouped
+  one_hot_embeddings: false
+  direct_neighbour_aggregation: true
+  scatter_to: both
+  node_combine_method: concat
+dataset:
+  dataset_name: pcqm4mv2_conformers_28features
+  chemical_node_features: ['atomic_num', 'degree', 'possible_formal_charge', 'possible_numH',
+                           'possible_number_radical_e', 'possible_is_aromatic', 'possible_is_in_ring',
+                           'num_chiral_centers']
+  chemical_edge_features: ['possible_bond_type', 'possible_bond_stereo', 'possible_is_in_ring']
+  do_not_use_atomic_number: false
+  trim_chemical_features: true
+  use_periods_and_groups: true
+  split_mode: original
+  cache_path: .
+  packing_strategy: streaming
+  normalize_labels: true
+  generated_data: false
+  use_distance_sum_feature: true
+  features:
+    chemical_features: {}
+    senders_receivers:
+      bidirectional: true
+    graph_idxs: {}
+    laplacian_eig:
+      max_freqs: 8
+      eigvec_norm: L2
+      remove_first: true
+    random_walk:
+      k_steps: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+    shortest_path_distances: {}
+    centrality_encoding: {}
+    atom_distance: {}
+    bond_lengths: {}
+  input_masking_groups: [ [ "shortest_path_distances" ],
+                          [ "atom_distances","ogb_bond_lengths"],
+                          [ "shortest_path_distances","atom_distances","ogb_bond_lengths" ] ]
+  input_masking_weights: [ 1., 3., 1. ]
+inputs: [ "node_feat", "edge_feat", "receivers", "senders", "node_graph_idx", "edge_graph_idx",
+            "lap_eig_vals","lap_eig_vecs", "random_walk_landing_probs", "shortest_path_distances",
+            "atom_distances","ogb_bond_lengths", "centrality_encoding", "nan_in_conformer"]
+do_training: true
+do_validation: true
+do_clean_training: true
+do_test: False
+execution_profile: false
+wandb: true
+wandb_entity: ogb-lsc-comp
+wandb_project: PCQM4Mv2
+checkpoint_every_n_epochs: 1000
+ipu_opts:
+  replicas: 4
+  recompute: true
+  offload_optimizer_state: false
+  RTS: false
+  gradient_accumulation_factor: 0 # set by target total batch size
+  available_memory_proportion: [0.2]
+  optimization_target: cycles
+  scheduling_algorithm: CLUSTERING
+  maximum_cross_replica_sum_buffer_size: 1000000
+  fp_exceptions: false
+  nanoo: false

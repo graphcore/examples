@@ -27,6 +27,51 @@ config_options: &config_options
    requirements_path: requirements.txt
    required_apt_packages_path: required_apt_packages.txt
 
+
+# POD4
+pytorch_bert_base_pretrain_real_pod4:
+   <<: [*pretrain_options, *config_options]
+   description: |
+      BERT-Base pretraining benchmark on real data. Phase 1 and phase 2.
+   parameters:
+      phase: 128,512
+   cmd: >-
+      python3 run_pretraining.py
+         --config pretrain_base_{phase}_pod4
+         --training-steps 10
+         --input-file $DATASETS_DIR/wikipedia/{phase}/wiki_1[0-1]*.tfrecord
+         --disable-progress-bar
+
+pytorch_bert_large_pretrain_real_pod4:
+   <<: [*pretrain_options, *config_options]
+   description: |
+      BERT-Large pretraining benchmark on real data. Phase 1 and phase 2.
+   parameters:
+      phase: 128,512
+   cmd: >-
+      python3 run_pretraining.py
+         --config pretrain_large_{phase}_pod4
+         --training-steps 10
+         --input-file $DATASETS_DIR/wikipedia/{phase}/wiki_1[0-1]*.tfrecord
+         --disable-progress-bar
+
+pytorch_bert_large_packed_pretrain_real_pod4:
+   <<: [*pretrain_options, *config_options]
+   description: |
+      BERT Large pretraining phase 1 and 2 with real data on 4 IPUs
+      for performance testing.
+   parameters:
+      phase: 128,512
+   cmd: >-
+      python3 run_pretraining.py
+         --config pretrain_large_{phase}_pod4
+         --training-steps 10
+         --input-files $DATASETS_DIR/wikipedia/torch_bert/packed_{phase}/wiki_000.tfrecord
+         --disable-progress-bar
+         --packed-data
+
+
+# POD16
 pytorch_bert_base_pretrain_real_pod16:
    <<: [*pretrain_options, *config_options]
    description: |
@@ -68,6 +113,7 @@ pytorch_bert_large_packed_pretrain_real_pod16:
          --disable-progress-bar
          --packed-data
 
+# POD64
 pytorch_bert_large_packed_pretrain_real_pod64:
    <<: [*pretrain_options, *config_options]
    description: |
@@ -100,7 +146,7 @@ pytorch_bert_large_sl128_pretrain_real_pod64_conv:
          --vipu-server-timeout 300
          --vipu-server-host $IPUOF_VIPU_API_HOST
          --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-         --vipu-cluster=$VIPU_CLUSTER_ID
+         --vipu-allocation=$VIPU_ALLOCATION_ID
          --ipus-per-replica 4
          --mpi-global-args="
          --mca oob_tcp_if_include $TCP_IF_INCLUDE
@@ -139,7 +185,7 @@ pytorch_bert_large_sl512_pretrain_real_pod64_conv:
          --vipu-server-timeout 300
          --vipu-server-host $IPUOF_VIPU_API_HOST
          --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-         --vipu-cluster=$VIPU_CLUSTER_ID
+         --vipu-allocation=$VIPU_ALLOCATION_ID
          --ipus-per-replica 4
          --mpi-global-args="
          --mca oob_tcp_if_include $TCP_IF_INCLUDE
@@ -218,39 +264,14 @@ pytorch_bert_squad_large_pretrain_real_pod16:
 pytorch_bert_squad_large_finetune_real_pod16_conv:
    <<: [*squad_options, *config_options]
    description: |
-      BERT Large SQuAD benchmark on real data.
+      BERT Large SQuAD finetuning on real data. Vaalidation Included.
    cmd: >-
-      poprun
-         --vv
-         --num-instances 1
-         --num-replicas 2
-         --update-partition=yes
-         --remove-partition=yes
-         --reset-partition=no
-         --sync-type=ST_POD_NATIVE_DEFAULT
-         --vipu-server-timeout 300
-         --vipu-server-host $IPUOF_VIPU_API_HOST
-         --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
-         --vipu-cluster=$VIPU_CLUSTER_ID
-         --ipus-per-replica 8
-         --mpi-global-args="
-         --mca oob_tcp_if_include $TCP_IF_INCLUDE
-         --mca btl_tcp_if_include $TCP_IF_INCLUDE"
-         --mpi-local-args="
-         -x OPAL_PREFIX
-         -x LD_LIBRARY_PATH
-         -x PATH
-         -x PYTHONPATH
-         -x IPUOF_VIPU_API_TIMEOUT=600
-         -x POPLAR_LOG_LEVEL=WARN
-         -x DATASETS_DIR
-         -x POPLAR_ENGINE_OPTIONS
-         -x POPLAR_TARGET_OPTIONS"
       python3 run_squad.py
          --squad-do-validation True
          --config squad_large_384
          --checkpoint-input-dir checkpoint/phase2
          --wandb
+
 
 pytorch_bert_squad_large_infer_gen_pod16:
   <<: *config_options

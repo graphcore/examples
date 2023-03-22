@@ -33,9 +33,7 @@ def parse_results_for_speed(output, iter_tolerance, speed_tolerance):
             iterations, speed = matches.groups()
             iterations = float(iterations)
             speed = float(speed)
-            _verify_model_numbers(
-                iter_tolerance, iterations, speed_tolerance, speed, line
-            )
+            _verify_model_numbers(iter_tolerance, iterations, speed_tolerance, speed, line)
 
     if not found_a_result:
         raise AssertionError("No results detected in this run")
@@ -51,44 +49,44 @@ def parse_results_for_accuracy(output, expected_accuracies, acc_tolerance):
             accuracies.append(accuracy)
         elif re.search(r"Validation accuracy", line):
             accuracy_str = re.search(r"accuracy:\s(.*)", line).group(1)
-            accuracy = float(accuracy_str[:accuracy_str.rfind("%")])
+            accuracy = float(accuracy_str[: accuracy_str.rfind("%")])
             accuracies.append(accuracy)
 
     if len(accuracies) == 0:
         raise AssertionError("No results detected in this run")
     elif len(accuracies) != len(expected_accuracies):
-        raise AssertionError("Expected accuracies and parsed accuracies have"
-                             " different lengths")
+        raise AssertionError("Expected accuracies and parsed accuracies have" " different lengths")
 
     verify_model_accuracies(accuracies, expected_accuracies, acc_tolerance)
 
 
-def _verify_model_numbers(iter_tolerance, iterations,
-                          speed_tolerance, speed, line):
+def _verify_model_numbers(iter_tolerance, iterations, speed_tolerance, speed, line):
     iter_error = ""
     speed_error = ""
 
     # Verify iteration speed
     if iterations > iter_tolerance[1]:
-        iter_error = ("The time per iteration has regressed above"
-                      " the tolerance maximum: " +
-                      str(iter_tolerance[1]))
+        iter_error = "The time per iteration has regressed above" " the tolerance maximum: " + str(iter_tolerance[1])
     elif iterations < iter_tolerance[0]:
-        iter_error = ("Time taken to compete an iteration was "
-                      "suspiciously fast. Please verify the model"
-                      " is operating correctly and tune tolerances"
-                      " accordingly.")
+        iter_error = (
+            "Time taken to compete an iteration was "
+            "suspiciously fast. Please verify the model"
+            " is operating correctly and tune tolerances"
+            " accordingly."
+        )
 
     # Verify item processing speed
     if speed < speed_tolerance[0]:
-        speed_error = ("The number of items processed per second"
-                       " has regressed below the tolerance: " +
-                       str(speed_tolerance[0]))
+        speed_error = "The number of items processed per second" " has regressed below the tolerance: " + str(
+            speed_tolerance[0]
+        )
     elif speed > speed_tolerance[1]:
-        speed_error = ("The number of items processed per second"
-                       " was suspiciously high. Please verify the"
-                       " model is behaving correctly and tune"
-                       " tolerances accordingly.")
+        speed_error = (
+            "The number of items processed per second"
+            " was suspiciously high. Please verify the"
+            " model is behaving correctly and tune"
+            " tolerances accordingly."
+        )
 
     if iter_error and speed_error:
         sys.stderr.write("\n".join([line, iter_error, speed_error]))
@@ -118,22 +116,16 @@ def verify_model_accuracies(accuracies, expected_accuracy, acc_tolerance):
 
     for iter_num in range(len(accuracies)):
         exp_acc = expected_accuracy[iter_num]
-        exp_acc_str = (
-            "{0} = {1} +- {2} = [{3:.{5}f}, {4:.{5}f}]".format(
-                "Expected accuracy (%)".ljust(22),
-                exp_acc,
-                acc_tolerance,
-                exp_acc - acc_tolerance,
-                exp_acc + acc_tolerance,
-                2
-            )
+        exp_acc_str = "{0} = {1} +- {2} = [{3:.{5}f}, {4:.{5}f}]".format(
+            "Expected accuracy (%)".ljust(22),
+            exp_acc,
+            acc_tolerance,
+            exp_acc - acc_tolerance,
+            exp_acc + acc_tolerance,
+            2,
         )
         acc = accuracies[iter_num]
-        acc_str = "{} = {:.{}f}".format(
-            "Accuracy (%)".ljust(22),
-            acc,
-            2
-        )
+        acc_str = "{} = {:.{}f}".format("Accuracy (%)".ljust(22), acc, 2)
         full_acc_str = "{}\n{}".format(acc_str, exp_acc_str)
         if acc < exp_acc - acc_tolerance:
             raise AssertionError(
@@ -151,20 +143,19 @@ def verify_model_accuracies(accuracies, expected_accuracy, acc_tolerance):
 
 def parse_results_for_ipus_used(output):
     """Finds the number of IPUs used in the model by looking for
-       string with format ' On 2 IPUs.' in output"""
+    string with format ' On 2 IPUs.' in output"""
     shards_regex = r" On ([\d.]+) IPUs."
     for line in output.split("\n"):
         matches = re.match(shards_regex, line)
         if matches:
             shards = matches.group(1)
             return int(shards)
-    raise AssertionError("Expecting line detailing IPU usage "
-                         "eg. ' On 2 IPUs.'")
+    raise AssertionError("Expecting line detailing IPU usage " "eg. ' On 2 IPUs.'")
 
 
 def assert_shards(output, expected_shards):
     """Verify the expected number of shards used were actually
-       used"""
+    used"""
     actual_shards = parse_results_for_ipus_used(output)
     assert actual_shards == expected_shards
 
@@ -251,15 +242,14 @@ def parse_results_with_regex(output, regex):
 
 def get_total_epochs(output):
     """Finds the number of epochs model has run through by looking for
-       string with format 'Epoch #3' in the models raw output"""
+    string with format 'Epoch #3' in the models raw output"""
     epochs = None
     for line in output.split("\n"):
         epoch_match = re.search(r"Epoch #([\d.]+)", line)
         if epoch_match:
             epochs = int(epoch_match.group(1))
     if not epochs:
-        raise AssertionError("Epochs not found in output, eg. "
-                             "Epoch #3")
+        raise AssertionError("Epochs not found in output, eg. " "Epoch #3")
     return epochs
 
 
@@ -322,17 +312,14 @@ def run_python_script_helper(cwd, script, want_std_err=False, env=None, **kwargs
     cmd = [py_version, script]
     err = subprocess.STDOUT if want_std_err else subprocess.PIPE
     if kwargs:
-        args = [
-            str(item) for sublist in kwargs.items() for item in sublist if item != ""
-        ]
+        args = [str(item) for sublist in kwargs.items() for item in sublist if item != ""]
         cmd.extend(args)
     out = subprocess.check_output(cmd, stderr=err, cwd=cwd, env=env, universal_newlines=True)
     print(out)
     return out
 
 
-def run_test_helper(subprocess_function, total_run_time=None,
-                    total_run_time_tolerance=0.1, **kwargs):
+def run_test_helper(subprocess_function, total_run_time=None, total_run_time_tolerance=0.1, **kwargs):
     """Helper function for running tests
 
     Takes in testable parameters, runs the test and checks the relevant
@@ -360,9 +347,7 @@ def run_test_helper(subprocess_function, total_run_time=None,
     total_time = time.time() - start_time
 
     if total_run_time:
-        total_run_time_range = range_from_tolerances(
-            total_run_time, total_run_time_tolerance
-        )
+        total_run_time_range = range_from_tolerances(total_run_time, total_run_time_tolerance)
         assert_total_run_time(total_time, total_run_time_range)
 
     return out
@@ -459,7 +444,6 @@ class SubProcessChecker(unittest.TestCase):
     will be checked automatically.
     """
 
-
     def _check_output(self, cmd, output: str, must_contain: List[str]):
         """
         Internal utility used by run_command(...) to check output
@@ -476,8 +460,9 @@ class SubProcessChecker(unittest.TestCase):
         for i, r in enumerate(regexes):
             match = r.search(output)
             if not match:
-                self.fail(f"Output of command: '{cmd}' contained no match for: '{must_contain[i]}'\nOutput was:\n{output}")
-
+                self.fail(
+                    f"Output of command: '{cmd}' contained no match for: '{must_contain[i]}'\nOutput was:\n{output}"
+                )
 
     def run_command(self, cmd, working_path, expected_strings, env=None, timeout=None):
         """
@@ -504,19 +489,25 @@ class SubProcessChecker(unittest.TestCase):
             cmd_list = cmd.split()
 
         if env is None:
-            completed = subprocess.run(args=cmd_list,
-                                       cwd=working_path,
-                                       shell=False,
-                                       stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT,
-                                       timeout=timeout)
+            completed = subprocess.run(
+                args=cmd_list,
+                cwd=working_path,
+                shell=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=timeout,
+            )
         else:
-            completed = subprocess.run(args=cmd_list, cwd=working_path,
-                                       shell=False, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT,
-                                       env=env,
-                                       timeout=timeout)
-        combined_output = str(completed.stdout, 'utf-8')
+            completed = subprocess.run(
+                args=cmd_list,
+                cwd=working_path,
+                shell=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=env,
+                timeout=timeout,
+            )
+        combined_output = str(completed.stdout, "utf-8")
         try:
             completed.check_returncode()
             return_code_ok = True
@@ -524,7 +515,9 @@ class SubProcessChecker(unittest.TestCase):
             return_code_ok = False
 
         if not return_code_ok:
-            self.fail(f"The following command failed: {cmd}\nWorking path: {working_path}\nOutput of failed command:\n{combined_output}")
+            self.fail(
+                f"The following command failed: {cmd}\nWorking path: {working_path}\nOutput of failed command:\n{combined_output}"
+            )
 
         self._check_output(cmd, combined_output, expected_strings)
         return combined_output

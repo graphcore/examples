@@ -14,7 +14,8 @@ import numpy as np
 from popxl_addons import NamedTensors
 from popxl_addons.ops.replicated_all_reduce_TP import (
     replicated_all_reduce_identical_inputs,
-    replicated_all_reduce_identical_grad_inputs)
+    replicated_all_reduce_identical_grad_inputs,
+)
 from utils.utils import shard
 
 
@@ -37,20 +38,17 @@ class GPTFeedForwardTP(addons.Module):
         self.ln_2 = LayerNorm()
 
         # Sharded across devices - column wise
-        self.intermediate = Linear(self.ff_size // self.n_shards,
-                                   replica_grouping=self.replica_grouping)
+        self.intermediate = Linear(self.ff_size // self.n_shards, replica_grouping=self.replica_grouping)
 
         # Sharded across devices - row wise (bias applied separately)
-        self.output = Linear(config.model.hidden_size,
-                             bias=False,
-                             replica_grouping=self.replica_grouping)
+        self.output = Linear(config.model.hidden_size, bias=False, replica_grouping=self.replica_grouping)
 
     def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> List[popxl.Tensor]:
         """Identical input (x, seed) and identical output across shards."""
         # ----- Identical computation -----
         z = self.ln_2(x)
 
-        z = replicated_all_reduce_identical_inputs(z, group = self.replica_grouping.transpose())
+        z = replicated_all_reduce_identical_inputs(z, group=self.replica_grouping.transpose())
 
         # ----- Sharded computation -----
 
@@ -64,13 +62,12 @@ class GPTFeedForwardTP(addons.Module):
         # and then perform an all reduce
         z = self.output(z)
 
-        z = replicated_all_reduce_identical_grad_inputs(z, group = self.replica_grouping.transpose())
+        z = replicated_all_reduce_identical_grad_inputs(z, group=self.replica_grouping.transpose())
 
         # ----- Identical computation -----
 
         # Output linear layer bias (identical bias on all devices)
-        self.bias = self.add_variable_input(
-            'bias', lambda: np.zeros(z.shape[-1]), z.dtype)
+        self.bias = self.add_variable_input("bias", lambda: np.zeros(z.shape[-1]), z.dtype)
         z = z + self.bias
 
         if not self.config.model.eval:

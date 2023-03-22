@@ -19,10 +19,7 @@ import tensorflow as tf
 from tensorflow.python import ipu
 from transformers.modeling_tf_utils import unpack_inputs
 from transformers.models.bert.configuration_bert import BertConfig
-from transformers.models.bert.modeling_tf_bert import (
-    TFBertForPreTraining,
-    TFBertForPreTrainingOutput
-)
+from transformers.models.bert.modeling_tf_bert import TFBertForPreTraining, TFBertForPreTrainingOutput
 
 
 def gather_positions(inputs, positions):
@@ -40,14 +37,13 @@ def gather_positions(inputs, positions):
     flat_offsets = tf.reshape(tf.range(0, micro_batch_size, dtype=tf.int32) * seq_length, (-1, 1))
     flat_positions = tf.reshape(positions + flat_offsets, (-1,))
     flat_sequence_tensor = tf.reshape(inputs, (micro_batch_size * seq_length, hidden_size))
-    output_tensor = ipu.ops.embedding_ops.embedding_lookup(
-        flat_sequence_tensor, flat_positions, serialization_factor=1)
+    output_tensor = ipu.ops.embedding_ops.embedding_lookup(flat_sequence_tensor, flat_positions, serialization_factor=1)
     output_tensor = tf.reshape(output_tensor, (micro_batch_size, num_masked_tokens, hidden_size))
     return output_tensor
 
 
 class GatherSubsetOutput(tf.keras.layers.Layer):
-    def __init__(self, name='gather_masked_outputs', **kwargs):
+    def __init__(self, name="gather_masked_outputs", **kwargs):
         super().__init__(trainable=False, name=name, **kwargs)
 
     def call(self, inputs, positions, **kwargs):
@@ -64,24 +60,24 @@ class IpuTFBertForPreTraining(TFBertForPreTraining):
 
     def __init__(self, config: BertConfig, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
-        self.gather_masked = GatherSubsetOutput(name='gather_masked_outputs')
+        self.gather_masked = GatherSubsetOutput(name="gather_masked_outputs")
 
     @unpack_inputs
     def call(
-            self,
-            input_ids=None,
-            attention_mask=None,
-            token_type_ids=None,
-            position_ids=None,
-            head_mask=None,
-            inputs_embeds=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            labels=None,
-            next_sentence_label=None,
-            training=False,
-            masked_lm_positions=None,
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        labels=None,
+        next_sentence_label=None,
+        training=False,
+        masked_lm_positions=None,
     ):
         outputs = self.bert(
             input_ids=input_ids,

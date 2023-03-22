@@ -22,6 +22,42 @@ pretrain_options: &pretrain_options
 config_options: &config_options
   requirements_path: requirements.txt
 
+
+# POD4
+tf2_bert_large_pretrain_real_pod4:
+  <<: [*pretrain_options, *config_options]
+  description: |
+    This benchmark measures the throughput of Bert Large phase 1
+    and phase 2 pretraining.
+  parameters:
+    - [seqlen, phase]
+    - ['128', '1']
+    - ['384', '2']
+  cmd: >-
+    python3 run_pretraining.py
+      --config configs/pretrain_large_{seqlen}_phase{phase}_pod4.json
+      --dataset-dir $DATASETS_DIR/wikipedia/{seqlen}/
+      --total-num-train-samples 300000
+      --enable-wandb false
+
+tf2_bert_base_pretrain_real_pod4:
+  <<: [*pretrain_options, *config_options]
+  description: |
+    This benchmark measures the throughput of Bert Base phase 1
+    and phase 2 pretraining.
+  parameters:
+    - [seqlen, phase]
+    - ['128', '1']
+    - ['384', '2']
+  cmd: >-
+    python3 run_pretraining.py
+      --config configs/pretrain_base_{seqlen}_phase{phase}_pod4.json
+      --dataset-dir $DATASETS_DIR/wikipedia/{seqlen}/
+      --total-num-train-samples 300000
+      --enable-wandb false
+
+
+# POD16
 tf2_bert_large_pretrain_real_pod16:
   <<: [*pretrain_options, *config_options]
   description: |
@@ -54,6 +90,7 @@ tf2_bert_base_pretrain_real_pod16:
       --total-num-train-samples 300000
       --enable-wandb false
 
+# POD64
 tf2_bert_large_sl128_pretrain_real_pod64_conv:
   <<: [*pretrain_options, *config_options]
   description: |

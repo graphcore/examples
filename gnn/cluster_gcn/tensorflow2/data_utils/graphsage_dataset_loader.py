@@ -40,7 +40,7 @@ def load_graphsage_data(dataset_path, dataset_str):
     :return test_data: Numpy array of node ids that are in the test
         dataset.
     """
-    graph_file_name = f'{dataset_path}/{dataset_str}/{dataset_str}-G.json'
+    graph_file_name = f"{dataset_path}/{dataset_str}/{dataset_str}-G.json"
     logging.info(f"Loading graph data from {graph_file_name}...")
     with open(graph_file_name) as f:
         graph_json = json.load(f)
@@ -63,8 +63,7 @@ def load_graphsage_data(dataset_path, dataset_str):
         class_map = json.load(f)
 
     is_instance = isinstance(list(class_map.values())[0], list)
-    class_map = {(int(k) if is_digit else k): (v if is_instance else int(v))
-                 for k, v in class_map.items()}
+    class_map = {(int(k) if is_digit else k): (v if is_instance else int(v)) for k, v in class_map.items()}
 
     edges = []
     for edge in orig_edges:
@@ -74,27 +73,15 @@ def load_graphsage_data(dataset_path, dataset_str):
             edges.append((id_map[source_id], id_map[target_id]))
     edges = np.array(edges, dtype=np.int32)
 
-    with open("{}/{}/{}-feats.npy".format(dataset_path, dataset_str, dataset_str), 'rb') as f:
+    with open("{}/{}/{}-feats.npy".format(dataset_path, dataset_str, dataset_str), "rb") as f:
         features = np.load(f).astype(np.float32)
 
     num_data = len(id_map)
-    train_data = np.array([
-        id_map[n["id"]]
-        for n in nodes
-        if not n["val"] and not n["test"]
-    ])
-    val_data = np.array(
-        [id_map[n["id"]] for n in nodes if n["val"]],
-        dtype=np.int32)
-    test_data = np.array(
-        [id_map[n["id"]] for n in nodes if n["test"]],
-        dtype=np.int32)
+    train_data = np.array([id_map[n["id"]] for n in nodes if not n["val"] and not n["test"]])
+    val_data = np.array([id_map[n["id"]] for n in nodes if n["val"]], dtype=np.int32)
+    test_data = np.array([id_map[n["id"]] for n in nodes if n["test"]], dtype=np.int32)
 
-    dataset_split = {
-        "train": train_data,
-        "validation": val_data,
-        "test": test_data
-    }
+    dataset_split = {"train": train_data, "validation": val_data, "test": test_data}
 
     # Process labels
     if isinstance(list(class_map.values())[0], list):
@@ -108,8 +95,4 @@ def load_graphsage_data(dataset_path, dataset_str):
         for k in class_map.keys():
             labels[id_map[k], 0] = class_map[k]
 
-    return (num_data,
-            edges,
-            features,
-            labels,
-            dataset_split)
+    return (num_data, edges, features, labels, dataset_split)

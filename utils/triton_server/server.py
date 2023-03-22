@@ -15,19 +15,24 @@ class TritonServer:
 
         self.docker_name = "triton_at_port_" + ts_gprc_port
 
-        self.ts_proc = subprocess.Popen([
-            ts_path + "/tritonserver", "--model-repository", self.model_repo_path,
-            "--backend-directory", ts_path, grpc_port_opt, ts_gprc_port
-        ])
+        self.ts_proc = subprocess.Popen(
+            [
+                ts_path + "/tritonserver",
+                "--model-repository",
+                self.model_repo_path,
+                "--backend-directory",
+                ts_path,
+                grpc_port_opt,
+                ts_gprc_port,
+            ]
+        )
 
         self.url = "localhost:" + ts_gprc_port
         if self.ts_proc is not None:
             self.wait_until_server_is_started()
 
     def wait_until_server_is_started(self):
-        with Timeout(seconds=120,
-                     process=self.ts_proc,
-                     error_message="Triton sever start timout"):
+        with Timeout(seconds=120, process=self.ts_proc, error_message="Triton sever start timeout"):
             while True:
                 try:
                     with grpcclient.InferenceServerClient(url=self.url) as tsrv:

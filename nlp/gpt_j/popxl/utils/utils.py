@@ -14,8 +14,7 @@ def shard(x: np.ndarray, n_shards: int, axis: int) -> np.array:
     if axis < 0:
         axis = len(x.shape) + axis
 
-    return np.ascontiguousarray(
-        np.concatenate(np.split(x[np.newaxis, ...], n_shards, axis=axis + 1)))
+    return np.ascontiguousarray(np.concatenate(np.split(x[np.newaxis, ...], n_shards, axis=axis + 1)))
 
 
 def repeat(x: np.ndarray, n: int, axis: int = 0) -> np.array:
@@ -24,10 +23,8 @@ def repeat(x: np.ndarray, n: int, axis: int = 0) -> np.array:
 
 
 def tensor_parallel_input(
-        input_data: np.ndarray,
-        tp: int,
-        rf: int,
-        repeat_fn: Optional[Callable[[np.ndarray, int], np.ndarray]] = None):
+    input_data: np.ndarray, tp: int, rf: int, repeat_fn: Optional[Callable[[np.ndarray, int], np.ndarray]] = None
+):
     """Repeat the data in `input_data` such that consecutive replicas with groupSize tp get the same data
     (optionally modified by repeat_fn)
 
@@ -81,17 +78,13 @@ def tensor_parallel_input(
     return data.reshape(-1, rf, *input_data.shape[1:])
 
 
-def _linear_schedule(start: int, end: int, interval: int, low: float,
-                     high: float) -> Dict[int, float]:
+def _linear_schedule(start: int, end: int, interval: int, low: float, high: float) -> Dict[int, float]:
     update_steps = np.arange(start, end + 1, interval).astype(np.uint32)
     updates = np.linspace(low, high, len(update_steps))
     return dict(zip(update_steps, updates))
 
 
-def warmup_schedule(total_steps: int,
-                    minimum: float,
-                    maximum: float,
-                    warmup_prop: float = 0) -> Dict[int, float]:
+def warmup_schedule(total_steps: int, minimum: float, maximum: float, warmup_prop: float = 0) -> Dict[int, float]:
     """Learning rate schedule with linear warm up and then remains at max.
 
     Linearly increase from `minimum` to `maximum` for `total_steps*warmup_prop` steps.
@@ -104,8 +97,7 @@ def warmup_schedule(total_steps: int,
     if warmup_steps > 0:
         schedule.update(_linear_schedule(0, warmup_steps, 1, minimum, maximum))
 
-    schedule.update(  # maximum to maximum so constant
-        _linear_schedule(warmup_steps, total_steps, 1, maximum, maximum))
+    schedule.update(_linear_schedule(warmup_steps, total_steps, 1, maximum, maximum))  # maximum to maximum so constant
     return schedule
 
 

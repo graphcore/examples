@@ -31,15 +31,13 @@ def global_batch_size(args: argparse.Namespace) -> int:
     return args.micro_batch_size
 
 
-def input_tensor_shape(args: argparse.Namespace,
-                       image_size: Union[Text, int, Tuple[int, int]],
-                       num_channels: int = 3) -> Tuple[int, int]:
-    return utils.parse_image_size(image_size) + (num_channels, )
+def input_tensor_shape(
+    args: argparse.Namespace, image_size: Union[Text, int, Tuple[int, int]], num_channels: int = 3
+) -> Tuple[int, int]:
+    return utils.parse_image_size(image_size) + (num_channels,)
 
 
-def _configure_dataset(dataset: tf.data.Dataset,
-                       args: argparse.Namespace,
-                       dataset_repeats: int = 1) -> tf.data.Dataset:
+def _configure_dataset(dataset: tf.data.Dataset, args: argparse.Namespace, dataset_repeats: int = 1) -> tf.data.Dataset:
     dataset = dataset.map(lambda x: tf.cast(x, dtype=args.io_precision))
     dataset = dataset.cache()
 
@@ -54,19 +52,21 @@ def _configure_dataset(dataset: tf.data.Dataset,
     return dataset
 
 
-def generated_inference_dataset(args: argparse.Namespace,
-                                image_size: Union[Text, int, Tuple[int, int]],) -> T_DatasetScaleRawImages:
+def generated_inference_dataset(
+    args: argparse.Namespace,
+    image_size: Union[Text, int, Tuple[int, int]],
+) -> T_DatasetScaleRawImages:
     num_samples = global_batch_size(args)
 
-    inputs = tf.random.uniform(
-        (num_samples,) + input_tensor_shape(args, image_size))
+    inputs = tf.random.uniform((num_samples,) + input_tensor_shape(args, image_size))
 
     dataset = tf.data.Dataset.from_tensor_slices(inputs)
     return _configure_dataset(dataset, args, args.benchmark_repeats), 1, inputs
 
 
-def repeated_image_dataset(args: argparse.Namespace,
-                           image_size: Union[Text, int, Tuple[int, int]]) -> T_DatasetScaleRawImages:
+def repeated_image_dataset(
+    args: argparse.Namespace, image_size: Union[Text, int, Tuple[int, int]]
+) -> T_DatasetScaleRawImages:
     num_samples = global_batch_size(args)
     imgs = [np.array(Image.open(args.image_path))] * num_samples
     imgs = tf.convert_to_tensor(imgs)
@@ -78,15 +78,17 @@ def repeated_image_dataset(args: argparse.Namespace,
     return _configure_dataset(dataset, args, args.benchmark_repeats), scales, imgs
 
 
-def image_directory_dataset(args: argparse.Namespace,
-                            image_size: Union[Text, int, Tuple[int, int]]) -> T_DatasetScaleRawImages:
+def image_directory_dataset(
+    args: argparse.Namespace, image_size: Union[Text, int, Tuple[int, int]]
+) -> T_DatasetScaleRawImages:
 
     img_height, img_width = utils.parse_image_size(image_size)
-    extensions = ['jpg', 'png', 'jpeg']
+    extensions = ["jpg", "png", "jpeg"]
 
     def load_imgs_from_ext(acc: List[Text], ext: Text) -> List[Text]:
-        imgs = [p for p in Path(args.image_path).rglob("*."+ext)]
+        imgs = [p for p in Path(args.image_path).rglob("*." + ext)]
         return acc + imgs
+
     img_paths = reduce(load_imgs_from_ext, extensions, [])
     imgs = [tf.convert_to_tensor(Image.open(p)) for p in img_paths]
 
@@ -96,8 +98,7 @@ def image_directory_dataset(args: argparse.Namespace,
     return _configure_dataset(dataset, args), scales, imgs
 
 
-def get_dataset(args: argparse.Namespace,
-                image_size: Union[Text, int, Tuple[int, int]]) -> T_DatasetScaleRawImages:
+def get_dataset(args: argparse.Namespace, image_size: Union[Text, int, Tuple[int, int]]) -> T_DatasetScaleRawImages:
     if args.dataset_type == "repeated-image" or args.dataset_type == "single-image":
         return repeated_image_dataset(args, image_size)
     elif args.dataset_type == "generated":
@@ -105,5 +106,4 @@ def get_dataset(args: argparse.Namespace,
     elif args.dataset_type == "image-directory":
         return image_directory_dataset(args, image_size)
     else:
-        raise NotImplementedError(
-            f"Dataset type {args.dataset_type} has not been implemented")
+        raise NotImplementedError(f"Dataset type {args.dataset_type} has not been implemented")

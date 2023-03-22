@@ -18,8 +18,12 @@ from data_utils.generated_graph_data import GeneratedGraphData
 from utils import ThroughputCallback, get_optimizer, str_dtype_to_tf_dtype
 
 
-flags.DEFINE_integer("micro_batch_size", 8, 'Compute batch size (if using packing this is measured in "packs per batch")')
-flags.DEFINE_integer("global_batch_size", None, 'Global batch size (Includes batches across gradient accumulation factor and replicas)')
+flags.DEFINE_integer(
+    "micro_batch_size", 8, 'Compute batch size (if using packing this is measured in "packs per batch")'
+)
+flags.DEFINE_integer(
+    "global_batch_size", None, "Global batch size (Includes batches across gradient accumulation factor and replicas)"
+)
 
 flags.DEFINE_integer("n_nodes_per_pack", 248, 'nodes per "pack"')
 flags.DEFINE_integer("n_edges_per_pack", 512, 'edges per "pack"')
@@ -40,7 +44,9 @@ flags.DEFINE_enum("dataset_name", "ogbg-molhiv", ("ogbg-molhiv",), help="which d
 flags.DEFINE_boolean("generated_data", False, "Use randomly generated data instead of a real dataset.")
 flags.DEFINE_integer("generated_data_n_nodes", 24, "nodes per graph for the randomly generated dataset")
 flags.DEFINE_integer("generated_data_n_edges", 50, "edges per graph for the randomly generated dataset")
-flags.DEFINE_integer("generated_batches_per_epoch", 2048, "Number of batches per epoch for the randomly generated dataset")
+flags.DEFINE_integer(
+    "generated_batches_per_epoch", 2048, "Number of batches per epoch for the randomly generated dataset"
+)
 
 flags.DEFINE_boolean("do_training", True, "Run training on the dataset")
 flags.DEFINE_boolean("do_validation", True, "Run validation on the dataset")
@@ -76,12 +82,9 @@ def cosine_lr(epoch, lr):
 
 def main(_):
     if FLAGS.wandb:
-        wandb.init(entity="sw-apps",
-                   project="GIN-test",
-                   config=FLAGS.flag_values_dict())
+        wandb.init(entity="sw-apps", project="GIN-test", config=FLAGS.flag_values_dict())
 
-    tf.keras.mixed_precision.set_global_policy(
-        "float16" if FLAGS.dtype == "float16" else "float32")
+    tf.keras.mixed_precision.set_global_policy("float16" if FLAGS.dtype == "float16" else "float32")
 
     if FLAGS.generated_data:
         batch_generator = GeneratedGraphData(
@@ -90,16 +93,18 @@ def main(_):
             edges_per_graph=FLAGS.generated_data_n_edges,
             batches_per_epoch=FLAGS.generated_batches_per_epoch,
             n_graphs_per_pack=FLAGS.n_graphs_per_pack,
-            latent_size=FLAGS.n_latent)
+            latent_size=FLAGS.n_latent,
+        )
     else:
         batch_generator = PackedBatchGenerator(
             dataset_name=FLAGS.dataset_name,
             n_packs_per_batch=FLAGS.micro_batch_size,
-            fold='train',
+            fold="train",
             max_graphs_per_pack=FLAGS.n_graphs_per_pack,
             max_edges_per_pack=FLAGS.n_edges_per_pack,
             max_nodes_per_pack=FLAGS.n_nodes_per_pack,
-            n_epochs=FLAGS.epochs)
+            n_epochs=FLAGS.epochs,
+        )
 
     ds = batch_generator.get_tf_dataset()
 
@@ -110,13 +115,16 @@ def main(_):
 
     steps_per_epoch = batch_generator.batches_per_epoch
     steps_per_execution_per_replica = steps_per_epoch // FLAGS.replicas
-    steps_per_execution_per_replica = gradient_accumulation_factor * (steps_per_execution_per_replica // gradient_accumulation_factor)
+    steps_per_execution_per_replica = gradient_accumulation_factor * (
+        steps_per_execution_per_replica // gradient_accumulation_factor
+    )
     new_steps_per_epoch = steps_per_execution_per_replica * FLAGS.replicas
     if new_steps_per_epoch != steps_per_epoch:
         logging.warning(
             "Steps per epoch has been truncated from"
             f" {steps_per_epoch} to {new_steps_per_epoch}"
-            " in order for it to be divisible by steps per execution.")
+            " in order for it to be divisible by steps per execution."
+        )
     steps_per_epoch = new_steps_per_epoch
     logging.info(f"Steps per epoch: {steps_per_epoch}")
     logging.info(f"Steps per execution per replica: {steps_per_execution_per_replica}")
@@ -142,60 +150,56 @@ def main(_):
 
                 if FLAGS.loss_scaling > 1.0:
                     losses = ScaledBinaryCrossentropy(
-                        scaling_factor=FLAGS.loss_scaling,
-                        dtype=str_dtype_to_tf_dtype(FLAGS.dtype)
+                        scaling_factor=FLAGS.loss_scaling, dtype=str_dtype_to_tf_dtype(FLAGS.dtype)
                     )
                 else:
                     losses = tf.keras.losses.BinaryCrossentropy()
 
                 # Weighted metrics are used because of the batch packing
-                weighted_metrics = [
-                    tf.keras.metrics.BinaryAccuracy(),
-                    tf.keras.metrics.AUC()
-                ]
+                weighted_metrics = [tf.keras.metrics.BinaryAccuracy(), tf.keras.metrics.AUC()]
 
                 callbacks = [
                     ThroughputCallback(
                         # the throughput depends on the COMPUTE batch size, not the TOTAL batch size
                         samples_per_epoch=batch_generator.n_graphs_per_epoch,
-                        log_wandb=FLAGS.wandb)
+                        log_wandb=FLAGS.wandb,
+                    )
                 ]
                 if FLAGS.cosine_lr:
                     callbacks.append(tf.keras.callbacks.LearningRateScheduler(cosine_lr))
                 if FLAGS.execution_profile:
-                    callbacks.append(tf.keras.callbacks.TensorBoard(profile_batch=[2], log_dir='logs'))
+                    callbacks.append(tf.keras.callbacks.TensorBoard(profile_batch=[2], log_dir="logs"))
                 if FLAGS.wandb:
                     callbacks.append(wandb.keras.WandbCallback())
 
                 logging.info("Running training...")
                 logging.info(f"Saving weights to {model_dir}")
-                model_path = os.path.join(model_dir, 'model-{epoch:05d}')
+                model_path = os.path.join(model_dir, "model-{epoch:05d}")
                 callbacks.append(
                     tf.keras.callbacks.ModelCheckpoint(
                         model_path,
                         verbose=1,
                         save_best_only=False,
                         save_weights_only=True,
-                        period=FLAGS.checkpoint_every_n_epochs))
+                        period=FLAGS.checkpoint_every_n_epochs,
+                    )
+                )
 
                 model.compile(
                     optimizer=get_optimizer(**optimizer_options),
                     loss=losses,
                     weighted_metrics=weighted_metrics,
-                    steps_per_execution=steps_per_execution_per_replica)
+                    steps_per_execution=steps_per_execution_per_replica,
+                )
 
                 # if the total batch size exceeds the compute batch size
                 if xpu.IS_IPU:
                     model.set_gradient_accumulation_options(
                         gradient_accumulation_steps_per_replica=gradient_accumulation_factor,
-                        offload_weight_update_variables=False)
+                        offload_weight_update_variables=False,
+                    )
 
-                model.fit(
-                    ds,
-                    steps_per_epoch=steps_per_epoch,
-                    epochs=FLAGS.epochs,
-                    callbacks=callbacks
-                )
+                model.fit(ds, steps_per_epoch=steps_per_epoch, epochs=FLAGS.epochs, callbacks=callbacks)
 
         if FLAGS.do_validation:
             logging.info(f"Running validation...")
@@ -210,11 +214,11 @@ def main(_):
                     valid_gen = PackedBatchGenerator(
                         dataset_name=FLAGS.dataset_name,
                         n_packs_per_batch=FLAGS.micro_batch_size,
-                        fold='valid',
+                        fold="valid",
                         max_graphs_per_pack=FLAGS.n_graphs_per_pack,
                         max_edges_per_pack=FLAGS.n_edges_per_pack,
                         max_nodes_per_pack=FLAGS.n_nodes_per_pack,
-                        randomize=False
+                        randomize=False,
                     )
 
                 val_ds = valid_gen.get_tf_dataset().take(valid_gen.batches_per_epoch).cache().repeat()
@@ -227,15 +231,15 @@ def main(_):
                 model.compile(
                     optimizer=get_optimizer(**optimizer_options),
                     weighted_metrics=weighted_metrics,
-                    steps_per_execution=valid_gen.batches_per_epoch)
+                    steps_per_execution=valid_gen.batches_per_epoch,
+                )
 
                 if FLAGS.checkpoint_path:
                     checkpoint_paths = {-1: FLAGS.checkpoint_path}
                     logging.info(f"Validating the model with the checkpoint at path {checkpoint_paths}")
                 else:
                     checkpoint_paths = {
-                        epoch: os.path.join(model_dir, f"model-{epoch:05d}")
-                        for epoch in range(1, FLAGS.epochs + 1)
+                        epoch: os.path.join(model_dir, f"model-{epoch:05d}") for epoch in range(1, FLAGS.epochs + 1)
                     }
                     logging.info(f"Validating over a sweep of checkpoints: {checkpoint_paths}")
 
@@ -244,19 +248,19 @@ def main(_):
                     prediction = model.predict(val_ds, steps=valid_gen.batches_per_epoch).squeeze()
 
                     if len(val_include_mask) > len(prediction):
-                        val_include_mask = val_include_mask[:len(prediction)]
-                        val_ground_truth = val_ground_truth[:len(prediction)]
+                        val_include_mask = val_include_mask[: len(prediction)]
+                        val_ground_truth = val_ground_truth[: len(prediction)]
 
                     # val_include_mask may be shorter than the predictions —
                     #   that is fine (it will just be padding after that point)
-                    prediction = prediction[:len(val_include_mask)][val_include_mask.squeeze() == 1]
+                    prediction = prediction[: len(val_include_mask)][val_include_mask.squeeze() == 1]
 
                     # we will use the official AUC evaluator from the OGB repo, not the keras one
-                    result = evaluator.eval({'y_true': val_ground_truth[:, None], 'y_pred': prediction[:, None]})
-                    this_auc = result['rocauc']
+                    result = evaluator.eval({"y_true": val_ground_truth[:, None], "y_pred": prediction[:, None]})
+                    this_auc = result["rocauc"]
 
                     if FLAGS.wandb:
-                        wandb.log({'epoch': epoch, 'val_auc': this_auc})
+                        wandb.log({"epoch": epoch, "val_auc": this_auc})
 
                     if this_auc > best_val_auc:
                         best_val_auc = this_auc
@@ -276,18 +280,19 @@ def main(_):
                     test_gen = PackedBatchGenerator(
                         dataset_name=FLAGS.dataset_name,
                         n_packs_per_batch=FLAGS.micro_batch_size,
-                        fold='test',
+                        fold="test",
                         max_graphs_per_pack=FLAGS.n_graphs_per_pack,
                         max_edges_per_pack=FLAGS.n_edges_per_pack,
                         max_nodes_per_pack=FLAGS.n_nodes_per_pack,
-                        randomize=False
+                        randomize=False,
                     )
 
                 model = create_model()
                 model.compile(
                     optimizer=get_optimizer(**optimizer_options),
                     weighted_metrics=weighted_metrics,
-                    steps_per_execution=test_gen.batches_per_epoch)
+                    steps_per_execution=test_gen.batches_per_epoch,
+                )
 
                 test_ds = test_gen.get_tf_dataset().take(test_gen.batches_per_epoch).cache().repeat()
                 test_ground_truth, test_include_mask = test_gen.get_ground_truth_and_masks()
@@ -304,17 +309,17 @@ def main(_):
                 prediction = model.predict(test_ds, steps=test_gen.batches_per_epoch).squeeze()
 
                 if len(test_include_mask) > len(prediction):
-                    test_include_mask = test_include_mask[:len(prediction)]
-                    test_ground_truth = test_ground_truth[:len(prediction)]
+                    test_include_mask = test_include_mask[: len(prediction)]
+                    test_ground_truth = test_ground_truth[: len(prediction)]
 
-                prediction = prediction[:len(test_include_mask)][test_include_mask.squeeze() == 1]
+                prediction = prediction[: len(test_include_mask)][test_include_mask.squeeze() == 1]
 
-                result = evaluator.eval({'y_true': test_ground_truth[:, None], 'y_pred': prediction[:, None]})
-                this_auc = result['rocauc']
+                result = evaluator.eval({"y_true": test_ground_truth[:, None], "y_pred": prediction[:, None]})
+                this_auc = result["rocauc"]
                 logging.info(f"\nTest AUC of {this_auc:.3f}")
                 if FLAGS.wandb:
-                    wandb.log({'test_auc': this_auc, 'best_val_auc': best_val_auc})
+                    wandb.log({"test_auc": this_auc, "best_val_auc": best_val_auc})
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(main)

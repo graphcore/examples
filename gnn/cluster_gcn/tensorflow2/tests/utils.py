@@ -10,11 +10,9 @@ from utilities.constants import AdjacencyForm
 
 def edge_list_to_sparse_adj(edge_list, num_nodes):
     adj = sp.csr_matrix(
-            (
-                np.ones((edge_list.shape[0]), dtype=np.float32),
-                (edge_list[:, 0], edge_list[:, 1])
-            ),
-            shape=(num_nodes, num_nodes))
+        (np.ones((edge_list.shape[0]), dtype=np.float32), (edge_list[:, 0], edge_list[:, 1])),
+        shape=(num_nodes, num_nodes),
+    )
     return adj
 
 
@@ -25,10 +23,7 @@ def get_app_root_dir():
 def assert_equal_adjacency(adjacency, expected_adjacency, adjacency_form):
     if adjacency_form == AdjacencyForm.SPARSE_TENSOR:
         assert isinstance(adjacency, tf.sparse.SparseTensor)
-        expected_indices = np.array([
-            expected_adjacency.row,
-            expected_adjacency.col
-        ]).transpose()
+        expected_indices = np.array([expected_adjacency.row, expected_adjacency.col]).transpose()
         expected_data = expected_adjacency.data
         expected_shape = expected_adjacency.shape
         np.testing.assert_array_equal(adjacency.indices, expected_indices)

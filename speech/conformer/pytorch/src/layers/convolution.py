@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # This file has been modified by Graphcore Ltd.
-'''
+"""
 This script has been adapted from some of the original EspNet found here:
 [
     https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/conformer/convolution.py
 ]
 Main changes:
     replace the BatchNorm to LayerNorm.
-'''
+"""
 
 from torch import nn
 from src.layers.layer_norm import LayerNorm
@@ -30,7 +30,7 @@ class ConvolutionModule(nn.Module):
 
     Args:
         channels (int): The number of channels of conv layers.
-        kernel_size (int): Kernerl size of conv layers.
+        kernel_size (int): Kernel size of conv layers.
 
     """
 

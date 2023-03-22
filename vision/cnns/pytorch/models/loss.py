@@ -6,7 +6,6 @@ from torch.nn.functional import nll_loss
 from typing import Callable, List, Any
 
 
-
 def weighted_nll_loss(log_preds: torch.Tensor, labels: torch.Tensor, weights: torch.Tensor):
     """Compute a weighted nll loss based on multiple labels.
 
@@ -17,15 +16,14 @@ def weighted_nll_loss(log_preds: torch.Tensor, labels: torch.Tensor, weights: to
         weights List[torch.Tensor]: a list of weight tensors, one for each
             target.
     """
-    assert len(labels) == len(weights), (
-        "'labels' and 'weights' must have the same number of tensors.")
-    losses = [nll_loss(log_preds, label, reduction='none') for label in labels]
+    assert len(labels) == len(weights), "'labels' and 'weights' must have the same number of tensors."
+    losses = [nll_loss(log_preds, label, reduction="none") for label in labels]
     final_loss = reduce(torch.add, [w * l for w, l in zip(weights, losses)])
     return torch.mean(final_loss)
 
 
 class LabelSmoothing:
-    def __init__(self, loss: Callable=torch.nn.NLLLoss(reduction='mean'), label_smoothing: float=0.0):
+    def __init__(self, loss: Callable = torch.nn.NLLLoss(reduction="mean"), label_smoothing: float = 0.0):
         """Provide adjusted classification and smoothing loss"""
         self.label_smoothing = label_smoothing
         self.class_loss = loss
@@ -46,7 +44,12 @@ class LabelSmoothing:
 
 
 class TrainingModelWithLoss(torch.nn.Module):
-    def __init__(self, model: torch.nn.Module, losses: List[Callable], metrics: List[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]]=[]):
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        losses: List[Callable],
+        metrics: List[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = [],
+    ):
         """Provides the wrapper around the model, which adds the loss function to the model.
         Parameters:
             model: the wrapped inference model
@@ -75,4 +78,4 @@ class TrainingModelWithLoss(torch.nn.Module):
         with torch.no_grad():
             metric_values = [metric_fn(pred, labels) for metric_fn in self.metrics]
 
-        return poptorch.identity_loss(sum(losses), reduction='none'), tuple(losses), tuple(metric_values)
+        return poptorch.identity_loss(sum(losses), reduction="none"), tuple(losses), tuple(metric_values)

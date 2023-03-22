@@ -30,12 +30,11 @@ for key in cpu_grad.keys():
 
         diff_sum = torch.sum(torch.abs(diff))
 
-        print(f'{key} {grad_ipu.shape} {relative.max()}')
+        print(f"{key} {grad_ipu.shape} {relative.max()}")
         try:
-            np.testing.assert_allclose(
-                grad_cpu, grad_ipu, atol=1e-4, rtol=1e-6)
+            np.testing.assert_allclose(grad_cpu, grad_ipu, atol=1e-4, rtol=1e-6)
         except Exception as e:
-            relative = e.args[0].split('\n')[5]
-            abs_diff = e.args[0].split('\n')[4]
-            print(f'{abs_diff}\t{relative}\n')
+            relative = e.args[0].split("\n")[5]
+            abs_diff = e.args[0].split("\n")[4]
+            print(f"{abs_diff}\t{relative}\n")
             raise e

@@ -9,7 +9,7 @@
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 51,
     "ipu_config_name": "configs/pipelined_ipu_config.json",
-    
+
     "dataset_name": "imagenet-1k",
     "dataset_path": "/localdata/datasets/imagenet_object_localization_patched2019.tar.gz",
     "dataloader_drop_last": true,
@@ -25,7 +25,7 @@
     "learning_rate": 5e-4,
     "num_train_epochs": 110,
     "warmup_ratio": 0.5,
-    
+
     "lamb": true,
     "adam_epsilon": 1e-6
 }

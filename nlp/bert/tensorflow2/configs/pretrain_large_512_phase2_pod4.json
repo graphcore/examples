@@ -1,0 +1,51 @@
+{
+    "dataset_dir": "/localdata/datasets/wikipedia/torch_bert/512/",
+    "bert_config": {
+        "hidden_size": 1024,
+        "vocab_size": 30400,
+        "num_attention_heads": 16,
+        "num_hidden_layers": 24,
+        "intermediate_size": 4096,
+        "hidden_dropout_prob": 0.1,
+        "attention_probs_dropout_prob": 0.0,
+        "max_position_embeddings": 512,
+        "type_vocab_size": 2,
+        "initializer_range": 0.02,
+        "layer_norm_eps": 1e-12,
+        "position_embedding_type": "absolute"
+    },
+    "max_seq_length": 512,
+    "max_predictions_per_seq": 76,
+    "global_batch": {
+        "micro_batch_size": 2,
+        "replicas": 1,
+        "grad_acc_steps_per_replica": 8160
+    },
+    "ipu_config": {
+        "pipeline_stages": [
+            ["emb", "hid", "hid"],
+            ["hid", "hid", "hid", "hid", "hid", "hid", "hid"],
+            ["hid", "hid", "hid", "hid", "hid", "hid", "hid"],
+            ["hid", "hid", "hid", "hid", "hid", "hid", "hid", "hid"],
+            ["enc_out", "pool", "heads"]
+        ],
+        "pipeline_device_mapping": [0, 1, 2, 3, 0],
+        "matmul_available_memory_proportion_per_pipeline_stage": [0.05, 0.1, 0.1, 0.1],
+        "replicated_tensor_sharding": false
+    },
+    "optimizer_opts": {
+        "name": "LAMB",
+        "weight_decay_rate": 0.01,
+        "loss_scaling": 32768,
+        "learning_rate": {
+            "schedule_name": "up_down",
+            "max_learning_rate": 0.002828,
+            "warmup_frac": 0.129
+        }
+    },
+    "seed": 1984,
+    "global_batches_per_log": 1,
+    "enable_wandb": true,
+    "wandb_tags": ["pretraining"],
+    "show_accuracy": false
+}

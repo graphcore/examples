@@ -7,7 +7,7 @@
             "transform_mode": "self_connections_scaled_by_degree_with_diagonal_enhancement",
             "diag_lambda": 0.0001
         },
-        "first_layer_precalculation": false 
+        "first_layer_precalculation": false
     },
     "training": {
         "num_clusters": 30000,

@@ -5,8 +5,8 @@
 
 
 display_usage() {
-	echo "Usage: . set_up_poprun.sh CLUSTER_NAME NUM_INSTANCES NUM_REPLICAS IPUS_PER_REPLICA"
-      echo "CLUSTER_NAME can be retrieved with vipu-admin list partition. "
+	echo "Usage: . set_up_poprun.sh ALLOCATION_NAME NUM_INSTANCES NUM_REPLICAS IPUS_PER_REPLICA"
+      echo "ALLOCATION_NAME can be retrieved with vipu-admin list partition. "
 }
 
 if [ "${BASH_SOURCE[0]}" == "${0}" ]
@@ -20,7 +20,7 @@ if [[ $# != 4 ]]; then
    return 1
 fi
 
-CLUSTER_NAME="$1"
+ALLOCATION_NAME="$1"
 NUM_INSTANCES="$2"
 NUM_REPLICAS="$3"
 IPUS_PER_REPLICA="$4"
@@ -29,15 +29,15 @@ if [ -z "$HOSTS_LIST" ]
 then
       echo "\$HOSTS_LIST is empty : run the script config_pod.sh before this one"
       return 1
-elif [ -z "$VIPU_SERVER_IP" ] || [ -z "$VIPU_PARTITION_NAME" ] 
+elif [ -z "$VIPU_SERVER_IP" ] || [ -z "$VIPU_PARTITION_NAME" ]
 then
       echo "\$VIPU_SERVER_IP or \$VIPU_PARTITION_NAME is empty : run the script config_pod.sh before this one"
       return 1
-elif [ -z "$MPI_GLOBAL_ARGS" ] || [ -z "$MPI_LOCAL_ARGS" ] 
+elif [ -z "$MPI_GLOBAL_ARGS" ] || [ -z "$MPI_LOCAL_ARGS" ]
 then
       echo "\$MPI_GLOBAL_ARGS or \$MPI_LOCAL_ARGS is empty : run the script config_pod.sh before this one"
       return 1
-fi      
+fi
 
 
 HOSTS_LIST_ARRAY=(${HOSTS_LIST//,/ })
@@ -52,7 +52,7 @@ echo "NUM_REPLICAS is $NUM_REPLICAS"
 echo "IPUS_PER_REPLICA is $IPUS_PER_REPLICA"
 
 
-POPRUN_OPTIONS="--only-output-from-instance 0 --host ${HOSTS_LIST} --num-instances ${NUM_INSTANCES} --num-replicas ${NUM_REPLICAS} --ipus-per-replica ${IPUS_PER_REPLICA} --vipu-server-host=${VIPU_SERVER_IP} --vipu-cluster=${CLUSTER_NAME} --reset-partition=no --update-partition=yes --remove-partition=no --vipu-partition=${VIPU_PARTITION_NAME} --print-topology=yes  --vipu-server-timeout=500"
+POPRUN_OPTIONS="--only-output-from-instance 0 --host ${HOSTS_LIST} --num-instances ${NUM_INSTANCES} --num-replicas ${NUM_REPLICAS} --ipus-per-replica ${IPUS_PER_REPLICA} --vipu-server-host=${VIPU_SERVER_IP} --vipu-allocation=${ALLOCATION_NAME} --reset-partition=no --update-partition=yes --remove-partition=no --vipu-partition=${VIPU_PARTITION_NAME} --print-topology=yes  --vipu-server-timeout=500"
 
 unset poprun_prefix
 unset POPRUN_PREFIX
@@ -65,7 +65,7 @@ poprun_prefix () {
 poprun ${POPRUN_OPTIONS} \
 --mpi-global-args="${MPI_GLOBAL_ARGS}" \
 --mpi-local-args="${MPI_LOCAL_ARGS}" \
- $*; 
+ $*;
  }
 
 export -f poprun_prefix

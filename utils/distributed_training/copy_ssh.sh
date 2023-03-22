@@ -10,14 +10,14 @@ display_usage() {
 
 }
 
-if [[ $# -lt 1 ]]; then   
+if [[ $# -lt 1 ]]; then
    display_usage
    exit 1
 fi
 
 HOSTS="$@"
 
-for HOST in ${HOSTS}; do	
+for HOST in ${HOSTS}; do
       echo "ssh-id copied into ${HOST}"
       ssh-copy-id "${HOST}"
       ssh-keyscan -H "${HOST}" >> "${HOME}/.ssh/known_hosts"

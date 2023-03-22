@@ -5,7 +5,7 @@ import tensorflow as tf
 
 # This strategy is used to minimise code
 # differences in the GPU/CPU code path:
-class NoStrategy():
+class NoStrategy:
     def __init__(self):
         return
 
@@ -27,12 +27,13 @@ def get_train_strategy(no_ipu, replicas, fp16, nosre):
 
     # Otherwise we configure the IPU strategy:
     from tensorflow.python import ipu
+
     cfg = ipu.config.IPUConfig()
     if fp16:
         # Half partials improve performance and do not usually
         # impact model quality:
-        cfg.convolutions.poplar_options['partialsType'] = 'half'
-        cfg.matmuls.poplar_options['partialsType'] = 'half'
+        cfg.convolutions.poplar_options["partialsType"] = "half"
+        cfg.matmuls.poplar_options["partialsType"] = "half"
     cfg.auto_select_ipus = replicas
     if nosre:
         cfg.floating_point_behaviour.esr = ipu.config.StochasticRoundingBehaviour.OFF
@@ -40,7 +41,6 @@ def get_train_strategy(no_ipu, replicas, fp16, nosre):
         cfg.floating_point_behaviour.esr = ipu.config.StochasticRoundingBehaviour.ON
 
     cfg.compilation_poplar_options = {"target.deterministicWorkers": "portable"}
-    cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
     cfg.device_connection.enable_remote_buffers = True
     cfg.optimizations.math.fast = True
     cfg.configure_ipu_system()
@@ -54,10 +54,10 @@ def get_predict_strategy(no_ipu):
 
     # Configure the IPU system:
     from tensorflow.python import ipu
+
     cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.compilation_poplar_options = {"target.deterministicWorkers": "portable"}
-    cfg.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
     cfg.device_connection.enable_remote_buffers = True
     cfg.optimizations.math.fast = True
     cfg.configure_ipu_system()

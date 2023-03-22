@@ -1,9 +1,9 @@
 # BERT (PopXL)
 Bidirectional Encoder Representations from Transformers for NLP pre-training and fine-tuning tasks (SQuAD) using the PopXL library, optimised for Graphcore's IPU.
 
-| Framework | domain | Model | Datasets | Tasks| Training| Inference | Reference |
-|-------------|-|------|-------|-------|-------|---|---|
-| PopXL | NLP | BERT | WIKI-103 | Next sentence prediction, Question/Answering | ✅  | ✅ | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) | 
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PopXL | NLP | BERT | WIKI-103 | Next sentence prediction, Question/Answering | <p style="text-align: center;">✅ <br> Min. 16 IPUs (POD16) required  | <p style="text-align: center;">✅ <br> Min. 4 IPUs (POD4) required | [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805v2) |
 
 
 ## Instructions summary
@@ -25,18 +25,18 @@ If no path is provided, then follow these steps:
 1. Navigate to your Poplar SDK root directory
 
 2. Enable the Poplar SDK with:
-```bash 
+```bash
 cd poplar-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-3. Additionally, enable PopArt with:
-```bash 
+3. Additionally, enable PopART with:
+```bash
 cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/).
+More detailed instructions on setting up your Poplar environment are available in the [Poplar quick start guide](https://docs.graphcore.ai/projects/poplar-quick-start).
 
 
 ## Environment setup
@@ -201,7 +201,7 @@ python3 -m examples_utils benchmark --spec <path to benchmarks.yml file> --bench
 For more information on using the examples-utils benchmarking module, please refer to [the README](https://github.com/graphcore/examples-utils/blob/master/examples_utils/benchmarks/README.md).
 
 
-## Custom training/inference and other features
+## Custom training and inference
 
 ### Pretraining with BERT on IPU <a name="pretrain_IPU"></a>
 
@@ -244,6 +244,8 @@ You can benchmark the fine-tuning and inference by executing the non-run scripts
 ```bash
 python3 squad_training.py --config base
 ```
+
+## Other features
 
 ### View the pretraining results in Weights & Biases <a name="wandb"></a>
 
@@ -390,6 +392,7 @@ def single_bert_layer_fwd_phase(n: popxl.Tensor, seed: popxl.Tensor):
     layer.fwd.bind(layer_vars).call(n, layer_seed)
     return n + 1, seed
 
+
 i = popxl.constant(0, name="layer_index")
 bwd_graph = ir.create_graph(single_bert_layer_fwd_phase, i, seed)
 ops.repeat(bwd_graph, config.model.layers, i, seed)
@@ -424,6 +427,7 @@ def single_bert_layer_grad_phase(n: popxl.Tensor, grad_norm: popxl.TensorByRef):
     layer.grad_store(reduced_grads, n)
     return n - 1
 
+
 i = popxl.constant(config.model.layers - 1, name="layer_index")
 bwd_graph = ir.create_graph(single_bert_layer_grad_phase, i, grad_norm)
 ops.repeat(bwd_graph, config.model.layers, i, grad_norm)
@@ -448,6 +452,7 @@ def layer_optim(n: popxl.Tensor, lr: popxl.Tensor, grad_norm: popxl.Tensor):
     layer.optim_store(layer_vars, n)
     return n + 1
 
+
 i = popxl.constant(0, name="layer_index")
 optim_graph = ir.create_graph(layer_optim, i, lr, grad_norm)
 ops.repeat(optim_graph, config.model.layers, i, lr, grad_norm)
@@ -465,4 +470,3 @@ Data-parallel training involves breaking the training dataset up into multiple p
 
 ### Avoid recompilation: caching executables <a name="cache"></a>
 When running the application, it is possible to save and load executables in a cache store. This allows the reuse of a saved executable instead of re-compiling the model when re-running identical model configurations. To enable saving and loading from the cache store, use `POPART_CACHE_DIR <relative/path/to/cache/store>` when running the application.
-

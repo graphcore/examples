@@ -43,8 +43,7 @@ class BenchmarkResult:
     def total_time(self):
         return self._total_time
 
-    def get_stats(self, fns: Optional[Union[T_Iterable[Callable], Callable]] = None) \
-            -> Union[List[float], float]:
+    def get_stats(self, fns: Optional[Union[T_Iterable[Callable], Callable]] = None) -> Union[List[float], float]:
         if fns is None:
             fns = BenchmarkResult.stats_fns
         elif not isinstance(fns, Iterable):
@@ -57,22 +56,20 @@ class BenchmarkResult:
     @classmethod
     def print_report(cls, results: List):
         popdist.init()
-        tput_stats, latency_stats = list(
-            zip(*[r.get_stats() for r in results]))
+        tput_stats, latency_stats = list(zip(*[r.get_stats() for r in results]))
 
-        tput_summary = [f([t[i] for t in tput_stats])
-                        for i, f in enumerate(cls.stats_fns)]
-        latency_summary = [f([l[i] for l in latency_stats])
-                           for i, f in enumerate(cls.stats_fns)]
+        tput_summary = [f([t[i] for t in tput_stats]) for i, f in enumerate(cls.stats_fns)]
+        latency_summary = [f([l[i] for l in latency_stats]) for i, f in enumerate(cls.stats_fns)]
 
-        all_batch_time_stats = [f([r.total_time for r in results])
-                                for f in cls.stats_fns]
+        all_batch_time_stats = [f([r.total_time for r in results]) for f in cls.stats_fns]
 
         if popdist.isPopdistEnvSet():
-            tput_summaries = distributed.allgather(tf.constant([tput_summary], name='Throughputs',
-                                        dtype = tf.float32)).numpy()
-            latency_summaries = distributed.allgather(tf.constant([latency_summary], name='Latencies',
-                                        dtype = tf.float32)).numpy()
+            tput_summaries = distributed.allgather(
+                tf.constant([tput_summary], name="Throughputs", dtype=tf.float32)
+            ).numpy()
+            latency_summaries = distributed.allgather(
+                tf.constant([latency_summary], name="Latencies", dtype=tf.float32)
+            ).numpy()
             tput_summary = np.sum(tput_summaries, axis=0)[0]
             latency_summary = np.max(latency_summaries, axis=0)[0]
 
@@ -81,12 +78,18 @@ class BenchmarkResult:
             print("Statistics:")
             if len(results) > 1:
                 print(f"\tStats captured over {len(results)} runs.")
-            print(f"\tthroughput: {tput_summary[0]:.2f} samples/sec, "
-                 f"min = {tput_summary[1]:.2f}, max = {tput_summary[2]:.2f}")
-            print(f"\tPer-batch latency avg: {latency_summary[0]:.2f} ms, "
-                  f"min = {latency_summary[1]:.2f} ms, max = {latency_summary[2]:.2f} ms")
-            print(f"\tAll-batch latency avg: {all_batch_time_stats[0]:.2f} ms, "
-                  f"min = {all_batch_time_stats[1]:.2f}ms, max = {all_batch_time_stats[2]:.2f}ms")
+            print(
+                f"\tthroughput: {tput_summary[0]:.2f} samples/sec, "
+                f"min = {tput_summary[1]:.2f}, max = {tput_summary[2]:.2f}"
+            )
+            print(
+                f"\tPer-batch latency avg: {latency_summary[0]:.2f} ms, "
+                f"min = {latency_summary[1]:.2f} ms, max = {latency_summary[2]:.2f} ms"
+            )
+            print(
+                f"\tAll-batch latency avg: {all_batch_time_stats[0]:.2f} ms, "
+                f"min = {all_batch_time_stats[1]:.2f}ms, max = {all_batch_time_stats[2]:.2f}ms"
+            )
 
     def __repr__(self):
         return f"BenchMarkresult: {self._throughputs}, {self._latencies}"

@@ -21,11 +21,9 @@ pytorch_fit_pretrain_gen_pod16:
   description: |
     Frozen in time n-frame pretraining throughput test
     using host generated data on 8IPUs.
-  parameters:
-    config: 1f,2f,4f
   cmd: >-
     python run.py
-      --config_name configs/webvid2m-8ipu-{config}.json
+      --config_name configs/webvid2m-8ipu-1f.json
       --trainer.epochs 5
       --timestamp_ckpt False
       --arch.args.load_checkpoint ""
@@ -46,7 +44,7 @@ pytorch_fit_1f_pretrain_real_pod16_conv:
       --num-replicas 1
       --ipus-per-replica 8
       --vipu-partition $IPUOF_VIPU_API_PARTITION_ID
-      --vipu-cluster $CLUSTER
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --vipu-server-host $VIPU_CLI_API_HOST
       --executable-cache-path ./exps/exe_cache
     python run.py
@@ -68,7 +66,7 @@ pytorch_fit_2f_pretrain_real_pod16_conv:
       --num-replicas 1
       --ipus-per-replica 8
       --vipu-partition $IPUOF_VIPU_API_PARTITION_ID
-      --vipu-cluster $CLUSTER
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --vipu-server-host $VIPU_CLI_API_HOST
       --executable-cache-path ./exps/exe_cache
     python run.py
@@ -90,7 +88,7 @@ pytorch_fit_4f_pretrain_real_pod16_conv:
       --num-replicas 1
       --ipus-per-replica 8
       --vipu-partition $IPUOF_VIPU_API_PARTITION_ID
-      --vipu-cluster $CLUSTER
+      --vipu-allocation=$VIPU_ALLOCATION_ID
       --vipu-server-host $VIPU_CLI_API_HOST
       --executable-cache-path ./exps/exe_cache
     python run.py
@@ -100,4 +98,3 @@ pytorch_fit_4f_pretrain_real_pod16_conv:
       --data_loader.training.data_dir $DATASETS_DIR/WebVid
       --data_loader.inference.data_dir $DATASETS_DIR/MSRVTT
       --trainer.run_name pytorch_fit_4f_pretrain_real_pod16_conv
-

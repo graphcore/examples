@@ -27,8 +27,7 @@ logger = logging.getLogger(__name__)
 def configure_ipu(args):
     # Standard IPU TensorFlow setup.
     ipu_config = ipu.config.IPUConfig()
-    ipu_config.compilation_poplar_options = {
-        "opt.internalExchangeOptimisationTarget": args.internal_exchange_target}
+    ipu_config.compilation_poplar_options = {"opt.internalExchangeOptimisationTarget": args.internal_exchange_target}
 
     # Enable float exception and stochastic rounding
     ipu_config.floating_point_behaviour.set_all = True
@@ -42,8 +41,7 @@ def configure_ipu(args):
     # potentially with impact on accuracy and throughput respectively.
     matmul_options = {"partialsType": args.partials_type}
     if len(args.available_memory_proportion) == 1:
-        matmul_options["availableMemoryProportion"] = str(
-            args.available_memory_proportion[0])
+        matmul_options["availableMemoryProportion"] = str(args.available_memory_proportion[0])
     ipu_config.matmuls.poplar_options = matmul_options
 
     # Set convolution options, including the "partials" and "available memory proportion"
@@ -53,7 +51,6 @@ def configure_ipu(args):
 
     # Attach to given number of IPUs
     ipu_config.auto_select_ipus = args.nb_ipus_per_replica * args.replicas
-    ipu_config.device_connection.type = ipu.utils.DeviceConnectionType.ON_DEMAND
     ipu_config.configure_ipu_system()
 
 
@@ -71,13 +68,12 @@ class PerfCallback(keras.callbacks.Callback):
         t0 = self.t0
         t1 = perf_counter()
         d = t1 - t0
-        tput = '{0:.15f}'.format(self.samples_per_execution/d)
-        logger.info(
-            f'Execution {epoch}.\t Time: {d} seconds\t throughput: {tput} samples/sec.')
+        tput = "{0:.15f}".format(self.samples_per_execution / d)
+        logger.info(f"Execution {epoch}.\t Time: {d} seconds\t throughput: {tput} samples/sec.")
 
 
 def set_seed(seed):
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)
@@ -87,20 +83,19 @@ def set_seed(seed):
 def pretty_print_nested_list(a):
     def pretty_print_list(a):
         return ", ".join([f"{b:.5f}" for b in a])
+
     return "\n ".join([f"{pretty_print_list(b)}" for b in a])
 
 
 def setup_logger(log_level):
     # Define a root config with a format which is simpler for console use
     logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s %(name)s %(levelname)s %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S')
+        level=log_level, format="%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
     # Define a specific Handler for this file that removes the root name.
     console = logging.StreamHandler()
     console.setLevel(log_level)
-    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s',
-                                  '%Y-%m-%d %H:%M:%S')
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S")
     console.setFormatter(formatter)
     logger.addHandler(console)
     logger.propagate = False

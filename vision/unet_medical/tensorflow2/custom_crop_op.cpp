@@ -1,5 +1,5 @@
 // Copyright (c) 2021 Graphcore Ltd. All rights reserved.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the “License”);
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,24 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "crop.hpp"
 #include <poplar/Graph.hpp>
 #include <poputil/exceptions.hpp>
-#include "crop.hpp"
 
 extern "C" {
 
 /// Check the Targeting the IPU from TensorFlow document for
 /// the API level required for the version of the Poplar SDK that you are using.
-  int32_t custom_op_api_level = 5;
+int32_t custom_op_api_level = 5;
 
 /// Set the properties of the forward op.
-void Build_metadata(std::vector<std::int64_t>& allocating_indices,
-                    std::vector<std::int64_t>& replica_identical_output_indices,
-                    std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
-                    bool& is_elementwise,
-                    bool& is_stateless,
-                    bool& is_hashable,
-                    std::uint32_t num_inputs) {
+void Build_metadata(
+    std::vector<std::int64_t> &allocating_indices,
+    std::vector<std::int64_t> &replica_identical_output_indices,
+    std::map<std::int64_t, std::int64_t> &input_to_output_tensor_aliasing,
+    bool &is_elementwise, bool &is_stateless, bool &is_hashable,
+    std::uint32_t num_inputs) {
 
   // The forward op is just a function of its inputs (no internal state)
   // so it can be marked as stateless.
@@ -38,12 +37,11 @@ void Build_metadata(std::vector<std::int64_t>& allocating_indices,
 }
 
 /// Define the forward op
-poplar::program::Program Build(
-                    poplar::Graph& graph,
-                    const std::vector<poplar::Tensor>& inputs,
-                    std::vector<poplar::Tensor>& outputs,
-                    const std::string& attributes,
-                    const std::string& debug_prefix) {
+poplar::program::Program Build(poplar::Graph &graph,
+                               const std::vector<poplar::Tensor> &inputs,
+                               std::vector<poplar::Tensor> &outputs,
+                               const std::string &attributes,
+                               const std::string &debug_prefix) {
 
   if (inputs.size() != 1) {
     throw poputil::poplibs_error("product requires 1 input.");
@@ -68,32 +66,29 @@ poplar::program::Program Build(
 /// we ask for the gradient multiple times (e.g. we use tf.gradients() in
 /// the python code).
 void Build_grad_metadata(
-                    std::vector<std::int64_t>& allocating_indices,
-                    std::vector<std::int64_t>& replica_identical_output_indices,
-                    std::map<std::int64_t, std::int64_t>& input_to_output_tensor_aliasing,
-                    bool& is_elementwise,
-                    bool& is_stateless,
-                    bool& is_hashable,
-                    std::uint32_t num_inputs) {
+    std::vector<std::int64_t> &allocating_indices,
+    std::vector<std::int64_t> &replica_identical_output_indices,
+    std::map<std::int64_t, std::int64_t> &input_to_output_tensor_aliasing,
+    bool &is_elementwise, bool &is_stateless, bool &is_hashable,
+    std::uint32_t num_inputs) {
 
   is_stateless = true;
   is_hashable = true;
 }
 
 /// Define the gradient op.
-poplar::program::Program Build_grad(
-                    poplar::Graph& graph, int input_grad_index,
-                    const std::vector<poplar::Tensor>& gradients,
-                    const std::vector<poplar::Tensor>& fwd_inputs,
-                    const std::vector<poplar::Tensor>& fwd_outputs,
-                    std::vector<poplar::Tensor>& outputs,
-                    const std::string& attributes,
-                    const std::string& debug_prefix) {
+poplar::program::Program
+Build_grad(poplar::Graph &graph, int input_grad_index,
+           const std::vector<poplar::Tensor> &gradients,
+           const std::vector<poplar::Tensor> &fwd_inputs,
+           const std::vector<poplar::Tensor> &fwd_outputs,
+           std::vector<poplar::Tensor> &outputs, const std::string &attributes,
+           const std::string &debug_prefix) {
 
   poplar::program::Sequence prog;
   const float central_fraction = std::stof(attributes);
   auto gradOfLossWrtInput =
-    crop_grads(graph, prog, gradients[0], central_fraction);
+      crop_grads(graph, prog, gradients[0], central_fraction);
 
   outputs.push_back(gradOfLossWrtInput);
 

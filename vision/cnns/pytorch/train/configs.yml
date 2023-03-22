@@ -33,6 +33,10 @@ resnet50: &resnet50
   recompute_checkpoints: [add, add_1, add_2, add_3, add_5, add_6, add_7, add_9, add_11, add_12, layer4/0/conv1, layer4/0/bn1, layer4/0/conv2, layer4/0/bn2, layer4/0/conv3, layer4/0/bn3, layer4/0/downsample_0, layer4/0/downsample/1, add_13, layer4/1/conv1, layer4/1/bn1, layer4/1/conv2, layer4/1/bn2, layer4/1/conv3, layer4/1/bn3, add_14, layer4/2/conv1, layer4/2/bn1, layer4/2/conv2, layer4/2/bn2, layer4/2/conv3, layer4/2/bn3, add_15, avgpool, fc]
   available_memory_proportion: [0.16]
 
+resnet50-pod4:
+  <<: *resnet50
+  replicas: 4
+  gradient_accumulation: 228
 
 resnet50-pod64:
   <<: *resnet50

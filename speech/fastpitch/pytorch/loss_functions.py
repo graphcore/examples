@@ -35,13 +35,12 @@ from waveglow.loss_function import WaveGlowLoss
 
 
 def get_loss_function(loss_function, **kw):
-    if loss_function == 'Tacotron2':
+    if loss_function == "Tacotron2":
         loss = Tacotron2Loss()
-    elif loss_function == 'WaveGlow':
+    elif loss_function == "WaveGlow":
         loss = WaveGlowLoss(**kw)
-    elif loss_function == 'FastPitch':
+    elif loss_function == "FastPitch":
         loss = FastPitchLoss(**kw)
     else:
-        raise NotImplementedError(
-            "unknown loss function requested: {}".format(loss_function))
+        raise NotImplementedError("unknown loss function requested: {}".format(loss_function))
     return loss.cuda()

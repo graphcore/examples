@@ -35,15 +35,14 @@ sys.path.append(mae_root_path)
 
 
 def alignment():
-    cpu_grad = torch.load(f'{mae_root_path}/scripts/alignment/cpu/cpu_grad0.pt')
-    ipu_grad = torch.load(f'{mae_root_path}/scripts/alignment/ipu/ipu_grad0.pt')
+    cpu_grad = torch.load(f"{mae_root_path}/scripts/alignment/cpu/cpu_grad0.pt")
+    ipu_grad = torch.load(f"{mae_root_path}/scripts/alignment/ipu/ipu_grad0.pt")
     for key in cpu_grad.keys():
         if key in ipu_grad.keys():
             if cpu_grad[key] is not None:
                 grad_cpu = cpu_grad[key]
                 grad_ipu = ipu_grad[key]
-                np.testing.assert_allclose(
-                    grad_cpu, grad_ipu, atol=1e-4, rtol=1e-6)
+                np.testing.assert_allclose(grad_cpu, grad_ipu, atol=1e-4, rtol=1e-6)
 
 
 def get_data(bs, mask_ratio):
@@ -73,7 +72,7 @@ class TestMAE(unittest.TestCase):
     def test_alignment(self):
         cmd = "cd scripts; sh alignment.sh"
         ret = subprocess.check_call(cmd, shell=True, cwd=mae_root_path)
-        assert ret == 0, f'alignment script execute error, ret code = {ret}'
+        assert ret == 0, f"alignment script execute error, ret code = {ret}"
         alignment()
 
     @pytest.mark.ipus(2)
@@ -84,23 +83,16 @@ class TestMAE(unittest.TestCase):
         accumulate = 16
         pipeline = [3, 3, 3, 3, 2, 2, 2, 2]
         half = False
-        assert os.path.exists('./remap/remap_ops.so'), 'please compile custom op remap'
-        ctypes.cdll.LoadLibrary('./remap/remap_ops.so')
+        assert os.path.exists("./remap/remap_ops.so"), "please compile custom op remap"
+        ctypes.cdll.LoadLibrary("./remap/remap_ops.so")
         opts = train_options(
-            False,
-            gradient_accumulation_count=accumulate,
-            replica=replica,
-            half=half,
-            ipu_per_replica=8)
+            False, gradient_accumulation_count=accumulate, replica=replica, half=half, ipu_per_replica=8
+        )
         # ============ building  networks ... ============
 
-        model = models_mae.__dict__[
-            'mae_vit_base_patch16'](
-            norm_pix_loss=True,
-            pipeline=pipeline,
-            device='ipu',
-            mask_ratio=0.75,
-            half=False)
+        model = models_mae.__dict__["mae_vit_base_patch16"](
+            norm_pix_loss=True, pipeline=pipeline, device="ipu", mask_ratio=0.75, half=False
+        )
 
         model.train()
 
@@ -111,13 +103,13 @@ class TestMAE(unittest.TestCase):
         global_count = accumulate * replica
         ipu_model = poptorch.trainingModel(model, opts, optimizer=optimizer)
         input_data, noise, ids_shuffle, ids_restore, keep_mat, restore_mat, mask = get_data(
-            global_count * bs, mask_ratio)
+            global_count * bs, mask_ratio
+        )
         for i in range(100):
             s0 = time.time()
-            _, loss = ipu_model(input_data, input_data, ids_restore,
-                                keep_mat, restore_mat, mask)
+            _, loss = ipu_model(input_data, input_data, ids_restore, keep_mat, restore_mat, mask)
             # batch_center = torch.mean(batch_center, dim=0, keepdim=True)
             s1 = time.time()
             tput = (global_count * bs) / (s1 - s0)
-            with open(f'{mae_root_path}/test.log', 'a') as fw:
-                fw.write(f'current tput is {int(tput)}\n')
+            with open(f"{mae_root_path}/test.log", "a") as fw:
+                fw.write(f"current tput is {int(tput)}\n")
