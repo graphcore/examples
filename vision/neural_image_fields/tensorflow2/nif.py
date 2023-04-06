@@ -9,6 +9,7 @@ import subprocess
 import re
 import time
 import datetime
+from multiprocessing import Pool
 
 
 def value_stats(values):
@@ -173,6 +174,13 @@ def make_prediction_dataset(width, height, batch_size, embedding_dimension, embe
     return ds, pixel_coords
 
 
+def sincos(coeffs, px, py, idx):
+  # Order of components doesn't matter as they will be fed to a fully
+  # connected layer so we can concatenate in a more efficient order:
+  p = np.concatenate([coeffs * px, coeffs * py])
+  return np.concatenate([np.sin(p), np.cos(p)]), idx
+
+
 # This is the position encoding the original NERF paper.
 def uv_positional_encode(uv, dimension, sigma):
     print(f"UV samples shape: {uv.shape}")
@@ -182,15 +190,19 @@ def uv_positional_encode(uv, dimension, sigma):
     encoded = np.empty([uv.shape[0], 4 * dimension], dtype=uv.dtype)
     print(f"Position encoded UV shape: {encoded.shape}")
 
-    # Order of components doesn't matter as they will be fed to a fully
-    # connected layer so we can concatenate in a more efficient order:
-    i = 0
-    half_dim = 2 * dimension
-    for px, py in uv2:
-        posxy = np.concatenate([coeffs * px, coeffs * py])
-        encoded[i][0:half_dim] = np.sin(posxy)
-        encoded[i][half_dim:] = np.cos(posxy)
+    # Encoding can be slow so use a process pool:
+    results = []
+    with Pool(64) as p:
+      i = 0
+      for px, py in uv2:
+        result = p.apply_async(sincos, [coeffs, px, py, i])
+        results.append(result)
         i += 1
+
+      for r in results:
+        e, i = r.get(timeout=10)
+        encoded[i] = e
+
     return encoded
 
 
@@ -318,7 +330,7 @@ class EvalCallback(tf.keras.callbacks.Callback):
                         tf.summary.scalar("PSNR AB", psnr_ab, step=epoch)
 
             except subprocess.TimeoutExpired:
-                print(f"Killing previous eval process (pid: {self.eval_process.pid}).")
+                print(f"Killing previous eval process for taking too long (pid: {self.eval_process.pid}).")
                 self.eval_process.kill()
                 (
                     stdout,

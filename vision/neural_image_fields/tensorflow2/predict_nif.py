@@ -10,6 +10,8 @@ import nif
 import os
 from ipu_tensorflow_addons.keras.optimizers import AdamIpuOptimizer
 from skimage import color, metrics
+import time
+
 
 if tf.__version__[0] != "2":
     raise ImportError("TensorFlow 2 is required")
@@ -61,6 +63,20 @@ if __name__ == "__main__":
         h5_model_path = os.path.join(args.model, "assets.extra", "converted.hdf5")
         model = keras.models.load_model(h5_model_path, custom_objects={"AdamIpuOptimizer": AdamIpuOptimizer})
         model.summary()
+
+        # Before we begin evaluation wait for the lock to be released on the HD5 file.
+        # On slow filesystems (e.g. Docker overlays) it seems a file-system race condition
+        # can prevent file access:
+        fd = open(h5_model_path, "r")
+        locked = os.lockf(fd.fileno(), os.F_TEST, 0)
+        retries = 3
+        retry_time = 5
+        while locked:
+          time.sleep(retry_time)
+          locked = os.lockf(fd, os.F_TEST, 0)
+          retries = retries - 1
+          if retries <= 0:
+            raise RuntimeError(f"File {h5_model_path} still locked after {retries * retry_time} seconds.")
 
         # Reconstruct the entire image from the trained NIF:
         output_sample_count = width * height

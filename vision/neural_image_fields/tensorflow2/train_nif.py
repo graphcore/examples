@@ -216,7 +216,7 @@ if __name__ == "__main__":
     print(
         f"Image loaded. Size: {img.shape} Type: {img.dtype} Mean value: {input_mean} Min/max: {input_min}/{input_max}"
     )
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(1)
 
     if args.deterministic_samples:
         # Create one uv sample per pixel.
@@ -343,13 +343,14 @@ if __name__ == "__main__":
             steps_per_exec = 1
         else:
             callbacks = [
-                # Two save callbacks: one is for standard Keras format:
-                tf.keras.callbacks.ModelCheckpoint(
-                    filepath=saved_model_path, save_weights_only=False, save_best_only=False
-                ),
-                # Second callback is for export to a format the Poplar ray-tracer can read:
+                # Two save callbacks:
+                # Save in a format the Poplar ray-tracer can read:
                 tf.keras.callbacks.ModelCheckpoint(
                     filepath=h5_model_path, include_optimizer=False, save_weights_only=False, save_best_only=False
+                ),
+                # Save in standard Keras format:
+                tf.keras.callbacks.ModelCheckpoint(
+                    filepath=saved_model_path, save_weights_only=False, save_best_only=False
                 ),
                 eval_callback,
                 tf.keras.callbacks.TensorBoard(log_dir=tb_logdir, histogram_freq=5),
