@@ -207,10 +207,10 @@ def uv_positional_encode(uv, dimension, sigma, processes):
       for i in range(0, chunks):
         start = i * chunk_size
         end = start + chunk_size
-        if end > uv.shape[0]:
-          end = uv.shape[0]
-        uv_slice = uv[start:end, :]
-        result = p.apply_async(sincos, [coeffs, uv_slice, start])
+        if end > uv2.shape[0]:
+          end = uv2.shape[0]
+        uv2_slice = uv2[start:end, :]
+        result = p.apply_async(sincos, [coeffs, uv2_slice, start])
         async_results.append(result)
 
       for a in async_results:
