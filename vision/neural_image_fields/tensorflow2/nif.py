@@ -166,10 +166,10 @@ def make_train_data(train_uv, train_values, args):
     return ds, steps_per_epoch, steps_per_exec
 
 
-def make_prediction_dataset(width, height, batch_size, embedding_dimension, embedding_sigma):
+def make_prediction_dataset(width, height, batch_size, embedding_dimension, embedding_sigma, processes):
     pixel_coords, uv_coords = make_image_grid(width, height)
     if embedding_dimension > 0:
-        uv_coords = uv_positional_encode(uv_coords, embedding_dimension, embedding_sigma)
+        uv_coords = uv_positional_encode(uv_coords, embedding_dimension, embedding_sigma, processes)
     ds = tf.data.Dataset.from_tensor_slices(uv_coords).batch(batch_size, drop_remainder=True)
     print(f"Prediction dataset: {ds}")
     return ds, pixel_coords
@@ -188,7 +188,7 @@ def sincos(coeffs, uv, idx):
 
 
 # This is the position encoding the original NERF paper.
-def uv_positional_encode(uv, dimension, sigma):
+def uv_positional_encode(uv, dimension, sigma, processes):
     print(f"UV input samples shape: {uv.shape}")
     powers = np.arange(0.0, dimension, 1.0)
     coeffs = np.power([sigma], powers)
@@ -196,12 +196,14 @@ def uv_positional_encode(uv, dimension, sigma):
     encoded = np.empty([uv.shape[0], 4 * dimension], dtype=uv.dtype)
     print(f"UV position encoded shape: {encoded.shape}")
 
-    # Encoding can be slow so use a process pool:
-    processes = 40
+    # Encoding can be slow so use a process pool.
+    # Each process should handle a large slice of coordinates
+    # to amortize the overhead of launching a separate process:
+    chunk_size = math.ceil(uv.shape[0] / processes)
+    chunks = math.ceil(uv.shape[0] / chunk_size)
+    print(f"Each process encodes {chunk_size} samples")
     async_results = []
     with Pool(processes) as p:
-      chunk_size = math.ceil(uv.shape[0] / processes)
-      chunks = math.ceil(uv.shape[0] / chunk_size)
       for i in range(0, chunks):
         start = i * chunk_size
         end = start + chunk_size

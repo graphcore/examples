@@ -31,6 +31,13 @@ def parse_args():
         "metric will be computed between it and the reconstruction.",
     )
     parser.add_argument("--no-ipu", action="store_true", help="Set this flag to disable IPU specific code paths.")
+    parser.add_argument(
+        "--encoder-processes",
+        type=int,
+        default=40,
+        help="Number of processes used to encode input coordinates during dataset generation. "
+        "This should be chosen so that each process encodes thousands of samples.",
+    )
     args = parser.parse_args()
     return args
 
@@ -84,7 +91,7 @@ if __name__ == "__main__":
         prediction_batches = output_sample_count // prediction_batch_size
         print(f"Required samples: {output_sample_count} and batches: {prediction_batches}")
         eval_ds, pixel_coords = nif.make_prediction_dataset(
-            width, height, prediction_batch_size, embedding_dimension, embedding_sigma
+            width, height, prediction_batch_size, embedding_dimension, embedding_sigma, args.encoder_processes
         )
         result = model.predict(x=eval_ds, batch_size=prediction_batch_size, steps=prediction_batches)
         reconstructed = nif.decode_samples(
