@@ -223,7 +223,7 @@ if __name__ == "__main__":
     print(
         f"Image loaded. Size: {img.shape} Type: {img.dtype} Mean value: {input_mean} Min/max: {input_min}/{input_max}"
     )
-    rng = np.random.default_rng(1)
+    rng = np.random.default_rng()
 
     if args.deterministic_samples:
         # Create one uv sample per pixel.
