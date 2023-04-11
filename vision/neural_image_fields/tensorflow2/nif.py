@@ -10,6 +10,7 @@ import re
 import time
 import datetime
 from multiprocessing import Pool
+import math
 
 
 def value_stats(values):
@@ -174,34 +175,48 @@ def make_prediction_dataset(width, height, batch_size, embedding_dimension, embe
     return ds, pixel_coords
 
 
-def sincos(coeffs, px, py, idx):
-  # Order of components doesn't matter as they will be fed to a fully
-  # connected layer so we can concatenate in a more efficient order:
-  p = np.concatenate([coeffs * px, coeffs * py])
-  return np.concatenate([np.sin(p), np.cos(p)]), idx
+def sincos(coeffs, uv, idx):
+  results = []
+  i = idx
+  for px, py in uv:
+    # Order of components doesn't matter as they will be fed to a fully
+    # connected layer so we can concatenate in a more efficient order:
+    pos = np.concatenate([coeffs * px, coeffs * py])
+    results.append([i, np.concatenate([np.sin(pos), np.cos(pos)])])
+    i += 1
+  return results
 
 
 # This is the position encoding the original NERF paper.
 def uv_positional_encode(uv, dimension, sigma):
-    print(f"UV samples shape: {uv.shape}")
+    print(f"UV input samples shape: {uv.shape}")
     powers = np.arange(0.0, dimension, 1.0)
     coeffs = np.power([sigma], powers)
     uv2 = 2 * (uv - 1.0)
     encoded = np.empty([uv.shape[0], 4 * dimension], dtype=uv.dtype)
-    print(f"Position encoded UV shape: {encoded.shape}")
+    print(f"UV position encoded shape: {encoded.shape}")
 
     # Encoding can be slow so use a process pool:
-    results = []
-    with Pool(64) as p:
-      i = 0
-      for px, py in uv2:
-        result = p.apply_async(sincos, [coeffs, px, py, i])
-        results.append(result)
-        i += 1
+    processes = 40
+    async_results = []
+    with Pool(processes) as p:
+      chunk_size = math.ceil(uv.shape[0] / processes)
+      chunks = math.ceil(uv.shape[0] / chunk_size)
+      for i in range(0, chunks):
+        start = i * chunk_size
+        end = start + chunk_size
+        if end > uv.shape[0]:
+          end = uv.shape[0]
+        uv_slice = uv[start:end, :]
+        result = p.apply_async(sincos, [coeffs, uv_slice, start])
+        async_results.append(result)
 
-      for r in results:
-        e, i = r.get(timeout=10)
-        encoded[i] = e
+      for a in async_results:
+        rows = a.get(timeout=200)
+        for r in rows:
+          idx = r[0]
+          vec = r[1]
+          encoded[idx] = vec
 
     return encoded
 
