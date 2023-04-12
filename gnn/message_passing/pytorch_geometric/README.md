@@ -1,6 +1,10 @@
-# Molecular property prediction with GIN
+# Molecular property prediction on IPU using GIN - Training with PyTorch Geometric
 
 In this notebook a Graph Isomorphism Network (GIN) is used to perform graph classification for molecular property prediction. The model has been optimised for Graphcore's IPU.
+
+Run our GIN training on Paperspace.
+<br>
+[![Gradient](../../../gradient-badge.svg)](https://ipu.dev/1vOXXi)
 
 | Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
 |-----------|--------|-------|----------|-------|----------|-----------|-----------|

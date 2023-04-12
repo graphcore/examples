@@ -3,7 +3,7 @@
 Batching small graphs is a crucial step to enable scaling GNNs to use large quantities of data and improve model performance.
 Small graphs have a different structure to other data types so we have to take an alternative approach to batching them.
 
-Typically, when forming a batch from images or text, the samples are usually concatenated along a new batch axis. However, when using PyTorch Geometric for small graphs, a new axis isn't created but instead graphs are stacked side by side. This produces a dynamic shape per batch which needs to be accounted for when using IPUs. It is possible to pad a batch of these graphs to a maximum size, as seen in the [Small Graph Batching tutorial](https://github.com/graphcore/poppyg/blob/main/examples/tutorials/3_small_graph_batching.md), however this approach can result in a lot of wasted compute on the padded parts of the batch. There are other ways to improve this inefficiency which we will consider in this tutorial.
+Typically, when forming a batch from images or text, the samples are usually concatenated along a new batch axis. However, when using PyTorch Geometric for small graphs, a new axis isn't created but instead graphs are stacked side by side. This produces a dynamic shape per batch which needs to be accounted for when using IPUs. It is possible to pad a batch of these graphs to a maximum size, as seen in the [Small Graph Batching with Padding tutorial](../3_small_graph_batching_with_padding/3_small_graph_batching_with_padding.ipynb), however this approach can result in a lot of wasted compute on the padded parts of the batch. There are other ways to improve this inefficiency which we will consider in this tutorial.
 
 In this tutorial, you will learn how to:
 
@@ -11,10 +11,10 @@ In this tutorial, you will learn how to:
 - use masking in a model, which will enable you to correctly calculate the loss function on the relevant subgraphs,
 - use PopTorch to transform and prepare a model for distributed training and inference on the IPU.
 
-> This tutorial expects you to have familiarity with GNNs, PopTorch, the PyTorch Geometric library and to understand the IPU's requirement for fixed sized tensors. If this is not the case you may want to go through our introductory tutorials [At a glance](../1_at_a_glance/1_at_a_glance.ipynb) and [A worked example](../2_a_worked_example2_a_worked_example.ipynb), as well as the first tutorial on [Small Graph Batching tutorial](https://github.com/graphcore/poppyg/blob/main/examples/tutorials/3_small_graph_batching.md).
+> This tutorial expects you to have familiarity with GNNs, PopTorch, the PyTorch Geometric library and to understand the IPU's requirement for fixed sized tensors. If this is not the case you may want to go through our introductory tutorials [At a glance](../1_at_a_glance/1_at_a_glance.ipynb) and [A worked example](../2_a_worked_example/2_a_worked_example.ipynb), as well as the first tutorial on [Small Graph Batching with Padding](../3_small_graph_batching_with_padding/3_small_graph_batching_with_padding.ipynb).
 > For additional resources on PopTorch please consult the relative [User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/index.html) and [Examples](https://docs.graphcore.ai/en/latest/examples.html#pytorch).
 
-This tutorial will cover techniques applicable to small graphs. For methods suitable for large graphs, please see our tutorials on [Clustering, Sampling and other large graph partitioning schemes](https://github.com/graphcore/poppyg/blob/main/examples/tutorials/4_large_graph_sampling_and_clustering.md) and [Using Heterogeneous GNNs on the IPU](https://github.com/graphcore/poppyg/blob/main/examples/tutorials/5_heterogeneous_graphs_on_ipu.md).
+This tutorial will cover techniques applicable to small graphs. For methods suitable for large graphs, please see our example [Cluster-GCN](../../../../gnn/cluster_gcn/pytorch_geometric/node_classification_with_cluster_gcn.ipynb).
 
 ## Running on Paperspace
 
@@ -114,7 +114,7 @@ test_dataset = dataset[150:]
 
 ## Batching small graphs using packing
 
-In the [Small Graph Batching tutorial](https://github.com/graphcore/poppyg/blob/main/examples/tutorials/3_small_graph_batching.md), a method to achieve fixed size mini-batches of small graphs is proposed. A limitation of this approach is that there may be a lot of compute wasted on nodes and edges used for padding.
+In the [Small Graph Batching with Padding tutorial](../3_small_graph_batching_with_padding/3_small_graph_batching_with_padding.ipynb), a method to achieve fixed size mini-batches of small graphs is proposed. A limitation of this approach is that there may be a lot of compute wasted on nodes and edges used for padding.
 
 An alternative and more efficient method is to use packing. This works simply by continuing to add graphs to each mini-batch without exceeding the limits of the mini-batch set by the user: the maximum number of nodes, edges, or graphs in a mini-batch. Once one of these limits is reached then we can add null graphs which can be used to pad at the end of the mini-batch to achieve a fixed size. By doing this we are lowering the ratio of padded to packed values. This means that the more valid subgraphs will be executed on at runtime, which improves efficiency.
 
@@ -602,5 +602,5 @@ You should now have a good understanding of:
  - how to produce packed batches from a dataset ready for training on IPUs using the `FixedSizeDataloader class,
  - what you need to take into account when using packed batches with a GNN model so as not to affect training.
 
-For next steps, you can check out some of our [GNN examples](https://github.com/graphcore/poppyg/tree/main/examples) which dive into more specific applications, for instance, take a look at our [GIN Notebook](../../../../gnn/message_passing/pytorch_geometric/) which uses packing as described here in an end-to-end example.
+For next steps, you can check out some of our GNN examples which dive into more specific applications, for instance, take a look at our [GIN Notebook](../../../../gnn/message_passing/pytorch_geometric/) which uses packing as described here in an end-to-end example.
 Additional resources which may help you understand batching for GNNs can be found in the PyTorch Geometric documentation through the section on [mini-batching techniques](https://pytorch-geometric.readthedocs.io/en/latest/notes/introduction.html#mini-batches) and through their [tutorial on batching](https://colab.research.google.com/drive/1I8a0DfQ3fI7Njc62__mVXUlcAleUclnb?usp=sharing#scrollTo=qeORu4Zrs8Zy).

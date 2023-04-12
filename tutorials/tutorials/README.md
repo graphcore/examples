@@ -63,7 +63,7 @@ Running a Hugging Face model on the IPU:
 
 - [Fine-tuning a HuggingFace Vision Transformer (ViT) on the IPU Using a Local Dataset](pytorch/vit_model_training)
 
-## PyTorch Geometric [![Gradient](../../gradient-badge.svg)](TODO)
+## PyTorch Geometric [![Gradient](../../gradient-badge.svg)](https://ipu.dev/RfTOyI)
 
 Getting started:
 
