@@ -18,7 +18,7 @@ grpcio==1.47.2
 tritonclient[grpc]==2.16.0
 git+https://github.com/lilohuang/PyTurboJPEG.git@8706665787c7290397859075ae2f0bf35afeb41a
 git+https://github.com/graphcore/examples-utils@latest_stable
-setuptools==58.0.4
+setuptools==65.5.1
 pytorch_lightning==1.9.0
 torchmetrics==0.11.0
 rich==13.3.1
