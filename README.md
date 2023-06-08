@@ -262,3 +262,4 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
   <a href="http://www.facebook.com/pages/Graphcore/890447934394683"><img src="https://img.shields.io/badge/Facebook-1877F2.svg?style=for-the-badge&logo=Facebook&logoColor=white"/></a>
   <a href="https://www.youtube.com/c/Graphcore"><img src="https://img.shields.io/badge/YouTube-FF0000.svg?style=for-the-badge&logo=YouTube&logoColor=white"/></a>
   <a href="https://medium.com/graphcore"><img src="https://img.shields.io/badge/Medium-000000.svg?style=for-the-badge&logo=Medium&logoColor=white"/></a>
+</p>
