@@ -19,7 +19,6 @@ import warnings
 from tqdm import tqdm
 from pathlib import Path
 import logging
-import popdist
 
 import torch
 import transformers
@@ -134,7 +133,6 @@ if __name__ == "__main__":
             model = PipelinedPackedBertForPretraining(config).parallelize().half().train()
         else:
             model = PipelinedBertForPretraining(config).parallelize().half().train()
-
         optimizer = get_optimizer(config, model)
         scheduler = get_lr_scheduler(optimizer, config.lr_schedule, config.lr_warmup, config.training_steps)
 
@@ -154,14 +152,8 @@ if __name__ == "__main__":
         logger("Model successfully compiled. Exiting now as '--compile-only' argument was passed.")
         sys.exit(0)
 
-    def save_checkpoint_on_instance_zero(config, model, step, optimizer=None, metrics=None):
-        if config.use_popdist:
-            popdist.execute_on_instances({0}, save_checkpoint, config, model, step, optimizer, metrics)
-        else:
-            save_checkpoint(config, model, step, optimizer, metrics)
-
     # Checkpoint model at start of run
-    save_checkpoint_on_instance_zero(config, model, steps_finished, optimizer)
+    save_checkpoint(config, model, steps_finished, optimizer)
 
     # Training loop
     logger("--------------------- Training Started --------------------")
@@ -219,32 +211,31 @@ if __name__ == "__main__":
                     for name, parameter in poptorch_model.named_parameters():
                         wandb.run.history.torch.log_tensor_stats(parameter.data, name)
 
-        if config.checkpoint_steps and (step % config.checkpoint_steps) == 0:
-            save_checkpoint_on_instance_zero(
-                config,
-                model,
-                step,
-                optimizer,
-                metrics={"Loss": outputs_sync[0], "Acc/MLM": outputs_sync[3], "Acc/NSP": outputs_sync[4]},
-            )
+            if config.checkpoint_steps and (step % config.checkpoint_steps) == 0:
+                save_checkpoint(
+                    config,
+                    model,
+                    step,
+                    optimizer,
+                    metrics={"Loss": outputs_sync[0], "Acc/MLM": outputs_sync[3], "Acc/NSP": outputs_sync[4]},
+                )
 
         if step + 1 == config.training_steps:
             break  # Training finished mid-epoch
-
     stop_train = time.perf_counter()
-
     # Checkpoint at end of run
-    save_checkpoint_on_instance_zero(
-        config,
-        model,
-        step,
-        optimizer,
-        metrics={
-            "Loss": outputs[0].mean().item(),
-            "Acc/MLM": outputs[3].mean().item(),
-            "Acc/NSP": outputs[4].mean().item(),
-        },
-    )
+    if not config.use_popdist or config.popdist_rank == 0:
+        save_checkpoint(
+            config,
+            model,
+            step,
+            optimizer,
+            metrics={
+                "Loss": outputs[0].mean().item(),
+                "Acc/MLM": outputs[3].mean().item(),
+                "Acc/NSP": outputs[4].mean().item(),
+            },
+        )
     logger("-----------------------------------------------------------")
 
     logger("-------------------- Training Metrics ---------------------")
