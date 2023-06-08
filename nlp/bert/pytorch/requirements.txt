@@ -11,7 +11,7 @@ tfrecord==1.14.1
 filelock==3.11.0
 mpi4py==3.1.3
 horovod[pytorch]==0.24.0
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils@v3.2
 cmake==3.22.4
 tritonclient[grpc]==2.16.0
 torch==1.10.0+cpu; python_version=='3.6'

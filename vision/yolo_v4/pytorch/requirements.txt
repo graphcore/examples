@@ -13,5 +13,5 @@ torchvision==0.11.0+cpu; python_version <= '3.6'
 protobuf==3.19.4
 wandb==0.12.8
 yacs==0.1.8
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils@v3.2
 torchinfo==1.5.4
