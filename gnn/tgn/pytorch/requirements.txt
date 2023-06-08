@@ -8,4 +8,4 @@ torch-geometric==2.2.0
 torch-scatter==2.1.0+pt113cpu
 torch-sparse==0.6.16+pt113cpu
 tqdm==4.60.0
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils@v3.2

@@ -21,4 +21,4 @@ torch==1.13.1+cu116; python_version >= '3.9'
 trainlog==0.2
 typeguard==2.13.3
 wandb==0.12.8
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils@v3.2

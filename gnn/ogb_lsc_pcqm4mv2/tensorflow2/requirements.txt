@@ -15,4 +15,4 @@ ruyaml==0.91.0
 wandb==0.13.4
 tqdm==4.64.0
 numpy<1.24
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils@v3.2

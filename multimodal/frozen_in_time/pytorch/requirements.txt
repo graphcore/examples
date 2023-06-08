@@ -60,4 +60,4 @@ zipp==3.6.0
 opencv-python-headless==4.6.0.66
 fire==0.4.0
 wandb==0.12.8
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils@v3.2

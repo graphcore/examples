@@ -10,7 +10,7 @@ typeguard==2.13.3
 tensorflow-addons==0.14.0
 tensorflow-datasets==4.4.0
 git+https://github.com/graphcore/transformers-fork@v4.18-gc#egg=transformers # Fork of transformers to support KerasTensor from the Keras package with Python 3.6.
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils@v3.2
 wandb==0.12.8
 numpy==1.23.5; python_version > '3.6'
 numpy==1.19.5; python_version <= '3.6'

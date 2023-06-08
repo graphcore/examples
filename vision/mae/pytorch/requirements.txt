@@ -9,6 +9,6 @@ pyyaml>=5.4.1
 horovod>=0.24.0
 simplejpeg>=1.6.4
 wandb==0.12.1
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[common] @ git+https://github.com/graphcore/examples-utils@v3.2
 numpy==1.23.5; python_version > '3.6'
 numpy==1.19.5; python_version <= '3.6'
