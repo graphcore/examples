@@ -82,7 +82,6 @@ If you require POD128 or POD256 setup and configuration for our applications, pl
 | BART Base | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/bart-base-ipu) | [Hugging Face Optimum](https://ipu.dev/3XbkoQk) |
 | T5-small | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/t5-small-ipu) | [Hugging Face Optimum](https://ipu.dev/3Ky3VCj) |
 | Bloom | NLP | Inference | [PopXL](nlp/bloom/popxl) | - |
-| Dolly | NLP | Inference | [PopXL](nlp/dolly/popxl) | [PopXL](https://ipu.dev/t8Jxz1) |
 | MT5-small | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/mt5-small-ipu) | [Hugging Face Optimum](https://ipu.dev/d6vE2P) |
 | MT5-large | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/mt5-large-ipu) | [Hugging Face Optimum](https://ipu.dev/6vL5xc) |
 
