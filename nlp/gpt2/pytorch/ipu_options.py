@@ -48,6 +48,7 @@ def get_options(config):
 
     # PopTorch options
     if config.use_popdist:
+        popdist.init()
         # Use popdist.poptorch options if running in distributed mode
         opts = popdist.poptorch.Options(ipus_per_replica=config.ipus_per_replica)
     else:
