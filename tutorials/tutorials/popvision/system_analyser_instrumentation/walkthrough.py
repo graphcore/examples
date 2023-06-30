@@ -9,15 +9,25 @@ In this tutorial you will learn to use:
 
 - the [PopVision System
   Analyser](https://docs.graphcore.ai/projects/system-analyser-userguide/en/2.11.2/),
-  a desktop tool for profiling the execution of IPU-targeted software on your
-  host system processors;
+  a desktop tool for profiling the code that runs on the host processors and interacts with IPUs”;
 - the [`libpvti`
-  module](https://docs.graphcore.ai/projects/libpvti/en/3.0.0/index.html) in
-  python which can be used to profile, time, and log information from your IPU
+  module](https://docs.graphcore.ai/projects/libpvti/en/3.2.0/index.html) in
+  Python which can be used to profile, time, and log information from your IPU
   applications and plot it directly in the PopVision System Analyser.
 """
 """
 ## How to run this tutorial
+"""
+"""
+To run the Python version of this tutorial:
+1. Download and install the Poplar SDK, see the [Getting
+  Started](https://docs.graphcore.ai/projects/pytorch-quick-start/en/latest/quick-start-beginners.html#enable-poplar-sdk) guide for your IPU system.
+2. For repeatability we recommend that you create and activate a Python virtual environment. You can do this with:
+   a. create a virtual environment in the directory `venv`: `virtualenv -p python3 venv`;
+   b. activate it: `source venv/bin/activate`.
+3. Install the Python packages that this tutorial needs with `python -m pip install -r requirements.txt`.
+
+sst_ignore_jupyter
 """
 """
 To run the Jupyter notebook version of this tutorial:
@@ -47,19 +57,16 @@ It shows an interactive timeline visualisation of the execution steps involved,
 helping you to identify any bottlenecks between the CPUs and IPUs.
 This is particularly useful when you are scaling models to run on multiple CPUs and IPUs.
 
-For this tutorial we are going to use a PopART MNIST example and add
+For this tutorial we are going to use a PopTorch MNIST example and add
 instrumentation that can be viewed using the PopVision System Analyser.
 Make sure the PopVision System Analyser is installed on your local machine, it can
 be downloaded from the [Downloads Portal](https://downloads.graphcore.ai/).
-The PopART MNIST example is from the [simple_applications/popart/mnist](../../../simple_applications/popart/mnist)
-directory).
 """
 """
 Run the MNIST example with profiling enabled
 """
 # %pip install -r requirements.txt
-# ! sh ./get_data.sh
-# ! PVTI_OPTIONS='{"enable":"true"}' python3 popart_mnist.py
+# ! PVTI_OPTIONS='{"enable":"true"}' python3 poptorch_mnist.py
 # sst_ignore_md
 # sst_ignore_code_only
 """
@@ -67,9 +74,8 @@ Run the MNIST example with profiling enabled
 import subprocess
 import os
 
-mnist_path = "./popart_mnist.py"
-os.environ["PVTI_OPTIONS"] = '{"enable":"true", "directory": "mydirectory"}'
-subprocess.run(["sh", "./get_data.sh"])
+mnist_path = "./poptorch_mnist.py"
+os.environ["PVTI_OPTIONS"] = '{"enable":"true", "directory": "reports"}'
 output = subprocess.run(["python3", mnist_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 print(output.stdout.decode("utf-8"))
 """
@@ -80,7 +86,7 @@ for example "Tue_Nov_24_11:59:17_2022_GMT_4532.pvti".
 > written to:
 >
 > ```bash
-> PVTI_OPTIONS='{"enable":"true", "directory": "tommyFlowers"}' python3 popart_mnist.py
+> PVTI_OPTIONS='{"enable":"true", "directory": "reports"}' python3 poptorch_mnist.py
 > ```
 """
 """
@@ -103,7 +109,7 @@ directory)
 """
 Firstly, we need to import the libpvti library.
 
-Add the import statement at the top of `popart_mnist.py`:
+Add the import statement at the top of `poptorch_mnist.py`:
 ```python
 import libpvti as pvti
 ```
@@ -123,9 +129,11 @@ instrument the epoch loop.
 > **Note**: You will need to indent the contents of the loop.
 
 ```python
+# Training loop
 print("Running training loop.")
-for i in range(opts.epochs):
-    with pvti.Tracepoint(mnistPvtiChannel, f"Epoch:{i}"):
+epochs = 10
+for epoch in trange(epochs, desc="epochs"):
+    with pvti.Tracepoint(mnistPvtiChannel, f"Epoch:{epoch}"):
         ...
 ```
 """
@@ -150,9 +158,8 @@ the PopVision System Analyser.
 In addition to displaying function profiling, the System Analyser can plot
 numerical data captured by the `libpvti` library.
 
-In this section, we are going to add instrumentation to our python script to
-allow the System Analyser to plot the loss reported by PopART (this is a
-Poplar SDK 2.1 feature).
+In this section, we are going to add instrumentation to our Python script to
+allow the System Analyser to plot the loss reported by PopTorch.
 
 We have added the libpvti import in the previous section, so we need first to
 create a pvti Graph object and then create series in the graph.
@@ -174,22 +181,18 @@ validation_loss_series = loss_graph.addSeries("Validation Loss")
 ```
 """
 """
-Finally after each call to the PopART `session.run` method we will record the
-training and validation loss. We take the loss from the anchors (which is an
-array) and compute the mean value:
+Finally after each training batch we will record the
+training and validation loss. We take the loss and add it to our `training_loss_series`:
 
 ```python
-training.session.run(stepio, "Epoch " + str(i) + " training step" + str(step))
-
+output, loss = poptorch_model(data, labels)
 # Record the training loss
-training_loss_series.add(np.mean(training.anchors[loss]).item())
-
+training_loss_series.add(loss.item())
 ...
 
-validation.session.run(stepio, "Epoch " + str(i) + " evaluation step " + str(step))
-
+output, loss = poptorch_model(data, labels)
 # Record the validation loss
-validation_loss_series.add(np.mean(validation.anchors[loss]).item())
+validation_loss_series.add(loss.item())
 ```
 """
 """
@@ -213,7 +216,7 @@ like this:
 ## Generating and profiling instant events
 """
 """
-You can get insight into when particular sequences in the host code are executed by adding 'instant events'. This feature can be used to log events that occur during the execution of the application, such as  receiving a message, errors/warnings or a change in a parameter such as epoch or learning rate.
+You can get insight into when particular sequences in the host code are executed by adding 'instant events'. This feature can be used to log events that occur during the execution of the application, such as receiving a message, errors/warnings or a change in a parameter such as epoch or learning rate.
 
 For these purposes you may use 'instant events', which are like checkpoints. This feature adds trace points corresponding to a single point in time rather than a block.
 """
@@ -221,10 +224,10 @@ For these purposes you may use 'instant events', which are like checkpoints. Thi
 For example, we are going to log the epoch number each time a new epoch begins, by using instant events:
 
 ```python
-print("Running training loop.")
 mnistInstantEventsChannel = pvti.createTraceChannel("Instant Events")
-for i in range(opts.epochs):
-    pvti.Tracepoint.event(mnistInstantEventsChannel, f"Epoch {i} begin")
+print("Running training loop.")
+for epoch in trange(epochs, desc="epochs"):
+    pvti.Tracepoint.event(mnistInstantEventsChannel, f"Epoch {epoch} begin")
     ...
 ```
 """
@@ -238,13 +241,63 @@ You can use an existing trace channel to capture instant events, but we are usin
 
 When added you will see the following profile in the PopVision System Analyser. Instant events are represented by flags at the top of the profile:
 
-![PopVision System Analyser screenshot of instrumented mnist loss](./screenshots/mnist_instrumented_instant_events.png)
+![PopVision System Analyser screenshot of instrumented mnist instant events](./screenshots/mnist_instrumented_instant_events.png)
+"""
+"""
+## Generating heatmap data to visualise numerical stability of tensors
+"""
+"""
+To help understand the numerical distribution of your tensors, you can add 'heatmaps'. This feature
+can be used to log tensor data through the execution of the application. This can be though of as a
+"histogram over time" and your tensor data will be aggregated into bins based on your defined edges when
+you create the heatmap.
+
+We're using anchors to capture the tensor information from PopTorch. See the [debugging
+help](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/debugging.html) for more details.
+"""
+"""
+In this example, we are going to capture heatmap information for two convolution weight tensors:
+
+```python
+opts.anchorTensor("conv1_weight", "conv1.weight")
+opts.anchorTensor("conv2_weight", "conv2.weight")
+poptorch_model = poptorch.trainingModel(model, options=opts, optimizer=optimizer)
+conv1_heatmap = pvti.HeatmapDouble(
+    "conv1.weight", torch.linspace(-16, 16, 33).tolist(), "2^x"
+)
+conv2_heatmap = pvti.HeatmapDouble(
+    "conv2.weight", torch.linspace(-16, 16, 33).tolist(), "2^x"
+)
+print("Running training loop.")
+for epoch in trange(epochs, desc="epochs"):
+    for data, labels in tqdm(train_dataloader, desc="batches", leave=False):
+        output, loss = poptorch_model(data, labels)
+        conv1_tensor = torch.abs(
+            poptorch_model.getAnchoredTensor("conv1_weight")
+        ).flatten()
+        conv1_heatmap.add(conv1_tensor[conv1_tensor != 0].tolist())
+        conv2_tensor = torch.abs(
+            poptorch_model.getAnchoredTensor("conv2_weight")
+        ).flatten()
+        conv2_heatmap.add(conv1_tensor[conv1_tensor != 0].tolist())
+    ...
+```
+"""
+"""
+Run the MNIST example again with profiling enabled
+"""
+output = subprocess.run(["python3", mnist_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+print(output.stdout.decode("utf-8"))
+"""
+When added you will see the following profile in the PopVision System Analyser. New heatmaps can be
+seen at the top of the profile:
+
+![PopVision System Analyser screenshot of instrumented mnist heatmaps](./screenshots/mnist_instrumented_heatmaps.png)
 """
 """
 ## Going further
 """
 """
-We leave it as an exercise for the reader to add additional instrumentation.
 The completed example also calculates accuracy of the model, and CPU load using
 the `psutil` library, and plots both of them.
 
@@ -254,5 +307,5 @@ the `psutil` library, and plots both of them.
 This is a very simple use case for adding instrumentation. The PopVision trace
 instrumentation library (libpvti) provides other functions, classes & methods
 to instrument your Python and C++ code. For more information please see the
-[PVTI library documentation](https://docs.graphcore.ai/projects/libpvti/en/3.0.0/index.html).
+[PVTI library documentation](https://docs.graphcore.ai/projects/libpvti/en/3.2.0/index.html).
 """

@@ -1,6 +1,7 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
 import numpy as np
 from typing import Dict
+import logging
 import math
 import torch
 
@@ -14,6 +15,7 @@ from popxl_addons import NamedTensors
 from popxl_addons.named_tensors import NamedTensorData
 from utils.utils import shard
 from popxl_addons.layers import Linear
+from popxl_addons.layers.linear_gq import LinearGQ, group_quantize_compress_numpy
 
 from popxl_addons.ops.replicated_all_reduce_TP import (
     replicated_all_reduce_identical_inputs,
@@ -50,8 +52,21 @@ class GPTJAttentionHeads(addons.Module):
 
         self.n_heads_groups = n_heads_groups
         self.n_heads = self.config.model.attention.heads // n_heads_groups
-        self.qkv = Linear(
-            3 * self.config.model.hidden_size // n_heads_groups, replica_grouping=replica_grouping, bias=False
+
+        # Setup
+        layer_kwargs = {}
+        if config.execution.group_quantise_weights > 0:
+            layer = LinearGQ
+            layer_kwargs["group_size"] = config.execution.group_quantise_weights
+            layer_kwargs["dim"] = config.execution.group_quantise_dim
+        else:
+            layer = Linear
+
+        self.qkv = layer(
+            3 * self.config.model.hidden_size // n_heads_groups,
+            replica_grouping=replica_grouping,
+            bias=False,
+            **layer_kwargs,
         )
         self.rotary_dim = self.config.model.attention.rotary_dim or self.config.model.hidden_size // self.n_heads
 
@@ -78,7 +93,18 @@ class GPTJAttentionHeads(addons.Module):
 
         causal_mask = popxl.constant(
             # HF uses 1e9 which is beyond fp16 range
-            1e4 * (np.tril(np.ones((self.config.model.sequence_length, self.config.model.sequence_length))) - 1),
+            1e4
+            * (
+                np.tril(
+                    np.ones(
+                        (
+                            self.config.model.sequence_length,
+                            self.config.model.sequence_length,
+                        )
+                    )
+                )
+                - 1
+            ),
             query.dtype,
             name="causal_mask",
         )
@@ -105,11 +131,19 @@ class GPTJAttentionHeads(addons.Module):
             attn_output = self.attention_block(query, key, value, causal_mask, seed)
 
         return attn_output.transpose((0, 2, 1, 3)).reshape(
-            (self.config.execution.micro_batch_size * self.config.model.sequence_length, -1)
+            (
+                self.config.execution.micro_batch_size * self.config.model.sequence_length,
+                -1,
+            )
         )
 
     def attention_block(
-        self, query: popxl.Tensor, key: popxl.Tensor, value: popxl.Tensor, mask: popxl.Tensor, seed: popxl.Tensor
+        self,
+        query: popxl.Tensor,
+        key: popxl.Tensor,
+        value: popxl.Tensor,
+        mask: popxl.Tensor,
+        seed: popxl.Tensor,
     ):
         attn_weights = query @ key
 
@@ -147,7 +181,20 @@ class GPTJSelfAttentionTP(addons.Module):
         self.heads = GPTJAttentionHeads(config=config, replica_grouping=self.replica_grouping)
 
         # Sharded across devices
-        self.output = Linear(self.config.model.hidden_size, bias=False, replica_grouping=self.replica_grouping)
+        # Setup
+        layer_kwargs = {}
+        if config.execution.group_quantise_weights > 0:
+            layer = LinearGQ
+            layer_kwargs["group_size"] = config.execution.group_quantise_weights
+            layer_kwargs["dim"] = config.execution.group_quantise_dim
+        else:
+            layer = Linear
+        self.output = layer(
+            self.config.model.hidden_size,
+            bias=False,
+            replica_grouping=self.replica_grouping,
+            **layer_kwargs,
+        )
 
     def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
         """Identical inputs and identical outputs across shards"""
@@ -184,19 +231,61 @@ class GPTJSelfAttentionTP(addons.Module):
         key_w = shard(hf_key_w, n_shards, -1)
         value_w = shard(hf_value_w, n_shards, axis=-1)
 
-        out_proj_w = to_numpy(hf_model.out_proj.weight.data.T, dtype)
+        qkv_w = np.ascontiguousarray(
+            np.concatenate(
+                [np.concatenate([query_w[i], key_w[i], value_w[i]], axis=-1)[np.newaxis, ...] for i in range(n_shards)]
+            )
+        )
 
-        return {
-            variables.heads.qkv.weight: np.ascontiguousarray(
-                np.concatenate(
-                    [
-                        np.concatenate([query_w[i], key_w[i], value_w[i]], axis=-1)[np.newaxis, ...]
-                        for i in range(n_shards)
-                    ]
+        out_proj_w = to_numpy(hf_model.out_proj.weight.data.T, dtype)
+        out_proj_w = shard(out_proj_w, n_shards, axis=0)
+
+        if config.execution.group_quantise_weights:
+            if config.execution.group_quantise_dim != -1:
+                # shift group_quantise_dim to account for TP sharding dim
+                gqdim = config.execution.group_quantise_dim + 1
+            else:
+                gqdim = -1
+            layer_name = variables.heads.qkv.weight_compressed.name.replace(".heads.qkv.weight_compressed", "")
+            logging.info(f"Quantizing {layer_name} weights")
+            qkv_w = group_quantize_compress_numpy(
+                qkv_w,
+                config.execution.group_quantise_weights,
+                gqdim,
+            )
+            out_proj_w = group_quantize_compress_numpy(
+                out_proj_w,
+                config.execution.group_quantise_weights,
+                gqdim,
+            )
+            heads_state_dict = dict(
+                zip(
+                    (
+                        variables.heads.qkv.weight_compressed,
+                        variables.heads.qkv.weight_decompression_scale,
+                        variables.heads.qkv.weight_decompression_bias,
+                    ),
+                    qkv_w,
+                ),
+            )
+            output_state_dict = dict(
+                zip(
+                    (
+                        variables.output.weight_compressed,
+                        variables.output.weight_decompression_scale,
+                        variables.output.weight_decompression_bias,
+                    ),
+                    out_proj_w,
                 )
-            ),
-            variables.output.weight: shard(out_proj_w, n_shards, axis=0),
-        }
+            )
+            state_dict = {**heads_state_dict, **output_state_dict}
+            return state_dict
+
+        else:
+            return {
+                variables.heads.qkv.weight: qkv_w,
+                variables.output.weight: out_proj_w,
+            }
 
     @staticmethod
     def to_hf(config: GPTJConfigHF, variables_data: NamedTensorData, hf_model: HFModel) -> Dict[str, torch.Tensor]:
@@ -216,7 +305,8 @@ class GPTJSelfAttentionTP(addons.Module):
             np.concatenate(v.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype
         )
         state_dict["out_proj.weight"] = torch.tensor(
-            np.concatenate(variables_data.output.weight, axis=0).T, dtype=config.torch_dtype
+            np.concatenate(variables_data.output.weight, axis=0).T,
+            dtype=config.torch_dtype,
         )
 
         return state_dict

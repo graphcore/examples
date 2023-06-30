@@ -30,6 +30,11 @@ __all__ = ["inference"]
 def inference(config: GPTJConfig) -> TaskSession:
     assert config.model.eval, "Eval mode must be True"
     assert config.execution.data_parallel == 1, "You can't use DP for inference"
+    assert config.execution.group_quantise_weights % 4 == 0, "Weights can only be quantised in groups of multiple of 4"
+    if config.execution.group_quantise_weights > 0:
+        assert (
+            config.model.hidden_size % config.execution.group_quantise_weights == 0
+        ), "Weights can only be quantised into an equal number of groups"
     replicas = config.execution.tensor_parallel
     ir = popxl.Ir(replication="popdist" if popdist.isPopdistEnvSet() else replicas)
     assert ir.replication_factor == replicas
@@ -45,7 +50,8 @@ def inference(config: GPTJConfig) -> TaskSession:
             shard_size = ceil(config.model.embedding.vocab_size / config.execution.tensor_parallel)
             input_shape = (config.execution.micro_batch_size * config.model.sequence_length,)
             input_streams = addons.InputStreams(
-                words=(input_shape, popxl.int32), last_token_indices=((config.execution.micro_batch_size,), popxl.int32)
+                words=(input_shape, popxl.int32),
+                last_token_indices=((config.execution.micro_batch_size,), popxl.int32),
             )
             output_streams = addons.OutputStreams(next_token=((config.execution.micro_batch_size,), popxl.int32))
 
@@ -68,7 +74,8 @@ def inference(config: GPTJConfig) -> TaskSession:
             variables = NamedTensors()
             transformer = NamedTensors()
             transformer.insert(
-                "embeddings", embeddings_facts.init_remote(embeddings_buffers, 0, "embeddings", empty=True)
+                "embeddings",
+                embeddings_facts.init_remote(embeddings_buffers, 0, "embeddings", empty=True),
             )
 
             transformer.insert(
@@ -110,7 +117,10 @@ def inference(config: GPTJConfig) -> TaskSession:
                 squad_vars = NamedTensors.pack(names, load_graph.call(0))
                 (logits,) = lm_graph.bind(squad_vars).call(x)
                 next_token_id = generate_greedy_tp(config, logits, last_token_indices)
-                ops.host_store(output_streams.next_token, next_token_id.reshape_(output_streams.next_token.shape))
+                ops.host_store(
+                    output_streams.next_token,
+                    next_token_id.reshape_(output_streams.next_token.shape),
+                )
 
         # Run `OpToIdentityPattern` among others part of `PreAliasPatterns`
         apply_pre_alias_patterns(ir, level="default")
@@ -118,7 +128,11 @@ def inference(config: GPTJConfig) -> TaskSession:
     ir.num_host_transfers = config.execution.device_iterations
 
     session = TaskSession(
-        inputs=input_streams, outputs=output_streams, state=NamedTensors(fwd=variables), ir=ir, device_desc="ipu_hw"
+        inputs=input_streams,
+        outputs=output_streams,
+        state=NamedTensors(fwd=variables),
+        ir=ir,
+        device_desc="ipu_hw",
     )
     return session
 
@@ -126,7 +140,11 @@ def inference(config: GPTJConfig) -> TaskSession:
 def main():
     """Run a benchmark configuration"""
     config, *_ = gptj_config_setup(
-        CONFIG_DIR / "inference.yml", "release", "gpt-j", wandb_setup=False, hf_model_setup=False
+        CONFIG_DIR / "inference.yml",
+        "release",
+        "gpt-j",
+        wandb_setup=False,
+        hf_model_setup=False,
     )
     session = inference(config)
     inputs = {

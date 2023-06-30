@@ -82,6 +82,7 @@ If you require POD128 or POD256 setup and configuration for our applications, pl
 | BART Base | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/bart-base-ipu) | [Hugging Face Optimum](https://ipu.dev/3XbkoQk) |
 | T5-small | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/t5-small-ipu) | [Hugging Face Optimum](https://ipu.dev/3Ky3VCj) |
 | Bloom | NLP | Inference | [PopXL](nlp/bloom/popxl) | - |
+| Dolly | NLP | Inference | [PopXL](nlp/dolly/popxl) | [PopXL](https://ipu.dev/t8Jxz1) |
 | MT5-small | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/mt5-small-ipu) | [Hugging Face Optimum](https://ipu.dev/d6vE2P) |
 | MT5-large | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/mt5-large-ipu) | [Hugging Face Optimum](https://ipu.dev/6vL5xc) |
 
@@ -117,7 +118,7 @@ If you require POD128 or POD256 setup and configuration for our applications, pl
 | ------- | ------- | ------- | ------- | ------- |
 | MPNN (Message Passing Neural Networks) | GNN | Training, Inference | [PyTorch Geometric](gnn/message_passing/pytorch_geometric) , [TensorFlow 2](gnn/message_passing/tensorflow2) | - |
 | Spektral GNN library with QM9 | GNN | Training | [TensorFlow 2](gnn/spektral/tensorflow2) | - |
-| Cluster GCN | GNN | Training, Inference | [PyTorch Geometric](gnn/cluster_gcn/pytorch_geometric) , [TensorFlow 2](gnn/cluster_gcn/tensorflow2) | [PyTorch Geometric](https://ipu.dev/PmAtSw), [TensorFlow 2](https://ipu.dev/3CHtqfy) |
+| Cluster GCN | GNN | Training, Inference | [PyTorch Geometric](gnn/cluster_gcn/pytorch_geometric) | [PyTorch Geometric](https://ipu.dev/PmAtSw) |
 | TGN (Temporal Graph Networks) | GNN | Training | [PyTorch](gnn/tgn/pytorch) | - |
 | NBFNet | GNN | Training, Inference | [PyTorch Geometric](gnn/nbfnet/pytorch_geometric) | [PyTorch Geometric (Training)](https://ipu.dev/EzpMQD)|
 | SchNet | GNN | Training, Inference | [PyTorch Geometric](gnn/schnet/pytorch_geometric) | [PyTorch Geometric](https://ipu.dev/zUl8uW) |

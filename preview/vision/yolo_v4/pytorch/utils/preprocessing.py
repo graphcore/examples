@@ -261,7 +261,7 @@ class Mosaic(object):
     Call function:
         Parameters:
             item:
-                4 pairs of images and labels that will be stitched togeter. The first image
+                4 pairs of images and labels that will be stitched together. The first image
                 is the current image while the other 3 are randomly selected
         Return:
             image: combined target image with other 3 images

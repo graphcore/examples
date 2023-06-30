@@ -5,19 +5,9 @@
 import subprocess
 import os
 
-mnist_path = "./popart_mnist.py"
-os.environ["PVTI_OPTIONS"] = '{"enable":"true", "directory": "mydirectory"}'
-subprocess.run(["sh", "./get_data.sh"])
+mnist_path = "./poptorch_mnist.py"
+os.environ["PVTI_OPTIONS"] = '{"enable":"true", "directory": "reports"}'
 output = subprocess.run(["python3", mnist_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 print(output.stdout.decode("utf-8"))
 
-output = subprocess.run(["python3", mnist_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-print(output.stdout.decode("utf-8"))
-
-output = subprocess.run(["python3", mnist_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-print(output.stdout.decode("utf-8"))
-
-output = subprocess.run(["python3", mnist_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-print(output.stdout.decode("utf-8"))
-
-# Generated:2022-12-02T16:22 Source:walkthrough.py SST:0.0.9
+# Generated:2023-05-26T15:09 Source:walkthrough.py SST:0.0.10

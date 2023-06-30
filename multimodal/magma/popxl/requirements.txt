@@ -1,7 +1,7 @@
 --find-links https://download.pytorch.org/whl/torch_stable.html
 
 numpy==1.19.5
-torch==1.13.1+cpu
+torch==2.0.1+cpu
 examples-utils[common] @ git+https://github.com/graphcore/examples-utils.git@7cd37a8eccabe88e3741eef2c31bafd4fcd30c4c
 pyyaml==5.4.1
 dataclasses
@@ -13,5 +13,5 @@ pytest-pythonpath==0.7.4
 jupyter
 ipywidgets
 
-git+ssh://git@github.com/graphcore/popxl-addons-internal.git@7ef4c1559fbe44fe6c1307ab507aeaef86baf376#egg=popxl-addons
+git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.3.0
 git+https://github.com/Aleph-Alpha/magma@4d01e5172115ab4a8f4b4bf8da76dbc08b6cf36c

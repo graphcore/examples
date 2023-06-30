@@ -3,7 +3,7 @@
 
 To complement this tutorial, do not hesitate to read through our [Poplar
 and PopLibs User
-Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.2.0/index.html).
+Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/index.html).
 
 ## Setup
 
@@ -79,7 +79,7 @@ holds the result of adding the elements of `v1` to `v2`.
 
 That is all that is required to use the PopLibs library functions. You
 can see the capability of these libraries by browsing the [PopLibs API
-documentation](https://docs.graphcore.ai/projects/poplar-api/en/3.2.0/poplibs_api.html)
+documentation](https://docs.graphcore.ai/projects/poplar-api/en/3.1.0/poplibs_api.html)
 or the header files in the `include` directories of the Poplar
 installation.
 
@@ -88,7 +88,7 @@ installation.
 When calling libraries to perform operations, there are many ways to
 arrange how data is passed to the operation. These are in the
 `Tensor.hpp` header file and documented in the [Poplar API
-Reference](https://docs.graphcore.ai/projects/poplar-api/en/3.2.0/poplar_api.html#poplar-tensor-hpp).
+Reference](https://docs.graphcore.ai/projects/poplar-api/en/3.1.0/poplar_api.html#poplar-tensor-hpp).
 
 In tutorial 1 we used slicing, but there are also functions for
 reshaping and transposing data.

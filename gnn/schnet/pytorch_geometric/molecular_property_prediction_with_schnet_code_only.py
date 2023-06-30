@@ -9,7 +9,7 @@ import pandas as pd
 import py3Dmol
 
 from periodictable import elements
-from poptorch_geometric.dataloader import CustomFixedSizeDataLoader
+from poptorch_geometric.dataloader import FixedSizeDataLoader
 from torch_geometric.datasets import QM9
 from torch_geometric.data import Batch
 from torch_geometric.loader import DataLoader
@@ -28,7 +28,8 @@ sns.set_theme()
 
 poptorch.setLogLevel("ERR")
 executable_cache_dir = os.getenv("POPLAR_EXECUTABLE_CACHE_DIR", "/tmp/exe_cache/") + "/pyg-schnet"
-dataset_directory = os.getenv("DATASET_DIR", "data")
+
+dataset_directory = os.getenv("DATASETS_DIR", "data")
 num_ipus = os.getenv("NUM_AVAILABLE_IPU", "4")
 
 qm9_root = osp.join(dataset_directory, "qm9")
@@ -127,7 +128,7 @@ pop_model.detachFromDevice()
 
 batch_size = 8
 
-dataloader = CustomFixedSizeDataLoader(dataset, batch_size=batch_size, num_nodes=32 * (batch_size - 1))
+dataloader = FixedSizeDataLoader(dataset, batch_size=batch_size)
 
 dataloader_iter = iter(dataloader)
 first_batch = next(dataloader_iter)
@@ -169,10 +170,9 @@ additional_optimizations = True
 if additional_optimizations:
     options = optimize_popart(options)
 
-train_loader = CustomFixedSizeDataLoader(
+train_loader = FixedSizeDataLoader(
     train_dataset,
     batch_size=batch_size,
-    num_nodes=32 * (batch_size - 1),
     options=options,
 )
 

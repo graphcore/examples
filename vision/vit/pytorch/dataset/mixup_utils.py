@@ -30,5 +30,5 @@ def sample_mixup_coefficients(config, random_generator):
         int(config.samples_per_step / (config.device_iterations * config.micro_batch_size)),
     )
     coefficients = coefficients.astype(np.float32, copy=False)
-    coefficients = torch.from_numpy(coefficients.astype(np.float16 if config.precision[:3] == "16." else np.float))
+    coefficients = torch.from_numpy(coefficients.astype(np.float16 if config.precision[:3] == "16." else float))
     return coefficients

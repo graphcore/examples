@@ -31,7 +31,7 @@
 //
 //  ( P1 + P2, P3 + P4)
 //
-// On the IPU, the code needs to work out the optimial column axis split for
+// On the IPU, the code needs to work out the optimal column axis split for
 // a particular matrix. This is done by estimating the compute cost for
 // every possible split and choosing the best.
 

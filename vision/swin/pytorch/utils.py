@@ -193,3 +193,9 @@ class AverageMeter(object):
     def __str__(self):
         fmtstr = "{name}\tval:{val" + self.fmt + "}\tavg:({avg" + self.fmt + "})"
         return fmtstr.format(**self.__dict__)
+
+
+class CustomOpsNotFoundException(Exception):
+    """Raised when the custom ops .so file is not found."""
+
+    pass

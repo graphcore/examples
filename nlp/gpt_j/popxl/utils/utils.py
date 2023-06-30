@@ -7,6 +7,7 @@ from popxl import Tensor, Session
 import numpy as np
 import popart
 import os
+import time
 
 
 def shard(x: np.ndarray, n_shards: int, axis: int) -> np.array:
@@ -23,7 +24,10 @@ def repeat(x: np.ndarray, n: int, axis: int = 0) -> np.array:
 
 
 def tensor_parallel_input(
-    input_data: np.ndarray, tp: int, rf: int, repeat_fn: Optional[Callable[[np.ndarray, int], np.ndarray]] = None
+    input_data: np.ndarray,
+    tp: int,
+    rf: int,
+    repeat_fn: Optional[Callable[[np.ndarray, int], np.ndarray]] = None,
 ):
     """Repeat the data in `input_data` such that consecutive replicas with groupSize tp get the same data
     (optionally modified by repeat_fn)
@@ -105,3 +109,22 @@ def suffix_path(path: str, suffix: str):
     """Add a suffix to a filename in a path. The suffix is affixed before the file extension"""
     path, ext = os.path.splitext(path)
     return path + suffix + ext
+
+
+class SimpleTimer:
+    def __init__(self):
+        self._start = None
+
+    def start(self):
+        self._start = time.perf_counter()
+
+    def stop(self):
+        self.elapsed = time.perf_counter() - self._start
+        self._start = None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *exc_args):
+        self.stop()

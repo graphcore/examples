@@ -4,7 +4,7 @@ pyyaml
 dataclasses==0.6
 transformers==4.25.0
 tokenizers==0.12.0
-torch==1.13.1
+torch==2.0.1
 numpy==1.23.5
 scipy>=1.5.4
 more-itertools
@@ -15,4 +15,4 @@ httpcore==0.15
 pytest==5.1.0
 pytest-pythonpath==0.7.4
 
-git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.2
+git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.3.0

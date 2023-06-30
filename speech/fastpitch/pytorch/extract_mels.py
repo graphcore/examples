@@ -134,13 +134,13 @@ def calculate_pitch(wav, durs):
     assert np.abs(mel_len - pitch.shape[0]) <= 1.0
 
     # Average pitch over characters
-    pitch_char = np.zeros((durs.shape[0],), dtype=np.float)
+    pitch_char = np.zeros((durs.shape[0],), dtype=float)
     for idx, a, b in zip(range(mel_len), durs_cum[:-1], durs_cum[1:]):
         values = pitch[a:b][np.where(pitch[a:b] != 0.0)[0]]
         pitch_char[idx] = np.mean(values) if len(values) > 0 else 0.0
 
     # Average to three values per character
-    pitch_trichar = np.zeros((3 * durs.shape[0],), dtype=np.float)
+    pitch_trichar = np.zeros((3 * durs.shape[0],), dtype=float)
 
     durs_tri = np.concatenate([dur_chunk_sizes(d, 3) for d in durs])
     durs_tri_cum = np.cumsum(np.pad(durs_tri, (1, 0)))

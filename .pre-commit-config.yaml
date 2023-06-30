@@ -50,16 +50,14 @@ repos:
         description: Ensures that files have the proper trademark line.
         entry: python3 -m utils.linters.trademark.trademark
         language: python
+      - id: notebook-cleaner
+        name: Notebook cleaner
+        description: Removes metadata from Jupyter notebook cells to keep upstream clean.
+        entry: python3 -m utils.linters.notebook_cleaner.notebook_cleaner
+        language: python
+        additional_dependencies:
+          - nbconvert
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.1.0
+    rev: v2.2.4
     hooks:
       - id: codespell
-        args: [-I, utils/linters/codespell_ignore.txt]
-        exclude: |
-          (?x)^(
-            nlp/gpt2/pytorch/tokenizer/gpt2-merges-50256.txt |
-            nlp/gpt2/pytorch/tokenizer/gpt2-vocab-50256.json |
-            speech/fastpitch/pytorch/filelists/ljs_audio_text_train_filelist.txt |
-            speech/fastpitch/pytorch/filelists/ljs_mel_dur_pitch_text_train_filelist.txt |
-            gnn/nbfnet/pytorch_geometric/static/fb15k-237_entitymapping.txt
-          )$

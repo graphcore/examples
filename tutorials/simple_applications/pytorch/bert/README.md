@@ -4,7 +4,7 @@
 ## Overview
 
 This example shows how to use PopTorch to run inference on a pre-trained BERT model.
-The pre-trained model is downloaded from Hugging Face (<https://huggingface.co/transformers/model_doc/bert.html>) and compiled to run on the IPU.
+The pre-trained model is downloaded from [Hugging Face](https://huggingface.co/mrm8488/bert-medium-finetuned-squadv2) and compiled to run on the IPU.
 The model has been already been fine tuned on the SQuADv2 corpus and is configured for a question-answering task.
 
 Two text files are used to provide inputs to the network:

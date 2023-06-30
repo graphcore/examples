@@ -1,0 +1,2 @@
+pytest==7.3.2
+examples-utils[jupyter] @ git+https://github.com/graphcore/examples-utils@ee7ab5c0df36933eb9c6ad5669acfce54293edb1

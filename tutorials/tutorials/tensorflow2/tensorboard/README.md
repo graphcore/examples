@@ -698,7 +698,7 @@ WARNING:tensorflow:offload_weight_update_variables will have no effect since thi
 
 All of the above setup and training code is standard IPU TensorFlow operation
 and should be familiar to any user of
-[IPU TensorFlow](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.2.0/tensorflow/intro.html).
+[IPU TensorFlow](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/intro.html).
 However, special attention should be paid to the
 `set_asynchronous_callbacks(True)` call on our model `m`. This call allows the
 model to asynchronously trigger callbacks at the end of an epoch, versus

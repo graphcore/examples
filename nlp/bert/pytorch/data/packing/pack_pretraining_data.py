@@ -205,7 +205,7 @@ def get_packing_recipe(args, sequence_lengths, drop_unused_strategies=False):
     # A@mixture = histogram
     # i.e. find the non-negative "mixture" of strategies such that the
     # packing matches the distribution of sequences lengths (histogram) as
-    # closely as possbile in the least squares sense
+    # closely as possible in the least squares sense
     print(f"Sequences to pack: ", histogram.sum())
     start = time.time()
     mixture, rnorm = optimize.nnls(np.expand_dims(w0, -1) * A, w0 * histogram)

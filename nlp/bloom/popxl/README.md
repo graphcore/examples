@@ -41,7 +41,7 @@ cd popart-<OS version>-<SDK version>-<hash>
 . enable.sh
 ```
 
-More detailed instructions on setting up your environment are available in the [poplar quick start guide](https://docs.graphcore.ai/projects/graphcloud-poplar-quick-start/en/latest/index.html).
+More detailed instructions on setting up your environment are available in the [Poplar Quick Start guide](https://docs.graphcore.ai/projects/poplar-quick-start/).
 
 
 ## Environment setup

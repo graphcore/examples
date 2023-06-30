@@ -5,14 +5,13 @@
 import os
 import subprocess
 
-os.environ["PVTI_OPTIONS"] = '{"enable":"true"}'
-subprocess.run(["sh", "./get_data.sh"])
-subprocess.run(["python3", "popart_mnist.py"])
+os.environ["PVTI_OPTIONS"] = '{"enable":"true", "directory": "reports"}'
+output = subprocess.run(["python3", "poptorch_mnist.py"])
 
 # Grab the most recently modified PVTI file
 from pathlib import Path
 
-working_dir = Path(".").glob("./*.pvti")
+working_dir = Path(".").glob("./reports/*.pvti")
 pvti_files = [f for f in working_dir if f.is_file()]
 pvti_files.sort(reverse=True, key=lambda a: a.stat().st_mtime)
 trace_path = str(pvti_files[0])
@@ -78,4 +77,4 @@ print(f"The longest epoch '{stats.longest.label}' lasted {stats.longest.duration
 print(f"The shortest epoch '{stats.shortest.label}' lasted {stats.shortest.duration} microseconds.")
 print(f"Epochs took {stats.average:.0f} microseconds on average, out of {stats.count} epochs in total.")
 
-# Generated:2022-09-08T11:14 Source:walkthrough.py SST:0.0.8
+# Generated:2023-03-21T11:04 Source:walkthrough.py SST:0.0.10

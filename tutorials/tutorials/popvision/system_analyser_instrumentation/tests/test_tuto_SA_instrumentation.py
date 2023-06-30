@@ -15,14 +15,7 @@ working_path = Path(__file__).parent.parent
 
 @pytest.mark.category2
 def test_tutorial_code():
-    expected_strings = [
-        "Unpacking mnist-data.tar.gz",
-        "Creating ONNX model.",
-        "Compiling the training graph.",
-        "Compiling the validation graph.",
-        "Running training loop.",
-        "Epoch #1",
-    ]
+    expected_strings = ["Graph compilation:", "batches:", "epochs:", "Epoch #1", "Loss="]
     with FileLock(__file__ + ".lock"):
         testing_util.run_command("python3 walkthrough_code_only.py", working_path, expected_strings)
 

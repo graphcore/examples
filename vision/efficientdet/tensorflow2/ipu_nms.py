@@ -34,6 +34,12 @@ T = tf.Tensor  # a shortcut for typing check.
 BASE_PATH = (Path(__file__).parent / "NMS").absolute()
 
 
+class CustomOpsNotFoundException(Exception):
+    """Raised when the custom ops .so file is not found."""
+
+    pass
+
+
 def nms_op(
     threshold: float,
     score_threshold: float,
@@ -72,6 +78,11 @@ def nms_op(
     nms_type_str = "tf_multi" if multi_nms else "tf"
     lib_path = BASE_PATH / nms_type_str / "build" / "nms_custom_op.so"
     gp_path = BASE_PATH / "codelet.cpp"
+
+    if not Path(lib_path).exists():
+        raise CustomOpsNotFoundException(
+            f"`{lib_path}` not found. Please run `make` in this application's root directory first."
+        )
 
     return ipu.custom_ops.precompiled_user_op(
         inputs, str(lib_path), str(gp_path), attributes=attributes_json, outs=outputs

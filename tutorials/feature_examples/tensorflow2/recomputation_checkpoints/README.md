@@ -4,8 +4,8 @@
 ## Overview
 
 IPU TensorFlow supports Keras models using checkpointing of values to reduce live memory peaks during computation.
-Adding one or more [`ipu_tensorflow_addons.keras.layers.RecomputationCheckpoint`](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.2.0/ipu_tensorflow_addons/api.html#ipu_tensorflow_addons.keras.layers.RecomputationCheckpoint) Keras layers into a model will allow activations to be recomputed
-from checkpoints in a training graph, and can be useful where otherwise there would need to be too many live activations. See the technical note [Memory and Performance Optimisation on the IPU](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.2.0/common-memory-optimisations.html#recomputation-checkpoints) for more information.
+Adding one or more [`ipu_tensorflow_addons.keras.layers.RecomputationCheckpoint`](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/ipu_tensorflow_addons/api.html#ipu_tensorflow_addons.keras.layers.RecomputationCheckpoint) Keras layers into a model will allow activations to be recomputed
+from checkpoints in a training graph, and can be useful where otherwise there would need to be too many live activations. See the technical note [Memory and Performance Optimisation on the IPU](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.1.0/common-memory-optimisations.html#recomputation-checkpoints) for more information.
 
 For example, a recurrent layer such as an LSTM or GRU with many timesteps might have a large amount of activations live
 at the start of the backwards pass. By dividing the layer into multiple smaller layers and adding checkpoints of the intermediate

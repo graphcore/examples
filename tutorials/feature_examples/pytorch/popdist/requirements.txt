@@ -1,5 +1,5 @@
 --find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.13.1
-torchvision==0.14.1+cpu; sys_platform != "darwin" and platform_machine != "aarch64"
-torchvision==0.14.1; sys_platform == "darwin" or platform_machine == "aarch64"
+torch==2.0.1
+torchvision==0.15.2+cpu; sys_platform != "darwin" and platform_machine != "aarch64"
+torchvision==0.15.2; sys_platform == "darwin" or platform_machine == "aarch64"
 tqdm==4.62.3

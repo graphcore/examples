@@ -93,7 +93,7 @@ Either of these methods will bring up the menu for selecting a Python interprete
 
 Select the interpreter of your choice:
 
-![Selet the interpreter](img/python/interpreter/enter.png)
+![Select the interpreter](img/python/interpreter/enter.png)
 
 The Python extension will now use this Python interpreter to detect installed packages and execute linting and completion operations.
 

@@ -12,6 +12,15 @@
     global_batch_size: 512
     steps: 286000
 tiny: &tiny
+  model:
+    sequence_length: 8
+    embedding:
+      vocab_size: 128
+      max_positional_length: 8
+    hidden_size: 64
+    layers: 2
+    attention:
+      heads: 4
   training:
     global_batch_size: 16
     steps: 100000
@@ -21,6 +30,7 @@ tiny: &tiny
         maximum: 0.00001
         warmup_proportion: 0.00625
       weight_decay: 0.01
+
 
 # -------------------------
 

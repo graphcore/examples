@@ -1,0 +1,48 @@
+# -------- Models --------
+tiny: &tiny
+  model:
+    layers: 2
+    hidden_size: 100
+    sequence_length: 64
+    attention:
+      heads: 4
+      rotary_dim: 4
+    embedding:
+      vocab_size: 150
+
+dolly: &dolly
+  model:
+    layers: 36
+    hidden_size: 5120
+    sequence_length: 2048
+    attention:
+      heads: 40
+      rotary_positional_embeddings_base: 10000
+      rotary_dim: 32 # should be rotary_pct of head dim
+    embedding:
+      vocab_size: 50280
+# -------------------------
+
+# ------- Execution -------
+release:
+  tiny:
+    <<: *tiny
+    execution:
+      micro_batch_size: 4
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 4
+
+  dolly_pod4:
+    <<: *dolly
+    execution:
+      micro_batch_size: 1
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 4
+
+  dolly_pod16:
+    <<: *dolly
+    execution:
+      micro_batch_size: 4
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 16
+      attention_tensor_parallel: 8

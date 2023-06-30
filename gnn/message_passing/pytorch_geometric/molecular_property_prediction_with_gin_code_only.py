@@ -7,7 +7,7 @@ import poptorch
 
 poptorch.setLogLevel("ERR")
 executable_cache_dir = os.getenv("POPLAR_EXECUTABLE_CACHE_DIR", "/tmp/exe_cache/") + "/pyg-gin"
-dataset_directory = os.getenv("DATASET_DIR", "data")
+dataset_directory = os.getenv("DATASETS_DIR", "data")
 
 from torch_geometric.datasets import TUDataset
 
@@ -30,20 +30,19 @@ split = int(len(dataset) * 0.8)
 train_dataset = dataset[split:]
 test_dataset = dataset[:split]
 
+
+from poptorch_geometric.fixed_size_options import FixedSizeOptions
+
 num_graphs = 64
-total_num_nodes = int(dataset_summary.num_nodes.max * num_graphs)
-total_num_edges = int(dataset_summary.num_edges.max * num_graphs)
-print(f"total_num_nodes = {total_num_nodes}")
-print(f"total_num_edges = {total_num_edges}")
+fixed_size_options = FixedSizeOptions.from_dataset(train_dataset, num_graphs)
+print(fixed_size_options)
 
 from poptorch_geometric.dataloader import FixedSizeDataLoader
 
 train_loader = FixedSizeDataLoader(
     dataset=train_dataset,
     batch_size=num_graphs,
-    num_nodes=total_num_nodes,
-    num_edges=total_num_edges,
-    collater_args=dict(add_masks_to_batch=True),
+    fixed_size_options=fixed_size_options,
     drop_last=True,
 )
 
@@ -55,16 +54,17 @@ print(f"second_sample = {second_sample}")
 
 first_sample.nodes_mask
 
-float(first_sample.nodes_mask.sum() / len(first_sample.nodes_mask))
+print(float(first_sample.nodes_mask.sum() / len(first_sample.nodes_mask)))
 
-max_num_graphs_per_batch = 300
+from poptorch_geometric import FixedSizeStrategy
+
+fixed_size_options.num_graphs = 300
 
 train_loader = FixedSizeDataLoader(
     dataset=train_dataset,
-    batch_size=max_num_graphs_per_batch,
-    num_nodes=total_num_nodes,
-    num_edges=total_num_edges,
-    collater_args=dict(add_masks_to_batch=True),
+    batch_size=fixed_size_options.num_graphs,
+    fixed_size_options=fixed_size_options,
+    fixed_size_strategy=FixedSizeStrategy.StreamPack,
     drop_last=True,
 )
 first_sample = next(iter(train_loader))
@@ -80,10 +80,9 @@ poptorch_options.enableExecutableCaching(executable_cache_dir)
 
 train_loader = FixedSizeDataLoader(
     dataset=train_dataset,
-    batch_size=max_num_graphs_per_batch,
-    num_nodes=total_num_nodes,
-    num_edges=total_num_edges,
-    collater_args=dict(add_masks_to_batch=True),
+    batch_size=fixed_size_options.num_graphs,
+    fixed_size_options=fixed_size_options,
+    fixed_size_strategy=FixedSizeStrategy.StreamPack,
     drop_last=True,
     options=poptorch_options,
 )
@@ -110,7 +109,7 @@ model = GIN(
     out_channels=out_channels,
     num_conv_layers=num_conv_layers,
     num_mlp_layers=num_mlp_layers,
-    batch_size=max_num_graphs_per_batch,
+    batch_size=fixed_size_options.num_graphs,
 )
 
 model.train()
@@ -158,11 +157,10 @@ ax.set_ylabel("Loss")
 plt.grid(True)
 
 test_loader = FixedSizeDataLoader(
-    dataset=train_dataset,
-    batch_size=max_num_graphs_per_batch,
-    num_nodes=total_num_nodes,
-    num_edges=total_num_edges,
-    collater_args=dict(add_masks_to_batch=True),
+    dataset=test_dataset,
+    batch_size=fixed_size_options.num_graphs,
+    fixed_size_options=fixed_size_options,
+    fixed_size_strategy=FixedSizeStrategy.StreamPack,
     drop_last=True,
     options=poptorch_options,
 )

@@ -42,8 +42,6 @@ def get_options(config):
         .useReplicatedTensorSharding(config.enable_rts)
     )
 
-    opts.Precision.halfFloatCasting(poptorch.HalfFloatCastingBehavior.HalfUpcastToFloat)
-
     # Enable caching the compiled executable to disk
     if config.executable_cache_dir:
         opts.enableExecutableCaching(config.executable_cache_dir)

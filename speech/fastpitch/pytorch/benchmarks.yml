@@ -3,9 +3,9 @@ common_options: &common_options
   data:
     throughput:
       skip: 1
-      regexp: 'throughput: *(.*?) samples\/sec,'
+      regexp: 'num_frame/sec *(.*?) '
   output:
-    - [samples/sec, 'throughput']
+    - [frames/sec, 'throughput']
 
 config_options: &config_options
   requirements_path: requirements.txt

@@ -6,7 +6,7 @@ transformers==4.18.0
 datasets==2.1.0
 tfrecord==1.14.1
 torch==1.10.0+cpu; python_version=='3.6'
-torch==1.13.1+cpu; python_version>'3.6'
+torch==2.0.1+cpu; python_version>'3.6'
 numpy==1.19.5
 scipy==1.5.4
 more-itertools==8.13.0
@@ -16,6 +16,6 @@ pytest
 pytest-pythonpath
 
 examples-utils[common] @ git+https://github.com/graphcore/examples-utils.git@7cd37a8eccabe88e3741eef2c31bafd4fcd30c4c
-git+ssh://git@github.com/graphcore/popxl-addons-internal.git@3dfc51e2d659438c05459c52bcad82ccb3f39c42#egg=popxl-addons
+git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.3.0
 
 protobuf==3.20.*; python_version > '3.6'

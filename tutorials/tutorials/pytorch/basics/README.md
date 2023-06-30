@@ -70,7 +70,7 @@ PopTorch has been designed to require only a few manual changes to your models
 in order to run them on the IPU. However, it does have some differences from
 native PyTorch execution and not all PyTorch operations have been
 implemented in the backend yet. You can find the list of supported operations in the
-[here](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/supported_ops.html).
+[here](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/supported_ops.html).
 
 ![Software stack](static/stack.jpg)
 
@@ -195,7 +195,7 @@ class, which is an `iterable` over a dataset and which can handle parallel data
 loading, a sampling strategy, shuffling, etc.
 
 PopTorch offers an extension of this class with its
-[`poptorch.DataLoader`](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/batching.html#poptorch-dataloader)
+[`poptorch.DataLoader`](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/batching.html#poptorch-dataloader)
 class, specialised for the way the underlying PopART framework handles
 batching of data. We will use this class later in the tutorial, as soon as we
 have a model ready for training.
@@ -284,7 +284,7 @@ attributes to save performance and memory, and allow you to specify additional
 parameters such as loss/velocity scaling.
 
 We will use
-[SGD](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/reference.html#poptorch.optim.SGD)
+[SGD](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/reference.html#poptorch.optim.SGD)
 as it's a very popular algorithm and is appropriate for this classification
 task.
 
@@ -619,7 +619,7 @@ calculations are made to reduce risks of errors and make it easier for
 PyTorch users to use IPUs.
 
 The list of these options is available in the
-[documentation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/overview.html#options).
+[documentation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/overview.html#options).
 We introduce here four of these options so you get an idea of what they cover.
 
 ### `deviceIterations`
@@ -659,7 +659,7 @@ still need to make progress on your code. However, the IPU Model doesn't
 fully support replicated graphs and its numerical results can be slightly
 different from what you would get with an actual IPU. You can learn more
 about the IPU Model and its limitations with our
-[documentation](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.2.0/poplar_programs.html?highlight=ipu%20model#programming-with-poplar).
+[documentation](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.3.0/poplar_programs.html?highlight=ipu%20model#programming-with-poplar).
 
 ## How to set the options
 

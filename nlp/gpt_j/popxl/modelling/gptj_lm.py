@@ -2,6 +2,7 @@
 from functools import partial
 import numpy as np
 from typing import Optional, Dict, Tuple, Callable, List, Union
+import logging
 import torch
 
 # HF
@@ -16,7 +17,10 @@ from popxl import ops
 import popxl_addons as addons
 from popxl_addons import NamedTensors, GraphWithNamedArgs
 from popxl_addons.layers import Linear
-from popxl_addons.ops.replicated_all_reduce_TP import replicated_all_reduce_identical_inputs
+from popxl_addons.layers.linear_gq import LinearGQ, group_quantize_compress_numpy
+from popxl_addons.ops.replicated_all_reduce_TP import (
+    replicated_all_reduce_identical_inputs,
+)
 from popxl_addons.ops.cross_entropy_sharded_loss import cross_entropy_sharded_loss
 from popxl_addons.layers import LayerNorm
 from popxl_addons.named_replica_grouping import fill_none_group
@@ -41,7 +45,8 @@ def generate_greedy_tp(config: GPTJConfig, logits: popxl.Tensor, last_token_inde
     tp = config.execution.tensor_parallel
     # indices for next token logits in each batch
     offsetted_batch_indices = popxl.constant(
-        np.arange(0, config.execution.micro_batch_size) * config.model.sequence_length, dtype=popxl.int32
+        np.arange(0, config.execution.micro_batch_size) * config.model.sequence_length,
+        dtype=popxl.int32,
     )
     offsetted_batch_indices = last_token_index + offsetted_batch_indices
     # next token logits, sharded
@@ -49,7 +54,9 @@ def generate_greedy_tp(config: GPTJConfig, logits: popxl.Tensor, last_token_inde
 
     # gather tensor parallel shards and get full logits: (mb_size, vocab_size)
     next_token_logits = ops.collectives.replicated_all_gather(
-        next_token_logits, group=popxl.gcg().ir.replica_grouping(group_size=tp), output_shape="new_axis"
+        next_token_logits,
+        group=popxl.gcg().ir.replica_grouping(group_size=tp),
+        output_shape="new_axis",
     )
     next_token_logits = next_token_logits.transpose((1, 0, 2)).reshape_(
         (config.execution.micro_batch_size, config.model.embedding.vocab_size)
@@ -74,7 +81,14 @@ class GPTJLMHeadTP(addons.Module):
         # identical
         self.ln_f = LayerNorm()
         shard_size = ceil(self.config.model.embedding.vocab_size / tp)
-        self.head = Linear(shard_size, replica_grouping=self.replica_grouping)
+        layer_kwargs = {}
+        if config.execution.group_quantise_weights > 0:
+            layer = LinearGQ
+            layer_kwargs["group_size"] = config.execution.group_quantise_weights
+            layer_kwargs["dim"] = 0
+        else:
+            layer = Linear
+        self.head = layer(shard_size, replica_grouping=self.replica_grouping, **layer_kwargs)
 
     def build(self, x: popxl.Tensor) -> popxl.Tensor:
         x = self.ln_f(x)
@@ -88,13 +102,39 @@ class GPTJLMHeadTP(addons.Module):
         dtype = config.model.dtype
         n_shards = config.execution.tensor_parallel
 
+        head_weight = shard(to_numpy(hf_model.lm_head.weight.data.T, dtype), n_shards, axis=-1)
+
+        if config.execution.group_quantise_weights:
+            # Output dimension (vocab size) is not divisible by 4, so force to be input dimension
+            gqdim = 0
+            layer_name = variables.head.weight_compressed.name.replace(".head.weight_compressed", "")
+            logging.info(f"Quantizing {layer_name} weights")
+
+            # shift group_quantise_dim to account for TP sharding dim
+            head_weight = group_quantize_compress_numpy(
+                head_weight,
+                config.execution.group_quantise_weights,
+                gqdim + 1,
+            )
+            head_state_dict = dict(
+                zip(
+                    (
+                        variables.head.weight_compressed,
+                        variables.head.weight_decompression_scale,
+                        variables.head.weight_decompression_bias,
+                    ),
+                    head_weight,
+                ),
+            )
+        else:
+            head_state_dict = {variables.head.weight: head_weight}
+
         weights = {
-            variables.head.weight: shard(to_numpy(hf_model.lm_head.weight.data.T, dtype), n_shards, axis=-1),
+            **head_state_dict,
             variables.head.bias: shard(to_numpy(hf_model.lm_head.bias.data, dtype), n_shards, axis=-1),
             variables.ln_f.weight: to_numpy(hf_model.transformer.ln_f.weight.data, dtype),
             variables.ln_f.bias: to_numpy(hf_model.transformer.ln_f.bias.data, dtype),
         }
-
         return weights
 
     @staticmethod
@@ -106,7 +146,8 @@ class GPTJLMHeadTP(addons.Module):
 
         state_dict = {}
         state_dict["lm_head.weight"] = torch.tensor(
-            np.concatenate(variables_data.head.weight.transpose(0, 2, 1), axis=0), dtype=config.torch_dtype
+            np.concatenate(variables_data.head.weight.transpose(0, 2, 1), axis=0),
+            dtype=config.torch_dtype,
         )
         state_dict["lm_head.bias"] = torch.tensor(
             np.concatenate(variables_data.head.bias, axis=0), dtype=config.torch_dtype
@@ -127,7 +168,6 @@ class GPTJLMHeadModelTP(addons.Module):
         self.lm_head = GPTJLMHeadTP(config)
 
     def build(self, input_ids: popxl.Tensor) -> popxl.Tensor:
-
         x = self.transformer(input_ids)
         x = self.lm_head(x)
 
@@ -159,7 +199,6 @@ class GPTJLMHeadLossAndGradTP(addons.Module):
         self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp, group_size=dp)
 
     def build(self, x: popxl.Tensor, labels: popxl.Tensor):
-
         fwd_facts, fwd_graph = GPTJLMHeadTP(self.config).create_graph(x)
         ts = self.add_variable_inputs("fwd", fwd_facts)
 

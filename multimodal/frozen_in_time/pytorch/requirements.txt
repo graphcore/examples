@@ -10,7 +10,7 @@ dataclasses==0.8; python_version < '3.7'
 decord==0.6.0
 docopt==0.6.2
 einops==0.4.1
-filelock==3.4.0
+filelock==3.10.7
 gitdb==4.0.9
 GitPython==3.1.18
 huggingface-hub==0.0.17
@@ -37,7 +37,6 @@ pytest==6.2.5
 PyYAML==5.4.1
 regex==2021.8.3
 requests==2.27.1
-sacred==0.8.2
 sacremoses==0.0.43
 scipy==1.5.4
 setuptools==59.6.0
@@ -47,8 +46,8 @@ timm==0.5.4
 tokenizers==0.10.1
 --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
 torch==1.10.0+cpu; python_version=='3.6'
-torch==1.13.1+cpu; python_version>'3.6'
-torchvision==0.14.1+cpu; python_version > '3.6'
+torch==2.0.1+cpu; python_version>'3.6'
+torchvision==0.15.2+cpu; python_version > '3.6'
 torchvision==0.11.0+cpu; python_version <= '3.6'
 tqdm==4.62.3
 transformers==4.11.3
@@ -60,4 +59,4 @@ zipp==3.6.0
 opencv-python-headless==4.6.0.66
 fire==0.4.0
 wandb==0.12.8
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3

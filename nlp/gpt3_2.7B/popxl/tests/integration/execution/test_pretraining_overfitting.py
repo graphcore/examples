@@ -12,11 +12,12 @@ import popxl
 from popxl.utils import to_numpy
 from popxl_addons import TaskSession
 from config import GPTConfig, CONFIG_DIR
-from utils.setup import wandb_init, gpt_pretraining_setup
+from utils.setup import wandb_init, gpt_training_setup
 from pretraining import pretraining
 from modelling.embedding import GPTEmbeddingsTP
 from data.data_utils import load_dataset, WorkerInit, collate_fn
-from utils.utils import tensor_parallel_input, linear_schedule
+from utils.utils import linear_schedule
+from popxl_addons.array_munging import tensor_parallel_input
 
 
 def generate_synthetic_data(config: GPTConfig):
@@ -123,7 +124,7 @@ def overfit(config: GPTConfig, session: TaskSession):
 
 def main():
     # Configuration
-    config, args = gpt_pretraining_setup(CONFIG_DIR / "pretraining.yml", "release", "gpt3_2.7B_pod64")
+    config, args = gpt_training_setup(CONFIG_DIR / "pretraining.yml", "release", "gpt3_2.7B_pod64")
     config.training.steps = 100
     config.training.optimizer.learning_rate.maximum = 0.0001
     config.training.optimizer.learning_rate.warmup_proportion = 0.2

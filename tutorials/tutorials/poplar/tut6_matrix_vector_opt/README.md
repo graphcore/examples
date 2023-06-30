@@ -2,7 +2,7 @@
 # Poplar Tutorial 6: Matrix-vector Multiplication Optimisation
 
 As always, do not hesitate to read through the [Poplar and PopLibs User
-Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.2.0/index.html)
+Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/index.html)
 to complement this tutorial.
 
 ## Setup
@@ -178,7 +178,7 @@ pretty close to the program estimate of 3996. Note that since `IPUModel`
 is used here, numbers given when profiling are estimated and might
 differ from the execution profiling when running on hardware (see this
 [explanation of
-IPUModel](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.2.0/poplar_programs.html)).
+IPUModel](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplar_programs.html)).
 
 The "Total cycles" line is the overall time taken to run the program;
 you can also think of this as the number of cycles taken by a single

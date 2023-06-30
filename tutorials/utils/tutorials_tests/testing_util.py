@@ -522,7 +522,7 @@ def run_command_fail_explicitly(
             cwd=cwd,
             **merged_kwargs,
         )
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         stdout = e.stdout
         stderr = e.stderr
         # type of the stdout stream will depend on the subprocess.

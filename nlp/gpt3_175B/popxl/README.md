@@ -195,9 +195,9 @@ Note that the `gradient_accumulation` size is automatically computed from the `g
 Here we introduce some techniques that were required to scale up the GPT-3 model for the required capacity and throughput.
 
 ### Phased Execution and RTS <a name="pe"></a>
-For compute graphs that have memory requirements greater than the available on-chip memory, we can partition it into a series of smaller sub-graphs and execute them in series on the IPU, using remote memory to store input and output tensors between calls. This is called phased execution. We recommend the tutorial about this concept in [Phased Execution in MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/6_phased_execution).
+For compute graphs that have memory requirements greater than the available on-chip memory, we can partition it into a series of smaller sub-graphs and execute them in series on the IPU, using remote memory to store input and output tensors between calls. This is called phased execution. We recommend the tutorial about this concept in [Phased Execution in MNIST example](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/6_phased_execution).
 
-In the GPT-3 application we demonstrate this concept on a full sized model. Recomputation and replicated tensor sharding ([RTS](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/5_remote_variables_and_rts)) are also used to improve the performance.
+In the GPT-3 application we demonstrate this concept on a full sized model. Recomputation and replicated tensor sharding ([RTS](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/5_remote_variables_and_rts)) are also used to improve the performance.
 
 ### 2D Tensor Model Parallel <a name="tp"></a>
 Tensor parallel training involves breaking the layers into shards, which are each allocated to a different devices. Communication is required within a layer between the different devices to rematerialise the same numerical result if tensor parallelism sharding wasn't used.
@@ -207,7 +207,7 @@ With 2D tensor parallel, some tensors are split along two different dimensions. 
 For the embedding layer one all-reduce communication operation is required for the forwards and backwards pass (not included recomputation). For the GPT-3 layers, 8 all-reduce operations are required for the forwards and backwards pass. For the pre-training head 5 all-reduce operations are required for the forwards and backwards pass.
 
 ### Data Parallel <a name="dp"></a>
-Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallelism in PopXL addons within the [MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
+Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallelism in PopXL addons within the [MNIST example](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/3_data_parallelism).
 
 ## Pre-training code details <a name="code_details"></a>
 

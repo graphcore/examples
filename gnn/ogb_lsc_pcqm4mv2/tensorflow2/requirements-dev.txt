@@ -1,10 +1,10 @@
---find-links https://data.pyg.org/whl/torch-1.13.1+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.0.1+cpu.html
 
 numpy<1.24
 pytest
 pytest-xdist
-torch==1.13.1
+torch==2.0.1
 torch-geometric==2.2.0
-torch-scatter==2.1.0+pt113cpu
-torch-sparse==0.6.16+pt113cpu
+torch-scatter==2.1.1+pt20cpu
+torch-sparse==0.6.17+pt20cpu
 yapf==0.27.0

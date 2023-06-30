@@ -97,7 +97,7 @@ def topk_class_boxes(params, cls_outputs: T, box_outputs: T) -> Tuple[T, T, T, T
         box_outputs_topk = tf.gather_nd(box_outputs, tf.expand_dims(indices, 2), batch_dims=1)
     else:
         logging.info("use max_reduce for pre-nms topk.")
-        # Keep all anchors, but for each anchor, just keep the max probablity for
+        # Keep all anchors, but for each anchor, just keep the max probability for
         # each class.
         cls_outputs_idx = tf.math.argmax(cls_outputs, axis=-1, output_type=tf.int32)
         num_anchors = tf.shape(cls_outputs)[1]

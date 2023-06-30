@@ -2,7 +2,7 @@
 Copyright (c) 2022 Graphcore Ltd. All rights reserved.
 """
 """
-# PopVision Tutorial: Reading PVTI Files with libpva
+# PopVision tutorial: Reading PVTI files with libpva
 
 When using the
 [PopVision System Analyser](https://www.graphcore.ai/developer/popvision-tools)
@@ -29,23 +29,21 @@ to familiarise yourself with some of the information available.
 """
 """
 To run the Python version of this tutorial:
-
-1. Download and install the Poplar SDK. Run the `enable.sh` scripts for Poplar and PopART as described in the [Getting
-  Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for your IPU system.
+1. Download and install the Poplar SDK, see the [Getting
+  Started](https://docs.graphcore.ai/projects/pytorch-quick-start/en/latest/quick-start-beginners.html#enable-poplar-sdk) guide for your IPU system.
 2. For repeatability we recommend that you create and activate a Python virtual environment. You can do this with:
    a. create a virtual environment in the directory `venv`: `virtualenv -p python3 venv`;
    b. activate it: `source venv/bin/activate`.
 3. Install the Python packages that this tutorial needs with `python -m pip install -r requirements.txt`.
-4. Download the MNIST dataset we're using with `./get_data.sh`. You should now have a 'data' folder containing the MNIST dataset
 
 sst_ignore_jupyter
 """
 """
 To run the Jupyter notebook version of this tutorial:
 
-1. Enable a Poplar SDK environment (see the [Getting
-  Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for
-  your IPU system)
+1. Enable a Poplar SDK environment, see the [Getting
+  Started](https://docs.graphcore.ai/projects/pytorch-quick-start/en/latest/quick-start-beginners.html#enable-poplar-sdk) guide for
+  your IPU system.
 2. In the same environment, install the Jupyter notebook server:
    `python -m pip install jupyter`
 3. Launch a Jupyter Server on a specific port:
@@ -62,10 +60,10 @@ notebooks](../../standard_tools/using_jupyter/README.md).
 ## Enabling PVTI file generation
 
 Enable PVTI logging by setting the PVTI_OPTIONS environment variable and run
-'popart_mnist.py' as follows:
+'poptorch_mnist.py' in your terminal as follows:
 
 ```bash
-PVTI_OPTIONS='{"enable":"true"}' python3 popart_mnist.py
+PVTI_OPTIONS='{"enable":"true"}' python3 poptorch_mnist.py
 ```
 
 When this has completed you will find a PVTI file in the working directory,
@@ -75,24 +73,19 @@ for example "Tue_Nov_24_11:59:17_2020_GMT_4532.pvti".
 > written to:
 >
 > ```bash
-> PVTI_OPTIONS='{"enable":"true", "directory": "tommyFlowers"}' python3 popart_mnist.py
+> PVTI_OPTIONS='{"enable":"true", "directory": "reports"}' python3 poptorch_mnist.py
 > ```
 """
 # %pip install -r requirements.txt
-# ! sh ./get_data.sh
-# ! PVTI_OPTIONS='{"enable":"true"}' python3 popart_mnist.py
 # sst_ignore_md
 # sst_ignore_code_only
 """
 """
-# sst_ignore_md
-# sst_ignore_jupyter
 import os
 import subprocess
 
-os.environ["PVTI_OPTIONS"] = '{"enable":"true"}'
-subprocess.run(["sh", "./get_data.sh"])
-subprocess.run(["python3", "popart_mnist.py"])
+os.environ["PVTI_OPTIONS"] = '{"enable":"true", "directory": "reports"}'
+output = subprocess.run(["python3", "poptorch_mnist.py"])
 """
 ## Using the Python API
 
@@ -110,7 +103,7 @@ Loading the file can be easily done with the following:
 # Grab the most recently modified PVTI file
 from pathlib import Path
 
-working_dir = Path(".").glob("./*.pvti")
+working_dir = Path(".").glob("./reports/*.pvti")
 pvti_files = [f for f in working_dir if f.is_file()]
 pvti_files.sort(reverse=True, key=lambda a: a.stat().st_mtime)
 trace_path = str(pvti_files[0])

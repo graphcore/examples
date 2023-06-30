@@ -227,7 +227,7 @@ def get_preprocessing_fn(img_datatype) -> Callable:
 def preprocess_image(image_buffer, output_height: int, output_width: int, num_channels: int):
     """Decode, resize and crop imagenet image to format expected by model
     Returns:
-        Reformated image
+        Reformatted image
     """
 
     # Decode jpeg

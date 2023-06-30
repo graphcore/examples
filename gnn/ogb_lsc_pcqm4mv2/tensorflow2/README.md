@@ -8,6 +8,13 @@ An optimised hybrid GNN/Transformer model for molecular property prediction usin
 
 This model is optimised for Graphcore IPUs and requires the Graphcore's Poplar SDK to run. You can access IPUs through [Paperspace](https://www.paperspace.com/graphcore), using the button above, or [G-Core](https://gcore.com/partners/graphcore).
 
+Install required packages:
+
+```shell
+apt-get update
+apt-get install -y python3-numpy
+```
+
 Create a virtual environment and install the Poplar SDK, including the TensorFlow 2 wheels from inside the SDK directory:
 
 ```shell

@@ -79,7 +79,7 @@ class TestHybrid(SubProcessChecker):
             "--dataset.features={'senders_receivers':{},'graph_idxs':{},'laplacian_eig':{'max_freqs':3,'eigvec_norm':'L2'},'random_walk':{'k_steps':[1]},'shortest_path_distances':{}} "
             "--inputs=['node_feat','edge_feat','receivers','senders','node_graph_idx','edge_graph_idx','lap_eig_vals','lap_eig_vecs','random_walk_landing_probs','shortest_path_distances']"
         )
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 740,381", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 740,481", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         self.loss_seems_reasonable(losses, 0.001, 1.0)
 
@@ -109,7 +109,7 @@ class TestHybrid(SubProcessChecker):
             "--model.use_noisy_nodes=True --model.noisy_nodes_noise_prob=0.001 --model.noisy_nodes_weight=2.0"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 610,762", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 610,991", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         # self.loss_seems_reasonable(losses, 0.001, 1.0)
 
@@ -125,7 +125,7 @@ class TestHybrid(SubProcessChecker):
             "--model.use_noisy_edges=True"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 611,191", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 611,420", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         # self.loss_seems_reasonable(losses, 0.001, 1.0)
 
@@ -139,7 +139,7 @@ class TestHybrid(SubProcessChecker):
             "--inputs=['node_feat','edge_feat','receivers','senders','node_graph_idx','edge_graph_idx','shortest_path_distances']"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 490,153", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 490,253", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         self.loss_seems_reasonable(losses, 0.001, 1.0)
 
@@ -153,7 +153,7 @@ class TestHybrid(SubProcessChecker):
             "--inputs=['node_feat','edge_feat','receivers','senders','node_graph_idx','edge_graph_idx','shortest_path_distances']"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 407,197", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 407,297", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         self.loss_seems_reasonable(losses, 0.001, 1.0)
 
@@ -167,7 +167,7 @@ class TestHybrid(SubProcessChecker):
             "--inputs=['node_feat','edge_feat','receivers','senders','node_graph_idx','edge_graph_idx','lap_eig_vals','lap_eig_vecs','random_walk_landing_probs','shortest_path_distances']"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 740,381", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 740,481", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         self.loss_seems_reasonable(losses, 0.001, 2.0)
 
@@ -181,7 +181,7 @@ class TestHybrid(SubProcessChecker):
             "--inputs=['node_feat','edge_feat','receivers','senders','node_graph_idx','edge_graph_idx','lap_eig_vals','lap_eig_vecs','random_walk_landing_probs']"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 640,393", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 640,493", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         self.loss_seems_reasonable(losses, 0.001, 1.0)
 
@@ -195,7 +195,7 @@ class TestHybrid(SubProcessChecker):
             "--inputs=['node_feat','edge_feat','receivers','senders','node_graph_idx','edge_graph_idx','shortest_path_distances']"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 193,577", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 193,677", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         self.loss_seems_reasonable(losses, 0.001, 1.0)
 
@@ -209,7 +209,7 @@ class TestHybrid(SubProcessChecker):
             "--inputs=['node_feat','edge_feat','receivers','senders','node_graph_idx','edge_graph_idx','lap_eig_vals','lap_eig_vecs','random_walk_landing_probs']"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 673,673", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 673,773", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         self.loss_seems_reasonable(losses, 0.001, 1.0)
 
@@ -225,6 +225,6 @@ class TestHybrid(SubProcessChecker):
             "--inputs=['node_feat','edge_feat','receivers','senders','node_graph_idx','edge_graph_idx','lap_eig_vals','lap_eig_vecs','random_walk_landing_probs','shortest_path_distances']"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 335,581", "Throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 335,681", "Throughput:"))
         losses, _ = self.parse_result_for_metrics(output)
         self.loss_seems_reasonable(losses, 0.001, 1.0)

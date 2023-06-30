@@ -52,6 +52,7 @@ def gptj_config_setup(
 
     def custom_args(parser: ArgumentParser):
         log_level = os.environ.get("APP_LOG_LEVEL", "INFO")
+
         parser.add_argument(
             "--log_level",
             choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -71,7 +72,10 @@ def gptj_config_setup(
 
         if wandb_setup:
             parser.add_argument(
-                "--wandb", default="True", choices=["False", "True"], help="Initialise Weights and Biases"
+                "--wandb",
+                default="True",
+                choices=["False", "True"],
+                help="Initialise Weights and Biases",
             )
         # needed for jupyter notebooks
         parser.add_argument("-f", type=str, default="", help=f"jupyter")
@@ -118,11 +122,18 @@ def gptj_config_setup(
 
 
 def gptj_fine_tuning_setup(
-    config_file: Union[str, Path], presets_key: str, default_config: str, wandb_setup: bool = False
+    config_file: Union[str, Path],
+    presets_key: str,
+    default_config: str,
+    wandb_setup: bool = False,
 ) -> Tuple[GPTJConfig, argparse.Namespace, Optional[GPTJForCausalLM]]:
     """GPT-J setup for finetuning scripts"""
     config, args, pretrained = gptj_config_setup(
-        config_file, presets_key, default_config, wandb_setup=wandb_setup, hf_model_setup=True
+        config_file,
+        presets_key,
+        default_config,
+        wandb_setup=wandb_setup,
+        hf_model_setup=True,
     )
 
     return config, args, pretrained

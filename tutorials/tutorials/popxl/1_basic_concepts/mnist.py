@@ -23,13 +23,13 @@ of:
   requirements of the model
 
 Familiarity with the basic [PopXL
-concepts](https://docs.graphcore.ai/projects/popxl/en/3.2.0/concepts.html#concepts)
+concepts](https://docs.graphcore.ai/projects/popxl/en/3.3.0/concepts.html#concepts)
 will be helpful, but not essential:
 
 - Intermediate representation
-  ([IR](https://docs.graphcore.ai/projects/popxl/en/3.2.0/concepts.html#irs))
+  ([IR](https://docs.graphcore.ai/projects/popxl/en/3.3.0/concepts.html#irs))
 - Tensors (variable, constant and intermediate)
-- [Graphs](https://docs.graphcore.ai/projects/popxl/en/3.2.0/concepts.html#graphs)
+- [Graphs](https://docs.graphcore.ai/projects/popxl/en/3.3.0/concepts.html#graphs)
   (main and subgraph)
 - Input and output streams
 - Sessions
@@ -376,11 +376,11 @@ Outlining is the opposite of inlining:
 
 Further information on graph outlining can be found in our [memory performance
 optimisation
-guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.2.0/common-memory-optimisations.html#graph-outlining).
+guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.3.0/common-memory-optimisations.html#graph-outlining).
 
 These concepts becomes important when we start building more complicated models
 using the
-[`Module`](https://docs.graphcore.ai/projects/popxl/en/3.2.0/api.html#modules)
+[`Module`](https://docs.graphcore.ai/projects/popxl/en/3.3.0/api.html#modules)
 api, combining and nesting several modules. To see why, let's build a simple
 linear model using several `Linear` layers.
 """
@@ -640,7 +640,7 @@ We need to specify the `replication_factor` for the IR before constructing the
 program, because some operations need to know the number of IPUs involved.
 
 Inside the main graph context of the IR, we construct
-[streams](https://docs.graphcore.ai/projects/popxl/en/3.2.0/op.html#data-input-and-output)
+[streams](https://docs.graphcore.ai/projects/popxl/en/3.3.0/op.html#data-input-and-output)
 to transfer input data from the host to the device (`popxl.h2d_stream`) and we
 load data to the device (`popxl.host_load`).
 
@@ -648,14 +648,14 @@ Then, we create two graphs: one for the forward pass and one for the backward
 pass. The latter can be obtained from the forward graph applying a
 **transform**, which is a way of making changes at the graph level. The
 `addons.autodiff` transform is the one we need. It is basically
-[popxl.autodiff](https://docs.graphcore.ai/projects/popxl/en/3.2.0/transforms.html#autodiff)
+[popxl.autodiff](https://docs.graphcore.ai/projects/popxl/en/3.3.0/transforms.html#autodiff)
 with some additional patterns.
 
 We instantiate the weights of the network (`variables = facts.init()`), bind the
 forward graph to these variables and make the call to the forward graph. We use
 `call_with_info` because we want to be able to retrieve the activations from the
 forward graph and pass them to the backward graph (see
-[calling-a-subgraph](https://docs.graphcore.ai/projects/popxl/en/3.2.0/graph.html#calling-a-subgraph))
+[calling-a-subgraph](https://docs.graphcore.ai/projects/popxl/en/3.3.0/graph.html#calling-a-subgraph))
 
 The `cross_entropy_with_grad` operation returns the loss tensor and the gradient
 to start backpropagation, which is 1 (dl/dl) unless you specify the additional
@@ -859,7 +859,7 @@ To try out more features in PopXL [look at our other
 tutorials](../../README.md).
 
 You can also read our [PopXL User
-Guide](https://docs.graphcore.ai/projects/popxl/en/3.2.0/) for more
+Guide](https://docs.graphcore.ai/projects/popxl/en/3.3.0/) for more
 information.
 
 As the PopXL API is still experimental, we would love to hear your feedback on

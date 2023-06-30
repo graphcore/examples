@@ -1,0 +1,223 @@
+# -------- Models --------
+tiny: &tiny
+  model:
+    sequence_length: 8
+    embedding:
+      vocab_size: 128
+      max_positional_length: 8
+    hidden_size: 64
+    layers: 2
+    attention:
+      heads: 4
+  training:
+    global_batch_size: 16
+    steps: 100000
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.00001
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+"gpt2_small": &gpt2_small  # GPT2 small - 124M
+  model:
+    sequence_length: 128
+    embedding:
+      vocab_size: 50260  # 50257 + 3 (PAD, SEP, CLS)
+      max_positional_length: 1024
+    hidden_size: 768
+    layers: 12
+    attention:
+      heads: 12
+  training:
+    global_batch_size: 128
+    epochs: 1
+    optimizer:
+      name: adamw
+      learning_rate:
+        function: linear
+        maximum: 6e-5
+        warmup_proportion: 0.1
+      beta1: 0.9
+      beta2: 0.999
+      weight_decay: 0.01
+"gpt2_medium": &gpt2_medium  # GPT2 medium - 355M
+  model:
+    sequence_length: 128
+    embedding:
+      vocab_size: 50260  # 50257 + 3 (PAD, SEP, CLS)
+      max_positional_length: 1024
+    hidden_size: 1024
+    layers: 24
+    attention:
+      heads: 16
+  training:
+    global_batch_size: 512
+    epochs: 1
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.000265
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+# Note GPT2-Large and XL don't fit as the number of heads don't divide by TP>4
+"cerebras_gpt_111M": &cerebras_gpt_111M  # Cerebras-GPT 111M
+  model:
+    sequence_length: 120
+    embedding:
+      vocab_size: 50260  # 50257 + 3 (PAD, SEP, CLS)
+      max_positional_length: 2048
+    hidden_size: 768
+    layers: 10
+    attention:
+      heads: 12
+  training:
+    global_batch_size: 512
+    epochs: 1
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.000265
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+"cerebras_gpt_1_3B": &cerebras_gpt_1_3B  # Cerebras-GPT 1.3B
+  model:
+    sequence_length: 528
+    embedding:
+      vocab_size: 50260  # 50257 + 3 (PAD, SEP, CLS)
+      max_positional_length: 2048
+    hidden_size: 2048
+    layers: 24
+    attention:
+      heads: 16
+  training:
+    global_batch_size: 512
+    epochs: 1
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.000265
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+"cerebras_gpt_6_7B": &cerebras_gpt_6_7B  # Cerebras-GPT 6.7B
+  model:
+    sequence_length: 1040
+    embedding:
+      vocab_size: 50260  # 50257 + 3 (PAD, SEP, CLS)
+      max_positional_length: 2048
+    hidden_size: 4096
+    layers: 32
+    attention:
+      heads: 32
+  training:
+    global_batch_size: 512
+    epochs: 1
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.000265
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+"cerebras_gpt_13B": &cerebras_gpt_13B  # Cerebras-GPT 13B
+  model:
+    sequence_length: 1080
+    embedding:
+      vocab_size: 50260  # 50257 + 3 (PAD, SEP, CLS)
+      max_positional_length: 2048
+    hidden_size: 5120
+    layers: 40
+    attention:
+      heads: 40
+  training:
+    global_batch_size: 512
+    epochs: 1
+    optimizer:
+      optimizer: adamw
+      learning_rate:
+        maximum: 0.000265
+        warmup_proportion: 0.00625
+      weight_decay: 0.01
+
+
+# -------------------------
+
+# ------- Execution -------
+release:
+  tiny:
+    <<: *tiny
+    execution:
+      io_tiles: 64
+      micro_batch_size: 1
+      data_parallel: 2
+      tensor_parallel: 4
+  "gpt2_small_pod16":
+    <<: *gpt2_small
+    execution:
+      micro_batch_size: 32
+      loss_scaling: 1
+      io_tiles: 128
+      data_parallel: 4
+      tensor_parallel: 4
+      available_memory_proportion: [ 1.0 ]
+  "gpt2_medium_pod16":
+    <<: *gpt2_medium
+    execution:
+      micro_batch_size: 32
+      loss_scaling: 1
+      io_tiles: 128
+      data_parallel: 4
+      tensor_parallel: 4
+      available_memory_proportion: [ 1.0 ]
+  "cerebras_gpt_111M_pod16":
+    <<: *cerebras_gpt_111M
+    execution:
+      micro_batch_size: 32
+      loss_scaling: 1
+      io_tiles: 128
+      data_parallel: 4
+      tensor_parallel: 4
+      available_memory_proportion: [ 1.0 ]
+  "cerebras_gpt_1_3B_pod16":
+    <<: *cerebras_gpt_1_3B
+    execution:
+      micro_batch_size: 8
+      loss_scaling: 1
+      io_tiles: 128
+      data_parallel: 1
+      tensor_parallel: 16
+      available_memory_proportion: [ 0.2 ]
+      attention_serialisation: 16
+      extended_memory: true
+      rts_activations: true
+  "cerebras_gpt_1_3B_pod64":
+    <<: *cerebras_gpt_1_3B
+    execution:
+      micro_batch_size: 8
+      loss_scaling: 1
+      io_tiles: 128
+      data_parallel: 4
+      tensor_parallel: 16
+      available_memory_proportion: [ 1.0 ]
+  "cerebras_gpt_6_7B_pod64":  # Note: untested
+    <<: *cerebras_gpt_6_7B
+    execution:
+      micro_batch_size: 1
+      loss_scaling: 1
+      io_tiles: 128
+      data_parallel: 8
+      tensor_parallel: 8
+      available_memory_proportion: [ 0.2 ]
+      attention_serialisation: 16
+      extended_memory: true
+      rts_activations: true
+  "cerebras_gpt_13B_pod64":  # Note: untested
+    <<: *cerebras_gpt_13B
+    execution:
+      micro_batch_size: 1
+      loss_scaling: 1
+      io_tiles: 128
+      data_parallel: 8
+      tensor_parallel: 8
+      available_memory_proportion: [ 0.2 ]
+      attention_serialisation: 16
+      extended_memory: true
+      rts_activations: true

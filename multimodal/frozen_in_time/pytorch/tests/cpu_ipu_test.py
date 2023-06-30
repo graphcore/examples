@@ -3,7 +3,11 @@
 from asyncio.log import logger
 import numpy as np
 import poptorch
+import sys
 import torch
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).absolute().parent.parent))
 
 from modeling import loss as module_loss
 from modeling import model as module_arch

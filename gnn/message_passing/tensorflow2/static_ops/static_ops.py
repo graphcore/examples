@@ -6,6 +6,12 @@ import tensorflow as tf
 from tensorflow.python import ipu
 
 
+class CustomOpsNotFoundException(Exception):
+    """Raised when the custom ops .so file is not found."""
+
+    pass
+
+
 def _attribute(
     op: str,
     dtype: tf.DType,
@@ -56,6 +62,12 @@ def grouped_gather(params: tf.Tensor, indices: tf.Tensor) -> (tf.Tensor, Callabl
     if indices.dtype != tf.dtypes.int32:
         raise ValueError(f"grouped_gather expects indices.dtype == int32 (actual {indices.dtype})")
 
+    custom_op_path = Path(__file__).parent.joinpath("custom_grouped_gather_scatter.so")
+    if not custom_op_path.exists():
+        raise CustomOpsNotFoundException(
+            f"`{custom_op_path}` not found. Please run `make` in the `./static_ops` directory first."
+        )
+
     @tf.custom_gradient
     def _internal_grouped_gather(_params, _indices):
         n_groups, table_size, embedding_size = map(int, _params.shape)
@@ -63,7 +75,7 @@ def grouped_gather(params: tf.Tensor, indices: tf.Tensor) -> (tf.Tensor, Callabl
 
         (output,) = ipu.custom_ops.precompiled_user_op(
             [_params, _indices],
-            library_path=str(Path(__file__).parent / "custom_grouped_gather_scatter.so"),
+            library_path=str(custom_op_path),
             attributes=_attribute(
                 op="gather",
                 dtype=_params.dtype,
@@ -125,12 +137,18 @@ def grouped_scatter(data: tf.Tensor, indices: tf.Tensor, table_size: int) -> (tf
     if indices.dtype != tf.dtypes.int32:
         raise ValueError(f"grouped_scatter expects indices.dtype == int32 (actual {indices.dtype})")
 
+    custom_op_path = Path(__file__).parent.joinpath("custom_grouped_gather_scatter.so")
+    if not custom_op_path.exists():
+        raise CustomOpsNotFoundException(
+            f"`{custom_op_path}` not found. Please run `make` in the `./static_ops` directory first."
+        )
+
     @tf.custom_gradient
     def _internal_grouped_scatter(_data, _indices):
         n_groups, n_lookup, embedding_size = map(int, _data.shape)
         (output,) = ipu.custom_ops.precompiled_user_op(
             [_data, _indices],
-            library_path=str(Path(__file__).parent / "custom_grouped_gather_scatter.so"),
+            library_path=str(custom_op_path),
             attributes=_attribute(
                 op="scatter",
                 dtype=_data.dtype,

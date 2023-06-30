@@ -1,6 +1,6 @@
 # PyTorch CNN application
 
-This directory contains a PyTorch Lightning port of the [PyTorch CNNs training application from the Graphcore GitHub examples repository](https://github.com/graphcore/examples/tree/master/applications/pytorch/cnns/train).
+This directory contains a PyTorch Lightning port of the [PyTorch CNNs training application](../pytorch/train).
 
 It can be used to verify that the same performance is obtained with PyTorch Lightning as we do when running directly in PopTorch.
 

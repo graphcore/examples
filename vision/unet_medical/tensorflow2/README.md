@@ -62,7 +62,7 @@ For the CPU architecture you are running on
 ```bash
 pip3 install --force-reinstall --no-deps keras-2.X.X...any.whl
 ```
-For further information on Keras on the IPU, see the [documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/keras/keras.html#keras-with-ipus) and the [tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/tensorflow2/keras).
+For further information on Keras on the IPU, see the [documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/keras/keras.html#keras-with-ipus) and the [tutorial](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/tensorflow2/keras).
 
 5. Navigate to this example's root directory
 
@@ -149,13 +149,13 @@ python main.py --nb-ipus-per-replica 1 --micro-batch-size 2 --steps-per-executio
 ## Other features
 
 ### Losses
-We used the [BCE-Dice loss](https://www.kaggle.com/bigironsphere/loss-function-library-keras-pytorch) that combines the dice loss and binary crossentropy loss.
+We used the [BCE-Dice loss](https://www.kaggle.com/code/bigironsphere/loss-function-library-keras-pytorch/notebook#BCE-Dice-Loss) that combines the dice loss and binary crossentropy loss.
 
 ### Accuracy
 The accuracy is measured by the [Dice score](https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient).
 
 ### Porting U-Net to the IPU
-First, for any TensorFlow 2 Keras model, we need to add the following elements to execute the graph on the IPU. More details can be found in [this tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/tensorflow2/keras).
+First, for any TensorFlow 2 Keras model, we need to add the following elements to execute the graph on the IPU. More details can be found in [this tutorial](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/tensorflow2/keras).
 
 * Import the IPU TensorFlow 2 libraries that come with the Poplar SDK.
 * Prepare the dataset for infererence, training and validation.

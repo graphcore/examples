@@ -81,7 +81,7 @@ found on our [developer page](https://www.graphcore.ai/developer/popvision-tools
 
 In this tutorial we use the `libpva` library to access profiles of the IPU, the
 documentation for it can be found here:
-[PopVision Analysis Python API](https://docs.graphcore.ai/projects/libpva/en/3.2.0/api-python.html).
+[PopVision Analysis Python API](https://docs.graphcore.ai/projects/libpva/en/3.1.0/api-python.html).
 
 ### Loading a profile
 
@@ -131,7 +131,7 @@ sum(step.ipus[0].cycles for step in report.execution.steps)
 
 To analyse the compiled program, it is best to use a `ProgramVisitor` class with
 the appropriate visitor functions (See [API
-Documentation](https://docs.graphcore.ai/projects/libpva/en/3.2.0/api-python.html#pva.ProgramVisitor)
+Documentation](https://docs.graphcore.ai/projects/libpva/en/3.1.0/api-python.html#pva.ProgramVisitor)
 for a list of available methods).
 
 A more general explanation of the ["visitor pattern" is available on

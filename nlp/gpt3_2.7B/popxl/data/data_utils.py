@@ -1,8 +1,10 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
+from typing import List
 import glob
 import torch
 import popdist
 import multiprocessing
+from os.path import expanduser, splitext
 import numpy as np
 import torch.nn.utils.rnn as rnn_utils
 from torch.utils.data import Dataset, IterableDataset
@@ -11,12 +13,18 @@ from tfrecord.reader import tfrecord_loader
 TFRECORD_KEYS = ["input_ids"]  # Torch Model Keys
 
 
-def expand_glob_files(files):
+def expand_glob_files(files) -> List[str]:
+    """Given a list of glob paths: expand user dir, add `tfrecord` file extension if not provided and output list of files"""
     result = []
     for filepath in files:
-        expanded = glob.glob(filepath)
+        filepath = expanduser(filepath)
+        path, ext = splitext(filepath)
+        if ext == "":
+            ext = ".tfrecord"
+        new_filepath = path + ext
+        expanded = glob.glob(new_filepath)
         if len(expanded) < 1:
-            raise FileNotFoundError(f"Could not find file: {filepath}")
+            raise FileNotFoundError(f"Could not find files in path: {filepath}. Expanded path: {new_filepath}")
         result += expanded
     return result
 
@@ -94,22 +102,6 @@ class TFRecordPretrainingDataset(IterableDataset):
             datum = next(self.reader)
         input_ids = torch.tensor(datum[TFRECORD_KEYS[0]], dtype=torch.long)
         return input_ids
-
-
-class MyDataset(Dataset):
-    def __init__(self, input_list, max_len):
-        self.input_list = input_list
-        self.max_len = max_len
-
-    def __getitem__(self, index):
-        input_ids = self.input_list[index]
-        if len(input_ids) > self.max_len:
-            input_ids = input_ids[: self.max_len]
-        input_ids = torch.tensor(input_ids, dtype=torch.long)
-        return input_ids
-
-    def __len__(self):
-        return len(self.input_list)
 
 
 def load_dataset(input_files):

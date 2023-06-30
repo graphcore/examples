@@ -23,7 +23,11 @@ from popxl_addons import TaskSession, timer
 from utils.setup import gptj_config_setup
 from utils.utils import tensor_parallel_input, repeat
 from utils.inference import batch_inference
-from data.mnli_data import form_validation_prompts, prepare_validation_features, postprocess_mnli_predictions
+from data.mnli_data import (
+    form_validation_prompts,
+    prepare_validation_features,
+    postprocess_mnli_predictions,
+)
 from config import GPTJConfig
 from modelling.hf_mapping import hf_mapping_lm_tp
 
@@ -34,7 +38,11 @@ def unwrap(dl):
 
 
 def run_validation(
-    config: GPTJConfig, session: TaskSession, dataset, tokenizer, trained_session: Optional[TaskSession] = None
+    config: GPTJConfig,
+    session: TaskSession,
+    dataset,
+    tokenizer,
+    trained_session: Optional[TaskSession] = None,
 ):
     """
     The session must be opened before calling run_validation
@@ -84,16 +92,22 @@ def run_validation(
 def main():
     # --- Config ---
     config, args, _ = gptj_config_setup(
-        "config/inference.yml", "release", "gpt-j-mnli", hf_model_setup=False, wandb_setup=False
+        "config/inference.yml",
+        "release",
+        "gpt-j-mnli",
+        hf_model_setup=False,
+        wandb_setup=False,
     )
     # --- Tokenizer ---
-    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
+    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6b")
     tokenizer.add_special_tokens({"pad_token": "<|extratoken_1|>"})  # index 50257
 
     # --- Dataset ---
     dataset = load_dataset("glue", "mnli", split="validation_mismatched")
     dataset = dataset.map(
-        form_validation_prompts, remove_columns=["hypothesis", "premise", "idx"], load_from_cache_file=False
+        form_validation_prompts,
+        remove_columns=["hypothesis", "premise", "idx"],
+        load_from_cache_file=False,
     )
     dataset = dataset.map(
         prepare_validation_features,

@@ -43,7 +43,7 @@ def evaluate(data_loader, model, print_freq):
     # switch to evaluation mode
     model.eval()
     meters = [batch_time, data_time, losses, tput, acc1_log, acc5_log]
-    progress = ProgressMeter(len(data_loader), meters, prefix="Evluation: ")
+    progress = ProgressMeter(len(data_loader), meters, prefix="Evaluation: ")
 
     if args.wandb:
         wandb_logger = WandbLog(meters)

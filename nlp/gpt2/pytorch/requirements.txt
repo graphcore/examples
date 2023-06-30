@@ -1,12 +1,12 @@
 transformers==4.26.1
-datasets>=1.7.0
-tokenizers>=0.10.3
-scipy>=1.5.4
+datasets==2.1.0
+tokenizers==0.12.1
+scipy==1.5.4
 wandb==0.12.8
 protobuf==3.20.*; python_version > '3.6'
-tfrecord>=1.13
+tfrecord==1.14.1
 pytest==6.2.5
-pytest-pythonpath>=0.7.3
-horovod>=0.24.0
-git+https://github.com/graphcore/examples-utils@latest_stable
-tqdm>=4.63.1
+pytest-pythonpath==0.7.3
+horovod[pytorch]==0.24.3
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+tqdm==4.63.1

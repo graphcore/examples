@@ -21,7 +21,7 @@ class MPNN_TEST(SubProcessChecker):
             "--generated_batches_per_epoch=128 --lr=1e-5 --loss_scaling=1.0"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 1,725,006", "throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 1,725,106", "throughput:"))
         losses, _ = self.parse_result_for_metrics(output, cmd)
         self.loss_seems_reasonable(losses, output, cmd)
 
@@ -34,7 +34,7 @@ class MPNN_TEST(SubProcessChecker):
             "--generated_batches_per_epoch=128 --lr=1e-5 --loss_scaling=1.0"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 1,725,006", "throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 1,725,106", "throughput:"))
         losses, _ = self.parse_result_for_metrics(output, cmd)
         self.loss_seems_reasonable(losses, output, cmd)
 
@@ -47,7 +47,7 @@ class MPNN_TEST(SubProcessChecker):
             "--n_graphs_per_pack=1 --generated_batches_per_epoch=128 --lr=1e-5 --loss_scaling=1.0"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 703,145", "throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 703,245", "throughput:"))
         losses, _ = self.parse_result_for_metrics(output, cmd)
         self.loss_seems_reasonable(losses, output, cmd)
 
@@ -60,7 +60,7 @@ class MPNN_TEST(SubProcessChecker):
             "--n_graphs_per_pack=1 --generated_batches_per_epoch=128 --lr=1e-5 --loss_scaling=1.0"
         )
 
-        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 340,905", "throughput:"))
+        output = self.run_command(cmd, WORKING_PATH, ("Total Parameters: 341,005", "throughput:"))
         losses, _ = self.parse_result_for_metrics(output, cmd)
         self.loss_seems_reasonable(losses, output, cmd)
 

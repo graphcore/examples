@@ -11,18 +11,20 @@ from popxl.utils import to_numpy
 
 import popxl_addons as addons
 from popxl_addons.patterns import apply_pre_alias_patterns
+from popxl_addons.array_munging import repeat, shard
 
 from config import GPTConfig
-from modelling.embedding import GPTEmbeddingsTP
+from modelling.embedding import GPTEmbeddingsTP, generate_positions
 from modelling.gpt_lm import GPTLMHeadModelTP
-from utils.utils import write_variables_pb, shard
 
 
 def test_lm_TP_cmp_huggingface(test_config: GPTConfig):
     torch.manual_seed(42)
+
     batch_size = test_config.execution.micro_batch_size
     hidden_size = test_config.model.hidden_size
     intermediate_size = hidden_size * 4
+
     # HuggingFace
     config = HFConfig(
         n_layer=test_config.model.layers,
@@ -38,6 +40,7 @@ def test_lm_TP_cmp_huggingface(test_config: GPTConfig):
     # HF forward
     input_t = torch.randint(0, test_config.model.embedding.vocab_size, (batch_size, test_config.model.sequence_length))
     output_HF = hf_model(input_ids=input_t)[0]
+
     # HF backward
     grad_wrt = torch.rand(output_HF.shape)
     output_HF.backward(gradient=grad_wrt)
@@ -45,27 +48,25 @@ def test_lm_TP_cmp_huggingface(test_config: GPTConfig):
     words_grad_HF = hf_model.transformer.wte.weight.grad.detach().numpy()
     positions_grad_HF = hf_model.transformer.wpe.weight.grad.detach().numpy()
     output_HF = output_HF.detach().numpy()
-    # n_shards
-    n_shards = 4
-    test_config.execution.tensor_parallel = n_shards
 
-    # Offset inputs
-    words_offsetted, pos_offsetted = GPTEmbeddingsTP.offset_inputs(test_config, to_numpy(input_t))
-    pos_offsetted = pos_offsetted.reshape(words_offsetted.shape)
+    # n_shards
+    tp = 4
+    test_config.execution.tensor_parallel = tp
+
     # popxl
     ir = popxl.Ir()
-    ir.replication_factor = n_shards
+    ir.replication_factor = tp
     replica_grouping = ir.replica_grouping(stride=1, group_size=1)
     main = ir.main_graph
 
     with main:
         inputs_data, inputs_host_steam, inputs_tensors = zip(
             *[
-                addons.host_load(words_offsetted[0], popxl.int32, name="words"),
+                addons.host_load(input_t, popxl.int32, name="words"),
             ]
         )
         (words,) = inputs_tensors
-        pos = popxl.variable(pos_offsetted, words.dtype, name="positions", replica_grouping=replica_grouping)
+        pos = popxl.constant(generate_positions(test_config), popxl.int32, name="positions")
 
         facts, graph = GPTLMHeadModelTP(test_config).create_graph(words, pos)
         vars = facts.init()
@@ -73,15 +74,18 @@ def test_lm_TP_cmp_huggingface(test_config: GPTConfig):
         call_info = gpt.call_with_info(words, pos)
         act, *_ = call_info.outputs
         act_stream = addons.host_store(act)
-        word_shard_size, _ = GPTEmbeddingsTP.get_vocab_shard_sizes(test_config)
-        word_pad = word_shard_size * n_shards - test_config.model.embedding.vocab_size
+
+        word_shard_size = GPTEmbeddingsTP(test_config).word.vocab_shard_size
+        word_pad = word_shard_size * tp - test_config.model.embedding.vocab_size
         grad_wrt = grad_wrt.reshape(-1, grad_wrt.shape[-1])
         grad_wrt = np.pad(to_numpy(grad_wrt, test_config.model.dtype), ((0, 0), (0, word_pad)))
-        sharded_grads = shard(grad_wrt, n_shards, axis=-1)
+        sharded_grads = shard(grad_wrt, tp, axis=-1)
         sharded_grads = sharded_grads
         gradient = popxl.variable(sharded_grads, act.dtype, "gradient", replica_grouping=replica_grouping)
+
         # Backwards
-        grad_graph = addons.autodiff(graph, grads_required=graph.args.tensors)
+        grads_required = [t for t in graph.args.tensors if "offset" not in t.name]
+        grad_graph = addons.autodiff(graph, grads_required=grads_required)
         grad_call_info = grad_graph.call_with_info(gradient, args=grad_graph.grad_graph_info.inputs_dict(call_info))
 
         tensor_to_grad_tensor = grad_graph.grad_graph_info.fwd_graph_ins_to_grad_parent_outs(grad_call_info)
@@ -93,7 +97,7 @@ def test_lm_TP_cmp_huggingface(test_config: GPTConfig):
     # Map weights from huggingface
     weights = GPTLMHeadModelTP.hf_mapping(test_config, vars, hf_model)
 
-    inputs = dict(zip(inputs_host_steam, [words_offsetted]))
+    inputs = dict(zip(inputs_host_steam, [repeat(input_t, tp)]))
 
     ir.num_host_transfers = test_config.execution.device_iterations
 
@@ -103,7 +107,7 @@ def test_lm_TP_cmp_huggingface(test_config: GPTConfig):
 
     # Fwd output
     fwd_data = outs[act_stream]
-    assert len(fwd_data) == n_shards
+    assert len(fwd_data) == tp
     fwd_data_full = np.concatenate(fwd_data, axis=-1)[:, : test_config.model.embedding.vocab_size]
     np.testing.assert_almost_equal(output_HF, fwd_data_full.reshape(output_HF.shape), 3)
 

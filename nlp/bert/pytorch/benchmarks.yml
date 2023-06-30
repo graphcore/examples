@@ -204,8 +204,8 @@ pytorch_bert_large_sl512_pretrain_real_pod64_conv:
          --config pretrain_large_512_POD64
          --input-file $DATASETS_DIR/wikipedia/512/*.tfrecord
          --disable-progress-bar
-         --checkpoint-output-dir checkpoint/phase2
-         --checkpoint-input-dir checkpoint/phase1
+         --checkpoint-output-dir checkpoint/phase2a
+         --checkpoint-input-dir checkpoint/phase1a
          --wandb
 
 pytorch_bert_large_packed_sl128_pretrain_real_pod64_conv:

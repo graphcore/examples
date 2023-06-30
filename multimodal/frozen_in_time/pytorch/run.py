@@ -7,13 +7,10 @@ import wandb
 
 from configs.parse_config import ConfigParser
 from modeling.trainer import TrainerIPU
-from sacred import Experiment
 
 config = None
-ex = Experiment("train")
 
 
-@ex.main
 def run():
     trainer = TrainerIPU(config=config)
     if config["validation_only"]:
@@ -45,7 +42,6 @@ def parse_config(
     kwargs["validation_only"] = validation_only
     kwargs["compile_only"] = compile_only
     config = ConfigParser(config_name, timestamp=timestamp_ckpt, **kwargs)
-    ex.add_config(config._config)
 
 
 if __name__ == "__main__":

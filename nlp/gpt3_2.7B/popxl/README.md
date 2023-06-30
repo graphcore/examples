@@ -115,19 +115,19 @@ for f in *.tfrecord; do python3 -m tfrecord.tools.tfrecord2idx $f `basename $f .
 ## Custom training
 
 ### Pre-training with GPT on IPU
-You can run pre-training for GPT with settings defined in `pretraining.yml` by using the script below. You need to provide the data files to `--input_files`.
+You can run pre-training for GPT with settings defined in `training.yml` by using the script below. You need to provide the data files to `--input_files`.
 ```shell
-python3 demo/pretraining.py --input_files {path to your wikipedia data}/*.tfrecord
+python3 demo/training.py --input_files {path to your wikipedia data}/*.tfrecord
 ```
 The default model size in demo pre-training is GPT-3 2.7B on POD64 (named `gpt3_2.7B_pod64`). You can change it to other sizes that are available in the
-configuration file `config/pretraining.yml` using the `--config` CLI parameter like so.
+configuration file `config/training.yml` using the `--config` CLI parameter like so.
 ```
-python3 run_pretraining.py --config gpt3_2.7B_pod64 --input_files {path to your wikipedia data}/*.tfrecord
+python3 run_training.py --config gpt3_2.7B_pod64 --input_files {path to your wikipedia data}/*.tfrecord
 ```
 
 You can run these scripts for benchmarking with generated data by executing the non-run scripts directly. For instance, the command below runs the benchmarking for GPT pre-training.
 ```shell
-python3 pretraining.py
+python3 training.py
 ```
 
 When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable saving/loading from the cache store, use the environment variable `POPXL_CACHE_DIR=<PATH/TO/CACHE>` when running the application.
@@ -197,15 +197,15 @@ Note that the `gradient_accumulation` size is automatically computed from the `g
 Here we introduce some techniques that were required to scale up the GPT model for the required capacity and throughput.
 
 ### Phased Execution and RTS <a name="pe"></a>
-For compute graphs that have memory requirements greater than the available on-chip memory, we can partition it into a series of smaller sub-graphs and execute them in series on the IPU, using remote memory to store input and output tensors between calls. This is called phased execution. We recommend the tutorial of this concept in [Phased Execution in MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/6_phased_execution).
+For compute graphs that have memory requirements greater than the available on-chip memory, we can partition it into a series of smaller sub-graphs and execute them in series on the IPU, using remote memory to store input and output tensors between calls. This is called phased execution. We recommend the tutorial of this concept in [Phased Execution in MNIST example](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/6_phased_execution).
 
-In the GPT application we demonstrate this concept on a full sized model. Recomputation and replicated tensor sharding ([RTS](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/5_remote_variables_and_rts)) are also used to improve the performance.
+In the GPT application we demonstrate this concept on a full sized model. Recomputation and replicated tensor sharding ([RTS](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/5_remote_variables_and_rts)) are also used to improve the performance.
 
 ### Tensor Model Parallel <a name="tp"></a>
 Tensor-parallel training involves breaking the layers into shards, which are each allocated to a different devices. Communication is required within a layer between the different devices to rematerialise the same numerical result if tensor parallelism sharding wasn't used. For the embedding layer one all-reduces communication operations are required for the forwards and backwards pass (not included recomputation). For the GPT layers, four all-reduce operations are required for the forwards and backwards pass. For the pre-training head four all-reduce operations are required for the forwards and backwards pass.
 
 ### Data Parallel <a name="dp"></a>
-Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallel in PopXL addons in [MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
+Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallel in PopXL addons in [MNIST example](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/3_data_parallelism).
 
 ### Pre-training code details <a name="code_details"></a>
 

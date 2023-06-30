@@ -13,4 +13,4 @@ pytest
 pytest-pythonpath
 
 examples-utils[common] @ git+https://github.com/graphcore/examples-utils.git@f8673d362fdc7dc77e1fee5f77cbcd81dd9e4a2e
-git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.2
+git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.3.0

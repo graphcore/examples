@@ -10,6 +10,7 @@ from popxl.utils import to_numpy
 import popxl_addons as addons
 from popxl_addons import NamedTensors
 from popxl_addons.layers import LayerNorm
+from popxl_addons.utils import WeightsDict
 
 from .embedding import GPTEmbeddingsTP
 from .decoder import GPTDecoderTP
@@ -30,7 +31,7 @@ class GPTModelTP(addons.Module):
         if self.include_layer_norm:
             self.ln_f = LayerNorm()
 
-    def build(self, input_ids: popxl.Tensor, position_ids: popxl.Tensor):
+    def build(self, input_ids: popxl.Tensor, position_ids: popxl.Tensor) -> popxl.Tensor:
         x = self.embeddings(input_ids, position_ids)
         x = self.decoder(x)
         if self.include_layer_norm:
@@ -38,9 +39,7 @@ class GPTModelTP(addons.Module):
         return x
 
     @staticmethod
-    def hf_mapping(
-        config: GPTConfig, variables: NamedTensors, hf_model: HFModel, layer_norm=True
-    ) -> Dict[popxl.Tensor, np.ndarray]:
+    def hf_mapping(config: GPTConfig, variables: NamedTensors, hf_model: HFModel, layer_norm=True) -> WeightsDict:
         dtype = config.model.dtype
         weights = {}
         if layer_norm:

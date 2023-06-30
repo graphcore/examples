@@ -40,7 +40,7 @@ logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 logger = logging.getLogger("Detector")
 
 
-def ipu_options(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode, model: Detector, mode: str):
+def ipu_options(cfg: yacs.config.CfgNode, model: Detector, mode: str, opt: argparse.ArgumentParser = None):
     """Configurate the IPU options using cfg and opt options.
     Parameters:
         opt: opt object containing options introduced in the command line
@@ -61,10 +61,10 @@ def ipu_options(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode, model: D
     ipu_opts.enableExecutableCaching(cfg.training.exec_cache_path)
 
     # Compile offline (no IPUs required)
-    if opt.compile_only:
+    if opt is not None and opt.compile_only:
         ipu_opts.useOfflineIpuTarget()
 
-    if opt.profile_dir:
+    if opt is not None and opt.profile_dir:
         ipu_opts.enableProfiling(opt.profile_dir)
 
     if cfg.ipuopts.available_memory_proportion:
@@ -78,7 +78,7 @@ def ipu_options(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode, model: D
             raise TypeError("Wrong type of cfg.ipuopts.available_memory_proportion. " "Use either float or list.")
         ipu_opts.setAvailableMemoryProportion(amp_dict)
 
-    if opt.benchmark:
+    if opt is not None and opt.benchmark:
         ipu_opts.Distributed.disable()
 
     if cfg.model.precision == "half":
@@ -226,7 +226,7 @@ def get_model_and_loader(opt: argparse.ArgumentParser, cfg: yacs.config.CfgNode,
             print(layer)
 
     # Create the specific ipu options if cfg.model.ipu
-    ipu_opts = ipu_options(opt, cfg, model, mode) if cfg.model.ipu else None
+    ipu_opts = ipu_options(cfg, model, mode, opt) if cfg.model.ipu else None
 
     # Creates the loader
     loader = get_loader(opt, cfg, ipu_opts, mode)

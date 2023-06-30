@@ -17,7 +17,7 @@ request_types_params = (RequestType.SYNC, RequestType.ASYNC)
 processes = (1, 4, 8)
 
 
-@pytest.mark.xdist_group(name="triton")
+@pytest.mark.serial
 @pytest.mark.parametrize("number_of_processes", processes)
 @pytest.mark.parametrize("request_type", request_types_params)
 @pytest.mark.parametrize("model_name,yml_config", test_configs.items())

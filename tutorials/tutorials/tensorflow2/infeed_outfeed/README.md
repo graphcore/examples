@@ -176,7 +176,7 @@ You may notice that `IPUInfeedQueue` is not explicitly declared like `IPUOutfeed
 
 An `IPUOutfeedQueue` is used to generate and add outfeed enqueue/dequeue operations to the graph. The infeed and outfeed queues together manage the transfer of data between the IPU graph and the host.
 
-`IPUOutfeedQueue` objects have extra options to control how they collect and output the data sent to them. These options are not used in this example. Refer to the [IPUOutfeedQueue](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.2.0/tensorflow/api.html#tensorflow.python.ipu.ipu_outfeed_queue.IPUOutfeedQueue) documentation for details.
+`IPUOutfeedQueue` objects have extra options to control how they collect and output the data sent to them. These options are not used in this example. Refer to the [IPUOutfeedQueue](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/api.html#tensorflow.python.ipu.ipu_outfeed_queue.IPUOutfeedQueue) documentation for details.
 
 To execute the training loop, you should do so within the scope of an `ipu_strategy.IPUStrategy` using `run` like so:
 
@@ -211,7 +211,7 @@ with strategy.scope():
     )
 ```
 
-`steps_per_execution` refers to the total number of batches of data processed by each replica (if replication is enabled) each time an engine is executed. Usually, it is passed as an argument when compiling a model in TF2 (see [Keras with IPUs documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.2.0/tensorflow/keras_tf2.html#using-steps-per-execution)). In this example, `steps_per_execution` is used here to simulate the same behaviour with a custom training loop -- it essentially plays the same role as the known `steps_per_execution` parameter that is passed to `model.compile`.
+`steps_per_execution` refers to the total number of batches of data processed by each replica (if replication is enabled) each time an engine is executed. Usually, it is passed as an argument when compiling a model in TF2 (see [Keras with IPUs documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/keras_tf2.html#using-steps-per-execution)). In this example, `steps_per_execution` is used here to simulate the same behaviour with a custom training loop -- it essentially plays the same role as the known `steps_per_execution` parameter that is passed to `model.compile`.
 
 
 ## Additional notes

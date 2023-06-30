@@ -96,11 +96,12 @@ class Training(Config):
         class LearningRate(Config):
             """Changes the learning rate function."""
 
-            function: str = "linear"
-
             maximum: float = 0.01
 
             warmup_proportion: float = 0.0
+
+            constant: bool = flag(False)
+            """Use a constant learning rate equal to `maximum`, otherwise use a linear learning rate schedule."""
 
         learning_rate: LearningRate = LearningRate()
 
@@ -120,6 +121,9 @@ class Data(Config):
     """Configures the dataset"""
 
     input_files: Tuple[str, ...] = ()
+
+    n_samples: Optional[int] = None
+    """Limit the data to N samples. Non-local instances will be provided with different samples of data but limited to `n_samples`."""
 
 
 @dataclass
@@ -144,25 +148,22 @@ class Execution(Config):
     """The loss scaling to apply to gradient. This helps avoid underflowing
         in the gradient calculations."""
 
-    pipeline: Optional[Tuple[int, ...]] = None
-    """pipeline layers distribution."""
-
-    @property
-    def pipeline_ipus(self):
-        return len(self.pipeline) if self.pipeline else 1
-
-    def get_pipeline_layer_ipu(self):
-        """List containing the ipu number for each layer"""
-        layer_ipu: List[int] = []
-        for ipu, n_layers in enumerate(self.pipeline):
-            layer_ipu += [ipu] * n_layers
-        return layer_ipu
-
     tensor_parallel: int = 1
     """Number of ipus used for tensor model parallel axis"""
 
     code_load: bool = flag(False)
     """Store the code for each layer graph in remote memory"""
+
+    attention_serialisation: int = 1
+    """Number of serialisation steps when computing attention scores.
+        Each step will be recomputed separately which can reduce the temporary
+        activation requirement when using longer sequence lengths."""
+
+    rts_activations: bool = flag(False)
+    """Replica Tensor Shard (RTS) GPT-layer activations, this reduces the required external memory for activations by the size of `data_parallel`"""
+
+    extended_memory: bool = flag(False)
+    """Enable to allow each IPU to use more than 16GB external memory, however it does have a performance cost"""
 
 
 @dataclass
@@ -175,6 +176,20 @@ class Checkpoint(Config):
     save: Optional[str] = None
     """Save checkpoint to this location"""
 
+    steps: int = 0
+    """Save a checkpoint every X steps. Disable with 0."""
+
+
+@dataclass
+class Inference(Config):
+    """Configuration used when running inference"""
+
+    generative_output_len: int = 5
+    """How many tokens to generate when running generative inference"""
+
+    mnli_n_classes: int = 3
+    """Number of classes for the MNLI dataset"""
+
 
 @dataclass
 class GPTConfig(Config):
@@ -185,6 +200,7 @@ class GPTConfig(Config):
     data: Data = Data()
     execution: Execution = Execution()
     checkpoint: Checkpoint = Checkpoint()
+    inference: Inference = Inference()
 
     @property
     def gradient_accumulation(self):
@@ -203,9 +219,8 @@ class GPTConfig(Config):
     def ipus(self):
         """Total number of IPUs required for execution"""
         DP = self.execution.data_parallel
-        PP = self.execution.pipeline_ipus
         TP = self.execution.tensor_parallel
-        return DP * PP * TP
+        return DP * TP
 
     def validate(self):
         if self.training.epochs > 1 and self.training.steps > 1:

@@ -1,0 +1,71 @@
+# -------- Models --------
+xxl: &xxl
+  model:
+    eval: true
+    sequence_length: 512
+    embedding:
+      vocab_size: 32128
+    hidden_size: 4096
+    d_ff: 10240
+    layers: 24
+    attention:
+      heads: 64
+      d_kv: 64
+
+xl: &xl
+  model:
+    eval: true
+    sequence_length: 512
+    embedding:
+      vocab_size: 32128
+    hidden_size: 2048
+    d_ff: 5120
+    layers: 24
+    attention:
+      heads: 32
+      d_kv: 64
+
+tiny: &tiny
+  model:
+    eval: true
+    sequence_length: 512
+    embedding:
+      vocab_size: 128
+    hidden_size: 64
+    d_ff: 256
+    layers: 4
+    attention:
+      heads: 4
+      d_kv: 16
+
+# -------------------------
+
+# ------- Execution -------
+release:
+  xxl-mnli:
+    <<: *xxl
+    execution:
+      micro_batch_size: 12
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 64
+
+  xxl:
+    <<: *xxl
+    execution:
+      micro_batch_size: 6
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 64
+
+  xl:
+    <<: *xl
+    execution:
+      micro_batch_size: 8
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 16
+
+  tiny:
+    <<: *tiny
+    execution:
+      micro_batch_size: 2
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 2

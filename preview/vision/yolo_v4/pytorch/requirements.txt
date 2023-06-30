@@ -8,9 +8,9 @@ pytest-pythonpath==0.7.4
 requests==2.27.1
 ruamel.yaml==0.17.21
 scipy==1.5.4
-torchvision==0.14.1+cpu
+torchvision==0.15.2+cpu
 protobuf==3.19.4
 wandb==0.12.1
 yacs==0.1.8
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
 torchinfo==1.5.4

@@ -102,7 +102,7 @@ class GPTLMHeadLossAndGradTP(addons.Module):
         word_embedding_accum_t: popxl.TensorByRef,
         word_offset: popxl.Tensor,
     ) -> Tuple[popxl.Tensor, popxl.Tensor]:
-        ir = popxl.gcg().ir
+        ir = popxl.gir()
 
         vocab_shard_size = Embedding.get_vocab_shard_size(
             self.config.model.embedding.vocab_size, self.config.execution.tensor_parallel_1

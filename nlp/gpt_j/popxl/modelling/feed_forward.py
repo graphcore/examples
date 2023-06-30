@@ -1,5 +1,7 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
 from typing import Optional, List, Dict
+import logging
+
 import torch
 import popxl
 from popxl import ops
@@ -11,6 +13,7 @@ import popxl_addons as addons
 from config import GPTJConfig
 from popxl_addons.named_tensors import NamedTensorData
 from popxl_addons.layers import Linear, LayerNorm
+from popxl_addons.layers.linear_gq import LinearGQ, group_quantize_compress_numpy
 import numpy as np
 
 from popxl_addons.named_tensors import NamedTensors
@@ -33,11 +36,30 @@ class GPTJFeedForwardTP(addons.Module):
         self.ff_size = 4 * config.model.hidden_size if ff_size is None else ff_size
         assert self.ff_size % self.n_shards == 0
         # ----- Layers -----
+
+        # Setup
+        layer_kwargs = {}
+        if config.execution.group_quantise_weights > 0:
+            layer = LinearGQ
+            layer_kwargs["group_size"] = config.execution.group_quantise_weights
+            layer_kwargs["dim"] = config.execution.group_quantise_dim
+        else:
+            layer = Linear
+
         # Sharded across devices - column wise
-        self.intermediate = Linear(self.ff_size // self.n_shards, replica_grouping=self.replica_grouping)
+        self.intermediate = layer(
+            self.ff_size // self.n_shards,
+            replica_grouping=self.replica_grouping,
+            **layer_kwargs,
+        )
 
         # Sharded across devices - row wise (bias applied separately)
-        self.output = Linear(config.model.hidden_size, bias=False, replica_grouping=self.replica_grouping)
+        self.output = layer(
+            config.model.hidden_size,
+            bias=False,
+            replica_grouping=self.replica_grouping,
+            **layer_kwargs,
+        )
 
     def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> List[popxl.Tensor]:
         """Identical input (x, seed) and identical output across shards."""
@@ -74,12 +96,59 @@ class GPTJFeedForwardTP(addons.Module):
     def hf_mapping(config: GPTJConfig, variables: NamedTensors, hf_model: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
         dtype = config.model.dtype
         n_shards = config.execution.tensor_parallel
+        intermediate_w = shard(to_numpy(hf_model.fc_in.weight.data.T, dtype), n_shards, axis=-1)
+
+        output_w = shard(to_numpy(hf_model.fc_out.weight.data.T, dtype), n_shards, axis=0)
+
+        if config.execution.group_quantise_weights > 0:
+            layer_name = variables.intermediate.bias.name.replace(".intermediate.bias", "")
+            logging.info(f"Quantizing {layer_name} weights")
+            if config.execution.group_quantise_dim != -1:
+                # shift group_quantise_dim to account for TP sharding dim
+                gqdim = config.execution.group_quantise_dim + 1
+            else:
+                gqdim = -1
+            intermediate_w = group_quantize_compress_numpy(
+                intermediate_w,
+                config.execution.group_quantise_weights,
+                gqdim,
+            )
+            output_w = group_quantize_compress_numpy(
+                output_w,
+                config.execution.group_quantise_weights,
+                gqdim,
+            )
+            intermediate_weight_dict = dict(
+                zip(
+                    (
+                        variables.intermediate.weight_compressed,
+                        variables.intermediate.weight_decompression_scale,
+                        variables.intermediate.weight_decompression_bias,
+                    ),
+                    intermediate_w,
+                )
+            )
+            output_weight_dict = dict(
+                zip(
+                    (
+                        variables.output.weight_compressed,
+                        variables.output.weight_decompression_scale,
+                        variables.output.weight_decompression_bias,
+                    ),
+                    output_w,
+                )
+            )
+            weight_dict = {**intermediate_weight_dict, **output_weight_dict}
+        else:
+            weight_dict = {
+                variables.intermediate.weight: intermediate_w,
+                variables.output.weight: output_w,
+            }
 
         return {
             # HF GPTJMLP
-            variables.intermediate.weight: shard(to_numpy(hf_model.fc_in.weight.data.T, dtype), n_shards, axis=-1),
+            **weight_dict,
             variables.intermediate.bias: shard(to_numpy(hf_model.fc_in.bias.data, dtype), n_shards, axis=-1),
-            variables.output.weight: shard(to_numpy(hf_model.fc_out.weight.data.T, dtype), n_shards, axis=0),
             variables.bias: to_numpy(hf_model.fc_out.bias.data, dtype),
         }
 
@@ -98,13 +167,16 @@ class GPTJFeedForwardTP(addons.Module):
         """
         state_dict = {}
         state_dict["fc_in.weight"] = torch.tensor(
-            np.concatenate(popxl_state_dict.intermediate.weight.transpose((0, 2, 1)), axis=0), dtype=config.torch_dtype
+            np.concatenate(popxl_state_dict.intermediate.weight.transpose((0, 2, 1)), axis=0),
+            dtype=config.torch_dtype,
         )
         state_dict["fc_in.bias"] = torch.tensor(
-            np.concatenate(popxl_state_dict.intermediate.bias, axis=0), dtype=config.torch_dtype
+            np.concatenate(popxl_state_dict.intermediate.bias, axis=0),
+            dtype=config.torch_dtype,
         )
         state_dict["fc_out.weight"] = torch.tensor(
-            np.concatenate(popxl_state_dict.output.weight, axis=0).T, dtype=config.torch_dtype
+            np.concatenate(popxl_state_dict.output.weight, axis=0).T,
+            dtype=config.torch_dtype,
         )
         state_dict["fc_out.bias"] = torch.tensor(popxl_state_dict.bias, dtype=config.torch_dtype)
 

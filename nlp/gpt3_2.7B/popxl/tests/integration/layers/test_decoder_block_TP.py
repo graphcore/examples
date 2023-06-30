@@ -13,7 +13,7 @@ from popxl_addons.patterns import apply_pre_alias_patterns
 
 from config import GPTConfig
 from modelling.decoder import GPTDecoderBlockTP
-from utils.utils import write_variables_pb, repeat
+from popxl_addons.array_munging import repeat
 
 
 def test_decoder_block_TP_cmp_huggingface(test_config: GPTConfig):
@@ -85,9 +85,7 @@ def test_decoder_block_TP_cmp_huggingface(test_config: GPTConfig):
     inputs = {h2d: repeat(data, n_shards) for h2d, data in zip(inputs_host_steam, inputs_data)}
 
     with popxl.Session(ir, "ipu_hw") as session:
-        # TODO remove write_variables_pb once T56776 has landed
-        # session.write_variables_data(weights)
-        write_variables_pb(session, weights)
+        session.write_variables_data(weights)
         outputs_popxl = session.run(inputs)
 
     fwd_data = outputs_popxl[fwd_d2h]

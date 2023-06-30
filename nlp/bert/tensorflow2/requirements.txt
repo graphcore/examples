@@ -9,8 +9,10 @@ pytest-xdist==2.5.0
 typeguard==2.13.3
 tensorflow-addons==0.14.0
 tensorflow-datasets==4.4.0
+protobuf==3.20.3
+termcolor~=1.1.0
 git+https://github.com/graphcore/transformers-fork@v4.18-gc#egg=transformers # Fork of transformers to support KerasTensor from the Keras package with Python 3.6.
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
 wandb==0.12.8
-numpy==1.23.5; python_version > '3.6'
-numpy==1.19.5; python_version <= '3.6'
+numpy==1.23.5; python_version > '3.7'
+numpy==1.19.5; python_version <= '3.7'

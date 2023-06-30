@@ -21,10 +21,10 @@ Requirements:
 - Other Python modules: `pip install -r requirements.txt`;
 - An IPU: This tutorial has been designed to be run on a single IPU. If you do
   not have access to an IPU, you can use the option
-  [`useIpuModel`](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/overview.html#poptorch.Options.useIpuModel)
+  [`useIpuModel`](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/overview.html#poptorch.Options.useIpuModel)
   to run a simulation on CPU instead. You can read more on the IPU Model and
   its limitations in the
-  [Poplar User Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.2.0/poplar_programs.html#programming-with-poplar).
+  [Poplar User Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplar_programs.html#programming-with-poplar).
 
 ## Table of Contents
 
@@ -122,7 +122,7 @@ class BasicLinearModel(torch.nn.Module):
 > optimizer, you must use the return value of `ipu_print_tensor()`.
 
 Additional documentation can be found in the [PopTorch User
-Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/overview.html?highlight=ipu_print_tensor%28#poptorch-ipu-print-tensor)
+Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/overview.html?highlight=ipu_print_tensor%28#poptorch-ipu-print-tensor)
 
 ## Method 2: direct anchoring
 
@@ -171,7 +171,7 @@ There are 3 steps to take:
     - The anchor is created by calling the `anchorTensor()` PopTorch method;
     - You must pass in two mandatory string variables: the user-defined name for
       the anchor and the name of the chosen tensor;
-    - See [PopTorch API documentation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/reference.html#poptorch.Options.anchorTensor)
+    - See [PopTorch API documentation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/reference.html#poptorch.Options.anchorTensor)
       for the optional variables `anchor_mode` and `anchor_return_period` or
       refer to the next section.
 
@@ -203,7 +203,7 @@ There are 3 steps to take:
 > interest.
 
 Additional documentation can be found in the [PopTorch User
-Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/debugging.html)
+Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/debugging.html)
 
 ## Anchor modes
 
@@ -255,7 +255,7 @@ opts.anchorTensor('update_weight', 'UpdatedVar___model.fc2.weight', anchor_mode=
 ```
 
 Additional documentation can be found in the [PopTorch User
-Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/batching.html#poptorch-options-training-anchorreturntype)
+Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/batching.html#poptorch-options-training-anchorreturntype)
 
 ## Gradient histogram example
 

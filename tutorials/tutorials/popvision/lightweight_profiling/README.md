@@ -34,7 +34,7 @@ We encourage the reader to execute the programs in the following examples and to
 
 ## Example 1: use of the Block program
 
-The main option to request the lightweight profiler to focus on a certain area of code is to use the `Block` program class. You can find it in [Poplar's public interface](https://docs.graphcore.ai/projects/poplar-api/en/3.2.0/poplar/Program.html).
+The main option to request the lightweight profiler to focus on a certain area of code is to use the `Block` program class. You can find it in [Poplar's public interface](https://docs.graphcore.ai/projects/poplar-api/en/3.1.0/poplar/Program.html).
 
 ```cpp
 /** A program to scope another program.

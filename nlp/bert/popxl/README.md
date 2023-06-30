@@ -311,7 +311,7 @@ Here we introduce some techniques we used to scale up the BERT model on IPUs in 
 
 For compute graphs that have memory requirements greater than the available on-chip memory, we can partition them into a series of smaller sub-graphs and execute them in series on the IPU, using remote buffers in Streaming Memory to store input and output tensors between calls. This is called phased execution.
 
-In the BERT application, we demonstrate this concept on a full sized model. Recomputation and replicated tensor sharding ([RTS](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/5_remote_variables_and_rts)) are also used to improve the performance. Since most parts of the implementation of the phased execution in pretraining and fine-tuning are similar, in this README, we focus on the implementation of phased execution for pretraining in `pretraining.py`, and will show you the difference from SQuAD fine-tuning in `squad_training.py`.
+In the BERT application, we demonstrate this concept on a full sized model. Recomputation and replicated tensor sharding ([RTS](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/5_remote_variables_and_rts)) are also used to improve the performance. Since most parts of the implementation of the phased execution in pretraining and fine-tuning are similar, in this README, we focus on the implementation of phased execution for pretraining in `pretraining.py`, and will show you the difference from SQuAD fine-tuning in `squad_training.py`.
 
 Recall that we need to build an [IR in PopXL](https://docs.pages.gitlab.sourcevertex.net/docs/docs/PopART/popxl-user-guide/2.5.0/concepts.html#irs). In its main graph, we first define the input and output data streams. Then we build the computation graphs. As phased execution involves loading and offloading each partition in sequence, much use is made of remote buffers and RTS in the graph construction.
 
@@ -466,7 +466,7 @@ The main graph is repeated `config.execution.device_iterations` times. A trainin
 
 ### Data Parallel <a name="dp"></a>
 
-Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallelism with PopXL addons in [MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
+Data-parallel training involves breaking the training dataset up into multiple parts, which are each consumed by a model replica. At each optimization step, the gradients are mean-reduced across all replicas so that the weight update and model state are the same across all replicas. You can find more details about how to use data parallelism with PopXL addons in [MNIST example](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/3_data_parallelism).
 
 ### Avoid recompilation: caching executables <a name="cache"></a>
 When running the application, it is possible to save and load executables in a cache store. This allows the reuse of a saved executable instead of re-compiling the model when re-running identical model configurations. To enable saving and loading from the cache store, use `POPART_CACHE_DIR <relative/path/to/cache/store>` when running the application.

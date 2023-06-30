@@ -1,0 +1,99 @@
+# -------- Models --------
+xxl: &xxl
+  model:
+    sequence_length: 512
+    embedding:
+      vocab_size: 32128
+    hidden_size: 4096
+    d_ff: 10240
+    layers: 24
+    attention:
+      heads: 64
+      d_kv: 64
+  training:
+    global_batch_size: 128
+    steps: 500
+    optimizer:
+      name: adamw
+      learning_rate:
+        maximum: 5e-5
+        warmup_proportion: 0.08
+      weight_decay: 0.01
+
+xl: &xl
+  model:
+    sequence_length: 512
+    embedding:
+      vocab_size: 32128
+    hidden_size: 2048
+    d_ff: 5120
+    layers: 24
+    attention:
+      heads: 32
+      d_kv: 64
+  training:
+    global_batch_size: 128
+    steps: 100
+    optimizer:
+      name: adamw
+      learning_rate:
+        maximum: 1e-5
+        warmup_proportion: 0.0
+      weight_decay: 0.01
+
+tiny: &tiny
+  model:
+    sequence_length: 512
+    embedding:
+      vocab_size: 128
+    hidden_size: 64
+    d_ff: 256
+    layers: 4
+    attention:
+      heads: 4
+      d_kv: 16
+  training:
+    global_batch_size: 16
+    steps: 10
+    optimizer:
+      name: adamw
+      learning_rate:
+        maximum: 1e-5
+        warmup_proportion: 0.0
+      weight_decay: 0.01
+
+# -------------------------
+
+
+# ------- Execution -------
+release:
+  xxl_pod64:
+    <<: *xxl
+    execution:
+      io_tiles: 64
+      micro_batch_size: 1
+      loss_scaling: 1
+      data_parallel: 1
+      tensor_parallel: 64
+      available_memory_proportion: [ 0.2 ]
+      attention_serialisation: 1
+
+  xl_pod16:
+    <<: *xl
+    execution:
+      io_tiles: 128
+      micro_batch_size: 1
+      loss_scaling: 1
+      data_parallel: 1
+      tensor_parallel: 16
+      available_memory_proportion: [ 0.2 ]
+      attention_serialisation: 1
+
+  tiny:
+    <<: *tiny
+    execution:
+      io_tiles: 64
+      micro_batch_size: 1
+      data_parallel: 2
+      tensor_parallel: 2
+      attention_serialisation: 1

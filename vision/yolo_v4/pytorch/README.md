@@ -159,3 +159,15 @@ You can use the `--verbose` flag if you want to print the metrics per class. Her
 |  IPU  | 896        | FP16 | all     | 0.45032   | 0.7674 | 0.68674 | 0.49159     |
 
 We generate the numbers for the GPU by re-running the Scaled-YOLOv4 repo code on an AWS instance. Please note that these numbers are slightly different from what they report in their repo. This is attributed to the `rect` parameter. In their inference, this is set to be `True`. The IPU currently can not support different sized images, and therefore, we set this to `False` in their evaluation in order to draw a fair comparison. In that regard, we do perform at par with SOTA.
+
+</br></br>
+
+# Demonstration of object detection using YOLOv4 in Jupyter notebook
+
+| Framework | Domain | Model | Datasets | Tasks | Training | Inference | Reference |
+|-----------|--------|-------|----------|-------|----------|-----------|-----------|
+| PyTorch   | vision | yolo  | COCO     | object detection |  <p style="text-align: center;"> ❌ | <p style="text-align: center;">✅ <br> Min. 1 IPU (POD4) required | POD4/POD16/POD64 | link to paper/original implementation|
+
+## Object detection with YOLOv4 on Graphcore IPU:
+The [notebook](notebook_yolo.ipynb) demonstrates the object detection task with YOLOv4 model executed on Graphcore IPU.
+The assumption is that the Poplar SDK is downloaded and activated.

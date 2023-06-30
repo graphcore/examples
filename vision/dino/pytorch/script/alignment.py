@@ -190,7 +190,7 @@ def shard_alignment(config, model, optimizer, center):
             for i in range(count):
                 logits, loss = ipu_model(img1, img2, ema_factor, global_center, teacher_temp_factor)
                 print(loss)
-                torch.save(logits, f"{dir_path}/logits_{i}.pth")
+                torch.save(logits.detach(), f"{dir_path}/logits_{i}.pth")
                 torch.save(ipu_model.state_dict(), f"{dir_path}/model{i}.pth")
                 if i == 0:
                     result = ipu_model.state_dict()

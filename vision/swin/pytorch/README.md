@@ -64,7 +64,6 @@ pip3 install -r requirements.txt
 
 5. Build the custom ops:
 ```bash
-cd custom_ops
 make all
 ```
 
@@ -132,11 +131,11 @@ In the above results, base 384 and large are finetune models it needs the pretra
 
 You can load the base 384 model pretrained on imagenet21k by:
 ```bash
-wget https://github.com/SwinTransformer/storage/releases/download/latest_stable/swin_base_patch4_window7_224_22k.pth
+wget https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window7_224_22k.pth
 ```
 and large 224 model pretrained on imagenet21k by:
 ```bash
-wget https://github.com/SwinTransformer/storage/releases/download/latest_stable/swin_large_patch4_window7_224_22k.pth
+wget https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_large_patch4_window7_224_22k.pth
 ```
 
 Once the training finishes, you can validate accuracy:

@@ -12,7 +12,7 @@ model creation and training process. This is shown with a CNN using the LeakyReL
 operator as an activation function, on the FashionMNIST dataset.
 
 For more information on custom operators in PopTorch, please refer to the
-[Creating custom operators section of our PyTorch for the IPU User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/overview.html#creating-custom-ops).
+[Creating custom operators section of our PyTorch for the IPU User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/overview.html#creating-custom-ops).
 
 ## File structure
 

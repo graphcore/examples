@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from examples_tests.test_util import SubProcessChecker
 
-frozen_root_path = str(Path(__file__).parent.parent)
+frozen_root_path = str(Path(__file__).absolute().parent.parent)
 sys.path.append(frozen_root_path)
 
 

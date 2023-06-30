@@ -20,7 +20,7 @@ from inference import inference
 from modelling.embedding import GPTJEmbeddingsTP
 from modelling.hf_mapping import hf_mapping_lm_tp
 from popxl_addons import timer
-from utils.utils import tensor_parallel_input, repeat
+from utils.utils import tensor_parallel_input, repeat, SimpleTimer
 from utils.inference import batch_inference
 from config import GPTJConfig
 
@@ -122,7 +122,10 @@ class GPTJPipeline(BasicPipeline):
         ).squeeze()
         data_map[self.session.inputs.last_token_indices] = repeat(lengths - 1, tp, axis=0)
         # identical for all tp, take first
-        next_token_id = self.session.run(data_map)[self.session.outputs.next_token][0]
+        with SimpleTimer() as simple_timer:
+            next_token_id = self.session.run(data_map)[self.session.outputs.next_token][0]
+        self.token_generation_time += simple_timer.elapsed
+        self.token_generation_count += next_token_id.shape[0]
 
         if self.print_live:
             print(self.tokenizer.decode(next_token_id[0]), end="")
@@ -160,8 +163,13 @@ class GPTJPipeline(BasicPipeline):
         self.session.__enter__()
         logging.info("Start inference")
         if self.print_live:
-            print(f"Prompt: '{prompt[0] if isinstance(prompt, list) else prompt[0]['text']}'", end="")
+            print(
+                f"Prompt: '{prompt[0] if isinstance(prompt, list) else prompt[0]['text']}'",
+                end="",
+            )
 
+        self.token_generation_time = 0
+        self.token_generation_count = 0
         answers = batch_inference(
             unwrap(data),
             self.next_token,
@@ -171,6 +179,7 @@ class GPTJPipeline(BasicPipeline):
             output_length=output_length,
             micro_batch_size=micro_batch,
         )
+        self.token_generation_time /= self.token_generation_count
         self._termination_token = None
         text_outputs = []
         for a in answers:
@@ -211,7 +220,8 @@ class GPTJPipeline(BasicPipeline):
     @classmethod
     def from_gptj_pipeline(cls, other: "GPTJPipeline"):
         """Create a new pipeline with the same model, config, tokenizer and session
-        This can be used to quickly reuse the GPTJ session and IPU for a different task"""
+        This can be used to quickly reuse the GPTJ session and IPU for a different task
+        """
         new_pipeline = cls.__new__(cls)
         new_pipeline.tokenizer = other.tokenizer
         new_pipeline.pretrained = other.pretrained

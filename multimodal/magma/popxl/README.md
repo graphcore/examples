@@ -132,7 +132,7 @@ The new token is added to the input sequence, and the process goes on until `max
 ### Execution scheme
 The model is run using phased execution.
 This means that the model is partitioned into a set of smaller graphs that are executed in series on the IPU, using remote memory to store variables and input/output tensors between calls (activations).
-We recommend going through the tutorial [Phased Execution in MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/6_phased_execution) to better understand this execution scheme.
+We recommend going through the tutorial [Phased Execution in MNIST example](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/6_phased_execution) to better understand this execution scheme.
 - The first phase corresponds to the image prefix. The output of this phase produces image embeddings that are concatenated to the (tokenized) textual input
 - The following phase is GPT-J embedding phase, which produces text embeddings.
 - Image embeddings and text embeddings are concatenated and fed to GPT-J blocks. Each block constitutes a different phase.

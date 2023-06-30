@@ -5,4 +5,4 @@ pytest-pythonpath==0.7.3
 pytest-forked~=1.4
 pytest-xdist~=2.5
 regex==2022.10.31
-git+https://github.com/graphcore/examples-utils@latest_stable#egg=examples-utils
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3

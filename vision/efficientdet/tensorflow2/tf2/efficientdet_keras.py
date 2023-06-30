@@ -894,7 +894,7 @@ class EfficientDetNet(tf.keras.Model):
                 )
 
     def _init_set_name(self, name, zero_based=True):
-        """A hack to allow empty model name for legacy checkpoint compitability."""
+        """A hack to allow empty model name for legacy checkpoint compatibility."""
         if name == "":  # pylint: disable=g-explicit-bool-comparison
             self._name = name
         else:

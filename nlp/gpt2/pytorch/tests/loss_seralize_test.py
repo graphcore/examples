@@ -105,7 +105,7 @@ class Model(nn.Module):
 def test_loss_seralize():
     """
     Test that the loss split operation in the LM layer.
-    It shuold give the same result with normal LM layer.
+    It should give the same result with normal LM layer.
     """
     opts = poptorch.Options()
     opts.Precision.enableStochasticRounding(False)

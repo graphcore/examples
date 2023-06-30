@@ -99,7 +99,7 @@ editor.
 
     The code already contains the `addCodelets` functions to add the
     device-side library code. See the [PopLibs
-    section](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.2.0/poplibs.html#using-poplibs)
+    section](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplibs.html#using-poplibs)
     of the Poplar and PopLibs User Guide for more information.
 
 When the program runs it prints profiling data. You can redirect this to
@@ -115,7 +115,7 @@ example:
     exchange phases
 
 See the [Profile
-Summary](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.2.0/profiler.html#profile-summary)
+Summary](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/profiler.html#profile-summary)
 section of the Poplar and PopLibs User Guide for further details of the
 profile summary.
 
@@ -165,7 +165,7 @@ This section explains how the PopVision analysis API (libpva) can be
 used to query information from a profile file using C++ or Python. You
 can find more information in the [PopVision Analysis Library (libpva)
 User
-Guide](https://docs.graphcore.ai/projects/libpva/en/3.2.0/index.html).
+Guide](https://docs.graphcore.ai/projects/libpva/en/3.1.0/index.html).
 
 libpva is used to query `profile.pop` files, so copy your `profile.pop`
 file created in the previous section to the `tut4_profiling/libpva`
@@ -543,6 +543,6 @@ Library (libpvti) and learn more about the PopVision analysis API
 
 For techniques to optimise memory use and improve performance please
 refer to our [memory and performance optimisation
-guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.2.0/common-memory-optimisations.html).
+guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.1.0/common-memory-optimisations.html).
 
 Copyright (c) 2018 Graphcore Ltd. All rights reserved.

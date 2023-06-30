@@ -136,7 +136,7 @@ def get_augmented_samples(args, input_data, random_generator):
             * args.gradient_accumulation
             * args.replicas
             * args.device_iterations,
-            np_type=np.float16 if args.precision[:3] == "16." else np.float,
+            np_type=np.float16 if args.precision[:3] == "16." else float,
             random_generator=random_generator,
         )
         batch_and_mixup_coefficients.append(mixup_coeffs)

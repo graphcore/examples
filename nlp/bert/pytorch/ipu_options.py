@@ -54,7 +54,7 @@ def get_options(config):
     # Enable automatic loss scaling
     # Note that it expects accumulationAndReplicationReductionType to be set
     # to Mean as above, and for accumulation by the optimizer to be done in
-    # half precision using accum_type=torch.float16 during optimizer instatiation.
+    # half precision using accum_type=torch.float16 during optimizer instantiation.
     if config.auto_loss_scaling is True:
         opts.Training.setAutomaticLossScaling(True)
 

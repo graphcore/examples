@@ -109,7 +109,7 @@ pytorch_vit_lamb_pretrain_gen_pod64:
       --config b16_in1k_pretrain_lamb
       --dataset generated
       --byteio true
-      --iterations 10
+      --iterations 100
       --gradient-accumulation 512
       --epochs 1
       --dataloader-workers 32

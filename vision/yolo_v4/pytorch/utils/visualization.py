@@ -10,7 +10,6 @@ from ruamel import yaml
 from PIL import Image
 from yacs.config import CfgNode
 from typing import List, Union
-
 import torch
 
 
@@ -89,9 +88,14 @@ def plot_img_bboxes(
 
     random.shuffle(colors)
 
-    plt.figure()
+    plt.figure(dpi=400)
+
     fig, ax = plt.subplots()
     ax.imshow(orig_img)
+    # remove axes from figure
+    ax.set_axis_off()
+    fig.add_axes(ax)
+    plt.rc("font", size=8)
 
     for i, (xcenter, ycenter, box_w, box_h) in enumerate(bboxes):
         class_number = class_pred[i]
@@ -100,7 +104,7 @@ def plot_img_bboxes(
             xmin = xcenter - box_w / 2
             ymin = ycenter - box_h / 2
             bbox = patches.Rectangle(
-                (xmin, ymin), box_w, box_h, linewidth=2, edgecolor=colors[class_number], facecolor="none"
+                (xmin, ymin), box_w, box_h, linewidth=1, edgecolor=colors[class_number], facecolor="none"
             )
             ax.add_patch(bbox)
             plt.text(
@@ -118,7 +122,7 @@ def plot_img_bboxes(
             os.mkdir(image_dir)
         file_name = "detection_{}.png".format(datetime.now().strftime("%Y%m%d_%H%M%S.%f")[:-4])
         image_dir = "{}/{}".format(image_dir, file_name)
-        fig.savefig(image_dir)
+        fig.savefig(image_dir, dpi=400, bbox_inches="tight", pad_inches=0)
 
     plt.close()
     return image_dir

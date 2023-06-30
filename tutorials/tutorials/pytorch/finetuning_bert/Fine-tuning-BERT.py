@@ -193,7 +193,7 @@ validation_features = datasets["validation"].map(
 #
 # ### Parallelism through pipelining
 #
-# The model layers are split over 4 IPUs. We then use [*pipeline parallelism*](https://docs.graphcore.ai/projects/tf-model-parallelism/en/3.2.0/pipelining.html) over the IPUs with gradient accumulation. We subdivide the compute batch into micro-batches that pass through the pipeline in the forward pass and then come back again in the backwards pass, accumulating gradients for the parameters as they go.
+# The model layers are split over 4 IPUs. We then use [*pipeline parallelism*](https://docs.graphcore.ai/projects/tf-model-parallelism/en/3.1.0/pipelining.html) over the IPUs with gradient accumulation. We subdivide the compute batch into micro-batches that pass through the pipeline in the forward pass and then come back again in the backwards pass, accumulating gradients for the parameters as they go.
 #
 # A complete pipeline step has a ramp-up phase the start and a ramp-down phase at the end. Increasing the gradient accumulation factor, increases the total batch size and also increases the pipeline efficiency, and therefore throughput, because the proportion of time in ramp-up/down phases will be reduced.
 #
@@ -216,7 +216,7 @@ validation_features = datasets["validation"].map(
 #
 # We can make more efficient use of the valuable In-Processor-Memory by saving only selected activation inputs and recomputing the rest. This lets us optimise on memory savings (by not storing all activations) vs FLOP expenditure (by not having to recompute all activations).
 # ![image-7.png](attachment:image-7.png)
-# Source: [TensorFlow Model Parallelism: Recomputation](https://docs.graphcore.ai/projects/tf-model-parallelism/en/3.2.0/pipelining.html#recomputation)
+# Source: [TensorFlow Model Parallelism: Recomputation](https://docs.graphcore.ai/projects/tf-model-parallelism/en/3.1.0/pipelining.html#recomputation)
 #
 # Checkpoints are automatically placed between each pipeline stage. In addition to these automatic checkpoints, we are adding one at the end of every transformer layer, which leads to better performance.
 #
@@ -364,7 +364,7 @@ global_batch_size = 256
 gradient_accumulation = int(global_batch_size / micro_batch_size / replication_factor)
 
 
-# `device_iterations` is the number of batches the device should run before returning to the user. Increasing `device_iterations` can be more efficient because the loop runs on the IPU directly, reducing overhead costs. See the [PopTorch User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/batching.html?highlight=device%20iterations#poptorch-options-deviceiterations) for more information.
+# `device_iterations` is the number of batches the device should run before returning to the user. Increasing `device_iterations` can be more efficient because the loop runs on the IPU directly, reducing overhead costs. See the [PopTorch User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/batching.html?highlight=device%20iterations#poptorch-options-deviceiterations) for more information.
 
 # In[19]:
 
@@ -410,7 +410,7 @@ def ipu_training_options(gradient_accumulation, replication_factor, device_itera
     # Cache compiled executable to disk
     opts.enableExecutableCaching(CACHE_DIR)
 
-    # Setting system spesific options
+    # Setting system specific options
     # On-chip Replicated Tensor Sharding of Optimizer State
     opts.TensorLocations.setOptimizerLocation(
         poptorch.TensorLocationSettings()
@@ -473,7 +473,7 @@ sequence_length = 384
 #
 # For a compiled device like IPU that would require a recompilation of the execution graph for that one mini-batch. In order to not lose any training examples, we can pad the remainder mini-batch with zeros and set the target values to a special value which will set the loss to 0 in those cases so they don't affect training. This way we have consistent mini-batch sizes and we can train on all the data.
 #
-# More information can be found in the [`poptorch.DataLoader` documentation.](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/batching.html#efficient-data-batching) and also in our [tutorial on efficient data loading.](../efficient_data_loading)
+# More information can be found in the [`poptorch.DataLoader` documentation.](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/batching.html#efficient-data-batching) and also in our [tutorial on efficient data loading.](../efficient_data_loading)
 
 # In[25]:
 
@@ -499,7 +499,7 @@ train_dl = poptorch.DataLoader(
 
 # We will use poptorch's version of the `AdamW` optimizer, its interface is the same as `AdamW` from `torch.optim`, but with some extra options.
 #
-# Please see the [`poptorch.optim` documentation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.2.0/overview.html#optimizers) for more information.
+# Please see the [`poptorch.optim` documentation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/overview.html#optimizers) for more information.
 
 # In[26]:
 

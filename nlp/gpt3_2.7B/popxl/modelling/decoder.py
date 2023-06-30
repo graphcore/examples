@@ -8,6 +8,7 @@ from typing import Optional
 
 import popxl_addons as addons
 from popxl_addons import NamedTensors
+from popxl_addons.utils import WeightsDict
 
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block as HFModel
 
@@ -29,7 +30,7 @@ class GPTDecoderBlockTP(addons.Module):
         # identical computation for bias, dropout and skip connection
         self.feed_forward = GPTFeedForwardTP(self.config)
 
-    def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None):
+    def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
         attention_seed = None
         if seed is not None:
             seed, attention_seed = ops.split_random_seed(seed)
@@ -38,12 +39,9 @@ class GPTDecoderBlockTP(addons.Module):
         return x
 
     @staticmethod
-    def hf_mapping(config: GPTConfig, variables: NamedTensors, hf_model: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
-        dtype = config.model.dtype
-
+    def hf_mapping(config: GPTConfig, variables: NamedTensors, hf_model: HFModel) -> WeightsDict:
         weights = GPTSelfAttentionTP.hf_mapping(config, variables.attention, hf_model)
         weights.update(GPTFeedForwardTP.hf_mapping(config, variables.feed_forward, hf_model))
-
         return weights
 
 
@@ -52,7 +50,7 @@ class GPTDecoderTP(addons.Module):
         super().__init__()
         self.config = config
 
-    def build(self, x: popxl.Tensor):
+    def build(self, x: popxl.Tensor) -> popxl.Tensor:
 
         facts, graph = GPTDecoderBlockTP(self.config).create_graph(x)  # Outline GPT Layer
 

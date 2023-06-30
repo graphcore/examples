@@ -65,7 +65,7 @@ For the CPU architecture you are running on
 ```bash
 pip3 install --force-reinstall --no-deps keras-2.X.X...any.whl
 ```
-For further information on Keras on the IPU, see the [documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/keras/keras.html#keras-with-ipus) and the [tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/tensorflow2/keras).
+For further information on Keras on the IPU, see the [documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/keras/keras.html#keras-with-ipus) and the [tutorial](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/tensorflow2/keras).
 
 5. Navigate to this example's root directory
 

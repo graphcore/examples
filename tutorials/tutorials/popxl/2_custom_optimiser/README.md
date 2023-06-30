@@ -183,7 +183,7 @@ tutorial](../1_basic_concepts) to add weights to our layers. However, in the
   operations.
 - The `weight` input is a `popxl.TensorByRef`: any change made to this variable
   will be automatically copied to the parent graph. See
-  [TensorByRef](https://docs.graphcore.ai/projects/popxl/en/3.2.0/api.html#popxl.Ir.create_graph)
+  [TensorByRef](https://docs.graphcore.ai/projects/popxl/en/3.1.0/api.html#popxl.Ir.create_graph)
   for more information.
 - Some parameters, such as learning rate or weight decay, are defined as
   `Union[float, popxl.Tensor]`. If the parameter was provided as a simple
@@ -639,7 +639,7 @@ To try out more features in PopXL [look at our other
 tutorials](../../README.md).
 
 You can also read our [PopXL User
-Guide](https://docs.graphcore.ai/projects/popxl/en/3.2.0/) for more
+Guide](https://docs.graphcore.ai/projects/popxl/en/3.1.0/) for more
 information.
 
 As the PopXL API is still experimental, we would love to hear your feedback on it

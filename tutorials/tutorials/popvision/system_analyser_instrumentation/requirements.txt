@@ -1,1 +1,5 @@
-numpy>=1.19.0
+tqdm
+torch==1.10.0; python_version=='3.6'
+torch==2.0.1; python_version>'3.6'
+torchvision==0.15.2; python_version > '3.6'
+torchvision==0.11.0; python_version <= '3.6'

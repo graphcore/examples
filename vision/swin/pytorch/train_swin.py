@@ -23,7 +23,7 @@ from config import get_config
 from models.build import build_pipeline as build_model
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from optimizer import build_optimizer
-from utils import AverageMeter, get_lr_scheduler, load_pretrained
+from utils import AverageMeter, get_lr_scheduler, load_pretrained, CustomOpsNotFoundException
 from options import get_options
 import poptorch
 from collections import OrderedDict
@@ -335,5 +335,11 @@ def main():
 
 
 if __name__ == "__main__":
-    ctypes.cdll.LoadLibrary("./custom_ops.so")
+    try:
+        ctypes.cdll.LoadLibrary("./custom_ops.so")
+    except:
+        raise CustomOpsNotFoundException(
+            "`./custom_ops.so` not found. Please run `make` in this application's root directory first."
+        )
+
     main()

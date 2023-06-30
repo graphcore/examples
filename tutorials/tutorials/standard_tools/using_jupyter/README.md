@@ -12,7 +12,7 @@ If you would like to run Jupyter notebooks directly from VS Code, please refer t
 Many of our tutorials are provided as Jupyter notebooks. In order to run them, you will need to execute the `jupyter-notebook` command on a machine with access to Graphcore IPUs and the Poplar SDK installed. To set up your environment you need:
 
 - A Poplar SDK enabled (see the [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for your IPU system).
-- TensorFlow 2, or PyTorch wheel installed (see the Setting up PyTorch/TensorFlow for the IPU sections of the [Software Installation](https://docs.graphcore.ai/projects/ipu-pod-getting-started/en/3.2.0/installation.html#) guide), we recommend using a virtual environment.
+- TensorFlow 2, or PyTorch wheel installed (see the Setting up PyTorch/TensorFlow for the IPU sections of the [Software Installation](https://docs.graphcore.ai/projects/ipu-pod-getting-started/en/3.3.0/installation.html#) guide), we recommend using a virtual environment.
 
 To check that the Poplar SDK and the Graphcore Python wheel you want to use have been correctly setup you can run the following commands:
 

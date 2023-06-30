@@ -1,0 +1,12 @@
+*.cbor
+*.pop
+*.pop_cache
+*.pop_cache-journal
+*.a
+*.popef
+.pytest_cache
+!data
+*.tfrecord
+*.index
+*.npz
+__pycache__

@@ -220,7 +220,7 @@ Here we introduce some techniques that were required to scale up the GPT-J model
 ### Combining data parallelism, tensor parallelism and RTS <a name="tp_dp"></a>
 The model is executed using multiple IPUs to implement data parallelism and tensor parallelism via replication.
 
-**Data parallelism** means that the same program(which can span over multiple devices) is duplicated on different sets of devices, and each copy is fed with different data. At each optimization step, the gradients are mean-reduced so that the weight update and model state are the same across all replicas. You can find more details about it in the [data parallelism tutorial](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/3_data_parallelism).
+**Data parallelism** means that the same program(which can span over multiple devices) is duplicated on different sets of devices, and each copy is fed with different data. At each optimization step, the gradients are mean-reduced so that the weight update and model state are the same across all replicas. You can find more details about it in the [data parallelism tutorial](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/3_data_parallelism).
 
 <figure >
 <img src="imgs/data_parallelism.png" width="800" alt="Data parallelism"/>
@@ -228,7 +228,7 @@ The model is executed using multiple IPUs to implement data parallelism and tens
 </figure>
 
 By itself, data parallelism it's just a way to increase the throughput and provides no memory gain.
-Its real benefit in terms of memory comes when combined with **replicated tensor sharding** (see the tutorial about [remote variables and RTS](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/5_remote_variables_and_rts#replicated-tensor-sharding)).
+Its real benefit in terms of memory comes when combined with **replicated tensor sharding** (see the tutorial about [remote variables and RTS](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/5_remote_variables_and_rts#replicated-tensor-sharding)).
 Since each replica has the same variables we can shard them over the data parallel dimension, so that each replica only has
 `num_elements/data_parallel` elements of the tensor.
 ![RTS](imgs/rts.png)
@@ -320,7 +320,7 @@ Therefore, the replica group of a variable defines the largest replica group for
 
 ### Phased Execution and Batch serialisation <a name="pe"></a>
 If a model requires greater memory than the available on-chip memory, we can partition it into a series of smaller graphs and execute them in series on the IPU, using remote memory to store variables and input/output tensors between calls (activations).
-This is called phased execution. We recommend going through the tutorial [Phased Execution in MNIST example](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/6_phased_execution).
+This is called phased execution. We recommend going through the tutorial [Phased Execution in MNIST example](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/6_phased_execution).
 In the GPT-J application we demonstrate this concept on a full sized model.
 As explained in the tutorial, **batch serialisation** is required to get the best performance from phased execution. It rearranges the gradient accumulation loop so that variables stored in remote memory are loaded just one time before the loop, while inputs are loaded inside the loop.
 Hence, we apply the batch serialisation transform to our phases graphs.
@@ -336,7 +336,7 @@ With batch serialisation, each phase is executed N times and activations are sav
 Since we are using replication to implement tensor parallelism, we can exploit the extra IPUs to shard activations, so that each replica just holds a slice of the tensor.
 This saves remote memory and makes remote transfer faster, since less data has to be moved between DDR and IPUs.
 After each remote load, sharded activations need to be gathered: this communication happens via IPU links.
-As explained in the [RTS](https://github.com/graphcore/tutorials/tree/master/tutorials/popxl/5_remote_variables_and_rts#replicated-tensor-sharding) tutorial, using RTS
+As explained in the [RTS](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/5_remote_variables_and_rts#replicated-tensor-sharding) tutorial, using RTS
 is a way of increasing the effective bandwidth because it performs part of the data transfer via IPU links, which have better bandwidth.
 ### Summary of execution scheme <a name="execution"></a>
 

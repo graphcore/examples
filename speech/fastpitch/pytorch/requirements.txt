@@ -11,6 +11,6 @@ pytest==6.2.5
 setuptools==59.5.0
 protobuf==3.19.4
 wandb==0.12.8
-horovod==0.24.3
+horovod[pytorch]==0.24.3
 git+https://github.com/NVIDIA/dllogger@v0.1.0#egg=dllogger
-git+https://github.com/graphcore/examples-utils@latest_stable
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3

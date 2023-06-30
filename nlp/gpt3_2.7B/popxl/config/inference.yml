@@ -1,0 +1,114 @@
+# -------- Models --------
+"gpt3_2.7B": &gpt3_2-7B
+  model:
+    eval: true
+    hidden_size: 2560
+    layers: 32
+    sequence_length: 2048
+    embedding:
+      max_positional_length: 2048
+    attention:
+      heads: 32
+tiny: &tiny
+  model:
+    eval: true
+    sequence_length: 8
+    embedding:
+      vocab_size: 128
+      max_positional_length: 8
+    hidden_size: 64
+    layers: 2
+    attention:
+      heads: 4
+"gpt2_small": &gpt2_small  # GPT2 small - 124M
+  model:
+    eval: true
+    sequence_length: 128
+    embedding:
+      vocab_size: 50257
+      max_positional_length: 1024
+    hidden_size: 768
+    layers: 12
+    attention:
+      heads: 12
+"gpt2_medium": &gpt2_medium  # GPT2 medium - 355M
+  model:
+    eval: true
+    sequence_length: 128
+    embedding:
+      vocab_size: 50257
+      max_positional_length: 1024
+    hidden_size: 1024
+    layers: 24
+    attention:
+      heads: 16
+"gpt2_large": &gpt2_large  # GPT2 large - 774M
+  model:
+    eval: true
+    sequence_length: 128
+    embedding:
+      vocab_size: 50257
+      max_positional_length: 1024
+    hidden_size: 1280
+    layers: 36
+    attention:
+      heads: 20
+# GPT2 XL - 1.5B - won't work as heads don't even divide by TP
+"gpt2_xl": &gpt2_xl  # GPT2 XL - 1.5B
+  model:
+    eval: true
+    sequence_length: 128
+    embedding:
+      vocab_size: 50257
+      max_positional_length: 1024
+    hidden_size: 1600
+    layers: 48
+    attention:
+      heads: 25
+
+
+# -------------------------
+
+# ------- Execution -------
+release:
+  tiny:
+    <<: *tiny
+    execution:
+      io_tiles: 64
+      micro_batch_size: 4
+      tensor_parallel: 4
+  "gpt3_2.7B_pod64":
+    <<: *gpt3_2-7B
+    execution:
+      micro_batch_size: 4
+      io_tiles: 128
+      tensor_parallel: 8
+      available_memory_proportion: [ 0.2 ]
+  "gpt2_small":  # pod16
+    <<: *gpt2_small
+    execution:
+      micro_batch_size: 4
+      io_tiles: 128
+      tensor_parallel: 4
+      available_memory_proportion: [ 0.2 ]
+  "gpt2_medium":  # pod16
+    <<: *gpt2_medium
+    execution:
+      micro_batch_size: 4
+      io_tiles: 128
+      tensor_parallel: 4
+      available_memory_proportion: [ 0.2 ]
+  "gpt2_large":  # pod16
+    <<: *gpt2_large
+    execution:
+      micro_batch_size: 4
+      io_tiles: 128
+      tensor_parallel: 4
+      available_memory_proportion: [ 0.2 ]
+  "gpt2_xl":  # pod16
+    <<: *gpt2_xl
+    execution:
+      micro_batch_size: 4
+      io_tiles: 128
+      tensor_parallel: 8
+      available_memory_proportion: [ 0.2 ]

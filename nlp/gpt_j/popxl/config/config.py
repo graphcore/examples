@@ -143,6 +143,15 @@ class Execution(Config):
         Each step will be recomputed separately which can reduce the temporary
         activation requirement when using longer sequence lengths."""
 
+    group_quantise_weights: int = 0
+    """Group size for compressing model weights to 4 bits using the group quantisation
+        strategy. The default is 0 which applies no compression. Minimum group size is 4.
+        Recommended group size is 64. Group sizes must be a multiple of 4 and a factor
+        of the matrix dimension being grouped."""
+
+    group_quantise_dim: int = -1
+    """Dimension of model weight matrices to quantise."""
+
 
 @dataclass
 class Checkpoint(Config):
