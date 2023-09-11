@@ -53,7 +53,7 @@ a notebook, but you can find more information in the following:
     notebook and how much detail to include so that the notebook is
     relevant for the targeted persona.
 -   [Using Graphcore's Single source tool to write and manage
-    notebooks](https://phabricator.sourcevertex.net/diffusion/SINGLESOURCETOOL/)
+    notebooks](https://github.com/graphcore/single-source-tool-private)
 -   [Tools for supporting Paperspace Gradient
     integration](https://github.com/graphcore/paperspace-automation)
 
