@@ -159,7 +159,7 @@ class TimeEncoder(nn.Module):
         self.lin = nn.Linear(1, out_channels, dtype=dtype)
 
     def forward(self, t):
-        return self.lin(t.view(-1, 1)).cos()
+        return cos_fp16(self.lin(t.view(-1, 1)))
 
 
 class TransformerConv(nn.Module):
@@ -225,6 +225,8 @@ class GraphAttentionEmbedding(nn.Module):
             dropout=dropout,
             heads=2,
         )
+        if dtype == torch.float16:
+            self.conv.half()
 
     def forward(self, x, last_update, edge_index, t, msg):
         rel_t = last_update[edge_index[0]] - t
@@ -234,10 +236,12 @@ class GraphAttentionEmbedding(nn.Module):
 
 
 class LinkPredictor(torch.nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, dtype):
         super(LinkPredictor, self).__init__()
         self.lin_hid = nn.Linear(in_channels * 2, in_channels)
         self.lin_final = nn.Linear(in_channels, 1)
+        if dtype == torch.float16:
+            self.half()
 
     def forward(self, z_src, z_dst):
         h = self.lin_hid(torch.cat([z_src, z_dst], axis=-1))
@@ -262,9 +266,9 @@ class TGNMemory(nn.Module):
         # last_update, rel_t, pos_dst
         self.register_buffer("_memory_ints", torch.empty(num_nodes + 1, 3, dtype=torch.float))
         self.register_buffer("_memory", torch.empty(num_nodes + 1, memory_dim, dtype=self.dtype))
-        self.register_buffer("_memory_msg", torch.empty(num_nodes + 1, raw_msg_dim, dtype=self.dtype))
+        self.register_buffer("_memory_msg", torch.empty(num_nodes + 1, raw_msg_dim, dtype=torch.float))
         self.register_buffer(
-            "_direction", torch.empty(num_nodes + 1, 2, dtype=self.dtype)
+            "_direction", torch.empty(num_nodes + 1, 2, dtype=torch.float)
         )  # TODO: this can be combined with _memory
 
         self.reset_state()
@@ -292,11 +296,11 @@ class TGNMemory(nn.Module):
         # fetch data from message store
         last_update, rel_t, dst_id = torch.unbind(self._memory_ints[n_id].long(), 1)
         dst_memory = self._memory[dst_id.long()]
-        time_encoding = self.time_enc(rel_t.type(torch.float32))
+        time_encoding = self.time_enc(rel_t.type(self.dtype))
 
         src_memory = self._memory[n_id]
-        raw_msg = self._memory_msg[n_id]
-        direction = self._direction[n_id]
+        raw_msg = self._memory_msg[n_id].to(self.dtype)
+        direction = self._direction[n_id].to(self.dtype)
         # aggregate messages
         aggr = torch.cat(
             [
@@ -358,22 +362,29 @@ class TGNMemory(nn.Module):
             values=direction,
         )
 
+    def half(self):
+        self.time_enc.half()
+        self.gru.half()
+        self._memory = self._memory.half()
+        self.dtype = torch.float16
+
+    def float(self):
+        self.time_enc.float()
+        self.gru.float()
+        self._memory = self._memory.float()
+        self.dtype = torch.float32
+
     def train(self, mode: bool = True):
         """Sets the module in training mode."""
         if self.training and not mode:
             prev_dtype = self.dtype
             if self.dtype == torch.float16:
                 self.float()
-                self.dtype = torch.float32
             # Flush message store to memory in case we just entered eval mode.
             memory, last_update = self.__get_memory__(torch.arange(self.num_nodes + 1))
-            self._memory_ints = torch.empty(self.num_nodes + 1, 3, dtype=torch.float)
-            self._memory = torch.empty(self.num_nodes + 1, self.memory_dim, dtype=self.dtype)
-            self._memory_msg = torch.empty(self.num_nodes + 1, self.raw_msg_dim, dtype=self.dtype)
-            # Flush message store to memory in case we just entered eval mode.
+            self._memory_msg = torch.empty(self.num_nodes + 1, self.raw_msg_dim, dtype=torch.float32)
             self._memory, self._memory_ints[:, 0] = memory, last_update
             if prev_dtype == torch.float16:
-                self.dtype = prev_dtype
                 self.half()
         super(TGNMemory, self).train(mode)
 
@@ -402,7 +413,7 @@ class TGN(nn.Module):
             dtype=dtype,
         )
 
-        self.link_predictor = LinkPredictor(in_channels=embedding_dim)
+        self.link_predictor = LinkPredictor(in_channels=embedding_dim, dtype=dtype)
         self.criterion = torch.nn.BCEWithLogitsLoss()
 
     def forward(
@@ -458,6 +469,9 @@ def most_recent_indices(indices):
 
 
 def softmax(values, indices, n_indices):
+    """Sparse softmax function in float32 precision"""
+    dtype = values.dtype
+    values = values.type(torch.float32)
     if values.dim() == 1:
         values = values.reshape(-1, 1)
 
@@ -470,7 +484,7 @@ def softmax(values, indices, n_indices):
     scatter_on = torch.zeros(n_indices, n_cols)
     sum_exp_values = torch.scatter_add(scatter_on, 0, broad_ix, exp_values)
 
-    return exp_values / (sum_exp_values[indices] + 1e-16)
+    return (exp_values / (sum_exp_values[indices] + 1e-16)).type(dtype)
 
 
 def zeros(tensor):
@@ -483,3 +497,11 @@ def init_weights(m):
         nn.init.xavier_uniform_(m.weight)
         if m.bias is not None:
             m.bias.data.fill_(0.0)
+
+
+def cos_fp16(value):
+    if value.device.type == "cpu":
+        if value.dtype == torch.float16:
+            value = value.to(torch.float32)
+        return value.cos()
+    return torch.remainder(value, 2 * np.pi).to(torch.float16).cos()

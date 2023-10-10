@@ -53,7 +53,7 @@ a notebook, but you can find more information in the following:
     notebook and how much detail to include so that the notebook is
     relevant for the targeted persona.
 -   [Using Graphcore's Single source tool to write and manage
-    notebooks](https://phabricator.sourcevertex.net/diffusion/SINGLESOURCETOOL/)
+    notebooks](https://github.com/graphcore/single-source-tool-private)
 -   [Tools for supporting Paperspace Gradient
     integration](https://github.com/graphcore/paperspace-automation)
 
@@ -103,7 +103,7 @@ Confluence page.
 
 The notebook title must follow the following convention:
 
-> [Solution/Task] on IPUs using [Model] - Inference/Fine-Tuning
+> [Solution/Task] on IPUs using [Model] - Inference/Fine-tuning
 > [optional where applicable, for example "using your own dataset"]
 
 This convention helps to make our notebooks more discoverable by search
@@ -119,11 +119,10 @@ used:
 
 -   Text-to-Image Generation on IPUs using Stable Diffusion - Inference
 -   Text Guided In-Painting on IPUs using Stable Diffusion - Inference
--   Multi-label Classification on IPUs using ViT - Fine-Tuning
--   Image Classification on IPUs using ViT - Fine-Tuning
--   Question-Answering on IPUs using BERT - Fine-Tuning
--   Node Classification on IPUs using Cluster-GCN - Training with
-    PyTorch Geometric
+-   Multi-label Classification on IPUs using ViT - Fine-tuning
+-   Image Classification on IPUs using ViT - Fine-tuning
+-   Question-Answering on IPUs using BERT - Fine-tuning
+-   Node Classification on IPUs using Cluster-GCN - Training with PyTorch Geometric
 
 ### Introduction
 
@@ -331,7 +330,7 @@ environment they need.
 ```
 
 ```
-    %pip install -q -r requirements.txt
+    %pip install  -r requirements.txt
 ```
 
 #### Configuration
@@ -424,6 +423,7 @@ This section covers the best practice guidelines that will help you to write not
 * [How to get it done fast](#how-to-get-it-done-fast)
 * [Suggestions for an engaging notebook](#suggestions-for-an-engaging-notebook)
 * [Useful tips and known challenges](#useful-tips-and-known-challenges)
+* [Licensing and copyright](#licensing-and-copyright)
 * [Asking for help](#asking-for-help)
 
 ### Working with the GitHub repos
@@ -538,7 +538,7 @@ In general the process you will follow is as follows:
     follow the template exactly, but use what is suitable for the
     task.
 
--   [GPT-J fine-tuning](../../nlp/gpt_j/popxl/finetuning.ipynb)
+-   [Text Entailment on IPU using GPT-J - Fine-tuning](../../nlp/gpt_j/popxl/finetuning.ipynb)
 
 -   [Text generation with GPT-J
     6B](../../nlp/gpt_j/popxl/GPTJ-generative-inference.ipynb)
@@ -586,6 +586,21 @@ that other users have resources available to run their notebooks.
     from tensorflow.python import ipu
     ipu.config.reset_ipu_configuration()
 ```
+
+### Licensing and copyright
+Pay attention to any content you source from outside Graphcore. These can be code, images, or extracts of research papers.
+
+Check with the legal team (legal@graphcore.ai)) whether it is ok to use the content you want to source from outside Graphcore *before* starting to work with it. This can avoid you wasting time and effort.
+
+If the content can be used, you must add clear and precise attributions for that content by describing the license that applies, and state what you have changed (if anything).
+
+For example, you may add the following to an extract of a website:
+
+> Extract of the MMLU leaderboard from [Papers With Code](https://paperswithcode.com/sota/multi-task-language-understanding-on-mmlu) (CoT = Chain of Thought). This content is licensed under the terms of the [CC BY-SA](https://creativecommons.org/licenses/by-sa/4.0/) license. No changes were made.
+
+For an image, you may add something like:
+
+> This application uses images from [name of source](link to source) which are made available under the terms of the [name of license].
 
 ### Asking for help
 

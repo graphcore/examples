@@ -1,4 +1,4 @@
-# Node Classification on IPU using Cluster-GCN - Training with PyTorch Geometric
+# Node Classification on IPU using Cluster-GCN - Training
 
 In this notebook cluster graph convolutional networks are used for node classification, using cluster sampling. This model has been optimised for Graphcore's IPU.
 

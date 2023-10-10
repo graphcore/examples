@@ -1,4 +1,4 @@
-# Molecular property prediction on IPU using SchNet - Training with PyTorch Geometric
+# Molecular Property Prediction on IPU using SchNet - Training
 
 In this notebook an SchNet GNN is used to perform graph classification for molecular property prediction. The model has been optimised for Graphcore's IPU.
 

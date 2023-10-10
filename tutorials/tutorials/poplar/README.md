@@ -4,9 +4,9 @@
 These tutorials provide hands-on programming exercises to enable you to
 familiarise yourself with creating and running programs using Poplar and
 PopLibs. They are intended to complement the [Poplar and PopLibs User
-Guide](https://docs.graphcore.ai/projects/poplar-user-guide/) and the
+Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/) and the
 [Poplar and PopLibs API
-Reference](https://docs.graphcore.ai/projects/poplar-api/). It is
+Reference](https://docs.graphcore.ai/projects/poplar-api/en/latest/). It is
 assumed that you have already downloaded and installed Poplar, and that
 you are familiar with C++ and command-line compilation tools.
 

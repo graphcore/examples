@@ -16,3 +16,4 @@ pytorch_tgn_train_real_1ipu:
   cmd: >-
     python train.py
       --data $DATASETS_DIR/JODIE
+      --dtype float16

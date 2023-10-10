@@ -81,7 +81,7 @@ def prepare_train_dataset(config):
     dataset = dataset.map(
         form_training_prompts,
         remove_columns=["hypothesis", "premise", "label", "idx"],
-        load_from_cache_file=True,
+        load_from_cache_file=False,
         desc="Generating text prompt",
     )
     dataset = dataset.map(
@@ -90,7 +90,7 @@ def prepare_train_dataset(config):
         batch_size=1000,
         num_proc=8,
         remove_columns=dataset.column_names,
-        load_from_cache_file=True,
+        load_from_cache_file=False,
         desc="Tokenizing text",
     )
     return dataset

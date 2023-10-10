@@ -1,4 +1,4 @@
-# Training Neural Bellman-Ford networks (NBFnet) for inductive knowledge graph link prediction on IPUs
+# Training Neural Bellman-Ford Networks (NBFnet) for Inductive Knowledge Graph Link Prediction on IPUs
 
 This directory contains a PyTorch Geometric implementation of [NBFNet](https://arxiv.org/abs/2106.06935) used for link
 prediction in homogeneous and heterogeneous graphs. The model has been optimised for Graphcore's IPU.

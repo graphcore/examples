@@ -63,12 +63,6 @@ pip3 install poptorch...x86_64.whl
 pip3 install -r requirements.txt
 ```
 
-5. Build the custom ops:
-```bash
-make
-```
-
-
 More detailed instructions on setting up your PyTorch environment are available in the [PyTorch quick start guide](https://docs.graphcore.ai/projects/pytorch-quick-start).
 
 ## Dataset setup

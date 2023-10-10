@@ -98,11 +98,13 @@ def head_batch_serialise(
         head_graph,
         config.gradient_accumulation,
         load_handles={
-            head_graph.graph.inputs[0]: RemoteHandle(x_buffer, config.model.layers, x_shard_group),
+            head_graph.graph.inputs[0]: RemoteHandle(x_buffer, 2 * config.model.layers + 2, x_shard_group),
             head_graph.graph.inputs[1]: input_streams.labels,
         },
         store_streams={head_graph.graph.outputs[0]: output_streams.loss},
-        store_buffers={head_graph.graph.outputs[1]: RemoteHandle(dx_buffer, config.model.layers, dx_shard_group)},
+        store_buffers={
+            head_graph.graph.outputs[1]: RemoteHandle(dx_buffer, 2 * config.model.layers + 2, dx_shard_group)
+        },
         seed_input=head_graph.graph.inputs[2],
         io_mode="io",
     )

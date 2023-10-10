@@ -1,5 +1,6 @@
 # Copyright (c) 2023 Graphcore Ltd. All rights reserved.
 import numpy as np
+import math
 import torch
 from functools import partial
 from scipy.stats import truncnorm
@@ -38,6 +39,11 @@ class T5EmbeddingsTP(addons.Module):
             self.config.model.hidden_size,
             replica_grouping=self.replica_grouping,
         )
+        # Relative position embeddings
+        n_heads_groups = self.replica_grouping.num_groups
+        self.n_heads = self.config.model.attention.heads // n_heads_groups
+        self.relative_attention_num_buckets = self.config.model.attention.relative_attention_num_buckets
+        self.should_upcast = config.model.scale_ff > 1
 
     def build(self, input_ids: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> popxl.Tensor:
         """`input_ids` are offsetted. Identical outputs across shards"""
@@ -51,6 +57,17 @@ class T5EmbeddingsTP(addons.Module):
             assert seed is not None, "A seed Tensor must be provided when creating a non-eval model."
             x = ops.dropout(x, seed, p=self.config.model.dropout_prob)
 
+        # Relative position embeddings: independent on each device
+        # Just create the weight here, but it will be used by the encoder layers
+        self.rel_pos_weight = self.add_variable_input(
+            "rel_pos_weight",
+            partial(truncnorm.rvs, -2, 2, loc=0, scale=0.02, size=(self.relative_attention_num_buckets, self.n_heads)),
+            self.config.model.dtype,
+            replica_grouping=self.replica_grouping,
+        )
+
+        if self.should_upcast:
+            x = ops.cast(x, popxl.float32)
         return x
 
     @staticmethod
@@ -68,8 +85,14 @@ class T5EmbeddingsTP(addons.Module):
         def pad(x, n_pad):
             return np.pad(x, ((0, n_pad), (0, 0)))
 
+        # Relative position embedding weights
+        rel_pos_w = to_numpy(
+            hf_model.encoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight.data, dtype
+        ).T
+
         return {
             variables.word.weight: shard(pad(to_numpy(hf_model.shared.weight.data, dtype), word_pad), n_shards, axis=0),
+            variables.rel_pos_weight: shard(rel_pos_w, n_shards, axis=0).transpose((0, 2, 1)),
         }
 
     @staticmethod
@@ -129,6 +152,11 @@ class T5DecoderEmbeddingsTP(addons.Module):
         tp = config.execution.tensor_parallel
         dp = config.execution.data_parallel
         self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp, group_size=dp)
+        # Relative position embeddings
+        n_heads_groups = self.replica_grouping.num_groups
+        self.n_heads = self.config.model.attention.heads // n_heads_groups
+        self.relative_attention_num_buckets = self.config.model.attention.relative_attention_num_buckets
+        self.should_upcast = config.model.scale_ff > 1
 
     def build(
         self, input_ids: popxl.Tensor, word_embedding: popxl.Tensor, seed: Optional[popxl.Tensor] = None
@@ -146,7 +174,29 @@ class T5DecoderEmbeddingsTP(addons.Module):
             assert seed is not None, "A seed Tensor must be provided when creating a non-eval model."
             x = ops.dropout(x, seed, p=self.config.model.dropout_prob)
 
+        # Relative position embeddings: independent on each device
+        # Just create the weight here, but it will be used by the decoder layers
+        self.rel_pos_weight = self.add_variable_input(
+            "rel_pos_weight",
+            partial(truncnorm.rvs, -2, 2, loc=0, scale=0.02, size=(self.relative_attention_num_buckets, self.n_heads)),
+            self.config.model.dtype,
+            replica_grouping=self.replica_grouping,
+        )
+
+        if self.should_upcast:
+            x = ops.cast(x, popxl.float32)
         return x
+
+    @staticmethod
+    def hf_mapping(config: T5Config, variables: NamedTensors, hf_model: HFModel) -> Dict[popxl.Tensor, np.ndarray]:
+        # The only variable owned by this layer is the relative position embedding
+        dtype = config.model.dtype
+        n_shards = config.execution.tensor_parallel
+        rel_pos_w = to_numpy(
+            hf_model.decoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight.data, dtype
+        ).T
+
+        return {variables.rel_pos_weight: shard(rel_pos_w, n_shards, axis=0).transpose((0, 2, 1))}
 
 
 class T5RelPosEmbeddingsTP(addons.Module):

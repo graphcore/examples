@@ -35,6 +35,8 @@ def test_attention_TP_cmp_huggingface(test_config: T5Config, is_decoder: bool):
     # HF forward
     input_t = torch.rand((batch_size, seq_len, hidden_size), requires_grad=True)
     mask_t = torch.randint(0, 2, (batch_size, seq_len))
+    is_encoder = 0 if is_decoder else 1
+    is_encoder_t = torch.tensor(is_encoder, dtype=torch.float32)
     # Transform the attention mask like the HF attention expects it
     if is_decoder:
         causal_mask = np.tril(np.ones((seq_len, seq_len)))
@@ -63,14 +65,15 @@ def test_attention_TP_cmp_huggingface(test_config: T5Config, is_decoder: bool):
             *[
                 addons.host_load(input_t.reshape(-1, hidden_size), popxl.float32, name="input"),
                 addons.host_load(mask_t, popxl.float32, name="mask"),
+                addons.host_load(is_encoder_t, popxl.float32, name="is_encoder"),
             ]
         )
-        x, mask = inputs_tensors
+        x, mask, is_encoder = inputs_tensors
 
-        attn_args, attn_graph = T5SelfAttentionTP(test_config, is_decoder).create_graph(x, mask)
+        attn_args, attn_graph = T5SelfAttentionTP(test_config).create_graph(x, mask, is_encoder)
 
         vars = attn_args.init()
-        fwd_info = attn_graph.bind(vars).call_with_info(x, mask)
+        fwd_info = attn_graph.bind(vars).call_with_info(x, mask, is_encoder)
         (acts,) = fwd_info.outputs
 
         fwd_d2h = addons.host_store(acts)
@@ -121,6 +124,8 @@ def test_attention_to_hf(test_config: T5Config, is_decoder: bool):
 
     input_t = torch.rand((batch_size, seq_len, hidden_size), requires_grad=False)
     mask_t = torch.randint(0, 2, (batch_size, seq_len))
+    is_encoder = 0 if is_decoder else 1
+    is_encoder_t = torch.tensor(is_encoder, dtype=torch.float32)
 
     n_shards = 4
     test_config.execution.tensor_parallel = n_shards
@@ -133,13 +138,14 @@ def test_attention_to_hf(test_config: T5Config, is_decoder: bool):
             *[
                 addons.host_load(input_t.reshape(-1, hidden_size), popxl.float32, name="input"),
                 addons.host_load(mask_t, popxl.float32, name="mask"),
+                addons.host_load(is_encoder_t, popxl.float32, name="is_encoder"),
             ]
         )
-        x, mask = inputs_tensors
+        x, mask, is_encoder = inputs_tensors
 
-        attn_args, attn_graph = T5SelfAttentionTP(test_config, is_decoder).create_graph(x, mask)
+        attn_args, attn_graph = T5SelfAttentionTP(test_config).create_graph(x, mask, is_encoder)
         vars = attn_args.init()
-        (out,) = attn_graph.bind(vars).call(x, mask)
+        (out,) = attn_graph.bind(vars).call(x, mask, is_encoder)
         fwd_d2h = addons.host_store(out)
 
     # Run `OpToIdentityPattern` among others part of `PreAliasPatterns`

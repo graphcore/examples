@@ -88,11 +88,11 @@ def test_packed_batch_generator():
     ground_truth_all, include_sample_mask_all = pbg.get_ground_truth_and_masks()
 
     # -1 represents a masked graph
-    assert ground_truth_all.shape == (n_packs_per_batch, n_graphs_per_pack + 1)
+    assert ground_truth_all.shape == (len(pbg.packed_dataset), n_graphs_per_pack + 1)
     for label in ground_truth_all:
         np.testing.assert_array_equal(label[0], np.array(-1))
 
     # False represents a masked graph, True an active graph
-    assert include_sample_mask_all.shape == (n_packs_per_batch, n_graphs_per_pack + 1)
+    assert include_sample_mask_all.shape == (len(pbg.packed_dataset), n_graphs_per_pack + 1)
     for mask in include_sample_mask_all:
         np.testing.assert_array_equal(mask[0], np.array(False))

@@ -1,6 +1,8 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
 numpy>=1.19.0
 pytest~=6.2
 pytest-pythonpath==0.7.3
 matplotlib==3.3.4
-torchvision==0.15.2
+torchvision==0.15.2+cpu
 tqdm==4.46.1

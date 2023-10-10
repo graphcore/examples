@@ -9,3 +9,4 @@ periodictable==1.6.1
 py3Dmol==1.8.1
 seaborn==0.12.1
 torch-cluster==1.6.1+pt20cpu
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools

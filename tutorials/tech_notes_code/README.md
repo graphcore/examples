@@ -8,4 +8,4 @@ This directory contains code used in the Graphcore technical notes.
 - [Optimising Temporary Memory Usage for Convolutions and Matmuls on the
   IPU](available_memory) contains supporting code and tests for the
   [corresponding technical
-  note](https://docs.graphcore.ai/projects/available-memory/en/3.3.0/).
+  note](https://docs.graphcore.ai/projects/available-memory/en/latest/).

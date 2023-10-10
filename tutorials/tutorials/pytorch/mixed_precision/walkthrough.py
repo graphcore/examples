@@ -13,33 +13,18 @@ Before starting this tutorial, we recommend that you read through our
 [MNIST starting tutorial](../../../simple_applications/pytorch/mnist/).
 """
 """
-Requirements:
+## Environment setup
 
-- A Poplar SDK environment enabled (see the [Getting
-  Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for
-  your IPU system)
-- Other Python modules: `python -m pip install -r requirements.txt`
+The best way to run this demo is on Paperspace Gradient’s cloud IPUs because everything is already set up for you. To improve your experience we preload datasets and pre-install packages. This can take a few minutes. If you experience errors immediately after starting a session please try restarting the kernel before contacting support. If a problem persists or you want to give us feedback on the content of this notebook, please reach out to through our community of developers using our [slack channel](https://www.graphcore.ai/join-community) or raise a [GitHub issue](https://github.com/graphcore/Gradient-PyTorch/issues).
+
+[![Run on Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3huVlb8)
+
+To run the demo using other IPU hardware, you need to have the Poplar SDK enabled. Refer to the [Getting Started guide](https://docs.graphcore.ai/en/latest/getting-started.html#getting-started) for your system for details on how to enable the Poplar SDK. Also refer to the [Jupyter Quick Start guide](https://docs.graphcore.ai/projects/jupyter-notebook-quick-start/en/latest/index.html) for how to set up Jupyter to be able to run this notebook on a remote IPU machine.
 """
-# %pip install -q -r requirements.txt
+# %pip install -r requirements.txt
 # sst_ignore_md
 # sst_ignore_code_only
-"""
-To run the Jupyter notebook version of this tutorial:
 
-1. Enable a Poplar SDK environment and install required packages with
-   `python -m pip install -r requirements.txt`;
-2. In the same environment, install the Jupyter notebook server:
-   `python -m pip install jupyter`;
-3. Launch a Jupyter Server on a specific port:
-   `jupyter-notebook --no-browser --port <port number>`;
-4. Connect via SSH to your remote machine, forwarding your chosen port:
-   `ssh -NL <port number>:localhost:<port number>
-   <your username>@<remote machine>`.
-
-For more details about this process, or if you need troubleshooting, see our
-[guide on using IPUs from Jupyter
-notebooks](../../standard_tools/using_jupyter/README.md).
-"""
 """
 ## General
 
@@ -319,10 +304,10 @@ opts = poptorch.Options()
 """
 > **NOTE**: This tutorial has been designed to be run on a single IPU.
 > If you do not have access to an IPU, you can use the option
-> [`useIpuModel`](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/overview.html#poptorch.Options.useIpuModel)
+> [`useIpuModel`](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/overview.html#poptorch.Options.useIpuModel)
 > to run a simulation on a CPU instead. You can read more on the IPU Model and
 > its limitations in the
-> [Poplar User Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.3.0/poplar_programs.html#programming-with-poplar).
+> [Poplar User Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/poplar_programs.html#programming-with-poplar).
 """
 """
 #### Stochastic rounding on IPU
@@ -358,7 +343,7 @@ else:
 """
 Further information on the Partials Type setting can be found in our [memory and
 performance optimisation
-guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.3.0/common-memory-optimisations.html#partials-type).
+guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/common-memory-optimisations.html#partials-type).
 """
 """
 ### Train the model
@@ -427,7 +412,7 @@ print(
 
 We can visually compare the memory footprint on the IPU of the model trained
 in FP16 and FP32, thanks to Graphcore's [PopVision Graph
-Analyser](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/index.html).
+Analyser](https://docs.graphcore.ai/projects/graph-analyser-userguide/).
 
 We generated memory reports of the same training session as covered in this
 tutorial for both cases: with and without downcasting the model with
@@ -475,6 +460,6 @@ POPLAR_ENGINE_OPTIONS = '{"debug.floatPointOpException": "true"}'
   - Upcast partials data types: `opts.Precision.setPartialsType(torch.float)`
 
 - The [PopVision Graph
-  Analyser](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/index.html)
+  Analyser](https://docs.graphcore.ai/projects/graph-analyser-userguide/)
   can be used to inspect the memory use of a model and to help debug issues.
 """

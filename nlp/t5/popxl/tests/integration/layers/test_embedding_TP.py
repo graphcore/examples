@@ -65,7 +65,9 @@ def test_embeddings_TP_cmp_torch(test_config: T5Config):
         fwd_d2h = addons.host_store(acts)
 
         # Backwards
-        grad_emb_graph = addons.autodiff(emb_graph, grads_required=emb_graph.args.tensors)
+        # Exclude the rel_pos_weight from autodiff
+        grads_required = [t for t in emb_graph.args.tensors if "rel_pos_weight" not in t.name]
+        grad_emb_graph = addons.autodiff(emb_graph, grads_required=grads_required)
         gradient = popxl.constant(grad_wrt.reshape(acts.shape).numpy().copy(), acts.dtype, "gradient")
         grad_call_info = grad_emb_graph.call_with_info(
             gradient, args=grad_emb_graph.grad_graph_info.inputs_dict(fwd_info)

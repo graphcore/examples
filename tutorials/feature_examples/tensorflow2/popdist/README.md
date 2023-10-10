@@ -9,7 +9,7 @@ This example contains a TensorFlow CNN with PopDist support, which can be launch
 multiple instances using a PopRun command line.
 
 You can learn more about PopDist and PopRun in the
-[PopDist and PopRun User Guide](https://docs.graphcore.ai/projects/poprun-user-guide/en/3.1.0/index.html).
+[PopDist and PopRun User Guide](https://docs.graphcore.ai/projects/poprun-user-guide/en/latest/).
 
 ## File structure
 

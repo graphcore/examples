@@ -5,7 +5,7 @@ Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 These tutorials provide hands-on programming exercises to enable you to
 familiarise yourself with creating and running programs using Poplar,
 PopLibs and PopART with the PopVision tools. They are intended to
-complement the [Poplar and PopLibs User Guide](https://docs.graphcore.ai/projects/poplar-user-guide/).
+complement the [Poplar and PopLibs User Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/).
 
 It is assumed that you have already downloaded and installed the Poplar
 SDK, and that you are familiar with Python and command-line compilation
@@ -14,8 +14,8 @@ tools.
 You can download and install the PopVision Graph Analyser and PopVision
 System Analyser from the [PopVision Tools page](https://www.graphcore.ai/developer/popvision-tools).
 
-There is a [PopVision Graph Analyser User Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/),
-and [PopVision System Analyser User Guide](https://docs.graphcore.ai/projects/system-analyser-userguide/en/2.11.2/) available.
+There is a [PopVision Graph Analyser User Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/),
+and [PopVision System Analyser User Guide](https://docs.graphcore.ai/projects/system-analyser-userguide/) available.
 
 For most of the tutorials we've included two directories. One, called
 `start_here`, contains the bare structure of the tutorial as a starting

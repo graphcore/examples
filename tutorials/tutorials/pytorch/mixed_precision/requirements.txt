@@ -1,3 +1,6 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
 ipywidgets
-torchvision==0.15.2
+torchvision==0.15.2+cpu
 tqdm
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools

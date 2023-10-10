@@ -1,4 +1,6 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
 setuptools==58.0.4
 pytorch_lightning==1.9.0
 torchmetrics==0.11.0
-torch==2.0.1
+torch==2.0.1+cpu

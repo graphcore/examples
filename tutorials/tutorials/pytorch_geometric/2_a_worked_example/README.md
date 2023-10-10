@@ -14,7 +14,7 @@ The advantages of running GNNs on IPUs compared to other processor types can be 
 This tutorial will get you started training and running inference on your first GNN model on IPUs.
 We will go through the following steps required to run a PyTorch Geometric model on IPU, detailing the journey of running GNNs on the IPU:
  * Loading a PyTorch Geometric dataset
- * Using a [PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/) dataloader to achieve fixed size outputs
+ * Using a [PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/en/latest/) dataloader to achieve fixed size outputs
  * Creating a model
  * Adjusting the model to satisfy PopTorch requirements
  * Start training on the IPU
@@ -122,7 +122,7 @@ There are a number of reasons why you may want to use a dataloader to load your 
  * to enable using particular PopTorch features such as replication and gradient accumulation;
  * to achieve fixed size batches required for the IPU.
 
-[PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/), the IPU-specific PyTorch Geometric library, provides a wrapper for the PopTorch dataloader, making it easy to get performant PyTorch Geometric models running on the IPU. As we only have a single item in our dataset we do not need to worry about making our batches fixed size so we can use the most basic of PopTorch Geometric's dataloaders.
+[PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/en/latest/), the IPU-specific PyTorch Geometric library, provides a wrapper for the PopTorch dataloader, making it easy to get performant PyTorch Geometric models running on the IPU. As we only have a single item in our dataset we do not need to worry about making our batches fixed size so we can use the most basic of PopTorch Geometric's dataloaders.
 
 ```python
 from poptorch_geometric.dataloader import DataLoader
@@ -246,7 +246,7 @@ Our model is ready for training, we will learn how to do that in the next sectio
 We are now in the position to begin training our model. To make this model ready for training on the IPU we will wrap the model in PopTorch functionality. We do the following:
  * Use a PopTorch optimizer for better speed and memory performance on the IPU. `Adam` is a suitable optimizer for our task, so we can create the optimizer in the typical way.
  * Wrap the model in `poptorch.trainingModel`;
- * Use PopTorch options to make use of PopTorch and IPU features, here we only set a directory to save and load our compiled executable from. Take a look at the [PopTorch documentation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/reference.html?highlight=options#poptorch.Options) for some of the other features you could use.
+ * Use PopTorch options to make use of PopTorch and IPU features, here we only set a directory to save and load our compiled executable from. Take a look at the [PopTorch documentation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/reference.html#poptorch.Options) for some of the other features you could use.
 
 ```python
 import poptorch

@@ -33,6 +33,7 @@ def get_evaluator(dataset_name):
     if dataset_name in (
         "pcqm4mv2",
         "generated",
+        "generated_extended",
         "pcqm4mv2_28features",
         "pcqm4mv2_conformers",
         "pcqm4mv2_conformers_28features",
@@ -53,6 +54,7 @@ def format_out_tensor(dataset_name, out_tensor):
     if dataset_name in (
         "pcqm4mv2",
         "generated",
+        "generated_extended",
         "pcqm4mv2_28features",
         "pcqm4mv2_conformers",
         "pcqm4mv2_conformers_28features",

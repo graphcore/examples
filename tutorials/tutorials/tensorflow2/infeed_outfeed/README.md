@@ -176,7 +176,7 @@ You may notice that `IPUInfeedQueue` is not explicitly declared like `IPUOutfeed
 
 An `IPUOutfeedQueue` is used to generate and add outfeed enqueue/dequeue operations to the graph. The infeed and outfeed queues together manage the transfer of data between the IPU graph and the host.
 
-`IPUOutfeedQueue` objects have extra options to control how they collect and output the data sent to them. These options are not used in this example. Refer to the [IPUOutfeedQueue](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/api.html#tensorflow.python.ipu.ipu_outfeed_queue.IPUOutfeedQueue) documentation for details.
+`IPUOutfeedQueue` objects have extra options to control how they collect and output the data sent to them. These options are not used in this example. Refer to the [IPUOutfeedQueue](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html#tensorflow.python.ipu.ipu_outfeed_queue.IPUOutfeedQueue) documentation for details.
 
 To execute the training loop, you should do so within the scope of an `ipu_strategy.IPUStrategy` using `run` like so:
 
@@ -211,7 +211,7 @@ with strategy.scope():
     )
 ```
 
-`steps_per_execution` refers to the total number of batches of data processed by each replica (if replication is enabled) each time an engine is executed. Usually, it is passed as an argument when compiling a model in TF2 (see [Keras with IPUs documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/keras_tf2.html#using-steps-per-execution)). In this example, `steps_per_execution` is used here to simulate the same behaviour with a custom training loop -- it essentially plays the same role as the known `steps_per_execution` parameter that is passed to `model.compile`.
+`steps_per_execution` refers to the total number of batches of data processed by each replica (if replication is enabled) each time an engine is executed. Usually, it is passed as an argument when compiling a model in TF2 (see [Keras with IPUs documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/keras_tf2.html#using-steps-per-execution)). In this example, `steps_per_execution` is used here to simulate the same behaviour with a custom training loop -- it essentially plays the same role as the known `steps_per_execution` parameter that is passed to `model.compile`.
 
 
 ## Additional notes
@@ -256,7 +256,7 @@ POPLAR_ENGINE_OPTIONS='{"autoReport.all":"true", "autoReport.directory":"with_fe
 
 The engine option `autoReport.directory` specifies where you would like to save the profile. You can download the PopVision Graph Analyser from the Graphcore [developer page](https://www.graphcore.ai/developer/popvision-tools#downloads) and view the profile you have saved with it. Similarly, you can save the profile of [mnist_without_feeds.py](completed_code/mnist_without_feeds.py) in a different folder for comparison.
 
-The engine option `autoReport.executionProfileProgramRunCount` specifies how many runs of the Poplar program you would like to capture. If you increase the number of runs to be captured, the execution report gets larger and so takes longer to generate. For the purpose of illustration, this option is set to 10 in this case. The default value is 2. For more information on the available options, please visit [PopVision Graph Analyser User Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/user-guide.html#capturing-ipu-reports).
+The engine option `autoReport.executionProfileProgramRunCount` specifies how many runs of the Poplar program you would like to capture. If you increase the number of runs to be captured, the execution report gets larger and so takes longer to generate. For the purpose of illustration, this option is set to 10 in this case. The default value is 2. For more information on the available options, please visit [PopVision Graph Analyser User Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/page/capturing-ipu-reports.html).
 
 The execution traces for both [mnist_with_feeds.py](completed_code/mnist_with_feeds.py) and [mnist_without_feeds.py](completed_code/mnist_without_feeds.py) are shown below and can be found in the `execution_trace` folder as well. PopVision Graph Analyser 2.4.2 is used here to generate the images.
 

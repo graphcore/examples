@@ -192,7 +192,7 @@ pytorch_gpt2_large_train_gen_pod16:
       --device-iterations 8
       --batch-size 1
       --layers-per-ipu 0 2 2 2 2 2 2 2 2 3 3 3 3 3 3 2
-      --matmul-proportion 0.15 0.15 0.2 0.2 0.2 0.15 0.15 0.2 0.2 0.15 0.2 0.2 0.2 0.15 0.15 0.2
+      --matmul-proportion 0.15 0.15 0.2 0.2 0.2 0.15 0.15 0.2 0.2 0.15 0.15 0.2 0.2 0.15 0.15 0.2
       --max-len 1024
       --optimizer AdamW
       --learning-rate 0.00015

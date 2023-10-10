@@ -2,7 +2,7 @@
 fvcore==0.1.5.post20210727
 matplotlib==3.3.4
 numpy==1.19.5
-pycocotools==2.0.4
+pycocotools==2.0.6
 pytest==6.2.5
 pytest-pythonpath==0.7.4
 requests==2.27.1
@@ -13,5 +13,5 @@ torchvision==0.11.0+cpu; python_version <= '3.6'
 protobuf==3.19.4
 wandb==0.12.8
 yacs==0.1.8
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
 torchinfo==1.5.4
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools

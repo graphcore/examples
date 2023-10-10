@@ -9,7 +9,7 @@ regex==2022.4.24
 omegaconf==2.1.2
 pytorch-lightning==1.7.7; python_version >= '3.7'
 pytorch-lightning==1.5.10; python_version == '3.6'
-taming-transformers-rom1504==0.0.6
+-e git+https://github.com/CompVis/taming-transformers.git@ceabef4b5bb2d381543fa072bc1d69655033873e#egg=taming_transformers
 protobuf==3.19.4
 wandb==0.12.8
 pytest==6.2.5
@@ -17,4 +17,4 @@ pytest-pythonpath==0.7.4
 torchvision==0.15.2+cpu; python_version > '3.6'
 torchvision==0.11.0+cpu; python_version <= '3.6'
 horovod==0.24.3
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4

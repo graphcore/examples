@@ -159,7 +159,7 @@ Now lets do the above steps in code.
 
 To process a dataset ready for IPUs, each mini-batch of graphs needs to have relative tensors of the same size.
 To achieve that, we will use the approach described above in an attempt to reduce the amount of padding in our batches of data.
-For this tutorial we will demonstrate how to use the `FixedSizeDataLoader` class available in [PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/), the IPU-specific PyTorch Geometric library, which will help us achieve the steps above in very few lines of code.
+For this tutorial we will demonstrate how to use the `FixedSizeDataLoader` class available in [PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/en/latest/), the IPU-specific PyTorch Geometric library, which will help us achieve the steps above in very few lines of code.
 
 First we must decide on the values for maximum number of graphs, nodes and edges in a batch. We can use the dataset summary functionality to help us choose:
 

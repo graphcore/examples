@@ -5,10 +5,10 @@
 In this tutorial you will learn to use:
 
 - the [PopVision System
-  Analyser](https://docs.graphcore.ai/projects/system-analyser-userguide/en/2.11.2/),
+  Analyser](https://docs.graphcore.ai/projects/system-analyser-userguide/),
   a desktop tool for profiling the code that runs on the host processors and interacts with IPUs”;
 - the [`libpvti`
-  module](https://docs.graphcore.ai/projects/libpvti/en/3.2.0/index.html) in
+  module](https://docs.graphcore.ai/projects/libpvti/en/latest/) in
   Python which can be used to profile, time, and log information from your IPU
   applications and plot it directly in the PopVision System Analyser.
 
@@ -390,6 +390,6 @@ the `psutil` library, and plots both of them.
 This is a very simple use case for adding instrumentation. The PopVision trace
 instrumentation library (libpvti) provides other functions, classes & methods
 to instrument your Python and C++ code. For more information please see the
-[PVTI library documentation](https://docs.graphcore.ai/projects/libpvti/en/3.2.0/index.html).
+[PVTI library documentation](https://docs.graphcore.ai/projects/libpvti/en/latest/).
 
 Generated:2023-05-26T15:03 Source:walkthrough.py SDK:3.3.0-EA.2+1359 SST:0.0.10

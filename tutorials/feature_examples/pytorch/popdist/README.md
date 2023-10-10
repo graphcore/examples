@@ -5,7 +5,7 @@ PopDist (Poplar Distributed Configuration) provides a set of APIs which can be u
 
 This example contains a PopTorch CNN with PopDist support, which can be launched on multiple instances using a PopRun command line.
 
-You can learn more about PopDist and PopRun in the [PopDist and PopRun User Guide](https://docs.graphcore.ai/projects/poprun-user-guide/en/3.3.0/index.html).
+You can learn more about PopDist and PopRun in the [PopDist and PopRun User Guide](https://docs.graphcore.ai/projects/poprun-user-guide/en/latest/).
 
 ## File structure
 

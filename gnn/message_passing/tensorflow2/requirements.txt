@@ -12,6 +12,6 @@ pytest-xdist==2.5.0
 regex==2022.4.24
 # Workaround for OGB issue on Python3.9
 --find-links https://download.pytorch.org/whl/torch_stable.html
-torch==2.0.1+cu118; python_version >= '3.9'
+torch==2.0.1+cu118
 wandb==0.12.8
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4

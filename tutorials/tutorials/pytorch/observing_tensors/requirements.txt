@@ -1,4 +1,6 @@
-torchvision==0.15.2
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
+torchvision==0.15.2+cpu
 tqdm
 scikit-learn
 matplotlib

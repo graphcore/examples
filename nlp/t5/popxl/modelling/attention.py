@@ -35,11 +35,10 @@ def reshape_for_scores(x: popxl.Tensor, sequence_length: int, heads: int) -> pop
 
 
 class T5AttentionHeads(addons.Module):
-    def __init__(self, config: T5Config, replica_grouping: Optional[ReplicaGrouping] = None, is_decoder: bool = False):
+    def __init__(self, config: T5Config, replica_grouping: Optional[ReplicaGrouping] = None):
         super().__init__()
         self.config = config
         self.replica_grouping = replica_grouping
-        self.is_decoder = is_decoder
 
         if self.replica_grouping:
             n_heads_groups = self.replica_grouping.num_groups
@@ -68,6 +67,7 @@ class T5AttentionHeads(addons.Module):
         self,
         x: popxl.Tensor,
         mask: popxl.Tensor,
+        is_encoder: popxl.Tensor,
         rel_pos_weight: Optional[popxl.Tensor] = None,
         seed: Optional[popxl.Tensor] = None,
     ):
@@ -89,8 +89,7 @@ class T5AttentionHeads(addons.Module):
         # query, value: [batch, heads, seq, head_size]
         # key: [batch, heads, head_size, seq]
 
-        rel_pos_buckets = self.compute_relative_position_buckets()
-        input_ids = popxl.constant(rel_pos_buckets, popxl.int32, "rel_pos_buckets")
+        input_ids = self.compute_relative_position_indices(is_encoder)
         rel_pos_encodings = self.rel_pos_embedding(input_ids, rel_pos_weight)
 
         # rel_pos_encodings: [seq, seq, heads]
@@ -101,14 +100,19 @@ class T5AttentionHeads(addons.Module):
 
         mask = mask.reshape((self.config.execution.micro_batch_size, 1, 1, self.seq_len))
         # mask: [batch, 1, 1, seq]
-        if self.is_decoder:
-            causal_mask = np.tril(np.ones((self.seq_len, self.seq_len)))
-            causal_mask = popxl.constant(causal_mask, query.dtype, name="causal_mask")
-            causal_mask = causal_mask.reshape((1, 1, self.seq_len, self.seq_len))
-            # causal_mask: [1, 1, seq, seq]
-            # Combine the two masks
-            mask = mask * causal_mask
-            # mask: [batch, 1, seq, seq]
+        causal_mask = np.tril(np.ones((self.seq_len, self.seq_len)))
+        # Get the complementary mask (with 1s and 0s switched wrt the causal mask)
+        compl_mask = 1 - causal_mask
+        causal_mask = popxl.constant(causal_mask, query.dtype, name="causal_mask")
+        compl_mask = popxl.constant(compl_mask, query.dtype, name="compl_mask")
+        # For the encoder is_encoder == 1, and for the decoder is_encoder == 0
+        # We want the encoder to have a causal mask of all ones,
+        # and the decoder to have a triangular causal mask
+        causal_mask = causal_mask + is_encoder * compl_mask
+        causal_mask = causal_mask.reshape((1, 1, self.seq_len, self.seq_len))
+        # causal_mask: [1, 1, seq, seq]
+        # Combine the two masks
+        mask = mask * causal_mask
         # turn the values 1 to 0, and values 0 to a large negative number,
         # making sure the number can be represented in the current dtype
         large_num = 1e9 if mask.dtype == popxl.float32 else 1e4
@@ -117,10 +121,7 @@ class T5AttentionHeads(addons.Module):
         if self.config.execution.attention_serialisation > 1:
             queries = ops.split(query, self.config.execution.attention_serialisation, axis=2)
             rel_pos_encs = ops.split(rel_pos_encodings, self.config.execution.attention_serialisation, axis=2)
-            if self.is_decoder:
-                masks = ops.split(mask, self.config.execution.attention_serialisation, axis=2)
-            else:
-                masks = [mask] * self.config.execution.attention_serialisation
+            masks = ops.split(mask, self.config.execution.attention_serialisation, axis=2)
 
             blk_graph = popxl.gcg().ir.create_graph(
                 self.attention_block, queries[0], key, value, rel_pos_encs[0], masks[0], seed
@@ -160,7 +161,7 @@ class T5AttentionHeads(addons.Module):
         attn_weights = query @ key
         # attn_weights: [batch, heads, seq', seq]
         # rel_pos_enc: [1, heads, seq', seq]
-        # mask: [batch, 1, 1, seq] or [batch, 1, seq', seq]
+        # mask: [batch, 1, seq', seq]
         attn_weights = attn_weights + rel_pos_enc + mask
 
         attn_scores = ops.softmax(attn_weights, axis=-1)
@@ -170,13 +171,28 @@ class T5AttentionHeads(addons.Module):
         # value: [batch, heads, seq, head_size]
         return attn_scores @ value
 
-    def compute_relative_position_buckets(self):
+    def compute_relative_position_indices(self, is_encoder: popxl.Tensor):
+        # We need to perform the same computation for encoder and decoder,
+        # we use the scalar tensor is_encoder to extract the slice of
+        # relative positions for the current layer.
+        # Get the indices relative to the encoder
+        rel_pos_buckets_enc = self._compute_relative_position_buckets(True)
+        # Get the indices relative to the decoder
+        rel_pos_buckets_dec = self._compute_relative_position_buckets(False)
+        input_ids_enc = popxl.constant(rel_pos_buckets_enc, popxl.int32, "rel_pos_buckets_enc")
+        input_ids_dec = popxl.constant(rel_pos_buckets_dec, popxl.int32, "rel_pos_buckets_dec")
+        # Combine them to produce the correct indices
+        is_encoder = ops.cast(is_encoder, popxl.int32)
+        input_ids = is_encoder * input_ids_enc + (1 - is_encoder) * input_ids_dec
+        return input_ids
+
+    def _compute_relative_position_buckets(self, is_encoder: bool):
         # This numpy computation is largely inspired by the equivalent torch implementation from HuggingFace
         query_position = np.arange(self.seq_len, dtype=np.int32)[:, np.newaxis]
         key_position = np.arange(self.seq_len, dtype=np.int32)[np.newaxis, :]
         # matrix of all the relative distances
         relative_position = key_position - query_position
-        if not self.is_decoder:
+        if is_encoder:
             # half of the buckets for positions behind, half for positions ahead
             num_buckets = self.relative_attention_num_buckets // 2
             # offset the positions ahead by num_buckets
@@ -207,7 +223,7 @@ class T5AttentionHeads(addons.Module):
 
 
 class T5SelfAttentionTP(addons.Module):
-    def __init__(self, config: T5Config, is_decoder: bool = False):
+    def __init__(self, config: T5Config):
         super().__init__()
 
         self.config = config
@@ -216,7 +232,7 @@ class T5SelfAttentionTP(addons.Module):
         self.replica_grouping = popxl.gcg().ir.replica_grouping(stride=tp, group_size=dp)
 
         # Sharded across devices
-        self.heads = T5AttentionHeads(config=config, replica_grouping=self.replica_grouping, is_decoder=is_decoder)
+        self.heads = T5AttentionHeads(config=config, replica_grouping=self.replica_grouping)
 
         # Sharded across devices
         self.output = Linear(self.config.model.hidden_size, bias=False, replica_grouping=self.replica_grouping)
@@ -225,6 +241,7 @@ class T5SelfAttentionTP(addons.Module):
         self,
         x: popxl.Tensor,
         mask: popxl.Tensor,
+        is_encoder: popxl.Tensor,
         rel_pos_weight: Optional[popxl.Tensor] = None,
         seed: Optional[popxl.Tensor] = None,
     ) -> popxl.Tensor:
@@ -238,7 +255,7 @@ class T5SelfAttentionTP(addons.Module):
         z = replicated_all_reduce_identical_inputs(x, group=self.replica_grouping.transpose())
 
         # ----- Sharded computation -----
-        z = self.heads(z, mask, rel_pos_weight, seed=heads_seed)
+        z = self.heads(z, mask, is_encoder, rel_pos_weight, seed=heads_seed)
         z = self.output(z)
 
         z = replicated_all_reduce_identical_grad_inputs(z, group=self.replica_grouping.transpose())
@@ -264,7 +281,8 @@ class T5SelfAttentionTP(addons.Module):
 
         # Only the first layer of the encoder or decoder stack
         # will have the original weights for the rel pos embedding
-        if hf_model.has_relative_attention_bias:
+        do_rel_pos = hf_model.has_relative_attention_bias and "rel_pos_embedding" in variables.heads
+        if do_rel_pos:
             rel_pos_w = to_numpy(hf_model.relative_attention_bias.weight.data, dtype).T
 
         out_proj_w = to_numpy(hf_model.o.weight.data.T, dtype)
@@ -280,7 +298,7 @@ class T5SelfAttentionTP(addons.Module):
             ),
             variables.output.weight: shard(out_proj_w, n_shards, axis=0),
         }
-        if hf_model.has_relative_attention_bias:
+        if do_rel_pos:
             weights[variables.heads.rel_pos_embedding.weight] = shard(rel_pos_w, n_shards, axis=0).transpose((0, 2, 1))
         return weights
 

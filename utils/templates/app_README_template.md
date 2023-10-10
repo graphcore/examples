@@ -1,4 +1,4 @@
-# Example name/acronym (full expanded name if applicable)
+# Example Name/Acronym (Full Expanded Name if Applicable)
 Give a one-line summary of the example and include images, if relevant.
 
 (Table that summarises app usage and capability)
@@ -12,7 +12,7 @@ Give a short description (~3-10 lines) about the example, the methods or technol
 ## Overview
 Before you can run this model for training or inference you will need to:
 
-1. Install and enable the Poplar SDK (see [Poplar SDK setup](#poplar-sdk-setup))
+1. Enable the Poplar SDK (see [Poplar SDK setup](#poplar-sdk-setup))
 2. Install the system and Python requirements (see [Environment setup](#environment-setup))
 3. Download the XX dataset (See [Dataset setup](#dataset-setup))
 4. etc.
@@ -32,10 +32,10 @@ cd poplar-<OS version>-<SDK version>-<hash>
 . enable
 ```
 
-Detailed instructions on setting up your Poplar environment are available in the [<framework> quick start guide] (link from below)
+Detailed instructions on enabling the Poplar SDK are available in the [<framework> quick start guide] (link from below -- Note: All quick starts have instructions to enable the SDK, so only refer to the quick start for the framework you are using. Do not link to the Poplar Quick Start.)
 PyTorch - https://docs.graphcore.ai/projects/pytorch-quick-start
 TensorFlow 2 - https://docs.graphcore.ai/projects/tensorflow2-quick-start
-PopXL - https://docs.graphcore.ai/projects/poplar-quick-start
+PopXL - https://docs.graphcore.ai/projects/popxl/en/latest/setup_quick_start.html.
 
 
 ## Environment setup
@@ -47,17 +47,28 @@ python3 -m venv <venv name>
 source <venv path>/bin/activate
 ```
 
-2. Navigate to the Poplar SDK root directory
+2. Install the framework-specific wheels from the SDK directory and validate the installation:
 
-3. Install the framework-specific wheels:
+[If you are using PopTorch:]
 ```bash
-cd <poplar sdk root dir>
-pip3 install ...
-pip3 install ...
+pip3 install ${POPLAR_SDK_ENABLED?}/../poptorch-*.whl
+python3 -c "import poptorch; print(poptorch.__version__)"
 ```
-Detailed instructions on setting up your <framework> environment are available in the [<framework> quick start guide](link from below)
+
+[If you are using TensorFlow 2:]
+```bash
+pip3 install ${POPLAR_SDK_ENABLED?}/../tensorflow-2.*+amd_*.whl
+pip3 install --force-reinstall --no-deps ${POPLAR_SDK_ENABLED?}/../keras-2.*.whl
+pip3 install ${POPLAR_SDK_ENABLED?}/../ipu_tensorflow_addons-2.*.whl
+python3 -c "from tensorflow.python import ipu"
+python3 -c "import keras"
+python3 -c "from ipu_tensorflow_addons.keras import layers"
+```
+
+Detailed instructions on setting up your <framework> environment are available in the [<framework> quick start guide](<link from below>)
 PyTorch - https://docs.graphcore.ai/projects/pytorch-quick-start
 TensorFlow 2 - https://docs.graphcore.ai/projects/tensorflow2-quick-start
+PopXL - https://docs.graphcore.ai/projects/popxl/en/latest/setup_quick_start.html.
 
 
 4. Navigate to this example's root directory
@@ -150,4 +161,7 @@ Give basic info on how to run your own custom inference with commands
 Describe or demonstrate any other aspects of the app that you want to highlight that don't fit into the sections above.
 
 ## License
-License for this examples (standard across examples likely)
+
+This application is licensed under [name of license].0. Please see the [LICENSE]<link to license> file for full details of the license conditions.
+
+Describe if any content in the application doesn't fall under the above license, for example, images or extracts from research papers, and list details of the licenses of these.

@@ -1,10 +1,13 @@
-# FLAN-T5
-FLAN-T5 for NLP fine-tuning and text generation, optimised for Graphcore's IPU.
+# Flan-T5
+Flan-T5 for NLP fine-tuning and text generation, optimised for Graphcore's IPU.
 
+Run Flan-T5 fine-tuning on Paperspace.
+<br>
+[![Gradient](../../../gradient-badge.svg)](https://ipu.dev/IotDe5)
 
 | Framework | Domain | Model | Datasets | Tasks | Training | Inference |
 |-----------|--------|-------|----------|-------|----------|-----------|
-| PopXL | NLP | FLAN-T5 | MNLI | Textual entailment | <p style="text-align: center;">✅ <br> 64 IPUs (POD64) required  | <p style="text-align: center;">✅ <br> 64 IPU (POD64) required |
+| PopXL | NLP | Flan-T5 | MNLI | Textual entailment | <p style="text-align: center;">✅ <br> 16 IPUs (POD16) required  | <p style="text-align: center;">✅ <br> 4 IPU (POD4) required |
 
 
 # Instructions summary
@@ -63,7 +66,7 @@ This dataset is downloaded automatically when requireed by the application itsel
 
 ### Mnli finetuning <a name="finetuning"></a>
 
-We present a fine-tuning example of FLAN-T5 on [mnli dataset](https://huggingface.co/datasets/glue).
+We present a fine-tuning example of Flan-T5 on [mnli dataset](https://huggingface.co/datasets/glue).
 Mnli dataset consists of pairs of sentences, a *premise* and a *hypothesis*.
 The task is to predict the relation between the premise and the hypothesis, which can be:
 - `entailment`: hypothesis follows from the premise,
@@ -71,16 +74,16 @@ The task is to predict the relation between the premise and the hypothesis, whic
 - `neutral`: hypothesis and premise are unrelated.
 
 
-The default model size for fine-tuning is FLAN-T5 XXL (11B) on POD64 (named `xxl_pod64`). You can
+The default model size for fine-tuning is Flan-T5 XXL (11B) on POD16 (named `xxl_pod16`). You can
 change it to other configurations that are available in the configuration file `config/finetuning.yml` using the `--config` CLI parameter.
-In particular, you can run fine-tuning on a POD16 using the config for XL (3B):
+In particular, you can run fine-tuning on a POD8 using the config for XL (3B):
 ```bash
-python3 run_finetuning.py --config xl_pod16
+python3 run_finetuning.py --config xl_pod8
 ```
 
-When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable this, use the environment variable `POPXL_CACHE_DIR=<PATH/TO/CACHE>` when running the application:
+When running the application, it is possible to save/load executables to/from a cache store. This allows for reusing a saved executable instead of re-compiling the model when re-running identical model configurations. To enable this, use the environment variable `POPXL_CACHE_DIR=/path/to/cache` when running the application:
 ```bash
-POPXL_CACHE_DIR=<PATH/TO/CACHE> python3 run_finetuning.py
+POPXL_CACHE_DIR=/path/to/cache python3 run_finetuning.py
 ```
 
 We finetune the model to predict the mnli class, given the hypothesis and premise. T5 has an encoder-decoder architecture, so it needs 2 input sequences: one for the encoder, and one for the decoder.
@@ -101,7 +104,7 @@ decoder sequence:
 <pad>contradiction
 ```
 
-The tokenizer is the FLAN-T5 Tokenizer, which has a `vocab_size` of 32128.
+The tokenizer is the Flan-T5 Tokenizer, which has a `vocab_size` of 32128.
 
 Prompt sentences are tokenized and padded to the max model' sequence length of 512. Attention masks are generated accordingly.
 Since the model is trained to predict the mnli class, the labels are simply the decoder input sequence shifted by one token to the left.
@@ -135,7 +138,7 @@ This script runs validation on the full dataset, producing the resulting accurac
 ### Benchmarking <a name="benchmarking"></a>
 You can run execution scripts `inference.py` `finetuning.py` directly for benchmarking.
 In that case, generated data will be used.
-For instance, the command below runs the benchmarking for FLAN-T5 finetuning.
+For instance, the command below runs the benchmarking for Flan-T5 finetuning.
 ```bash
 python3 finetuning.py
 ```
@@ -145,13 +148,13 @@ This project supports Weights & Biases, a platform to keep track of machine lear
 
 The trainings are logged in wandb under project `popxl-t5`. Each run has loss, learning rate and throughput logged. The version for `addons` and PopXL are also logged together with the configuration settings.
 
-### Configure your FLAN-T5 runs <a name="configs"></a>
+### Configure your Flan-T5 runs <a name="configs"></a>
 
-You can find configuration options for FLAN-T5 in class `T5Config` in the file `config/config.py`. It contains configurations for these aspects:
+You can find configuration options for Flan-T5 in class `T5Config` in the file `config/config.py`. It contains configurations for these aspects:
 
 * Model
 
-    You can set the parameters used in the FLAN-T5 model.
+    You can set the parameters used in the Flan-T5 model.
     - General parameters:
         1. `layers` the number of encoder and decoder layers in the model,
         2. `hidden_size` the hidden size of the layers,
@@ -176,7 +179,7 @@ You can find configuration options for FLAN-T5 in class `T5Config` in the file `
     - `stochastic_rounding`: a flag to enable stochastic rounding,
     - `optimizer`: an optimizer with the following settings.
         - `name`: name of the optimizer, by default, AdamW.
-        - `learning_rate`: to set up the learning rate including `maximum` learning rate, and `warmup_proportion` to set the proportion of the warmup step,
+        - `learning_rate`: to set up the learning rate including `maximum` learning rate, and `warmup_steps` to set the number of warmup steps,
         - `beta1`: by default 0.9,
         - `beta2`: by default 0.999,
         - `weight_decay`: weight decay factor, by default 0.01,
@@ -184,7 +187,7 @@ You can find configuration options for FLAN-T5 in class `T5Config` in the file `
 
 * Execution
 
-    It allows you to change how to execute a FLAN-T5 run on IPU.
+    It allows you to change how to execute a Flan-T5 run on IPU.
     - `micro_batch_size`: the number of samples that contribute to a gradient accumulation step,
     - `data_parallel`: the number of model replicas to use for data parallelism,
     - `tensor_parallel`: the number of IPUs used for tensor model parallel axis,
@@ -211,8 +214,8 @@ Note that the `gradient_accumulation` factor is automatically computed from the 
     ```
 
 
-### Scale FLAN-T5 on IPU <a name="scale"></a>
-Here we introduce some techniques that were required to scale up the FLAN-T5 model for the required capacity and throughput.
+### Scale Flan-T5 on IPU <a name="scale"></a>
+Here we introduce some techniques that were required to scale up the Flan-T5 model for the required capacity and throughput.
 
 ### Combining data parallelism, tensor parallelism and RTS <a name="tp_dp"></a>
 The model is executed using multiple IPUs to implement data parallelism and tensor parallelism via replication.
@@ -282,7 +285,7 @@ def build(
         z = ops.dropout(z, seed, p=self.config.model.dropout_prob)
     return z
 ```
-Note: the actual feed forward block used for FLAN-T5 is slightly more complicated, since it uses a [GeGLU](https://arxiv.org/abs/2002.05202) mechanism. However, the same concepts apply.
+Note: the actual feed forward block used for Flan-T5 is slightly more complicated, since it uses a [GeGLU](https://arxiv.org/abs/2002.05202) mechanism. However, the same concepts apply.
 
 During training, these are the only tp related collectives we need, because we compute the cross entropy loss on sharded logits using `popxl_addons.ops.cross_entropy_sharded_loss`, so we don't need to materialise the full logits by gathering them.
 For the embedding layer one all-reduce communication operation is required for the forwards and backwards pass (not including recomputation). For the encoder and decoder layers, four all-reduce operations are required for the forwards and backwards pass. For the language model head four all-reduce operations are required for the forwards and backwards pass .
@@ -304,10 +307,10 @@ PopXL's concept of `ReplicaGroup` allow us to handle all communication cases.
 - The replica group provided when a collective operation is created represents the set of devices that must communicate.
 
 Let's call `tp=tensor_parallel` and `dp=data_parallel` and give some examples.
--  A tp-sharded variable (that is , a variable involved in sharded computations in a layer) is identical only on corresponding devices across the data parallel dimension, because in the tensor parallel dimension each device has a different shard of the variable. Hence, its replica group has a `group_size = dp` and a `stride = tp`.
--  A non-sharded variable (that is , a variable involved in identical computations in a layer) is equal on all devices. Hence, its replica group has a `group_size = dp*tp` and a `stride = 1`. This is the default replica group setting, identifying all replicas.
-- In tensor parallel collectives we want to communicate along tp dimension. Hence, we use a replica group with `stride=1` and `group_size=tp`, which is the replica group transpose of the sharded variables group.
-- In data parallel collectives (gradients reduction) we always want to communicate along dp dimension. Hence, the reduce group is always a replica group with `group_size=dp` and `stride=tp`.
+-  A tp-sharded variable (that is, a variable involved in sharded computations in a layer) is identical only on corresponding devices across the data parallel dimension, because in the tensor parallel dimension each device has a different shard of the variable. Hence, its replica group has a `group_size = dp` and a `stride = tp`.
+-  A non-sharded variable (that is, a variable involved in identical computations in a layer) is equal on all devices. Hence, its replica group has a `group_size = dp * tp` and a `stride = 1`. This is the default replica group setting, identifying all replicas.
+- In tensor parallel collectives we want to communicate along tp dimension. Hence, we use a replica group with `stride = 1` and `group_size = tp`, which is the replica group transpose of the sharded variables group.
+- In data parallel collectives (gradients reduction) we always want to communicate along dp dimension. Hence, the reduce group is always a replica group with `group_size = dp` and `stride = tp`.
 For more details into replica groups, check the [ReplicaGrouping tutorial](https://github.com/graphcore/examples/blob/master/tutorials/tutorials/popxl/5_remote_variables_and_rts/replica_groupings.ipynb).
 
 Now let's have a look at RTS collectives.
@@ -320,14 +323,9 @@ Therefore, the replica group of a variable defines the largest replica group for
 ### Phased Execution and Batch serialisation <a name="pe"></a>
 If a model requires greater memory than the available on-chip memory, we can partition it into a series of smaller graphs and execute them in series on the IPU, using remote memory to store variables and input/output tensors between calls (activations).
 This is called phased execution. We recommend going through the tutorial [Phased Execution in MNIST example](https://github.com/graphcore/examples/tree/master/tutorials/tutorials/popxl/6_phased_execution).
-In the FLAN-T5 application we demonstrate this concept on a full sized model.
+In the Flan-T5 application we demonstrate this concept on a full sized model.
 As explained in the tutorial, **batch serialisation** is required to get the best performance from phased execution. It rearranges the gradient accumulation loop so that variables stored in remote memory are loaded just one time before the loop, while inputs are loaded inside the loop.
 Hence, we apply the batch serialisation transform to our phases graphs.
-
-### Code loading <a name="code_loading"></a>
-By default, the code for each phase is always live on the IPU.
-The code for each phase can instead be saved in remote memory and loaded to the IPU only when the phase needs to be executed.
-Enable the `code_load` flag in the configs to use this optimisation.
 
 ### RTS on activations  <a name="activations_rts"></a>
 When using phased execution, intermediate outputs (activations) need to be passed between phases.
@@ -370,7 +368,7 @@ attn_output = attn_scores @ value  # [batch, num_heads, seq_length, hidden_size]
 ```
 
 For big sequences these activations are big, and we need to store or recompute them during the backward phase.
-To alleviate this issue, we can use attention serialisation: we take a slice of `Q` of size `f=seq_length/attention_serialisation` and serialise the calculation.
+To alleviate this issue, we can use attention serialisation: we take a slice of `Q` of size `f = seq_length / attention_serialisation` and serialise the calculation.
 The pseudocode is :
 
 ```python
@@ -392,7 +390,7 @@ For this technique to reach optimal performance, it should be employed with the 
 Using this transform, gradients produced in a loop are progressively accumulated instead of being saved and then summed all at the end.
 In this way, memory is saved because only the accumulated result needs to be live for the whole loop duration.
 
-You can look at the `create_encoder_block_graph` function in `finetuning.py` and to the attention layer in `modelling/attention.py` to understand how this is implemented in practice.
+You can look at the `create_t5_block_graph` function in `graphs/encoder_decoder.py` and to the attention layer in `modelling/attention.py` to understand how this is implemented in practice.
 
 ### Finetuning code details <a name="code_details"></a>
 
@@ -415,16 +413,13 @@ The graphs required for each phase can be represented in class `Graphs`.
     - graph `_grad_reduce` that reduces across replicas for gradient RTS variables and returns `_grad_reduce_names`.
 
 We create these graphs:
-* `embeddings` by calling the method `create_embeddings_graph` for the embedding layer of the encoder. Note that the optimizer step for embedding layer happens straight after the backward pass on device, so there is no need to store the gradient in a buffer.
-* `decoder_embeddings` by calling the method `create_decoder_embeddings_graph` for the embedding layer of the decoder stack. Note that the embedding weights are shared between the encoder and decoder stack, so this graph only contributes to the gradients, but the optimizer step is performed only once per weight update step, by the encoder `embeddings` graph.
-* `first_encoder_layer` by calling the method `create_first_encoder_layer_graph` for the first T5 encoder layer. We separate this graph from the remaining layers because of the relative position encoding's weights, which are shared among all the layers. So this graph will "own" these weights, and pass them on to the following layers. Analogously to the embeddings, only this layer will perform the optimizer step on the relative position encoding's weights, the other layers will just contribute to the gradients. Its buffer contains the forward tensors and gradient tensors.
-* `encoder_block` by calling the method `create_encoder_block_graph` for each T5 encoder layer (minus the first). Its buffer contains the forward tensors and gradient tensors. Since each T5 encoder layer has identical input and output data type and shape, we stack the buffers for each layer together. Hence, the number of entries in the buffers is the same as the number of encoder layers.
+* `embeddings` by calling the method `create_embeddings_graph` for the embedding layer of the encoder. Note that the optimizer step for embedding layer happens straight after the backward pass on device, so there is no need to store the gradient in a buffer. This graph also owns the relative position embedding's weights, which will be passed on to the encoder layers.
+* `decoder_embeddings` by calling the method `create_decoder_embeddings_graph` for the embedding layer of the decoder stack. Note that the embedding weights are shared between the encoder and decoder stack, so this graph only contributes to the gradients, but the optimizer step is performed only once per weight update step, by the encoder `embeddings` graph. Analogously to the encoder `embeddings` this graph owns the relative position embedding's weights of the decoder layers.
+* `t5_block` by calling the method `create_t5_block_graph`. This graph represents all the T5 encoder and decoder layers, meaning that it "behaves" as an encoder or a decoder depending on the input tensors given. This unified implementation saves always live memory compared to having 2 separate graphs for the encoder and the decoder stack. Its buffer contains the forward tensors and gradient tensors. Since each T5 encoder/decoder layer has identical weights data type and shape, we stack the buffers for each layer together. Hence, the number of entries in the buffers is the same as the sum of the number of encoder and decoder layers.
 * `encoder_head` by calling `create_encoder_head_graph` for the final layer norm to be applied to the output of the last encoder block.
-* `first_decoder_layer` by calling the method `create_first_decoder_layer_graph` for the first T5 decoder layer. This is analogous to the `first_encoder_layer` graph.
-* `decoder_block` by calling the method `create_decoder_block_graph` for each T5 decoder layer (minus the first). This is analogous to the `encoder_block` graph.
 * `head` by calling the method `create_task_head_graph` for the task head layer. There are some slight differences in the implementation from the above instances.
     * Its gradient graph is combined with the forward graph by using `T5LMHeadLossAndGradTP`. The calculation of gradients happens just after the forward graph calculation, in the same phase. Hence, the `fwd` graph includes both the graph for forward pass and the calculation of its gradients.
-    * Unlike the original T5, FLAN-T5 does not use of tied embeddings.
+    * Unlike the original T5, Flan-T5 does not use tied embeddings.
 
 
 #### Apply transformations on graphs
@@ -434,14 +429,14 @@ We then apply transformations to the graphs built:
 
 * **batch serialisation**: to avoid the frequent loading and offloading of the variables and graphs in different layers for each batch, we use batch serialisation. It repeats the same graph with different data for each partition of the model for `steps` times. You can find the code to get the transformed graphs in the methods called `<layer>_batch_serialise`, where `<layer>` is one of the model's layer. Each batch serialization produces the forward and gradient graphs and the activations. You can get the transformed graphs for all the layers except the head by using the `popxl_addons.transforms.batch_serialisation.batch_serialise_fwd_and_grad` directly. As for head layer that has a combined forward and gradient graph, it uses `popxl_addons.transforms.batch_serialisation.batch_serialise`.
 
-For batch serialisation, we also need to create remote buffers to load the inputs and store outputs for each partition by using `popxl_addons.batch_serial_buffer`. In this application, we use the remote buffers `x_buffer` and `dx_buffer` respectively to handle the intermediate outputs of each partition in the forward pass and backward pass of the encoder stack. The two buffers for this application are illustrated in the following diagram. Each row handles `config.gradient_accumulation` elements. Since we use RTS over activations, these buffers are sharded.
+For batch serialisation, we also need to create remote buffers to load the inputs and store outputs for each partition by using `popxl_addons.batch_serial_buffer`. In this application, we use the remote buffers `x_buffer` and `dx_buffer` respectively to handle the intermediate outputs of each partition in the forward pass and backward pass of the encoder and decoder stacks. The two buffers for this application are illustrated in the following diagram. Each row handles `config.gradient_accumulation` elements. Since we use RTS over activations, these buffers are sharded.
 
 ![Buffers `x_buffer` and `dx_buffer`](imgs/bs_buffers.png)
 
-For instance, in `x_buffer`, row 0 stores the output of the embedding layer in forward pass . The output of each T5 encoder layer is stored from row 1 to `config.model.layers+1`. Note that the rows in the two buffers are filled up in the opposite directions.
+For instance, in `x_buffer`, row 0 stores the output of the embedding layer in forward pass . The output of each T5 encoder layer is stored from row 1 to `config.model.layers + 1`. Note that the rows in the two buffers are filled up in the opposite directions.
 
-For the decoder stack, we have analogous buffers `x_dec_buffer` and `dx_dec_buffer`, which we use in the same way as the encoder stack.
+For the decoder stack, we use the rows starting from `config.model.layers + 2`, but otherwise it works in the same way as the encoder stack.
 
 T5 is an encoder-decoder architecture, which means that the final output from the encoder stack is an input to each decoder layer.
-In the fwd pass, the decoder blocks simply load this input from the final row of the `x_buffer`.
-However, in the bwd pass, each decoder will produce a gradient corresponding to the encoder output. Therefore we need an additional buffer: `dx_enc_buffer`, which has `config.model.layers` rows, one for each decoder layer. Just after the bwd phase of the first decoder layer, we add a step that adds together all the rows from this buffer, and saves the result in the last row of `dx_buffer`. The bwd phase of the `encoder_head` will then read from this row, and continue to propagate the gradients further.
+In the fwd pass, the decoder blocks simply load this input from the correct row of the `x_buffer`.
+However, in the bwd pass, each decoder will produce a gradient corresponding to the encoder output. Therefore we need an additional buffer: `dx_enc_buffer`, which has `config.model.layers` rows, one for each decoder layer. Just after the bwd phase of the first decoder layer, we add together all the rows from this buffer, and saves the result in the correct row of `dx_buffer`. The bwd phase of the `encoder_head` will then read from this row, and continue to propagate the gradients further.

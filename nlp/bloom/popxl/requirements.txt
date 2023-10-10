@@ -1,18 +1,15 @@
-
 examples-utils[common] @ git+https://github.com/graphcore/examples-utils.git@7cd37a8eccabe88e3741eef2c31bafd4fcd30c4c
-pyyaml
+pyyaml==5.4.1
 dataclasses==0.6
 transformers==4.25.0
 tokenizers==0.12.0
-torch==2.0.1
+torch==2.0.1+cpu
 numpy==1.23.5
 scipy>=1.5.4
 more-itertools
 gradio==3.12.0
 tqdm==4.64.1
 httpcore==0.15
-
 pytest==5.1.0
 pytest-pythonpath==0.7.4
-
-git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.3.0
+git+ssh://git@github.com/graphcore/popxl-addons-internal.git@4ff8204ee0e30f78921f35eb4244a223e6458056

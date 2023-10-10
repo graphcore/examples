@@ -12,7 +12,7 @@ Install required packages:
 
 ```shell
 apt-get update
-apt-get install -y python3-numpy
+apt-get install -y python3-numpy libxrender1
 ```
 
 Create a virtual environment and install the Poplar SDK, including the TensorFlow 2 wheels from inside the SDK directory:

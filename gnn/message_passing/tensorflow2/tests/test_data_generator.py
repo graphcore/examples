@@ -1,10 +1,12 @@
 # Copyright (c) 2022 Graphcore Ltd. All rights reserved.
 
 import numpy as np
+import pytest
 
 from data_utils.data_generators import PackedBatchGenerator
 
 
+@pytest.mark.xfail(reason="https://cs.stanford.edu/srcf_404/")
 def test_packed_data_generator():
     n_packs_per_batch = 2
     max_graphs_per_pack = 3

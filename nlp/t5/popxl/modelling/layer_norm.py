@@ -20,12 +20,13 @@ class T5LayerNorm(addons.Module):
     def __init__(self, config: T5Config):
         super().__init__()
         self.eps = config.model.eps
+        self.dtype = config.model.dtype
 
     def build(self, x: popxl.Tensor) -> popxl.Tensor:
         """
         Build layer normalisation for T5. No bias and no subtraction of mean.
         """
-        w = self.add_variable_input("weight", partial(np.ones, x.shape[-1]), x.dtype)
+        w = self.add_variable_input("weight", partial(np.ones, x.shape[-1]), self.dtype)
 
         # Perform the computation in float32
         if x.dtype == popxl.float16:

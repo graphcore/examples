@@ -10,4 +10,6 @@ pytest-forked~=1.4
 pytest-xdist~=2.5
 seaborn==0.12.1
 tabulate==0.9.0
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+torchinfo==1.8.0
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools

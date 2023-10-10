@@ -34,7 +34,7 @@ We encourage the reader to execute the programs in the following examples and to
 
 ## Example 1: use of the Block program
 
-The main option to request the lightweight profiler to focus on a certain area of code is to use the `Block` program class. You can find it in [Poplar's public interface](https://docs.graphcore.ai/projects/poplar-api/en/3.1.0/poplar/Program.html).
+The main option to request the lightweight profiler to focus on a certain area of code is to use the `Block` program class. You can find it in [Poplar's public interface](https://docs.graphcore.ai/projects/poplar-api/en/latest/poplar/Program.html).
 
 ```cpp
 /** A program to scope another program.
@@ -481,4 +481,4 @@ In this tutorial we have seen how you can focus on the parts of your model you a
 
 ## Further reading
 
-To delve further into the examples in this tutorial, [this _libpva_ tutorial](../libpva) may be interesting if you would like to familiarise yourself on how to programmatically access a Poplar profile. Additionally, the [PopVision Graph Analyser user guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/) can take you on a visual tour of the capabilities and limitations of full profiling.
+To delve further into the examples in this tutorial, [this _libpva_ tutorial](../libpva) may be interesting if you would like to familiarise yourself on how to programmatically access a Poplar profile. Additionally, the [PopVision Graph Analyser user guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/) can take you on a visual tour of the capabilities and limitations of full profiling.

@@ -185,6 +185,7 @@ def get_metrics(denormalize_fn, options):
     if options.dataset.dataset_name in (
         "pcqm4mv2",
         "generated",
+        "generated_extended",
         "pcqm4mv2_28features",
         "pcqm4mv2_conformers",
         "pcqm4mv2_conformers_28features",

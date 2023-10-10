@@ -15,15 +15,21 @@
 # The original code has been modified by Graphcore Ltd.
 
 import collections
-from tqdm.auto import tqdm
+from pathlib import Path
+
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 from transformers import BertTokenizerFast, default_data_collator
 
 
 max_seq_length = 384
 doc_stride = 128
-tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
+
+
+tokenizer = BertTokenizerFast.from_pretrained(
+    "bert-base-uncased", cache_dir=Path(__file__).parent.joinpath("tok_cache").resolve()
+)
 
 
 # `prepare_train_features` comes unmodified from

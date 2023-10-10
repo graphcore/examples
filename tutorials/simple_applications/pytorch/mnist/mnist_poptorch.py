@@ -6,7 +6,7 @@ Copyright (c) 2020 Graphcore Ltd. All rights reserved.
 # PyTorch (PopTorch) MNIST Training Demo
 
 This example demonstrates how to train a neural network for classification on the MNIST dataset using PopTorch.
-To learn more about PopTorch, see our [PyTorch for the IPU: User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/index.html).
+To learn more about PopTorch, see our [PyTorch for the IPU: User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/).
 """
 """
 ## How to use this demo
@@ -14,7 +14,7 @@ Requirements:
 - A Poplar SDK environment enabled, with PopTorch installed (see the [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for your IPU system)
 - Python packages installed with `python -m pip install -r requirements.txt`
 """
-# %pip install -q -r requirements.txt
+# %pip install  -r requirements.txt
 # sst_ignore_md
 # sst_ignore_code_only
 """
@@ -104,7 +104,7 @@ training_dataset = torchvision.datasets.MNIST(local_dataset_path, train=True, do
 test_dataset = torchvision.datasets.MNIST(local_dataset_path, train=False, download=True, transform=transform_mnist)
 """
 We use the [data loader provided by
-PopTorch](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/pytorch_to_poptorch.html#preparing-your-data).
+PopTorch](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/pytorch_to_poptorch.html#preparing-your-data).
 More information about the use of `poptorch.Dataloader` can be found in
 [PopTorch tutorial on efficient data
 loading](../../../tutorials/pytorch/efficient_data_loading).
@@ -113,7 +113,7 @@ loading](../../../tutorials/pytorch/efficient_data_loading).
 A `poptorch.Options()` instance contains a set of default hyperparameters and options for the IPU.
 This is used by the model and the PopTorch `DataLoader`.
 To accelerate the training here, we change the default value of
-[deviceIterations](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/batching.html?highlight=deviceiteration#poptorch-options-deviceiterations)
+[deviceIterations](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/batching.html#poptorch-options-deviceiterations)
 to 50.
 With that setting the data loader will pick 50 batches of data per step.
 """
@@ -225,7 +225,7 @@ Therefore, from the host point of view, each step will consume 50 batches and pe
 training_opts = poptorch.Options().deviceIterations(device_iterations)
 
 """
-Now let's set the [`OutputMode`](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/reference.html#poptorch.OutputMode)
+Now let's set the [`OutputMode`](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/reference.html#poptorch.OutputMode)
 for our training. By default, PopTorch will
 return to the host machine only a limited set of information for performance
 reasons. This is represented by having `OutputMode.Final` as the default, which
@@ -245,7 +245,7 @@ representation of the model object.
 print(model_with_loss)
 """
 Now we apply the model wrapping function, which will perform a shallow copy
-of the PyTorch model. To train the model, we will use [SGD](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.1.0/reference.html#poptorch.optim.SGD),
+of the PyTorch model. To train the model, we will use [SGD](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/reference.html#poptorch.optim.SGD),
 the Stochastic Gradient Descent with no momentum.
 This is also where we pass the `training_opts` defined sooner.
 """

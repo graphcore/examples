@@ -3,11 +3,11 @@
 
 Before starting this tutorial, take time to familiarise yourself with
 the IPU's architecture by reading the [IPU Programmer's
-Guide](https://docs.graphcore.ai/projects/ipu-programmers-guide/en/3.1.0/programming_model.html).
+Guide](https://docs.graphcore.ai/projects/ipu-programmers-guide/en/latest/programming_model.html).
 You can learn more about the Poplar programming model in the
 corresponding section of our documentation: [Poplar and PopLibs User
 Guide: Poplar programming
-model](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplar_programs.html#poplar-programming-model).
+model](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/poplar_programs.html#poplar-programming-model).
 
 In this tutorial you will:
 
@@ -81,7 +81,7 @@ While the `IPUModel` provides a convenient way to build and debug Poplar
 programs without using IPU resources it is not a perfect representation
 of the hardware. As a result it is preferable to use an IPU if one is
 available. A description of the limitations of the `IPUModel` is
-provided in the [Poplar developer guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplar_programs.html#programming-with-poplar). Instructions on how to use the hardware with
+provided in the [Poplar developer guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/poplar_programs.html#programming-with-poplar). Instructions on how to use the hardware with
 this tutorial example is available in the last section of this tutorial:
 [(Optional) Using the IPU](#optional-using-the-ipu).
 
@@ -245,7 +245,7 @@ as `c1`.
 
 Note that the synchronisation and exchange phases of IPU execution
 described in the [IPU Programmer's
-Guide](https://docs.graphcore.ai/projects/ipu-programmers-guide/en/3.1.0/programming_model.html)
+Guide](https://docs.graphcore.ai/projects/ipu-programmers-guide/en/latest/programming_model.html)
 are performed automatically by the Poplar library functions and do not
 need to be specified explicitly.
 
@@ -370,7 +370,7 @@ h3 data:
 During training and inference of machine learning applications,
 efficiently passing data from the host to the IPU is often critical to
 enabling high throughput. The most efficient way to get data in and out
-of the device is to use data streams (see the the [Poplar and PopLibs User Guide: data streams](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplar_programs.html#data-streams-and-remote-buffers)
+of the device is to use data streams (see the the [Poplar and PopLibs User Guide: data streams](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/poplar_programs.html#data-streams-and-remote-buffers)
 for more information). In Poplar, data streams need to be created and explicitly
 named in the graph; in the code snippets below we add a
 first-in-first-out (FIFO) input stream, connect it to a memory buffer (a
@@ -500,7 +500,7 @@ to map tensors to specific tiles of the IPU and used the
 `Sequence` class to define a program with simple operations.
 Finally, we used data streams to pass data into the device and return
 results of the operations back to the host CPU process. This process and
-the classes used in this tutorial are summarised in the [Poplar and PopLibs User Guide: Using Poplar](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplarlib.html).
+the classes used in this tutorial are summarised in the [Poplar and PopLibs User Guide: Using the Poplar Library](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/poplarlib.html).
 
 These three steps form the basis of Poplar applications and will be
 reused in the next tutorials. In the [second
@@ -509,9 +509,9 @@ tutorial](../tut2_operations/README.md) you will learn to use the
 that include mathematical and tensor operations in Poplar.
 
 To learn more about the programming model of the IPU discussed in this
-tutorial you may want to consult the [IPU Programmer's Guide](https://docs.graphcore.ai/projects/ipu-programmers-guide/en/3.1.0/programming_model.html) or alternatively the [Poplar and PopLibs User Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplar_programs.html). For a detailed reference, consult
+tutorial you may want to consult the [IPU Programmer's Guide](https://docs.graphcore.ai/projects/ipu-programmers-guide/en/latest/programming_model.html) or alternatively the [Poplar and PopLibs User Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/poplar_programs.html). For a detailed reference, consult
 the [API
-documentation](https://docs.graphcore.ai/projects/poplar-api/en/3.1.0/).
+documentation](https://docs.graphcore.ai/projects/poplar-api/en/latest/).
 Graphcore also provides tutorials targeted at new users of the IPU using
 common Python deep learning frameworks [PyTorch](../../pytorch/) and [TensorFlow
 2](../../tensorflow2/).

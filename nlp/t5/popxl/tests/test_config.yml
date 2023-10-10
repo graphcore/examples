@@ -15,4 +15,4 @@ training:
 execution:
   micro_batch_size: 2
   data_parallel: 1
-  attention_serialisation: 2
+  attention_serialisation: 1

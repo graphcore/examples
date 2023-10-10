@@ -1,4 +1,5 @@
 # Copyright (c) 2023 Graphcore Ltd. All rights reserved.
+import argparse
 import logging
 import time
 import numpy as np
@@ -32,19 +33,11 @@ from graphs.embedding import (
     embeddings_batch_serialise,
     decoder_embeddings_batch_serialise,
 )
-from graphs.encoder import (
-    create_first_encoder_layer_graph,
-    create_encoder_block_graph,
+from graphs.encoder_decoder import (
+    create_t5_block_graph,
     create_encoder_head_graph,
-    first_encoder_layer_batch_serialise,
-    encoder_block_batch_serialise,
+    t5_block_batch_serialise,
     encoder_head_batch_serialise,
-)
-from graphs.decoder import (
-    create_first_decoder_layer_graph,
-    create_decoder_block_graph,
-    first_decoder_layer_batch_serialise,
-    decoder_block_batch_serialise,
 )
 from graphs.head import (
     create_task_head_graph,
@@ -100,7 +93,7 @@ def init_remote_vars(
     )
 
 
-def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
+def finetuning(config: T5Config, args: argparse.Namespace = None, no_init: bool = True) -> TaskSession:
     replicas = config.execution.data_parallel * config.execution.tensor_parallel
     ir = popxl.Ir(replication="popdist" if popdist.isPopdistEnvSet() else replicas)
     assert ir.replication_factor == replicas
@@ -110,6 +103,11 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
     opts.enableStochasticRounding = config.training.stochastic_rounding
     opts.partialsTypeMatMuls = "half"
     opts.engineOptions["target.syncReplicasIndependently"] = "true"
+    # The following options are only needed for the XXL config
+    size = args.config.split("_")[0] if args is not None else "xxl"
+    if size == "xxl":
+        opts.engineOptions["target.extendedMemory"] = "true"
+        opts.engineOptions["opt.internalExchangeOptimisationTarget"] = "memory"
 
     with timer("PopXL IR construction"):
         main = ir.main_graph
@@ -147,43 +145,25 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                 seed=seed.spec,
             )
 
-            first_encoder_layer = create_first_encoder_layer_graph(
-                config, optimizer, embeddings.fwd.graph.outputs[0], input_streams.attention_mask.spec, seed=seed.spec
-            )
-            encoder_block = create_encoder_block_graph(
+            scale_spec = popxl.TensorSpec((), config.model.dtype)
+            t5_block = create_t5_block_graph(
                 config,
                 optimizer,
-                first_encoder_layer.fwd.graph.outputs[0],
+                embeddings.fwd.graph.outputs[0].spec,
                 input_streams.attention_mask.spec,
-                first_encoder_layer.fwd.args.attention.heads.rel_pos_embedding.weight.spec,
+                embeddings.fwd.graph.outputs[0].spec,
+                input_streams.attention_mask.spec,
+                scale_spec,
+                embeddings.fwd.args.rel_pos_weight.spec,
                 seed=seed.spec,
-            )
-            encoder_head = create_encoder_head_graph(
-                config, optimizer, encoder_block.fwd.graph.outputs[0], seed=seed.spec
             )
 
-            first_decoder_layer = create_first_decoder_layer_graph(
-                config,
-                optimizer,
-                decoder_embeddings.fwd.graph.outputs[0],
-                input_streams.decoder_attention_mask.spec,
-                encoder_block.fwd.graph.outputs[0],
-                input_streams.attention_mask.spec,
-                seed=seed.spec,
-            )
-            decoder_block = create_decoder_block_graph(
-                config,
-                optimizer,
-                first_decoder_layer.fwd.graph.outputs[0],
-                input_streams.decoder_attention_mask.spec,
-                encoder_block.fwd.graph.outputs[0],
-                input_streams.attention_mask.spec,
-                first_decoder_layer.fwd.args.attention.heads.rel_pos_embedding.weight.spec,
-                seed=seed.spec,
+            encoder_head = create_encoder_head_graph(
+                config, optimizer, t5_block.fwd.graph.outputs[0].spec, seed=seed.spec
             )
 
             head = create_task_head_graph(
-                config, optimizer, decoder_block.fwd.graph.outputs[0], input_streams.labels.spec, seed=seed.spec
+                config, optimizer, t5_block.fwd.graph.outputs[0], input_streams.labels.spec, seed=seed.spec
             )
 
             # ---- Transform graphs ----
@@ -191,83 +171,50 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
             # Recomputation
             embeddings.bwd = addons.recompute_graph(embeddings.bwd)
             decoder_embeddings.bwd = addons.recompute_graph(decoder_embeddings.bwd)
-            first_encoder_layer.bwd = addons.recompute_graph(first_encoder_layer.bwd)
-            encoder_block.bwd = addons.recompute_graph(encoder_block.bwd)
+            t5_block.bwd = addons.recompute_graph(t5_block.bwd)
             encoder_head.bwd = addons.recompute_graph(encoder_head.bwd)
-            first_decoder_layer.bwd = addons.recompute_graph(first_decoder_layer.bwd)
-            decoder_block.bwd = addons.recompute_graph(decoder_block.bwd)
 
             # Batch Serialisation
+            steps = config.gradient_accumulation
             #   Buffers
             x_buffer = batch_serial_buffer(
                 embeddings.fwd.graph.outputs[0],
-                steps=config.gradient_accumulation,
-                rows=config.model.layers + 2,
+                steps=steps,
+                rows=config.model.layers + 2 + config.model.layers + 1,
                 shard_group=get_activ_shard_group(embeddings.fwd.graph.outputs[0], tp_group),
-            )
-            x_dec_buffer = batch_serial_buffer(
-                decoder_embeddings.fwd.graph.outputs[0],
-                steps=config.gradient_accumulation,
-                rows=config.model.layers + 1,
-                shard_group=get_activ_shard_group(decoder_embeddings.fwd.graph.outputs[0], tp_group),
             )
             dx_buffer = batch_serial_buffer(
                 embeddings.bwd.graph.inputs[0],
-                steps=config.gradient_accumulation,
-                rows=config.model.layers + 2,
+                steps=steps,
+                rows=config.model.layers + 2 + config.model.layers + 1,
                 shard_group=get_activ_shard_group(embeddings.bwd.graph.inputs[0], tp_group),
             )
-            dx_dec_buffer = batch_serial_buffer(
-                decoder_embeddings.bwd.graph.inputs[0],
-                steps=config.gradient_accumulation,
-                rows=config.model.layers + 1,
-                shard_group=get_activ_shard_group(decoder_embeddings.bwd.graph.inputs[0], tp_group),
-            )
             mask_buffer = batch_serial_buffer(
-                encoder_block.fwd.graph.inputs[1],
-                steps=config.gradient_accumulation,
-            )
-            mask_dec_buffer = batch_serial_buffer(
-                decoder_block.fwd.graph.inputs[1],
-                steps=config.gradient_accumulation,
+                t5_block.fwd.graph.inputs[1],
+                steps=steps,
+                rows=2,
             )
             # Buffer to store the dx wrt the encoder output for each decoder layer
             dx_enc_buffer = batch_serial_buffer(
                 encoder_head.bwd.graph.inputs[0],
-                steps=config.gradient_accumulation,
+                steps=steps,
                 rows=config.model.layers,
                 shard_group=get_activ_shard_group(encoder_head.bwd.graph.inputs[0], tp_group),
             )
 
             # Graphs
             embeddings_batch_serialise(config, embeddings, input_streams, x_buffer, dx_buffer)
-            decoder_embeddings_batch_serialise(config, decoder_embeddings, input_streams, x_dec_buffer, dx_dec_buffer)
-            first_encoder_layer_batch_serialise(config, first_encoder_layer, x_buffer, dx_buffer, mask_buffer)
-            encoder_block_batch_serialise(config, encoder_block, x_buffer, dx_buffer, mask_buffer)
+            decoder_embeddings_batch_serialise(config, decoder_embeddings, input_streams, x_buffer, dx_buffer)
+            t5_block_batch_serialise(
+                config,
+                t5_block,
+                x_buffer,
+                mask_buffer,
+                dx_buffer,
+                dx_enc_buffer,
+            )
             encoder_head_batch_serialise(config, encoder_head, x_buffer, dx_buffer)
-            first_decoder_layer_batch_serialise(
-                config,
-                first_decoder_layer,
-                x_dec_buffer,
-                dx_dec_buffer,
-                mask_dec_buffer,
-                x_buffer,
-                mask_buffer,
-                dx_enc_buffer,
-            )
-            decoder_block_batch_serialise(
-                config,
-                decoder_block,
-                x_dec_buffer,
-                dx_dec_buffer,
-                mask_dec_buffer,
-                x_buffer,
-                mask_buffer,
-                dx_enc_buffer,
-            )
-            head.fwd = head_batch_serialise(
-                config, head.fwd, input_streams, output_streams, x_dec_buffer, dx_dec_buffer
-            )
+            head.fwd = head_batch_serialise(config, head.fwd, input_streams, output_streams, x_buffer, dx_buffer)
 
             # Available Memory Proportion
             addons.set_available_memory_proportion_by_ipu(ir, config.execution.available_memory_proportion)
@@ -280,25 +227,19 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                 empty = no_init and key == "fwd"
                 if key in embeddings.facts.keys():
                     init_remote_vars(transformer, f"embeddings.{key}", key, embeddings, empty)
-                # Note that the decoder embedding has no variables of its own,
-                # it uses the weights from the encoder embedding
-                if key in first_encoder_layer.facts.keys():
-                    init_remote_vars(transformer, f"encoder.{0}.{key}", key, first_encoder_layer, empty)
-                if key in encoder_block.facts.keys():
-                    for n in range(1, config.model.layers):
-                        init_remote_vars(transformer, f"encoder.{n}.{key}", key, encoder_block, empty, n - 1)
+                if key in decoder_embeddings.facts.keys():
+                    init_remote_vars(transformer, f"decoder_embeddings.{key}", key, decoder_embeddings, empty)
+                if key in t5_block.facts.keys():
+                    for n in range(2 * config.model.layers):
+                        name = "encoder" if n < config.model.layers else "decoder"
+                        idx = n % config.model.layers
+                        init_remote_vars(transformer, f"{name}.{idx}.{key}", key, t5_block, empty, n)
                 if key in encoder_head.facts.keys():
                     init_remote_vars(transformer, f"encoder_head.{key}", key, encoder_head, empty)
-                if key in first_decoder_layer.facts.keys():
-                    init_remote_vars(transformer, f"decoder.{0}.{key}", key, first_decoder_layer, empty)
-                if key in decoder_block.facts.keys():
-                    for n in range(1, config.model.layers):
-                        init_remote_vars(transformer, f"decoder.{n}.{key}", key, decoder_block, empty, n - 1)
                 if key in head.facts.keys():
                     init_remote_vars(variables, f"lm_head.{key}", key, head, empty, 0, "lm_head")
 
             # ---- Execute ----
-
             with popxl.in_sequence():
                 # Load current learning rate
                 lr = ops.host_load(input_streams.lr)
@@ -307,72 +248,65 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
 
                 @popxl.io_tiles()
                 def fill_buffer_from_host(
-                    i: popxl.Tensor, stream: popxl.HostToDeviceStream, buffer: popxl.RemoteBuffer
+                    i: popxl.Tensor,
+                    stream1: popxl.HostToDeviceStream,
+                    stream2: popxl.HostToDeviceStream,
+                    buffer: popxl.RemoteBuffer,
                 ):
-                    t = ops.host_load(stream)
-                    ops.remote_store(buffer, i, t)
+                    t1 = ops.host_load(stream1)
+                    t2 = ops.host_load(stream2)
+                    ops.remote_store(buffer, i, t1)
+                    ops.remote_store(buffer, steps + i, t2)
 
-                # Load from host then store all masks
+                # Load from host then store all masks.
+                # The first row of the buffer is going to be populated by the encoder masks,
+                # while the second row is going to be populated by the decoder masks
                 mask_fill_graph = ir.create_graph(
-                    fill_buffer_from_host, popxl.constant(0, popxl.uint32), input_streams.attention_mask, mask_buffer
-                )
-                for i in range(config.gradient_accumulation):
-                    ops.call(mask_fill_graph, i)
-                # Same for the decoder masks
-                mask_dec_fill_graph = ir.create_graph(
                     fill_buffer_from_host,
                     popxl.constant(0, popxl.uint32),
+                    input_streams.attention_mask,
                     input_streams.decoder_attention_mask,
-                    mask_dec_buffer,
+                    mask_buffer,
                 )
-                for i in range(config.gradient_accumulation):
-                    ops.call(mask_dec_fill_graph, i)
+                for i in range(steps):
+                    ops.call(mask_fill_graph, i)
 
                 def embedding_fwd_phase(seed):
                     # Load Embedding layer
                     embeddings_vars = embeddings.fwd_load(0)
                     embeddings_vars = embeddings.fwd_all_gather(embeddings_vars)
+                    rel_pos_weight = embeddings_vars.rel_pos_weight
                     # Forward
                     seed, embed_seed = ops.split_random_seed(seed)
                     embeddings.fwd.bind(embeddings_vars).call(0, embed_seed)
-                    return seed
+                    return seed, rel_pos_weight
 
                 embed_fwd_graph = ir.create_graph(embedding_fwd_phase, seed)
-                if config.execution.code_load:
-                    ops.remote_code_load(embed_fwd_graph, "executable")
-                (seed,) = ops.call(embed_fwd_graph, seed)
+                (seed, rel_pos_weight) = ops.call(embed_fwd_graph, seed)
 
-                def single_encoder_block_fwd_phase(n: popxl.Tensor, seed: popxl.Tensor, rel_pos_weight: popxl.Tensor):
-                    # Load encoder block
-                    layer_vars = encoder_block.fwd_load(n)
-                    layer_vars = encoder_block.fwd_all_gather(layer_vars)
+                def single_t5_block_fwd_phase(
+                    n: popxl.Tensor,
+                    seed: popxl.Tensor,
+                    rel_pos_weight: popxl.Tensor,
+                    scale: popxl.Tensor,
+                    offset: popxl.Tensor,
+                ):
+                    # Load T5 block
+                    layer_vars = t5_block.fwd_load(n)
+                    layer_vars = t5_block.fwd_all_gather(layer_vars)
                     # Forward
                     seed, layer_seed = ops.split_random_seed(seed)
-                    encoder_block.fwd.bind(layer_vars).call(n, layer_seed, rel_pos_weight)
+                    t5_block.fwd.bind(layer_vars).call(n + offset, layer_seed, scale, rel_pos_weight)
                     return n + 1, seed
 
-                def encoder_blocks_fwd_phase(seed: popxl.Tensor):
-                    # First encoder layer
-                    layer_vars = first_encoder_layer.fwd_load(0)
-                    layer_vars = first_encoder_layer.fwd_all_gather(layer_vars)
-                    # Forward
-                    seed, layer_seed = ops.split_random_seed(seed)
-                    first_encoder_layer.fwd.bind(layer_vars).call(0, layer_seed)
-
-                    # Following encoder layers
-                    i = popxl.constant(0, name="layer_index")
-                    # Pass the shared weight to the other layers
-                    rel_pos_weight = layer_vars["attention.heads.rel_pos_embedding.weight"]
-                    fwd_graph = ir.create_graph(single_encoder_block_fwd_phase, i, seed, rel_pos_weight)
-                    if config.execution.code_load:
-                        ops.remote_code_load(fwd_graph, "executable")
-                    ops.repeat(fwd_graph, config.model.layers - 1, i, seed, rel_pos_weight)
-                    return seed
-
-                fwd_graph = ir.create_graph(encoder_blocks_fwd_phase, seed)
-                if config.execution.code_load:
-                    ops.remote_code_load(fwd_graph, "executable")
-                (seed,) = ops.call(fwd_graph, seed)
+                # For encoder layers, i is in [0, N-1]
+                i = popxl.constant(0, name="layer_index")
+                offset = popxl.constant(0, name="offset")
+                # Encoder layers mask out the cross-attention part
+                scale = popxl.constant(0, config.model.dtype, "cross_attn_scale")
+                # Pass the shared weight to the encoder layers
+                t5_block_fwd_graph = ir.create_graph(single_t5_block_fwd_phase, i, seed, rel_pos_weight, scale, offset)
+                ops.repeat(t5_block_fwd_graph, config.model.layers, i, seed, rel_pos_weight, scale, offset)
 
                 def encoder_head_fwd_phase(seed: popxl.Tensor):
                     # Load encoder head
@@ -384,8 +318,6 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     return seed
 
                 encoder_head_fwd_graph = ir.create_graph(encoder_head_fwd_phase, seed)
-                if config.execution.code_load:
-                    ops.remote_code_load(encoder_head_fwd_graph, "executable")
                 (seed,) = ops.call(encoder_head_fwd_graph, seed)
 
                 def decoder_embedding_fwd_phase(seed):
@@ -394,47 +326,22 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     embeddings_vars = decoder_embeddings.fwd_all_gather(embeddings_vars)
                     # Get the embedding weights
                     embedding_weight_t = embeddings_vars.pop("weight")
+                    rel_pos_weight = embeddings_vars.rel_pos_weight
                     # Forward
                     seed, embed_seed = ops.split_random_seed(seed)
                     decoder_embeddings.fwd.bind(embeddings_vars).call(0, embed_seed, embedding_weight_t)
-                    return seed
+                    return seed, rel_pos_weight
 
                 dec_embed_fwd_graph = ir.create_graph(decoder_embedding_fwd_phase, seed)
-                if config.execution.code_load:
-                    ops.remote_code_load(dec_embed_fwd_graph, "executable")
-                (seed,) = ops.call(dec_embed_fwd_graph, seed)
+                (seed, rel_pos_weight) = ops.call(dec_embed_fwd_graph, seed)
 
-                def single_decoder_block_fwd_phase(n: popxl.Tensor, seed: popxl.Tensor, rel_pos_weight: popxl.Tensor):
-                    # Load encoder block
-                    layer_vars = decoder_block.fwd_load(n)
-                    layer_vars = decoder_block.fwd_all_gather(layer_vars)
-                    # Forward
-                    seed, layer_seed = ops.split_random_seed(seed)
-                    decoder_block.fwd.bind(layer_vars).call(n, layer_seed, rel_pos_weight)
-                    return n + 1, seed
-
-                def decoder_blocks_fwd_phase(seed: popxl.Tensor):
-                    # First decoder layer
-                    layer_vars = first_decoder_layer.fwd_load(0)
-                    layer_vars = first_decoder_layer.fwd_all_gather(layer_vars)
-                    # Forward
-                    seed, layer_seed = ops.split_random_seed(seed)
-                    first_decoder_layer.fwd.bind(layer_vars).call(0, layer_seed)
-
-                    # Following decoder layers
-                    i = popxl.constant(0, name="layer_index")
-                    # Pass the shared weight to the other layers
-                    rel_pos_weight = layer_vars["attention.heads.rel_pos_embedding.weight"]
-                    fwd_graph = ir.create_graph(single_decoder_block_fwd_phase, i, seed, rel_pos_weight)
-                    if config.execution.code_load:
-                        ops.remote_code_load(fwd_graph, "executable")
-                    ops.repeat(fwd_graph, config.model.layers - 1, i, seed, rel_pos_weight)
-                    return seed
-
-                fwd_graph = ir.create_graph(decoder_blocks_fwd_phase, seed)
-                if config.execution.code_load:
-                    ops.remote_code_load(fwd_graph, "executable")
-                (seed,) = ops.call(fwd_graph, seed)
+                # For decoder layers, i is in [N, 2N-1]
+                i = popxl.constant(config.model.layers, name="layer_index")
+                offset = popxl.constant(2, name="offset")
+                # Decoder layers don't mask out the cross-attention part
+                scale = popxl.constant(1, config.model.dtype, "cross_attn_scale")
+                # Pass the shared weight to the decoder layers
+                ops.repeat(t5_block_fwd_graph, config.model.layers, i, seed, rel_pos_weight, scale, offset)
 
                 def task_head_fwd_grad_phase(seed: popxl.Tensor):
                     # Load task head layer
@@ -453,74 +360,51 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     return grad_norm, seed
 
                 task_graph = ir.create_graph(task_head_fwd_grad_phase, seed)
-                if config.execution.code_load:
-                    ops.remote_code_load(task_graph, "executable")
                 (grad_norm, seed) = ops.call(task_graph, seed)
 
-                def single_decoder_block_grad_phase(
-                    n: popxl.Tensor, grad_norm: popxl.TensorByRef, rel_pos_weight_grad: popxl.TensorByRef
+                def single_t5_block_grad_phase(
+                    n: popxl.Tensor,
+                    grad_norm: popxl.TensorByRef,
+                    rel_pos_weight_grad: popxl.TensorByRef,
+                    offset: popxl.Tensor,
                 ):
                     # Load layer
-                    layer_vars = decoder_block.fwd_load(n)
-                    layer_vars = decoder_block.fwd_all_gather(layer_vars)
+                    layer_vars = t5_block.fwd_load(n)
+                    layer_vars = t5_block.fwd_all_gather(layer_vars)
                     # Gradient
-                    grads = decoder_block.grad_facts.init_zero()
+                    grads = t5_block.grad_facts.init_zero()
                     bwd_vars = grads.copy()
                     bwd_vars.update(layer_vars)
-                    input_dict = {decoder_block.bwd.args.accum.rel_pos_weight: rel_pos_weight_grad}
-                    decoder_block.bwd.bind(bwd_vars).call(n, args=input_dict)
+                    input_dict = {t5_block.bwd.args.accum.rel_pos_weight: rel_pos_weight_grad}
+                    # We need the offset to be in [2N+1, N+2]
+                    t5_block.bwd.bind(bwd_vars).call(n + offset, args=input_dict)
                     # Data parallel reduce
-                    reduced_grads = decoder_block.grad_reduce(grads)
+                    reduced_grads = t5_block.grad_reduce(grads)
                     # Global Norm calculation
                     global_norm_reduce(config, grad_norm, reduced_grads)
                     # Store gradient
-                    decoder_block.grad_store(reduced_grads, n)
+                    t5_block.grad_store(reduced_grads, n)
                     return n - 1
 
-                def decoder_blocks_grad_phase(grad_norm: popxl.TensorByRef):
-                    # Decoder layers before the first
-                    # The layer index starts at n_layers - 2, and will go down to 0,
-                    # for a total of n_layers - 1 iters
-                    i = popxl.constant(config.model.layers - 2, name="layer_index")
-                    # Prepare a tensor that will contain the aggregated grad of the rel_pos_weight
-                    rel_pos_weight = first_decoder_layer.fwd.args.attention.heads.rel_pos_embedding.weight
-                    rel_pos_weight_grad = ops.init(
-                        rel_pos_weight.shape, rel_pos_weight.dtype, "dec_rel_pos_grad", "zero"
-                    )
-                    bwd_graph = ir.create_graph(single_decoder_block_grad_phase, i, grad_norm, rel_pos_weight_grad)
-                    if config.execution.code_load:
-                        ops.remote_code_load(bwd_graph, "executable")
-                    ops.repeat(bwd_graph, config.model.layers - 1, i, grad_norm, rel_pos_weight_grad)
-
-                    # First decoder layer
-                    layer_vars = first_decoder_layer.fwd_load(0)
-                    layer_vars = first_decoder_layer.fwd_all_gather(layer_vars)
-                    # Gradient
-                    grads = first_decoder_layer.grad_facts.init_zero()
-                    bwd_vars = grads.copy()
-                    bwd_vars.update(layer_vars)
-                    first_decoder_layer.bwd.bind(bwd_vars).call(0)
-                    # Data parallel reduce
-                    reduced_grads = first_decoder_layer.grad_reduce(grads)
-                    # Add the gradients of the rel_pos_weight from the previous layers, after replica-reducing it
-                    grad_t = reduce_replica_sharded_tensor(
-                        rel_pos_weight_grad,
-                        "mean",
-                        replica_group=dp_group,
-                        shard_group=get_ild_replica_grouping(dp_group),
-                    )
-                    ops.add_(reduced_grads.accum.attention.heads.rel_pos_embedding.weight, grad_t)
-
-                    # Global Norm calculation
-                    global_norm_reduce(config, grad_norm, reduced_grads)
-                    # Store gradient
-                    first_decoder_layer.grad_store(reduced_grads, 0)
-                    return grad_norm
-
-                bwd_graph = ir.create_graph(decoder_blocks_grad_phase, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(bwd_graph, "executable")
-                (grad_norm,) = ops.call(bwd_graph, grad_norm)
+                # The layer index starts at 2N-1, and will go down to N
+                i = popxl.constant(2 * config.model.layers - 1, name="layer_index")
+                offset = popxl.constant(2, name="offset")
+                # Prepare a tensor that will contain the aggregated grad of the rel_pos_weight
+                rel_pos_weight = decoder_embeddings.fwd.args.rel_pos_weight
+                dec_rel_pos_weight_grad = ops.init(
+                    rel_pos_weight.shape, rel_pos_weight.dtype, "dec_rel_pos_grad", "zero"
+                )
+                t5_block_bwd_graph = ir.create_graph(
+                    single_t5_block_grad_phase, i, grad_norm, dec_rel_pos_weight_grad, offset
+                )
+                ops.repeat(t5_block_bwd_graph, config.model.layers, i, grad_norm, dec_rel_pos_weight_grad, offset)
+                # Data parallel reduce the gradients of the rel_pos_weight
+                dec_rel_pos_weight_grad = reduce_replica_sharded_tensor(
+                    dec_rel_pos_weight_grad,
+                    "mean",
+                    replica_group=dp_group,
+                    shard_group=get_ild_replica_grouping(dp_group),
+                )
 
                 # Buffer to be used by the 2 embedding layers to aggregate the gradients
                 emb_weight_grad_buffer = None
@@ -539,11 +423,11 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     emb_weight_grad_t = ops.init(
                         embedding_weight_t.shape, embedding_weight_t.dtype, "word_embedding_grad_t", "zero"
                     )
-                    decoder_embeddings.bwd.bind(bwd_vars).call(0, emb_weight_grad_t)
-                    # Since this layer has no weights of its own, it only needs to compute the gradient
-                    # wrt the embedding weight, and store it in a buffer that will be read by the encoder embedding
+                    input_dict = {decoder_embeddings.bwd.args.accum.word_embedding: emb_weight_grad_t}
+                    decoder_embeddings.bwd.bind(bwd_vars).call(0, args=input_dict)
 
-                    # Reduce and store the emb gradient
+                    # Replica-reduce the gradient wrt the embedding weight, and store it
+                    # in a buffer that will be read by the encoder embedding
                     grad_t = reduce_replica_sharded_tensor(
                         emb_weight_grad_t,
                         "mean",
@@ -557,14 +441,11 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     return grad_norm
 
                 dec_embed_bwd_graph = ir.create_graph(decoder_embedding_grad_phase, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(dec_embed_bwd_graph, "executable")
                 (grad_norm,) = ops.call(dec_embed_bwd_graph, grad_norm)
 
                 # At this point the decoder layers will have written to dx_enc_buffer (n_layers x grad_acc)
                 # We need to reduce sum it across the n_layer dimension, and write the result in dx_buffer[n_layers + 1] (grad_acc),
                 # which the encoder head is then going to read from
-                steps = config.gradient_accumulation
 
                 def single_layer_acc(
                     l_idx: popxl.Tensor,
@@ -614,74 +495,26 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     return grad_norm
 
                 bwd_graph = ir.create_graph(encoder_head_grad_phase, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(bwd_graph, "executable")
                 (grad_norm,) = ops.call(bwd_graph, grad_norm)
 
-                def single_encoder_block_grad_phase(
-                    n: popxl.Tensor, grad_norm: popxl.TensorByRef, rel_pos_weight_grad: popxl.TensorByRef
+                # The layer index starts at N-1, and will go down to 0
+                i = popxl.constant(config.model.layers - 1, name="layer_index")
+                offset = popxl.constant(0, name="offset")
+                # Prepare a tensor that will contain the aggregated grad of the rel_pos_weight
+                rel_pos_weight = embeddings.fwd.args.rel_pos_weight
+                rel_pos_weight_grad = ops.init(rel_pos_weight.shape, rel_pos_weight.dtype, "rel_pos_grad", "zero")
+                ops.repeat(t5_block_bwd_graph, config.model.layers, i, grad_norm, rel_pos_weight_grad, offset)
+                # Data parallel reduce the gradients of the rel_pos_weight
+                rel_pos_weight_grad = reduce_replica_sharded_tensor(
+                    rel_pos_weight_grad,
+                    "mean",
+                    replica_group=dp_group,
+                    shard_group=get_ild_replica_grouping(dp_group),
+                )
+
+                def embedding_grad_optimizer_phase(
+                    lr: popxl.Tensor, grad_norm: popxl.TensorByRef, rel_pos_weight_grad: popxl.Tensor
                 ):
-                    # Load layer
-                    layer_vars = encoder_block.fwd_load(n)
-                    layer_vars = encoder_block.fwd_all_gather(layer_vars)
-                    # Gradient
-                    grads = encoder_block.grad_facts.init_zero()
-                    bwd_vars = grads.copy()
-                    bwd_vars.update(layer_vars)
-                    input_dict = {encoder_block.bwd.args.accum.rel_pos_weight: rel_pos_weight_grad}
-                    encoder_block.bwd.bind(bwd_vars).call(n, args=input_dict)
-                    # Data parallel reduce
-                    reduced_grads = encoder_block.grad_reduce(grads)
-                    # Global Norm calculation
-                    global_norm_reduce(config, grad_norm, reduced_grads)
-                    # Store gradient
-                    encoder_block.grad_store(reduced_grads, n)
-                    return n - 1
-
-                def encoder_blocks_grad_phase(grad_norm: popxl.TensorByRef):
-                    # Encoder layers before the first
-                    # The layer index starts at n_layers - 2, and will go down to 0,
-                    # for a total of n_layers - 1 iters
-                    i = popxl.constant(config.model.layers - 2, name="layer_index")
-                    # Prepare a tensor that will contain the aggregated grad of the rel_pos_weight
-                    rel_pos_weight = first_encoder_layer.fwd.args.attention.heads.rel_pos_embedding.weight
-                    rel_pos_weight_grad = ops.init(rel_pos_weight.shape, rel_pos_weight.dtype, "rel_pos_grad", "zero")
-                    bwd_graph = ir.create_graph(single_encoder_block_grad_phase, i, grad_norm, rel_pos_weight_grad)
-                    if config.execution.code_load:
-                        ops.remote_code_load(bwd_graph, "executable")
-                    ops.repeat(bwd_graph, config.model.layers - 1, i, grad_norm, rel_pos_weight_grad)
-
-                    # First encoder layer
-                    layer_vars = first_encoder_layer.fwd_load(0)
-                    layer_vars = first_encoder_layer.fwd_all_gather(layer_vars)
-                    # Gradient
-                    grads = first_encoder_layer.grad_facts.init_zero()
-                    bwd_vars = grads.copy()
-                    bwd_vars.update(layer_vars)
-                    first_encoder_layer.bwd.bind(bwd_vars).call(0)
-                    # Data parallel reduce
-                    reduced_grads = first_encoder_layer.grad_reduce(grads)
-                    # Add the gradients of the rel_pos_weight from the previous layers, after replica-reducing it
-                    grad_t = reduce_replica_sharded_tensor(
-                        rel_pos_weight_grad,
-                        "mean",
-                        replica_group=dp_group,
-                        shard_group=get_ild_replica_grouping(dp_group),
-                    )
-                    ops.add_(reduced_grads.accum.attention.heads.rel_pos_embedding.weight, grad_t)
-
-                    # Global Norm calculation
-                    global_norm_reduce(config, grad_norm, reduced_grads)
-                    # Store gradient
-                    first_encoder_layer.grad_store(reduced_grads, 0)
-                    return grad_norm
-
-                bwd_graph = ir.create_graph(encoder_blocks_grad_phase, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(bwd_graph, "executable")
-                (grad_norm,) = ops.call(bwd_graph, grad_norm)
-
-                def embedding_grad_optimizer_phase(lr: popxl.Tensor, grad_norm: popxl.TensorByRef):
                     nonlocal emb_weight_grad_buffer
                     # Load Embeddings layer
                     embeddings_vars = embeddings.optim_fwd_load(0)
@@ -706,37 +539,45 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     # Optimizer Step for Embeddings.
                     # Note: No need to store then load the gradient: just use it directly
                     embeddings_vars.insert("bwd", reduced_grads)
+                    # Insert in the bwd accumulators the grad of rel_pos_weight
+                    embeddings_vars.bwd.accum.insert("rel_pos_weight", rel_pos_weight_grad)
                     optimizer_step(embeddings.optim, embeddings_vars, lr, grad_norm)
                     # Store
                     embeddings.optim_fwd_store(embeddings_vars, 0)
                     return grad_norm
 
-                embed_bwd_graph = ir.create_graph(embedding_grad_optimizer_phase, lr, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(embed_bwd_graph, "executable")
-                (grad_norm,) = ops.call(embed_bwd_graph, lr, grad_norm)
+                embed_bwd_graph = ir.create_graph(embedding_grad_optimizer_phase, lr, grad_norm, rel_pos_weight_grad)
+                (grad_norm,) = ops.call(embed_bwd_graph, lr, grad_norm, rel_pos_weight_grad)
 
-                def first_encoder_layer_optim(lr: popxl.Tensor, grad_norm: popxl.Tensor):
-                    layer_vars = first_encoder_layer.optim_fwd_load(0)
-                    optimizer_step(first_encoder_layer.optim, layer_vars, lr, grad_norm)
-                    first_encoder_layer.optim_fwd_store(layer_vars, 0)
+                def decoder_embedding_optimizer_phase(
+                    lr: popxl.Tensor, grad_norm: popxl.TensorByRef, rel_pos_weight_grad: popxl.Tensor
+                ):
+                    embeddings_vars = decoder_embeddings.optim_fwd_load(0)
+                    # Pop the embedding weights
+                    embeddings_vars.fwd.pop("weight")
 
-                layer_optim_graph = ir.create_graph(first_encoder_layer_optim, lr, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(layer_optim_graph, "executable")
-                ops.call(layer_optim_graph, lr, grad_norm)
+                    # Insert in the bwd accumulators the grad of rel_pos_weight
+                    embeddings_vars.insert("bwd.accum.rel_pos_weight", rel_pos_weight_grad)
+                    optimizer_step(decoder_embeddings.optim, embeddings_vars, lr, grad_norm)
+                    # Store
+                    decoder_embeddings.optim_fwd_store(embeddings_vars, 0)
+                    return grad_norm
 
-                def encoder_layer_optim(n: popxl.Tensor, lr: popxl.Tensor, grad_norm: popxl.Tensor):
-                    layer_vars = encoder_block.optim_fwd_load(n)
-                    optimizer_step(encoder_block.optim, layer_vars, lr, grad_norm)
-                    encoder_block.optim_fwd_store(layer_vars, n)
+                dec_embed_opt_graph = ir.create_graph(
+                    decoder_embedding_optimizer_phase, lr, grad_norm, dec_rel_pos_weight_grad
+                )
+                (grad_norm,) = ops.call(dec_embed_opt_graph, lr, grad_norm, dec_rel_pos_weight_grad)
+
+                def t5_layer_optim(n: popxl.Tensor, lr: popxl.Tensor, grad_norm: popxl.Tensor):
+                    layer_vars = t5_block.optim_fwd_load(n)
+                    optimizer_step(t5_block.optim, layer_vars, lr, grad_norm)
+                    t5_block.optim_fwd_store(layer_vars, n)
                     return n + 1
 
+                # The index will go from 0 to 2N-1, optimising both the encoder and decoder layers
                 i = popxl.constant(0, name="layer_index")
-                layer_optim_graph = ir.create_graph(encoder_layer_optim, i, lr, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(layer_optim_graph, "executable")
-                ops.repeat(layer_optim_graph, config.model.layers - 1, i, lr, grad_norm)
+                layer_optim_graph = ir.create_graph(t5_layer_optim, i, lr, grad_norm)
+                ops.repeat(layer_optim_graph, 2 * config.model.layers, i, lr, grad_norm)
 
                 def encoder_head_optim(lr: popxl.Tensor, grad_norm: popxl.Tensor):
                     layer_vars = encoder_head.optim_fwd_load(0)
@@ -744,33 +585,10 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     encoder_head.optim_fwd_store(layer_vars, 0)
 
                 enc_head_optim_graph = ir.create_graph(encoder_head_optim, lr, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(enc_head_optim_graph, "executable")
                 ops.call(enc_head_optim_graph, lr, grad_norm)
 
-                # Note: no optimizer step for the decoder embedding, since it doesn't have weights of its own
-
-                def first_decoder_layer_optim(lr: popxl.Tensor, grad_norm: popxl.Tensor):
-                    layer_vars = first_decoder_layer.optim_fwd_load(0)
-                    optimizer_step(first_decoder_layer.optim, layer_vars, lr, grad_norm)
-                    first_decoder_layer.optim_fwd_store(layer_vars, 0)
-
-                layer_optim_graph = ir.create_graph(first_decoder_layer_optim, lr, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(layer_optim_graph, "executable")
-                ops.call(layer_optim_graph, lr, grad_norm)
-
-                def decoder_layer_optim(n: popxl.Tensor, lr: popxl.Tensor, grad_norm: popxl.Tensor):
-                    layer_vars = decoder_block.optim_fwd_load(n)
-                    optimizer_step(decoder_block.optim, layer_vars, lr, grad_norm)
-                    decoder_block.optim_fwd_store(layer_vars, n)
-                    return n + 1
-
-                i = popxl.constant(0, name="layer_index")
-                layer_optim_graph = ir.create_graph(decoder_layer_optim, i, lr, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(layer_optim_graph, "executable")
-                ops.repeat(layer_optim_graph, config.model.layers - 1, i, lr, grad_norm)
+                # Note: we've already performed the optimizer step for the decoder embedding
+                # at the end of its backward phase
 
                 def head_optim(lr: popxl.Tensor, grad_norm: popxl.Tensor):
                     # Optimizer Step for the task head
@@ -780,8 +598,6 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
                     head.optim_fwd_store(head_vars, 0)
 
                 head_optim_graph = ir.create_graph(head_optim, lr, grad_norm)
-                if config.execution.code_load:
-                    ops.remote_code_load(head_optim_graph, "executable")
                 ops.call(head_optim_graph, lr, grad_norm)
 
         # Run `OpToIdentityPattern` among others part of `PreAliasPatterns`
@@ -792,6 +608,7 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
         fwd_vars = NamedTensors.from_dict(
             {
                 "transformer.embeddings": variables.transformer.embeddings.fwd,
+                "transformer.decoder_embeddings": variables.transformer.decoder_embeddings.fwd,
                 "transformer.encoder": NamedTensors.from_dict(
                     {i: variables.transformer.encoder[i].fwd for i in range(config.model.layers)}
                 ),
@@ -806,6 +623,7 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
         optim_vars = NamedTensors.from_dict(
             {
                 "transformer.embeddings": variables.transformer.embeddings.optim,
+                "transformer.decoder_embeddings": variables.transformer.decoder_embeddings.optim,
                 "transformer.encoder": NamedTensors.from_dict(
                     {i: variables.transformer.encoder[i].optim for i in range(config.model.layers)}
                 ),
@@ -839,10 +657,10 @@ def finetuning(config: T5Config, no_init: bool = True) -> TaskSession:
 
 def main():
     """Run a benchmark configuration"""
-    config, *_ = t5_config_setup(
-        CONFIG_DIR / "finetuning.yml", "release", "xxl_pod64", wandb_setup=False, hf_model_setup=False
+    config, args, _ = t5_config_setup(
+        CONFIG_DIR / "finetuning.yml", "release", "xxl_pod16", wandb_setup=False, hf_model_setup=False
     )
-    session = finetuning(config)
+    session = finetuning(config, args)
     inputs = {
         stream: np.ones(session._full_input_shape(stream.shape), stream.dtype.as_numpy())
         for stream in session.expected_inputs()

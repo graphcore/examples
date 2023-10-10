@@ -137,7 +137,7 @@ model = transformers.AutoModelForImageClassification.from_pretrained(model_name_
 ipu_config = optimum_graphcore.IPUConfig.from_pretrained("Graphcore/vit-base-ipu")
 
 training_args = optimum_graphcore.IPUTrainingArguments(
-    output_dir="./results",
+    output_dir=".graphcore/vit-model",
     overwrite_output_dir=True,
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,

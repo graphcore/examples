@@ -19,8 +19,8 @@ from link_parsers import get_parser
 # Make sure to add a TODO(TXXXX) comment to remove the exception once the link
 # is fixed.
 EXCEPTIONS: List[str] = [
-    "https://github.com/graphcore/popxl-addons/blob/master/popxl_addons/ops/group_quantize_decompress",  # not public until SDK 3.3. TODO: remove on SDK 3.3 release
     "https://github.com/graphcore/paperspace-automation",  # private repo
+    "https://github.com/graphcore/single-source-tool-private",  # private repo
     "box.com",  # dropbox cannot be checked
     "marketplace.visualstudio.com",  # visual studio marketplace cannot be checked
     r"\.git@",  # git repo for pip not a navigable URL

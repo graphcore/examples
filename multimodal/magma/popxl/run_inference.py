@@ -22,7 +22,9 @@ import torch
 from typing import Literal
 
 
-def init_inference_session(key: Literal["magma_v1_500", "magma_v1_1024"] = "magma_v1_500"):
+def init_inference_session(
+    key: Literal["magma_v1_500", "magma_v1_1024"] = "magma_v1_500", checkpoint_path="./mp_rank_00_model_states.pt"
+):
     """
     Create the inference session and loads magma checkpoint to IPU.
 
@@ -41,7 +43,7 @@ def init_inference_session(key: Literal["magma_v1_500", "magma_v1_1024"] = "magm
 
     # Load pretrained magma
     with timer("Loading magma weights to host"):
-        pretrained_magma = load_magma("./mp_rank_00_model_states.pt", config)
+        pretrained_magma = load_magma(checkpoint_path, config)
 
     # Load weights to IPU
     with timer("Loading magma pretrained model to IPU"):

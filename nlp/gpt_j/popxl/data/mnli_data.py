@@ -91,7 +91,7 @@ def concat_and_transpose(items):
 
 
 def prepare_train_dataset(config):
-    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
+    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6b")
     tokenizer.add_special_tokens({"pad_token": "<|extratoken_1|>"})  # index 50257
 
     dataset = load_dataset("glue", "mnli", split="train")

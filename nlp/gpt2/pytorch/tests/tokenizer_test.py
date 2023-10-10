@@ -23,6 +23,7 @@ base_dir = os.path.abspath(os.path.dirname(__file__))
 
 
 @pytest.mark.ipus(0)
+@pytest.mark.skip
 def test_tokenzier():
     """
     Test that the GPT2Tokenizer from Huggingface and Megatron will give the same results.

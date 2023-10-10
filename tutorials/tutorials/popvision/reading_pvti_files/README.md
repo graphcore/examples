@@ -18,7 +18,7 @@ filtering and analysis. In this tutorial you will:
 
 If this is your first time using the PopVision Analysis tools you may prefer
 to use the PopVision System Analyser as described in
-[its user guide](https://docs.graphcore.ai/projects/system-analyser-userguide/en/2.11.2/)
+[its user guide](https://docs.graphcore.ai/projects/system-analyser-userguide/)
 to familiarise yourself with some of the information available.
 
 ## How to run this tutorial
@@ -78,7 +78,7 @@ output = subprocess.run(["python3", "poptorch_mnist.py"])
 ## Using the Python API
 
 In this tutorial we use `libpva` to access PVTI profiling information. Refer to
-the [libpva Python API documentation](https://docs.graphcore.ai/projects/libpva/en/3.2.0/api-python.html)
+the [libpva Python API documentation](https://docs.graphcore.ai/projects/libpva/en/latest/api-python.html)
 for more information.
 
 ### Loading a PVTI file
@@ -132,7 +132,7 @@ The event has  0  children
 In this example we are retrieving processes and threads by their index in the
 lists we get back, but if you already know the PIDs and TIDs of the threads you
 want to explore (perhaps because you have seen them in the
-[PopVision System Analyser](https://docs.graphcore.ai/projects/system-analyser-userguide/en/2.11.2/))
+[PopVision System Analyser](https://docs.graphcore.ai/projects/system-analyser-userguide/))
 you can use `trace.process(pid)` and `process.thread(tid)` instead.
 
 Events only have a few fields: a list of their children, a timestamp at which
@@ -225,11 +225,11 @@ Epochs took 6425107 microseconds on average, out of 10 epochs in total.
 In this tutorial, we wrote a simple script illustrating how to read data from a
 PVTI file for a programmatic use-case. For general, day-to-day perusal of PVTI
 files you will instead want to use the
-[PopVision System Analyser](https://docs.graphcore.ai/projects/system-analyser-userguide/en/2.11.2/)
+[PopVision System Analyser](https://docs.graphcore.ai/projects/system-analyser-userguide/)
 for a feature-rich, navigable graphical view over the trace data.
 
 `libpva` also has a C++ API that is very similar to the Python API. For more
 information about the C++ API, refer to the
-[PopVision Analysis C++ API Documentation](https://docs.graphcore.ai/projects/libpva/en/3.2.0/api-cpp.html).
+[PopVision Analysis C++ API Documentation](https://docs.graphcore.ai/projects/libpva/en/latest/api-cpp.html).
 
 Generated:2023-03-21T11:02 Source:walkthrough.py SDK:3.2.0-EA.1+1204 SST:0.0.10

@@ -40,9 +40,11 @@ def create_embeddings_graph(config: T5Config, optimizer: addons.Module, *args, *
 
     # Embedding needs no onward gradients
     required_grads = ()
+    # Exclude the rel_pos_weight from autodiff
+    accums = [t for t in embeddings.fwd.args.tensors if "rel_pos_weight" not in t.name]
     grad_facts, embeddings.bwd = addons.autodiff_with_accumulation(
         embeddings.fwd,
-        embeddings.fwd.args.tensors,
+        accums,
         grads_required=required_grads,
         replica_groupings=fwd_facts.replica_groupings,
     )
@@ -96,8 +98,9 @@ def create_decoder_embeddings_graph(
         stride=config.execution.tensor_parallel, group_size=config.execution.data_parallel
     )
 
-    # Create the grad accumulator for the embedding weight
-    accums = list(embeddings.fwd.args.tensors) + [embeddings.fwd.graph.inputs[1]]  # empty + embedding weight
+    # Create the grad accumulator for the embedding weight, but exclude the rel_pos_weight
+    accums = [t for t in embeddings.fwd.args.tensors if "rel_pos_weight" not in t.name]
+    accums += [embeddings.fwd.graph.inputs[1]]
     replica_groupings = fwd_facts.replica_groupings
     replica_groupings.insert("word_embedding", dp_group)
     # Embedding needs no onward gradients
@@ -109,9 +112,6 @@ def create_decoder_embeddings_graph(
         replica_groupings=replica_groupings,
     )
 
-    # Note that the optimiser graph for this layer is empty:
-    # the only weight is the embedding weight, but it will be
-    # optimised in the encoder embedding graph
     optim_facts, embeddings.optim = optimizer_graphs(
         config,
         optimizer,
@@ -131,13 +131,15 @@ def create_decoder_embeddings_graph(
     embeddings.buffers = named_variable_buffers(embeddings.facts, shard_over_dict=shard_over)
 
     # Create Graphs for loading/gathering/storing/reducing
-    embeddings._optim_fwd_load, embeddings._optim_fwd_load_names = load_remote_graph(embeddings.buffers)
+    # Create the optim fwd store before adding the embedding weight to the buffers
+    # (we don't want to store the embedding weight after the optimiser step)
     embeddings._optim_fwd_store = store_remote_graph(embeddings.buffers)
-    # Add the embedding weight buffer to the buffers for the fwd load
-    rts_fwd_optim_groups.insert(
-        "fwd.weight", get_ild_replica_grouping(encoder_embeddings.facts.fwd.word.weight.replica_grouping)
+    # Then add the embedding weight buffer to the buffers for the fwd load and the optim fwd load
+    embeddings.buffers.fwd.insert("weight", encoder_embeddings.buffers.fwd.word.weight)
+    rts_fwd_optim_groups.fwd.insert(
+        "weight", get_ild_replica_grouping(encoder_embeddings.facts.fwd.word.weight.replica_grouping)
     )
-    embeddings.buffers.insert("fwd.weight", encoder_embeddings.buffers.fwd.word.weight)
+    embeddings._optim_fwd_load, embeddings._optim_fwd_load_names = load_remote_graph(embeddings.buffers)
     embeddings._fwd_load, embeddings._fwd_load_names = load_remote_graph(embeddings.buffers.fwd)
 
     embeddings._fwd_all_gather, embeddings._fwd_all_gather_names = all_gather_replica_sharded_graph(
@@ -206,10 +208,12 @@ def decoder_embeddings_batch_serialise(
         config.gradient_accumulation,
         load_handles={
             embeddings.fwd.graph.inputs[0]: input_streams.decoder_words,
-            embeddings.bwd.graph.inputs[0]: RemoteHandle(dx_buffer, 0, dx_shard_group),
+            embeddings.bwd.graph.inputs[0]: RemoteHandle(dx_buffer, config.model.layers + 2, dx_shard_group),
         },
         store_streams={},
-        store_buffers={embeddings.fwd.graph.outputs[0]: RemoteHandle(x_buffer, 0, x_shard_group)},
+        store_buffers={
+            embeddings.fwd.graph.outputs[0]: RemoteHandle(x_buffer, config.model.layers + 2, x_shard_group),
+        },
         seed_input=embeddings.fwd.graph.inputs[2],
         rows=1,
         io_mode="io",

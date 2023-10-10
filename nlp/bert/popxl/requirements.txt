@@ -16,6 +16,6 @@ pytest
 pytest-pythonpath
 
 examples-utils[common] @ git+https://github.com/graphcore/examples-utils.git@7cd37a8eccabe88e3741eef2c31bafd4fcd30c4c
-git+https://github.com/graphcore/popxl-addons.git@sdk-release-3.3.0
+git+ssh://git@github.com/graphcore/popxl-addons-internal.git@3dfc51e2d659438c05459c52bcad82ccb3f39c42#egg=popxl-addons
 
 protobuf==3.20.*; python_version > '3.6'

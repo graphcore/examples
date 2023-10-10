@@ -15,30 +15,13 @@ Before starting this tutorial, we recommend that you read through our
 [MNIST starting tutorial](../../../simple_applications/pytorch/mnist/).
 """
 """
-Requirements:
+## Environment setup
 
-- A Poplar SDK environment enabled (see the [Getting
-  Started](https://docs.graphcore.ai/en/latest/software.html#getting-started)
-  guide for your IPU system)
-- The PopTorch Python library installed (see
-  [Installation](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/installation.html)
-  of the PopTorch User Guide)
-"""
-"""
-To run the Jupyter notebook version of this tutorial:
+The best way to run this demo is on Paperspace Gradient’s cloud IPUs because everything is already set up for you. To improve your experience we preload datasets and pre-install packages. This can take a few minutes. If you experience errors immediately after starting a session please try restarting the kernel before contacting support. If a problem persists or you want to give us feedback on the content of this notebook, please reach out to through our community of developers using our [slack channel](https://www.graphcore.ai/join-community) or raise a [GitHub issue](https://github.com/graphcore/Gradient-PyTorch/issues).
 
-1. Enable a Poplar SDK environment
-2. In the same environment, install the Jupyter notebook server:
-   `python -m pip install jupyter`
-3. Launch a Jupyter Server on a specific port:
-   `jupyter-notebook --no-browser --port <port number>`
-4. Connect via SSH to your remote machine, forwarding your chosen port:
-   `ssh -NL <port number>:localhost:<port number>
-   <your username>@<remote machine>`
+[![Run on Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3hyVb2y)
 
-For more details about this process, or if you need troubleshooting, see our
-[guide on using IPUs from Jupyter
-notebooks](../../standard_tools/using_jupyter/README.md).
+To run the demo using other IPU hardware, you need to have the Poplar SDK enabled. Refer to the [Getting Started guide](https://docs.graphcore.ai/en/latest/getting-started.html#getting-started) for your system for details on how to enable the Poplar SDK. Also refer to the [Jupyter Quick Start guide](https://docs.graphcore.ai/projects/jupyter-notebook-quick-start/en/latest/index.html) for how to set up Jupyter to be able to run this notebook on a remote IPU machine.
 """
 """
 ## PyTorch and PopTorch DataLoader
@@ -48,7 +31,7 @@ If you are familiar with PyTorch you may have used
 [torch.utils.data.DataLoader](https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader).
 
 PopTorch provides [its own
-DataLoader](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/batching.html#poptorch-dataloader)
+DataLoader](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/batching.html#poptorch-dataloader)
 which is a wrapper around `torch.utils.data.DataLoader`. It accepts the same
 arguments as PyTorch's DataLoader with some extra features specific to the IPU:
 
@@ -58,7 +41,7 @@ arguments as PyTorch's DataLoader with some extra features specific to the IPU:
 - It enables asynchronous data loading.
 
 See the
-[PopTorch User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/batching.html#poptorch-asynchronousdataaccessor)
+[PopTorch User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/batching.html#poptorch-asynchronousdataaccessor)
 for more information about asynchronous mode.
 """
 """
@@ -70,7 +53,7 @@ for more information about asynchronous mode.
 > ```
 >
 > This is necessary to avoid [issues with asynchronous
-> DataLoader](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/batching.html#poptorch-asynchronousdataaccessor).
+> DataLoader](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/batching.html#poptorch-asynchronousdataaccessor).
 > The asynchronous dataloader calls the spawn method, which creates a new
 > Python interpreter. This interpreter will import the main module of the
 > application. Therefore, we need protection against infinite spawning of new
@@ -247,7 +230,7 @@ The number of batches of data returned to the host depends on the option
 all the output tensors when you use a `inferenceModel()` while you will often
 not need to receive all or any of the output tensors when you use a
 `trainingModel`. See the
-[PopTorch User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/reference.html?highlight=anchormode#poptorch.Options.outputMode)
+[PopTorch User Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/reference.html#poptorch.Options.outputMode)
 for more information about `poptorch.Options.outputMode`.
 
 In this case presented above, we are using a `trainingModel` and
@@ -293,7 +276,7 @@ Then, for one device iteration with pipeline we have multiplied the number of
 samples processed by ***K***.
 
 More information about gradient accumulation can be found in the [PopTorch User
-Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/3.3.0/batching.html#poptorch-options-training-gradientaccumulation).
+Guide](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/batching.html#poptorch-options-training-gradientaccumulation).
 """
 """
 ### Replication
@@ -758,5 +741,5 @@ file: `tuto_data_loading.py`. Helpful arguments:
 - Asynchronous mode can provide better throughput performance.
 
 Further information on Host-IPU I/O optimisation can be found in the technical note
-[Memory and Performance Optimisation on the IPU](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.3.0/optimising-performance.html#host-ipu-io-optimisation).
+[Memory and Performance Optimisation on the IPU](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/optimising-performance.html#host-ipu-io-optimisation).
 """

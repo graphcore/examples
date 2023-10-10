@@ -26,8 +26,8 @@ def build_tgn(
 ):
     model_dtype = torch.float32 if dtype == "float32" else torch.float16
 
-    train_data = DataWrapper(Data(data, torch.float32, batch_size, nodes_size, edges_size), "train")
-    test_data = DataWrapper(Data(data, torch.float32, batch_size, nodes_size, edges_size), "val")
+    train_data = DataWrapper(Data(data, model_dtype, batch_size, nodes_size, edges_size), "train")
+    test_data = DataWrapper(Data(data, model_dtype, batch_size, nodes_size, edges_size), "val")
 
     tgn = TGN(
         num_nodes=9227,
@@ -69,10 +69,12 @@ def run_train(model, train_data, optim, target, do_reset) -> float:
 
 
 @torch.no_grad()
-def run_test(model, inference_data) -> (float, float):
+def run_test(model, inference_data, target, model_compiled) -> (float, float):
     """Inference over one epoch"""
 
     model.eval()
+    if model_compiled and target == "ipu":
+        model.copyWeightsToDevice()
     torch.manual_seed(12345)  # Ensure deterministic sampling across epochs
     aps = 0.0
     aucs = 0.0
@@ -218,6 +220,7 @@ def _main() -> None:
         model_eval = model
 
     dataset_size = len(train_dl) * (device_iterations * args["batch_size"])
+    test_model_compiled = False
 
     # Run training
     for epoch in range(1, epochs + 1):
@@ -228,7 +231,8 @@ def _main() -> None:
         print(f"Epoch {epoch}: Loss {loss:.4f}, Time {duration:.4f}, " f"Throughput: {tput:.4f} samples/s")
 
         if epoch % validate_every == 0 or epoch == epochs:
-            aps, aucs = run_test(model_eval, test_dl)
+            aps, aucs = run_test(model_eval, test_dl, args["target"], model_compiled=test_model_compiled)
+            test_model_compiled = True
             print(f"Validation APS {aps:.4f}, AUCS {aucs:.4f}")
 
     print(f"Training finished \n" f"APS {aps:.4f}, AUCS {aucs:.4f}")

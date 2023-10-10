@@ -1,4 +1,4 @@
-# Training dynamic graphs on IPU using Temporal Graph Networks (TGN)
+# Training Dynamic Graphs on IPU using Temporal Graph Networks (TGN)
 
 Temporal graph networks for link prediction in dynamic graphs, based on [`examples/tgn.py`](https://github.com/rusty1s/pytorch_geometric/blob/master/examples/tgn.py) from PyTorch-Geometric, optimised for Graphcore's IPU.
 

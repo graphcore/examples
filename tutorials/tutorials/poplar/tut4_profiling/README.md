@@ -38,7 +38,7 @@ Analyser functionality, and finally we explore each tab of information
 in the PopVision Graph Analyser.
 
 The profiling tool is documented in the [PopVision Graph Analyser User
-Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/index.html).
+Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/).
 This tutorial shows how to profile Poplar programs, but these techniques
 are applicable to the PyTorch and TensorFlow frameworks.
 
@@ -99,7 +99,7 @@ editor.
 
     The code already contains the `addCodelets` functions to add the
     device-side library code. See the [PopLibs
-    section](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/poplibs.html#using-poplibs)
+    section](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/poplibs.html#using-poplibs)
     of the Poplar and PopLibs User Guide for more information.
 
 When the program runs it prints profiling data. You can redirect this to
@@ -115,7 +115,7 @@ example:
     exchange phases
 
 See the [Profile
-Summary](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/profiler.html#profile-summary)
+Summary](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/profiler.html#profile-summary)
 section of the Poplar and PopLibs User Guide for further details of the
 profile summary.
 
@@ -165,7 +165,7 @@ This section explains how the PopVision analysis API (libpva) can be
 used to query information from a profile file using C++ or Python. You
 can find more information in the [PopVision Analysis Library (libpva)
 User
-Guide](https://docs.graphcore.ai/projects/libpva/en/3.1.0/index.html).
+Guide](https://docs.graphcore.ai/projects/libpva/en/latest/).
 
 libpva is used to query `profile.pop` files, so copy your `profile.pop`
 file created in the previous section to the `tut4_profiling/libpva`
@@ -234,7 +234,7 @@ from the [developer page](https://www.graphcore.ai/developer/popvision-tools#dow
     functionality. Hovering over most things gives a tool tip or a link to the
     documentation. This documentation is contained both in the the application
     itself (`Help -> Documentation` or the documentation icon, bottom left) and
-    in the [PopVision Graph Analyser User Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/index.html).
+    in the [PopVision Graph Analyser User Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/).
 - The whole report can be reloaded by:
     - the reload icon (bottom left).
     - closing the report and re-opening it (close icon, bottom left).
@@ -244,7 +244,7 @@ from the [developer page](https://www.graphcore.ai/developer/popvision-tools#dow
 
 This section of the tutorial is an introduction to the basic
 functionality -the [PopVision Graph Analyser User
-Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/index.html)
+Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/)
 gives full detailed instructions.
 
 ### Capturing IPU Reports - setting `POPLAR_ENGINE_OPTIONS`
@@ -277,7 +277,7 @@ for that run. So it won't delete files that aren't written in that
 run.
 
 This is fully detailed in the [Capturing IPU
-Reports](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/user-guide.html#capturing-ipu-reports)
+Reports](https://docs.graphcore.ai/projects/graph-analyser-userguide/page/capturing-ipu-reports.html)
 section of the PopVision Graph Analyser documentation.
 
 ### Comparing two reports
@@ -306,7 +306,7 @@ We will use this extra report in the next couple of sections as well.
 
 If you face any difficulties, a full walkthrough of opening reports is
 given in the [Opening
-Reports](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/user-guide.html#opening-reports)
+Reports](https://docs.graphcore.ai/projects/graph-analyser-userguide/page/opening-reports.html)
 section of the PopVision Graph Analyser documentation.
 
 ### Profiling an out of memory program
@@ -405,7 +405,7 @@ across the tiles. Open one of your reports from above, and click on the
     of the tool.
 
 Full details of the Memory Report are given in the [Memory
-Report](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/user-guide.html#viewing-a-memory-report-image26)
+Report](https://docs.graphcore.ai/projects/graph-analyser-userguide/page/memory-report.html)
 section of the PopVision Graph Analyser documentation.
 
 ### Program tree
@@ -424,7 +424,7 @@ tab icon on the left.
     -observe the different info given for each type.
 
 More details on the Program Tree are given in the [Program
-Tree](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/user-guide.html#viewing-a-program-tree-image29)
+Tree](https://docs.graphcore.ai/projects/graph-analyser-userguide/page/program-tree.html)
 section of the PopVision Graph Analyser documentation.
 
 ### Operations summary
@@ -459,7 +459,7 @@ click on the Operations tab icon on the left.
 
 More details on Operations and full descriptions of the functionality of
 each each bottom panel tab are given in the [Operations
-Summary](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/user-guide.html#viewing-an-operations-summary30)
+Summary](https://docs.graphcore.ai/projects/graph-analyser-userguide/page/operations-summary.html)
 section of the PopVision Graph Analyser documentation.
 
 ### Liveness report
@@ -485,7 +485,7 @@ tab icon on the left.
 > Note the program steps matching up with the Program Tree.
 
 More details on the Liveness Report are given in the [Liveness
-Report](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/user-guide.html#viewing-a-liveness-report-image27)
+Report](https://docs.graphcore.ai/projects/graph-analyser-userguide/page/liveness-report.html)
 section of the PopVision Graph Analyser documentation.
 
 ### Execution trace
@@ -508,7 +508,7 @@ consumes. Open one of your reports from above, and click on the
 - Note that all the measurements are in clock cycles not time.
 
 More details on the Execution Trace are given in the [Execution
-Trace](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/user-guide.html#viewing-an-execution-trace-image32)
+Trace](https://docs.graphcore.ai/projects/graph-analyser-userguide/page/execution-trace.html)
 section of the PopVision Graph Analyser documentation.
 
 ## Follow-ups
@@ -530,7 +530,7 @@ but using the PopVision Graph Analyser for TensorFlow and PyTorch
 applications on the IPU is a case of setting the same environment
 variables. This is described in more details in the [PopVision Graph
 Analyser User
-Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/en/3.11.2/index.html).
+Guide](https://docs.graphcore.ai/projects/graph-analyser-userguide/).
 
 In the [next tutorial](../tut5_matrix_vector/README.md) you will write
 a Poplar application that performs matrix-vector multiplication.
@@ -543,6 +543,6 @@ Library (libpvti) and learn more about the PopVision analysis API
 
 For techniques to optimise memory use and improve performance please
 refer to our [memory and performance optimisation
-guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/3.1.0/common-memory-optimisations.html).
+guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/common-memory-optimisations.html).
 
 Copyright (c) 2018 Graphcore Ltd. All rights reserved.

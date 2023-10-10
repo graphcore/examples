@@ -12,5 +12,5 @@ torchvision==0.15.2+cpu
 protobuf==3.19.4
 wandb==0.12.1
 yacs==0.1.8
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4
 torchinfo==1.5.4

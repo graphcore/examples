@@ -40,6 +40,7 @@ class T5FeedForwardTP(addons.Module):
 
         # Sharded across devices - row wise (bias applied separately)
         self.output = Linear(config.model.hidden_size, bias=False, replica_grouping=self.replica_grouping)
+        self.scale_ff = config.model.scale_ff
 
     def build(self, x: popxl.Tensor, seed: Optional[popxl.Tensor] = None) -> List[popxl.Tensor]:
         """Identical input (x, seed) and identical output across shards."""
@@ -60,6 +61,9 @@ class T5FeedForwardTP(addons.Module):
         # Here, z is already sharded across devices. Since we don't have non linearities,
         # we can shard row-wise (which requires both X and the weight matrix to be sharded)
         # and then perform an all reduce
+        # Scale down if needed
+        if self.scale_ff > 1:
+            z = z / self.scale_ff
         z = self.output(z)
 
         z = replicated_all_reduce_identical_grad_inputs(z, group=self.replica_grouping.transpose())

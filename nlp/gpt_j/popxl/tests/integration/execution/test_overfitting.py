@@ -42,7 +42,7 @@ def overfit(config: GPTJConfig, session: TaskSession):
     samples_per_step = config.execution.device_iterations * config.training.global_batch_size
 
     with timer("Data preparation"):
-        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
+        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6b")
         tokenizer.add_special_tokens({"pad_token": "<|extratoken_1|>"})  # index 50257
         dataset = prepare_train_dataset(config)
         sampler = DistributedSampler(dataset)

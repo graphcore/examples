@@ -213,7 +213,7 @@ The variable size of the input tensors in each mini-batch is incompatible with u
 To process a dataset on the IPU, each mini-batch of graphs needs to have relative tensors of the same size.
 To achieve that, each mini-batch must be padded to a fixed size, hiding the dynamic shape of the underlying data from the IPU.
 There are multiple ways to achieve fixed tensor sizes which trade-off implementation complexity with padding efficiency.
-For this tutorial we will demonstrate the usage of the `FixedSizeDataLoader` class available in [PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/), the IPU-specific PyTorch Geometric library.
+For this tutorial we will demonstrate the usage of the `FixedSizeDataLoader` class available in [PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/en/latest/), the IPU-specific PyTorch Geometric library.
 
 ### Batching using FixedSizeDataLoader in PopTorch Geometric
 

@@ -177,11 +177,11 @@ Now let's take a look at some of the other changes that are useful to get more p
 
 PopTorch provides its own dataloader that behaves very similarly to the PyTorch dataloader you may be familiar with, `torch.utils.data.DataLoader`. The [PopTorch dataloader](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/pytorch_to_poptorch.html#preparing-your-data) provides the following features:
 
-* It takes a `poptorch.Options` instance to use IPU-specific features for example [deviceIterations](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/batching.html?highlight=deviceIterations#poptorch-options-deviceiterations);
+* It takes a `poptorch.Options` instance to use IPU-specific features for example [deviceIterations](https://docs.graphcore.ai/projects/poptorch-user-guide/en/latest/batching.html#poptorch-options-deviceiterations);
 * It automatically computes the number of elements consumed by a single step;
 * It enables asynchronous data loading.
 
-[PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/), the IPU-specific PyTorch Geometric library, provides a wrapper for the PopTorch dataloader, making it easy to get performant PyTorch Geometric models running on the IPU. Let's see how to get started with it.
+[PopTorch Geometric](https://docs.graphcore.ai/projects/poptorch-geometric-user-guide/en/latest/), the IPU-specific PyTorch Geometric library, provides a wrapper for the PopTorch dataloader, making it easy to get performant PyTorch Geometric models running on the IPU. Let's see how to get started with it.
 
 First we load a dataset. In this case we are loading the MUTAG dataset, which is a collection of many small graphs>
 

@@ -258,8 +258,8 @@ def trim_chemical_features(dataset_item, item_options):
         k for k in enforce_chemical_edge_features_order if k in item_options["chemical_edge_features"]
     ]
 
-    logging.info(f"Node features: {ordered_chemical_node_features}")
-    logging.info(f"Edge features: {ordered_chemical_edge_features}")
+    logging.debug(f"Node features: {ordered_chemical_node_features}")
+    logging.debug(f"Edge features: {ordered_chemical_edge_features}")
 
     index_to_keep = []
     for i in ordered_chemical_node_features:

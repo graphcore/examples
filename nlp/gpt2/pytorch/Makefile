@@ -1,7 +1,4 @@
-.PHONY: clean compile
-
-compile:
-	python3 -m examples_utils load_lib_build .
+.PHONY: clean
 
 clean:
 	find . -name '*.so' -delete

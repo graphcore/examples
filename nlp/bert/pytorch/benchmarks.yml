@@ -143,7 +143,7 @@ pytorch_bert_large_sl128_pretrain_real_pod64_conv:
          --remove-partition=yes
          --reset-partition=no
          --sync-type=ST_POD_NATIVE_DEFAULT
-         --vipu-server-timeout 300
+         --vipu-server-timeout 400
          --vipu-server-host $IPUOF_VIPU_API_HOST
          --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
          --vipu-allocation=$VIPU_ALLOCATION_ID
@@ -156,7 +156,7 @@ pytorch_bert_large_sl128_pretrain_real_pod64_conv:
          -x LD_LIBRARY_PATH
          -x PATH
          -x PYTHONPATH
-         -x IPUOF_VIPU_API_TIMEOUT=600
+         -x IPUOF_VIPU_API_TIMEOUT=400
          -x POPLAR_LOG_LEVEL=WARN
          -x DATASETS_DIR
          -x POPLAR_ENGINE_OPTIONS
@@ -182,7 +182,7 @@ pytorch_bert_large_sl512_pretrain_real_pod64_conv:
          --remove-partition=yes
          --reset-partition=no
          --sync-type=ST_POD_NATIVE_DEFAULT
-         --vipu-server-timeout 300
+         --vipu-server-timeout 400
          --vipu-server-host $IPUOF_VIPU_API_HOST
          --vipu-partition=$IPUOF_VIPU_API_PARTITION_ID
          --vipu-allocation=$VIPU_ALLOCATION_ID
@@ -195,7 +195,7 @@ pytorch_bert_large_sl512_pretrain_real_pod64_conv:
          -x LD_LIBRARY_PATH
          -x PATH
          -x PYTHONPATH
-         -x IPUOF_VIPU_API_TIMEOUT=600
+         -x IPUOF_VIPU_API_TIMEOUT=400
          -x POPLAR_LOG_LEVEL=WARN
          -x DATASETS_DIR
          -x POPLAR_ENGINE_OPTIONS
@@ -204,8 +204,8 @@ pytorch_bert_large_sl512_pretrain_real_pod64_conv:
          --config pretrain_large_512_POD64
          --input-file $DATASETS_DIR/wikipedia/512/*.tfrecord
          --disable-progress-bar
-         --checkpoint-output-dir checkpoint/phase2a
-         --checkpoint-input-dir checkpoint/phase1a
+         --checkpoint-output-dir checkpoint/phase2
+         --checkpoint-input-dir checkpoint/phase1
          --wandb
 
 pytorch_bert_large_packed_sl128_pretrain_real_pod64_conv:

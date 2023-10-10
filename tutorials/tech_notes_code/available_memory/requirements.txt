@@ -1,4 +1,6 @@
-torchvision==0.15.2
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
+torchvision==0.15.2+cpu
 tqdm==4.48.2
 pytest~=6.2
 pytest-pythonpath==0.7.3

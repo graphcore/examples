@@ -7,7 +7,7 @@ as *compute sets*. The process for constructing compute sets described
 here is the same method that the PopLibs libraries use. To learn more
 about vertices, please refer to our [Poplar and PopLibs User Guide:
 Understanding
-Vertices](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/vertices_overview.html).
+Vertices](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/vertices_overview.html).
 
 ## Setup
 

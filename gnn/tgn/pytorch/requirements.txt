@@ -8,4 +8,7 @@ torch-geometric==2.2.0
 torch-scatter==2.1.1+pt20cpu
 torch-sparse==0.6.17+pt20cpu
 tqdm==4.60.0
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4
+nbconvert==7.2.6
+jupyter==1.0.0

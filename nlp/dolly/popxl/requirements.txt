@@ -10,6 +10,7 @@ pytest==6.2.5
 pytest-pythonpath==0.7.4
 
 examples-utils[common] @ git+https://github.com/graphcore/examples-utils.git@v3.2
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools
 
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.13.1+cpu

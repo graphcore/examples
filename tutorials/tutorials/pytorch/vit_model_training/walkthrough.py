@@ -15,7 +15,7 @@ In this tutorial, you will learn how to:
 - Use the Graphcore model cards found on the [Graphcore organisation page on Hugging Face](https://huggingface.co/Graphcore) and reuse checkpoints and config files released by Graphcore.
 - Maximise IPU utilisation for your specific machine by overriding runtime parameters in the `IPUconfig` object made available in the model cards.
 
-If this is your first time using IPUs, read the [IPU Programmer's Guide](https://docs.graphcore.ai/projects/ipu-programmers-guide/en/3.3.0/) to learn the basic concepts.
+If this is your first time using IPUs, read the [IPU Programmer's Guide](https://docs.graphcore.ai/projects/ipu-programmers-guide/en/latest/) to learn the basic concepts.
 To run your own PyTorch model on the IPU see the [PyTorch basics tutorial](../basics), or to see all existing Graphcore models available from Hugging Face go to the [Graphcore organisation page](https://huggingface.co/Graphcore).
 """
 """
@@ -23,51 +23,27 @@ To run your own PyTorch model on the IPU see the [PyTorch basics tutorial](../ba
 
 ### Getting the dataset
 
-This tutorial uses the NIH Chest X-ray Dataset downloaded from <http://nihcc.app.box.com/v/ChestXray-NIHCC>. Download the `/images` directory and unpack all images. You can use `bash` to extract the files:
-```for f in images*.tar.gz; do tar xfz "$f"; done```.
+This tutorial uses the NIH Chest X-ray Dataset downloaded from <http://nihcc.app.box.com/v/ChestXray-NIHCC>. If you're running this notebook on Paperspace, the dataset has already been downloaded for you.
+If you're running this on other IPU hardware, you will need to do the following:
+- Download the `/images` directory and unpack all images. You can use `bash` to extract the files: `for f in images*.tar.gz; do tar xfz "$f"; done`.
+Also download the `Data_Entry_2017_v2020.csv` file, which contains the labels. By default the tutorial expects the `/images` folder and csv file to be in the folder `chest-xray-nihcc`.
 
-Also download the `Data_Entry_2017_v2020.csv` file, which contains the labels. By default the tutorial expects the `/images` folder and `csv` file to be in the folder `chest-xray-nihcc`.
+## Environment setup
 
-### Environment
+The best way to run this demo is on Paperspace Gradient’s cloud IPUs because everything is already set up for you. To improve your experience we preload datasets and pre-install packages. This can take a few minutes. If you experience errors immediately after starting a session please try restarting the kernel before contacting support. If a problem persists or you want to give us feedback on the content of this notebook, please reach out to through our community of developers using our [slack channel](https://www.graphcore.ai/join-community) or raise a [GitHub issue](https://github.com/graphcore/Gradient-PyTorch/issues).
+
+[![Run on Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3uTF5Uj)
+
+To run the demo using other IPU hardware, you need to have the Poplar SDK enabled. Refer to the [Getting Started guide](https://docs.graphcore.ai/en/latest/getting-started.html#getting-started) for your system for details on how to enable the Poplar SDK. Also refer to the [Jupyter Quick Start guide](https://docs.graphcore.ai/projects/jupyter-notebook-quick-start/en/latest/index.html) for how to set up Jupyter to be able to run this notebook on a remote IPU machine.
 
 Requirements:
 
-- A Poplar SDK environment enabled (see the [Getting
- Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for
- your IPU system)
 - Python packages installed with `python -m pip install -r requirements.txt`
 """
-# %pip install -q -r requirements.txt
+# %pip install -r requirements.txt
 # sst_ignore_md
 # sst_ignore_code_only
-"""
-To run the Python version of this tutorial:
 
-1. Download and install the Poplar SDK. Run the `enable.sh` scripts for Poplar and PopART as described in the [Getting
-  Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for your IPU system.
-2. For repeatability we recommend that you create and activate a Python virtual environment. You can do this with:
-   a. create a virtual environment in the directory `venv`: `virtualenv -p python3 venv`;
-   b. activate it: `source venv/bin/activate`.
-3. Install the Python packages that this tutorial needs with `python -m pip install -r requirements.txt`.
-"""
-"""
-To run the Jupyter notebook version of this tutorial:
-
-1. Enable a Poplar SDK environment (see the [Getting
-  Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for
-  your IPU system)
-2. In the same environment, install the Jupyter notebook server:
-   `python -m pip install jupyter`
-3. Launch a Jupyter Server on a specific port:
-   `jupyter-notebook --no-browser --port <port number>`
-4. Connect via SSH to your remote machine, forwarding your chosen port:
-   `ssh -NL <port number>:localhost:<port number>
-   <your username>@<remote machine>`
-
-For more details about this process, or if you need troubleshooting, see our
-[guide on using IPUs from Jupyter
-notebooks](../../standard_tools/using_jupyter/README.md).
-"""
 """
 ## Graphcore Hugging Face models
 
@@ -302,7 +278,7 @@ Let's set our training hyperparameters using `IPUTrainingArguments`.
 This subclasses the Hugging Face `TrainingArguments` class, adding parameters specific to the IPU and its execution characteristics.
 """
 training_args = optimum_graphcore.IPUTrainingArguments(
-    output_dir="./results",
+    output_dir=".graphcore/vit-model",
     overwrite_output_dir=True,
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,
@@ -429,6 +405,6 @@ To improve the training of the model, device parameters were loaded and customis
 You are now ready to use Graphcore and Hugging Face models for your own application.
 To see all the Hugging Face models available for the IPU, see the [Graphcore organisation page](https://huggingface.co/Graphcore) and for more information about
 how models are run please consult the [Hugging Face documentation](https://huggingface.co/docs) and the [Graphcore Optimum Library](https://github.com/huggingface/optimum-graphcore).
-For information on how to optimise models for the IPU see the [Memory and Performance Optimisation Guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/).
+For information on how to optimise models for the IPU see the [Memory and Performance Optimisation Guide](https://docs.graphcore.ai/projects/memory-performance-optimisation/en/latest/).
 Graphcore also provides reference implementations of model architectures for many applications in the [Graphcore examples repository](https://github.com/graphcore/examples) and in the [Graphcore Model Garden](https://www.graphcore.ai/resources/model-garden).
 """

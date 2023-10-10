@@ -133,8 +133,8 @@ for epoch in trange(epochs, desc="epochs"):
     validation_accuracy_total /= len(validation_dataloader)
 
     # Record the training and validation accuracy
-    training_accuracy_series.add(round(training_accuracy_total, 2))
-    validation_accuracy_series.add(round(validation_accuracy_total, 2))
+    training_accuracy_series.add(round({training_accuracy_total: 0.2}, 2))
+    validation_accuracy_series.add(round({validation_accuracy_total: 0.2}, 2))
 
     print(f"Epoch #{epoch + 1}")
     print(f"   Loss={training_loss_total:.4f}")

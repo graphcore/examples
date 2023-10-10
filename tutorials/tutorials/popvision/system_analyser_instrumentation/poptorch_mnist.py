@@ -72,9 +72,9 @@ model.train()
 opts = poptorch.Options()
 opts = opts.outputMode(poptorch.OutputMode.All)
 
-train_dataloader = poptorch.DataLoader(opts, train_subset, batch_size=32, shuffle=True, num_workers=20)
+train_dataloader = poptorch.DataLoader(opts, train_subset, batch_size=32, shuffle=True, num_workers=8)
 
-validation_dataloader = poptorch.DataLoader(opts, val_subset, batch_size=32, shuffle=False, num_workers=20)
+validation_dataloader = poptorch.DataLoader(opts, val_subset, batch_size=32, shuffle=False, num_workers=8)
 
 optimizer = poptorch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
@@ -114,7 +114,7 @@ for epoch in trange(epochs, desc="epochs"):
 
 model.eval()
 
-test_dataloader = poptorch.DataLoader(opts, test_dataset, batch_size=32, num_workers=10)
+test_dataloader = poptorch.DataLoader(opts, test_dataset, batch_size=32, num_workers=8)
 test_accuracy = 0.0
 for data, labels in test_dataloader:
     output = poptorch_model(data, labels)[0]

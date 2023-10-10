@@ -1,0 +1,14 @@
+model:
+  sequence_length: 256 # 8
+  embedding:
+    vocab_size: 128
+  hidden_size: 128
+  layers: 2
+  attention:
+    heads: 4
+    rotary_dim: 8
+  precision: "float32"
+execution:
+  micro_batch_size: 1
+  data_parallel: 1
+  tensor_parallel: 4

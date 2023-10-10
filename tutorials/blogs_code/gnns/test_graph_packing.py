@@ -3,6 +3,7 @@
 import sys
 import pytest
 from pathlib import Path
+import pytest
 
 import nbformat as nbf
 
@@ -41,6 +42,7 @@ def generate_test_file(root_path):
     return output_path
 
 
+@pytest.mark.xfail(reason="https://cs.stanford.edu/srcf_404/")
 def test_smoke(tmp_path):
     script_path = generate_test_file(tmp_path)
     run_command_fail_explicitly([sys.executable, script_path.name], cwd=script_path.parent)

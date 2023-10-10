@@ -1,7 +1,9 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
 sklearn==0.0
 wandb==0.12.8
 protobuf==3.19.4
-torchvision==0.15.2
+torchvision==0.15.2+cpu
 transformers==4.18.0
 datasets==2.2.0
 timm==0.5.4

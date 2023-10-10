@@ -46,7 +46,7 @@ def batch_inference(
     samples = 0
 
     def should_stop(i, token):
-        return token == eos_token_id or (output_length and batch_lens[i] > output_length)
+        return token == eos_token_id or (output_length and batch_lens[i] >= output_length)
 
     # Initialise buffers before starting to generate
     dummy_data = (torch.zeros((sequence_length)).long(), torch.zeros((sequence_length), dtype=torch.float16))
@@ -104,7 +104,13 @@ def batch_inference(
                 if rampdown:
                     dummy_is.add(i)
                     if len(dummy_is) == micro_batch_size:
-                        return [results[i] for i in range(samples)]
+                        # If the number of elements in the dataset is < than the micro batch size,
+                        # then only return the valid samples
+                        out = []
+                        for i in range(samples):
+                            if i in results:
+                                out.append(results[i])
+                        return out
 
                 # Put the new sample in the batch
                 enc_input, enc_mask = data

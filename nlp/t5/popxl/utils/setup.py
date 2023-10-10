@@ -105,7 +105,7 @@ def t5_config_setup(
             )
             pretrained = T5ForConditionalGeneration(hf_config)
         else:
-            # The config name is either something like "xxl_pod64", or something like "tiny",
+            # The config name is either something like "xxl_pod16", or something like "tiny",
             # extract the size denomination
             size = args.config.split("_")[0]
             assert size != "tiny", (

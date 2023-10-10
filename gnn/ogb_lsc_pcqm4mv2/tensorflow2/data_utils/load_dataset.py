@@ -32,6 +32,19 @@ def load_raw_dataset(
             total_num_graphs=options.dataset.generated_data_n_graphs,
             nodes_per_graph=options.dataset.generated_data_n_nodes,
             edges_per_graph=options.dataset.generated_data_n_edges,
+            use_extended_features=False,
+        )
+    elif dataset_name == "generated_extended":
+        return GeneratedGraphData(
+            total_num_graphs=options.dataset.generated_data_n_graphs,
+            nodes_per_graph=options.dataset.generated_data_n_nodes,
+            edges_per_graph=options.dataset.generated_data_n_edges,
+            use_extended_features=True,
+            trim_chemical_features=options.dataset.trim_chemical_features,
+            use_periods_and_groups=options.dataset.use_periods_and_groups,
+            do_not_use_atomic_number=options.dataset.do_not_use_atomic_number,
+            chemical_node_features=options.dataset.chemical_node_features,
+            chemical_edge_features=options.dataset.chemical_edge_features,
         )
     elif dataset_name == "pcqm4mv2":
         return PCQM4Mv2GraphData(
@@ -430,14 +443,38 @@ class GeneratedGraphData(OGBGraphData):
     it is still indicative of real performance
     """
 
-    def __init__(self, total_num_graphs, nodes_per_graph, edges_per_graph):
-        super().__init__(use_extended_features=False)
+    def __init__(
+        self,
+        total_num_graphs,
+        nodes_per_graph,
+        edges_per_graph,
+        use_extended_features=False,
+        trim_chemical_features=False,
+        use_periods_and_groups=False,
+        do_not_use_atomic_number=False,
+        chemical_node_features=["atomic_num"],
+        chemical_edge_features=["possible_bond_type"],
+    ):
+        super().__init__(
+            use_extended_features=use_extended_features,
+            trim_chemical_features=trim_chemical_features,
+            use_periods_and_groups=use_periods_and_groups,
+            do_not_use_atomic_number=do_not_use_atomic_number,
+            chemical_node_features=chemical_node_features,
+            chemical_edge_features=chemical_edge_features,
+        )
         self.labels_dtype = np.float32
         self.tf_labels_dtype = tf.float32
+        if use_extended_features:
+            atom_features_dims = get_atom_feature_dims_extended()
+            bond_features_dims = get_bond_feature_dims_extended()
+        else:
+            atom_features_dims = get_atom_feature_dims()
+            bond_features_dims = get_bond_feature_dims()
         self.dataset = GeneratedOGBGraphData(
             total_num_graphs,
-            self.node_feature_dims,
-            self.edge_feature_dims,
+            atom_features_dims,
+            bond_features_dims,
             nodes_per_graph,
             edges_per_graph,
             self.labels_dtype,
@@ -475,16 +512,18 @@ class GeneratedOGBGraphData:
                     high=edge_feature_dims,
                     dtype=np.int32,
                 ),
+                "ogb_conformer": np.random.rand(nodes_per_graph, 3),
             }
             for _ in range(total_num_graphs)
         ]
+        self.smiles = ["CC(NCC[C@H]([C@@H]1CCC(=CC1)C)C)C" for _ in range(total_num_graphs)]
         # List of edge_index edge_feat node_feat num_nodes for each graph
         self.labels = np.random.uniform(low=0, high=2, size=(total_num_graphs,)).astype(labels_dtype)
         self.name = "generated"
 
         # Select 80 percent of graphs for training and 10 percent for validation and test
-        train_split_end = (self.total_num_graphs // 100) * 8
-        valid_split_end = train_split_end + 1 + (self.total_num_graphs // 100) * 9
+        train_split_end = (self.total_num_graphs // 10) * 8
+        valid_split_end = train_split_end + 1 + (self.total_num_graphs // 10)
         self.split_dict = {
             "train": np.arange(0, train_split_end),
             "valid": np.arange(train_split_end + 1, valid_split_end),
@@ -496,6 +535,12 @@ class GeneratedOGBGraphData:
 
     def __len__(self):
         return len(self.graphs)
+
+    def get_idx_split(self):
+        return self.split_dict
+
+    def load_smile_strings(self, with_labels=False):
+        return self.smiles, self.labels
 
     @staticmethod
     def get_random_edge_idx(nodes_per_graph, edges_per_graph):

@@ -14,7 +14,7 @@ In this tutorial you will:
 
 A brief [summary](#summary) is included at the end this tutorial. Do not
 hesitate to read through the [Poplar and PopLibs User
-Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/3.1.0/index.html)
+Guide](https://docs.graphcore.ai/projects/poplar-user-guide/en/latest/)
 to complement this tutorial. Use `tut5_matrix_vector/start_here` as your
 working directory.
 

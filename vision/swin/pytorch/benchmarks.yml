@@ -45,7 +45,7 @@ pytorch_swin_base_linear_train_real_pod16:
       --checkpoint-output-dir ./output/swin_base_linear/
       --training-steps 10
 
-pytorch_swin_large_train_real_pod16:
+pytorch_swin_large_finetune_real_pod16:
   <<: [*common_options, *config_options]
   description: PyTorch Sliding window transformer throughput benchmark using real data.
   cmd: >-

@@ -1,0 +1,1 @@
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4

@@ -1,0 +1,11 @@
+matplotlib==3.7.1
+nbconvert==7.2.6
+networkx==3.1
+jupyter==1.0.0
+pandas==2.0.2
+pytest~=6.2
+pytest-pythonpath==0.7.3
+pytest-forked~=1.4
+pytest-xdist~=2.5
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4

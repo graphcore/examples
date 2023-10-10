@@ -56,6 +56,8 @@ For the CPU architecture you are running on
 5. Install the Python requirements with:
 ```bash
 pip3 install -r requirements.txt
+pip3 install -r requirements_utils.txt
+
 ```
 
 

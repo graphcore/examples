@@ -4,3 +4,4 @@ tqdm==4.64.0
 pytest==5.4.3
 torch==2.0.1
 ipywidgets==7.7.2
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools

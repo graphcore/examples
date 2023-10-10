@@ -45,23 +45,30 @@ release:
   xxl-mnli:
     <<: *xxl
     execution:
-      micro_batch_size: 12
+      micro_batch_size: 20
       available_memory_proportion: [ 0.4 ]
-      tensor_parallel: 64
+      tensor_parallel: 16
 
   xxl:
     <<: *xxl
     execution:
-      micro_batch_size: 6
+      micro_batch_size: 12
       available_memory_proportion: [ 0.4 ]
-      tensor_parallel: 64
+      tensor_parallel: 16
+
+  xl-mnli:
+    <<: *xl
+    execution:
+      micro_batch_size: 24
+      available_memory_proportion: [ 0.4 ]
+      tensor_parallel: 8
 
   xl:
     <<: *xl
     execution:
-      micro_batch_size: 8
+      micro_batch_size: 16
       available_memory_proportion: [ 0.4 ]
-      tensor_parallel: 16
+      tensor_parallel: 8
 
   tiny:
     <<: *tiny

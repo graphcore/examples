@@ -39,7 +39,7 @@ def training(config: T5Config, session: TaskSession, pretrained, dataset):
                 "steps": config.training.steps,
                 "min": 1e-7,
                 "max": config.training.optimizer.learning_rate.maximum,
-                "warmup_proportion": config.training.optimizer.learning_rate.warmup_proportion,
+                "warmup_steps": config.training.optimizer.learning_rate.warmup_steps,
             }
         }
     )
@@ -69,7 +69,7 @@ def training(config: T5Config, session: TaskSession, pretrained, dataset):
 
     lr_sch = session.session_state["lr_schedule"]
 
-    lr_schedule = warmup_schedule(lr_sch["steps"], lr_sch["min"], lr_sch["max"], lr_sch["warmup_proportion"])
+    lr_schedule = warmup_schedule(lr_sch["steps"], lr_sch["min"], lr_sch["max"], lr_sch["warmup_steps"])
 
     step = session.session_state["steps"]
     total_steps = session.session_state["total_steps"]
@@ -79,6 +79,7 @@ def training(config: T5Config, session: TaskSession, pretrained, dataset):
     checkpoint_dir = config.checkpoint.save
     if checkpoint_dir is not None:
         checkpoint_dir = os.path.join(checkpoint_dir, "Run_{}".format(datetime.now().strftime("%d_%m_%Y_%H_%M")))
+    last_checkpoint_path = None
 
     # The weights get loaded from the host on session entry
     logging.info(f"Loading HF pretrained model's weights to IPU")
@@ -157,14 +158,16 @@ def training(config: T5Config, session: TaskSession, pretrained, dataset):
                         saved_checkpoint = True
                         path = os.path.join(checkpoint_dir, f"train_step_{total_steps}")
                         session.save_checkpoint(path)
+                        last_checkpoint_path = path
 
                 if total_steps >= config.training.steps:
                     # Save last checkpoint
                     if checkpoint_dir is not None and not saved_checkpoint:
                         path = os.path.join(checkpoint_dir, f"train_step_{total_steps}")
                         session.save_checkpoint(path)
+                        last_checkpoint_path = path
 
-                    return
+                    return last_checkpoint_path
 
                 step += 1
 
@@ -172,11 +175,11 @@ def training(config: T5Config, session: TaskSession, pretrained, dataset):
 def main():
     # Configuration
     config, args, pretrained = t5_fine_tuning_setup(
-        CONFIG_DIR / "finetuning.yml", "release", "xxl_pod64", wandb_setup=True
+        CONFIG_DIR / "finetuning.yml", "release", "xxl_pod16", wandb_setup=True
     )
 
     # Create the training session
-    train_session = finetuning(config)
+    train_session = finetuning(config, args)
 
     # Load dataset
     with timer("Data preparation"):

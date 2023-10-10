@@ -11,8 +11,7 @@ from popxl_addons import NamedTensors
 from popxl_addons.named_tensors import NamedTensorData
 
 from .embedding import T5EmbeddingsTP, T5DecoderEmbeddingsTP
-from .encoder import T5EncoderTP, T5EncoderHead, T5EncoderBlockTP
-from .decoder import T5DecoderTP, T5DecoderBlockTP
+from .encoder_decoder import T5EncoderDecoderTP, T5BlockTP, T5EncoderHead
 from .layer_norm import T5LayerNorm
 
 from transformers.models.t5.modeling_t5 import T5Model as HFModel
@@ -22,12 +21,10 @@ class T5ModelTP(addons.Module):
     def __init__(self, config: T5Config, include_layer_norm=True):
         super().__init__()
         self.config = config
-        # sharded, then last bit identical
-        self.dec_embeddings = T5DecoderEmbeddingsTP(self.config)
         # identical inputs, then sharded, then identical
-        self.encoder = T5EncoderTP(self.config)
+        self.encoder = T5EncoderDecoderTP(self.config)
         self.encoder_head = T5EncoderHead(self.config)
-        self.decoder = T5DecoderTP(self.config)
+        self.decoder = T5EncoderDecoderTP(self.config)
         # identical
         self.include_layer_norm = include_layer_norm
         if self.include_layer_norm:
@@ -46,15 +43,23 @@ class T5ModelTP(addons.Module):
         (x,) = graph.bind(embedding_weights).call(input_ids)
 
         # Encoder stack
-        x = self.encoder(x, mask)
+        # Encoder layers mask out the cross-attention part
+        scale = popxl.constant(0, self.config.model.dtype, "cross_attn_scale")
+        rel_pos_weight = embedding_weights.rel_pos_weight
+        x = self.encoder(x, mask, x, mask, scale, rel_pos_weight)
         x = self.encoder_head(x)
 
         # Decoder embeddings
         word_embedding = embedding_weights.word.weight
-        x_dec = self.dec_embeddings(dec_input_ids, word_embedding)
+        facts, graph = T5DecoderEmbeddingsTP(self.config).create_graph(dec_input_ids.spec, word_embedding.spec)
+        dec_embedding_weights = self.add_variable_inputs("decoder_embeddings", facts)
+        (x_dec,) = graph.bind(dec_embedding_weights).call(dec_input_ids, word_embedding)
 
         # Decoder stack
-        x = self.decoder(x_dec, dec_mask, x, mask)
+        # Decoder layers don't mask out the cross-attention part
+        scale = popxl.constant(1, self.config.model.dtype, "cross_attn_scale")
+        rel_pos_weight = dec_embedding_weights.rel_pos_weight
+        x = self.decoder(x_dec, dec_mask, x, mask, scale, rel_pos_weight)
 
         if self.include_layer_norm:
             x = self.ln_f(x)
@@ -67,10 +72,11 @@ class T5ModelTP(addons.Module):
         weights = {}
         # Embedding weights
         weights.update(T5EmbeddingsTP.hf_mapping(config, variables.embeddings, hf_model))
+        weights.update(T5DecoderEmbeddingsTP.hf_mapping(config, variables.decoder_embeddings, hf_model))
         # Encoder + decoder weights
         for l in range(config.model.layers):
-            weights.update(T5EncoderBlockTP.hf_mapping(config, variables.encoder[l], hf_model.encoder.block[l]))
-            weights.update(T5DecoderBlockTP.hf_mapping(config, variables.decoder[l], hf_model.decoder.block[l]))
+            weights.update(T5BlockTP.hf_mapping(config, variables.encoder[l], hf_model.encoder.block[l]))
+            weights.update(T5BlockTP.hf_mapping(config, variables.decoder[l], hf_model.decoder.block[l]))
         # Final layer norms
         weights.update(T5EncoderHead.hf_mapping(config, variables.encoder_head, hf_model.encoder))
         if layer_norm:
@@ -91,22 +97,27 @@ class T5ModelTP(addons.Module):
         state_dict["decoder.embed_tokens.weight"] = torch.tensor(
             np.concatenate(variables_data.embeddings.word.weight, axis=0)[: config.vocab_size], dtype=config.torch_dtype
         )
+        # Relative positional encoding weights
+        state_dict["encoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight"] = torch.tensor(
+            np.concatenate(variables_data.embeddings.rel_pos_weight.transpose((0, 2, 1)), axis=0).T,
+            dtype=config.torch_dtype,
+        )
+        state_dict["decoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight"] = torch.tensor(
+            np.concatenate(variables_data.decoder_embeddings.rel_pos_weight.transpose((0, 2, 1)), axis=0).T,
+            dtype=config.torch_dtype,
+        )
         # Encoder + decoder weights
         for l in range(config.num_layers):
             state_dict.update(
                 {
                     f"encoder.block.{l}.{k}": v
-                    for k, v in T5EncoderBlockTP.to_hf(
-                        config, variables_data.encoder[l], hf_model.encoder.block[l]
-                    ).items()
+                    for k, v in T5BlockTP.to_hf(config, variables_data.encoder[l], hf_model.encoder.block[l]).items()
                 }
             )
             state_dict.update(
                 {
                     f"decoder.block.{l}.{k}": v
-                    for k, v in T5DecoderBlockTP.to_hf(
-                        config, variables_data.decoder[l], hf_model.decoder.block[l]
-                    ).items()
+                    for k, v in T5BlockTP.to_hf(config, variables_data.decoder[l], hf_model.decoder.block[l]).items()
                 }
             )
         # Final layer norms

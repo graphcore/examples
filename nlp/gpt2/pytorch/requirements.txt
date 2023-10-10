@@ -1,3 +1,6 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
+torch==2.0.1+cpu
 transformers==4.26.1
 datasets==2.1.0
 tokenizers==0.12.1
@@ -8,5 +11,5 @@ tfrecord==1.14.1
 pytest==6.2.5
 pytest-pythonpath==0.7.3
 horovod[pytorch]==0.24.3
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4
 tqdm==4.63.1

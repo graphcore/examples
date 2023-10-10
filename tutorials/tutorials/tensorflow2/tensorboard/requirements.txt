@@ -1,1 +1,2 @@
 numpy>=1.19.0
+graphcore-cloud-tools[logger] @ git+https://github.com/graphcore/graphcore-cloud-tools

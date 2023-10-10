@@ -1,3 +1,6 @@
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+
+torch==2.0.1+cpu
 matplotlib==3.3.4
 numpy==1.19.5
 inflect==5.3.0
@@ -13,4 +16,4 @@ protobuf==3.19.4
 wandb==0.12.8
 horovod[pytorch]==0.24.3
 git+https://github.com/NVIDIA/dllogger@v0.1.0#egg=dllogger
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4

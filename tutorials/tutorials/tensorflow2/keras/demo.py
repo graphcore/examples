@@ -26,32 +26,26 @@ This file has been modified by Graphcore Ltd.
 This tutorial provides an introduction on how to run Keras models on IPUs, and
 features that allow you to fully utilise the capability of the IPU. Please refer
 to the [TensorFlow 2 documentation - Keras with
-IPUs](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/keras_tf2.html)
+IPUs](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/keras_tf2.html)
 and the TensorFlow 2 Keras API reference sections on [IPU
-extensions](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/api.html#module-tensorflow.python.ipu.keras.extensions),
+extensions](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html#module-tensorflow.python.ipu.keras.extensions),
 and IPU-specific [Keras
-layers](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/api.html#keras-layers),
+layers](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html#keras-layers),
 [Keras
-losses](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/api.html#module-tensorflow.python.ipu.keras.losses)
+losses](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html#module-tensorflow.python.ipu.keras.losses)
 and [Keras
-optimizers](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/api.html#module-tensorflow.python.ipu.keras.optimizers)
+optimizers](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html#module-tensorflow.python.ipu.keras.optimizers)
 for full details of all available features.
 
 """
 """
-Requirements:
-- A Poplar SDK environment enabled
-   (see the [Getting Started](https://docs.graphcore.ai/en/latest/getting-started.html) guide for your IPU system)
-- Graphcore port of TensorFlow 2 installed
+## Environment setup
 
-To run the Jupyter notebook version of this tutorial:
-1. Enable a Poplar SDK environment
-2. In the same environment, install the Jupyter notebook server: `python -m pip install jupyter`
-3. Launch a Jupyter Server on a specific port: `jupyter-notebook --no-browser --port <port number>`
-4. Connect via SSH to your remote machine, forwarding your chosen port:
-`ssh -NL <port number>:localhost:<port number> <your username>@<remote machine>`
+The best way to run this demo is on Paperspace Gradient’s cloud IPUs because everything is already set up for you. To improve your experience, we preload datasets and pre-install packages. This can take a few minutes. If you experience errors immediately after starting a session, please try restarting the kernel before contacting support. If a problem persists or you want to give us feedback on the content of this notebook, please reach out to through our community of developers using our [Slack channel](https://www.graphcore.ai/join-community) or raise a [GitHub issue](https://github.com/graphcore/Gradient-Tensorflow2/issues).
 
-For more details about this process, or if you need troubleshooting, see our [guide on using IPUs from Jupyter notebooks](../../standard_tools/using_jupyter/README.md).
+[![Run on Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/3hx7tbD)
+
+To run the demo using other IPU hardware, you need to have the Poplar SDK enabled. Refer to the [Getting Started guide](https://docs.graphcore.ai/en/latest/getting-started.html#getting-started) for your system for details on how to enable the Poplar SDK. Also refer to the [Jupyter Quick Start guide](https://docs.graphcore.ai/projects/jupyter-notebook-quick-start/en/latest/index.html) for how to set up Jupyter to be able to run this notebook on a remote IPU machine.
 """
 """
 ## Keras MNIST example
@@ -212,7 +206,7 @@ ipu_config.configure_ipu_system()
 """
 This is all we need to get a small model up and running, though a full list of
 configuration options is available in the [API
-documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/api.html#tensorflow.python.ipu.config.IPUConfig).
+documentation](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html#tensorflow.python.ipu.config.IPUConfig).
 """
 """
 ##### 4. Specify IPU strategy
@@ -226,7 +220,7 @@ strategy = ipu.ipu_strategy.IPUStrategy()
 The `tf.distribute.Strategy` is an API to distribute training and inference
 across multiple devices. `IPUStrategy` is a subclass which targets a system
 with one or more IPUs attached. For a multi-system configuration, the
-[PopDistStrategy](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/api.html#tensorflow.python.ipu.horovod.popdist_strategy.PopDistStrategy)
+[PopDistStrategy](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/api.html#tensorflow.python.ipu.horovod.popdist_strategy.PopDistStrategy)
 should be used, in conjunction with our PopDist library.
 
 > To see an example of how to distribute training and inference over multiple
@@ -281,7 +275,7 @@ compilation should be less significant.
 
 >To avoid recompiling the same code every time a TensorFlow process is started,
 >you can [turn on caching of the
->executable](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/compiling.html#compiling-and-pre-compiling-executables).
+>executable](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/compiling.html#compiling-and-pre-compiling-executables).
 
 When running the above code, you may also notice a warning regarding
 `steps_per_execution`. This will be addressed in the next section.
@@ -478,7 +472,7 @@ the amount of time spent in the main execution phase, improving the utilisation
 of the IPUs and speeding up computation.
 
 Another technique to help pipelining efficiency on the IPU is
-[_gradient accumulation_](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/perf_training.html#id3).
+[_gradient accumulation_](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/perf_training.html#id3).
 With gradient accumulation, instead of updating the weights between each
 mini-batch, forward and backward passes are performed on several mini-batches,
 while keeping a cumulative sum of the gradients. A weight update is applied
@@ -497,9 +491,9 @@ models with batch sizes which would not fit directly in the memory of the IPU.
 
 To learn more about about pipelining you may want to read [the relevant section
 of the Technical Note on Model Parallelism in
-TensorFlow](https://docs.graphcore.ai/projects/tf-model-parallelism/en/3.1.0/pipelining.html),
+TensorFlow](https://docs.graphcore.ai/projects/tf-model-parallelism/page/pipelining.html),
 our [pipelining documentation specific to
-TensorFlow](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/3.1.0/tensorflow/perf_training.html#pipelined-training).
+TensorFlow](https://docs.graphcore.ai/projects/tensorflow-user-guide/en/latest/tensorflow/perf_training.html#pipelined-training).
 
 In this final part of the tutorial, we will pipeline our model over two stages.
 We will need to change the value of `num_replicas`, and create a variable for
@@ -522,7 +516,7 @@ be divisible by `(number of pipeline stages) * 2`. When using the interleaved
 schedule, `gradient_accumulation_steps_per_replica` must be divisible by
 `(number of pipeline stages)`. You can read more about the specifics of the
 different pipeline schedules in [the relevant section of the technical note on
-Model parallelism with TensorFlow](https://docs.graphcore.ai/projects/tf-model-parallelism/en/3.1.0/pipelining.html#pipeline-scheduling).
+Model parallelism with TensorFlow](https://docs.graphcore.ai/projects/tf-model-parallelism/page/pipelining.html#pipeline-scheduling).
 
 If we use more than two IPUs, the model will be automatically replicated to fill
 up the requested number of IPUs. For example, if we select 8 IPUs for our 2-IPU

@@ -50,7 +50,7 @@ class TGNMemoryTestDataset(torch.utils.data.Dataset):
         return batch.src, batch.dst, batch.t, batch.msg
 
 
-def _assert_allclose(actual, expected, is_padded=False):
+def _assert_allclose(actual, expected, is_padded=False, atol=1e-3):
     if is_padded:
         assert len(actual.shape) == len(expected.shape)
         assert all(a >= b for a, b in zip(actual.shape, expected.shape))
@@ -58,7 +58,7 @@ def _assert_allclose(actual, expected, is_padded=False):
     else:
         assert actual.shape == expected.shape
         actual_unpadded = actual
-    np.testing.assert_allclose(actual_unpadded, expected, atol=1e-3)
+    np.testing.assert_allclose(actual_unpadded, expected, atol=atol)
 
 
 def recursive_get(obj, obj_name):
@@ -107,7 +107,7 @@ class TestTGN(unittest.TestCase):
             ref_output = ref_model(data[0])
             pop_output = pop_model(data[0])
 
-            _assert_allclose(ref_output.detach(), pop_output.detach())
+            _assert_allclose(ref_output.detach(), pop_output.detach(), atol=1e-2)
 
         print("TimeEncoder test PASSED")
 

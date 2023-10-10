@@ -13,4 +13,4 @@ horovod[pytorch]==0.24.3
 randaugment==1.0.2
 numpy==1.23.5; python_version > '3.6'
 numpy==1.19.5; python_version <= '3.6'
-examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.3
+examples-utils[benchmark] @ git+https://github.com/graphcore/examples-utils@v3.4
