@@ -9,6 +9,8 @@ import subprocess
 import re
 import time
 import datetime
+from multiprocessing import Pool
+import math
 
 
 def value_stats(values):
@@ -164,33 +166,60 @@ def make_train_data(train_uv, train_values, args):
     return ds, steps_per_epoch, steps_per_exec
 
 
-def make_prediction_dataset(width, height, batch_size, embedding_dimension, embedding_sigma):
+def make_prediction_dataset(width, height, batch_size, embedding_dimension, embedding_sigma, processes):
     pixel_coords, uv_coords = make_image_grid(width, height)
     if embedding_dimension > 0:
-        uv_coords = uv_positional_encode(uv_coords, embedding_dimension, embedding_sigma)
+        uv_coords = uv_positional_encode(uv_coords, embedding_dimension, embedding_sigma, processes)
     ds = tf.data.Dataset.from_tensor_slices(uv_coords).batch(batch_size, drop_remainder=True)
     print(f"Prediction dataset: {ds}")
     return ds, pixel_coords
 
 
+def sincos(coeffs, uv, idx):
+  results = []
+  i = idx
+  for px, py in uv:
+    # Order of components doesn't matter as they will be fed to a fully
+    # connected layer so we can concatenate in a more efficient order:
+    pos = np.concatenate([coeffs * px, coeffs * py])
+    results.append([i, np.concatenate([np.sin(pos), np.cos(pos)])])
+    i += 1
+  return results
+
+
 # This is the position encoding the original NERF paper.
-def uv_positional_encode(uv, dimension, sigma):
-    print(f"UV samples shape: {uv.shape}")
+def uv_positional_encode(uv, dimension, sigma, processes):
+    print(f"UV input samples shape: {uv.shape}")
     powers = np.arange(0.0, dimension, 1.0)
     coeffs = np.power([sigma], powers)
     uv2 = 2 * (uv - 1.0)
     encoded = np.empty([uv.shape[0], 4 * dimension], dtype=uv.dtype)
-    print(f"Position encoded UV shape: {encoded.shape}")
+    print(f"UV position encoded shape: {encoded.shape}")
 
-    # Order of components doesn't matter as they will be fed to a fully
-    # connected layer so we can concatenate in a more efficient order:
-    i = 0
-    half_dim = 2 * dimension
-    for px, py in uv2:
-        posxy = np.concatenate([coeffs * px, coeffs * py])
-        encoded[i][0:half_dim] = np.sin(posxy)
-        encoded[i][half_dim:] = np.cos(posxy)
-        i += 1
+    # Encoding can be slow so use a process pool.
+    # Each process should handle a large slice of coordinates
+    # to amortize the overhead of launching a separate process:
+    chunk_size = math.ceil(uv.shape[0] / processes)
+    chunks = math.ceil(uv.shape[0] / chunk_size)
+    print(f"Each process encodes {chunk_size} samples")
+    async_results = []
+    with Pool(processes) as p:
+      for i in range(0, chunks):
+        start = i * chunk_size
+        end = start + chunk_size
+        if end > uv2.shape[0]:
+          end = uv2.shape[0]
+        uv2_slice = uv2[start:end, :]
+        result = p.apply_async(sincos, [coeffs, uv2_slice, start])
+        async_results.append(result)
+
+      for a in async_results:
+        rows = a.get(timeout=200)
+        for r in rows:
+          idx = r[0]
+          vec = r[1]
+          encoded[idx] = vec
+
     return encoded
 
 
@@ -318,7 +347,7 @@ class EvalCallback(tf.keras.callbacks.Callback):
                         tf.summary.scalar("PSNR AB", psnr_ab, step=epoch)
 
             except subprocess.TimeoutExpired:
-                print(f"Killing previous eval process (pid: {self.eval_process.pid}).")
+                print(f"Killing previous eval process for taking too long (pid: {self.eval_process.pid}).")
                 self.eval_process.kill()
                 (
                     stdout,

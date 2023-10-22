@@ -162,6 +162,13 @@ def parse_args():
         default=10,
         help="Interval in epochs at which to log training stats and evaluate PSNR (if enabled).",
     )
+    parser.add_argument(
+        "--encoder-processes",
+        type=int,
+        default=40,
+        help="Number of processes used to encode input coordinates during dataset generation. "
+        "This should be chosen so that each process encodes thousands of samples.",
+    )
     parser.add_argument("--siren", action="store_true", help="Use a SIREN MLP instead of an relu-MLP network.")
     parser.add_argument("--sin-fp16", action="store_true", help="If using SIREN use half precision sin function.")
     parser.add_argument(
@@ -261,7 +268,7 @@ if __name__ == "__main__":
     embedding_dimension = 0 if args.no_position_embedding else args.embedding_dimension
     if not args.no_position_embedding:
         t0 = time.time()
-        train_uv = nif.uv_positional_encode(train_uv, embedding_dimension, args.embedding_sigma)
+        train_uv = nif.uv_positional_encode(train_uv, embedding_dimension, args.embedding_sigma, args.encoder_processes)
         t1 = time.time()
         print(f"UV encode time: {t1 - t0}")
 
@@ -343,13 +350,14 @@ if __name__ == "__main__":
             steps_per_exec = 1
         else:
             callbacks = [
-                # Two save callbacks: one is for standard Keras format:
-                tf.keras.callbacks.ModelCheckpoint(
-                    filepath=saved_model_path, save_weights_only=False, save_best_only=False
-                ),
-                # Second callback is for export to a format the Poplar ray-tracer can read:
+                # Two save callbacks:
+                # Save in a format the Poplar ray-tracer can read:
                 tf.keras.callbacks.ModelCheckpoint(
                     filepath=h5_model_path, include_optimizer=False, save_weights_only=False, save_best_only=False
+                ),
+                # Save in standard Keras format:
+                tf.keras.callbacks.ModelCheckpoint(
+                    filepath=saved_model_path, save_weights_only=False, save_best_only=False
                 ),
                 eval_callback,
                 tf.keras.callbacks.TensorBoard(log_dir=tb_logdir, histogram_freq=5),

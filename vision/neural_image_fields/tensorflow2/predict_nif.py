@@ -10,6 +10,8 @@ import nif
 import os
 from ipu_tensorflow_addons.keras.optimizers import AdamIpuOptimizer
 from skimage import color, metrics
+import time
+
 
 if tf.__version__[0] != "2":
     raise ImportError("TensorFlow 2 is required")
@@ -29,6 +31,13 @@ def parse_args():
         "metric will be computed between it and the reconstruction.",
     )
     parser.add_argument("--no-ipu", action="store_true", help="Set this flag to disable IPU specific code paths.")
+    parser.add_argument(
+        "--encoder-processes",
+        type=int,
+        default=40,
+        help="Number of processes used to encode input coordinates during dataset generation. "
+        "This should be chosen so that each process encodes thousands of samples.",
+    )
     args = parser.parse_args()
     return args
 
@@ -62,13 +71,27 @@ if __name__ == "__main__":
         model = keras.models.load_model(h5_model_path, custom_objects={"AdamIpuOptimizer": AdamIpuOptimizer})
         model.summary()
 
+        # Before we begin evaluation wait for the lock to be released on the HD5 file.
+        # On slow filesystems (e.g. Docker overlays) it seems a file-system race condition
+        # can prevent file access:
+        fd = open(h5_model_path, "r")
+        locked = os.lockf(fd.fileno(), os.F_TEST, 0)
+        retries = 3
+        retry_time = 5
+        while locked:
+          time.sleep(retry_time)
+          locked = os.lockf(fd, os.F_TEST, 0)
+          retries = retries - 1
+          if retries <= 0:
+            raise RuntimeError(f"File {h5_model_path} still locked after {retries * retry_time} seconds.")
+
         # Reconstruct the entire image from the trained NIF:
         output_sample_count = width * height
         prediction_batch_size = max(width, height)
         prediction_batches = output_sample_count // prediction_batch_size
         print(f"Required samples: {output_sample_count} and batches: {prediction_batches}")
         eval_ds, pixel_coords = nif.make_prediction_dataset(
-            width, height, prediction_batch_size, embedding_dimension, embedding_sigma
+            width, height, prediction_batch_size, embedding_dimension, embedding_sigma, args.encoder_processes
         )
         result = model.predict(x=eval_ds, batch_size=prediction_batch_size, steps=prediction_batches)
         reconstructed = nif.decode_samples(
