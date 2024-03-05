@@ -8,7 +8,7 @@
 
 The best way to run this demo is on Paperspace Gradient's cloud IPUs because everything is already set up for you.
 
-[![Run on Gradient](https://assets.paperspace.io/img/gradient-badge.svg)](https://ipu.dev/t8Jxz1)
+
 
 ## Instructions summary:
 Before you can run this model for training or inference you will need to:

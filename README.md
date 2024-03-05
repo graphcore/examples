@@ -50,87 +50,87 @@ If you require POD128 or POD256 setup and configuration for our applications, pl
 
 ### <img width="30" src="https://user-images.githubusercontent.com/81682248/177352641-89d12db1-45df-4403-8308-c6b9015a027d.png"></a> Computer Vision <a name="cv"></a>
 
-| Model | Domain | Type | Source | Run on Gradient |
-| ------- | ------- | ------- | ------- | ------- |
-| ResNet | Image classification | Training, Inference | [TensorFlow 2](vision/cnns/tensorflow2/), [PyTorch](vision/cnns/pytorch/), [PyTorch Lightning](https://github.com/graphcore/pytorch-lightning-examples/tree/release/applications) | - |
-| EfficientNet | Image classification | Training, Inference | [PyTorch](vision/cnns/pytorch/), [PyTorch Lightning](https://github.com/graphcore/pytorch-lightning-examples/tree/release/applications) | - |
-| MobileNetv3 | Image classification | Training, Inference | [PyTorch](vision/cnns/pytorch/) | - |
-| ViT (Vision Transformer) | Image classification | Training | [PyTorch](vision/vit/pytorch/), [Hugging Face Optimum](https://huggingface.co/Graphcore/vit-base-ipu) | [PyTorch](https://ipu.dev/3W2Ru39), [Hugging Face Optimum](https://ipu.dev/3YOs4Js) |
-| DINO | Image classification | Training | [PyTorch](vision/dino/pytorch) | - |
-| Swin | Image classification | Training | [PyTorch](vision/swin/pytorch) | - |
-| MAE (Masked AutoEncoder) | Image classification | Training | [PyTorch](vision/mae/pytorch) | - |
-| Yolov4-P5 | Object detection | Inference | [PyTorch](vision/yolo_v4/pytorch) | [PyTorch](https://ipu.dev/Y8yaSU) |
-| EfficientDet | Object detection | Inference | [TensorFlow 2](vision/efficientdet/tensorflow2) | - |
-| UNet (Medical) | Image segmentation | Training, Inference | [TensorFlow 2](vision/unet_medical/tensorflow2) | - |
-| Neural Image Fields | Neural radiance fields | Training | [TensorFlow 2](vision/neural_image_fields/tensorflow2) | - |
+| Model | Domain | Type | Source |
+| ------- | ------- | ------- | ------- |
+| ResNet | Image classification | Training, Inference | [TensorFlow 2](vision/cnns/tensorflow2/), [PyTorch](vision/cnns/pytorch/), [PyTorch Lightning](https://github.com/graphcore/pytorch-lightning-examples/tree/release/applications) |
+| EfficientNet | Image classification | Training, Inference | [PyTorch](vision/cnns/pytorch/), [PyTorch Lightning](https://github.com/graphcore/pytorch-lightning-examples/tree/release/applications) |
+| MobileNetv3 | Image classification | Training, Inference | [PyTorch](vision/cnns/pytorch/) |
+| ViT (Vision Transformer) | Image classification | Training | [PyTorch](vision/vit/pytorch/), [Hugging Face Optimum](https://huggingface.co/Graphcore/vit-base-ipu) |
+| DINO | Image classification | Training | [PyTorch](vision/dino/pytorch) |
+| Swin | Image classification | Training | [PyTorch](vision/swin/pytorch) |
+| MAE (Masked AutoEncoder) | Image classification | Training | [PyTorch](vision/mae/pytorch) |
+| Yolov4-P5 | Object detection | Inference | [PyTorch](vision/yolo_v4/pytorch) |
+| EfficientDet | Object detection | Inference | [TensorFlow 2](vision/efficientdet/tensorflow2) |
+| UNet (Medical) | Image segmentation | Training, Inference | [TensorFlow 2](vision/unet_medical/tensorflow2) |
+| Neural Image Fields | Neural radiance fields | Training | [TensorFlow 2](vision/neural_image_fields/tensorflow2) |
 <br>
 
 ### <img width="30" src="https://user-images.githubusercontent.com/81682248/177355208-a49a2bba-dd4d-4467-b135-9023279e8f01.png"></a> Natural Language Processing <a name="nlp"></a>
 
-| Model | Domain | Type | Source | Run on Gradient |
-| ------- | ------- | ------- | ------- | ------- |
-| BERT | NLP | Training, Inference | [PyTorch](nlp/bert/pytorch) , [TensorFlow 2](nlp/bert/tensorflow2/), [PopXL](nlp/bert/popxl), [PaddlePaddle](https://github.com/PaddlePaddle/PaddleNLP/tree/develop/model_zoo/bert/static_ipu), [Hugging Face Optimum](https://huggingface.co/Graphcore/bert-large-ipu) | - |
-| Packed BERT | NLP | Training | [PyTorch](nlp/bert/pytorch) | - |
-| BERT-large | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/bert-large-ipu) | [Hugging Face Optimum](https://ipu.dev/3W9wwAD)|
-| GPT2 | NLP | Training | [PyTorch](nlp/gpt2/pytorch), [Hugging Face Optimum](https://huggingface.co/Graphcore/gpt2-medium-ipu) | - |
-| GPTJ | NLP | Training | [PopXL](nlp/gpt_j/popxl) | - |
-| GPT3-2.7B | NLP | Training | [PopXL](nlp/gpt3_2.7B/popxl) | - |
-| GPT3-175B | NLP | Training | [PopXL](nlp/gpt3_175B/popxl) | - |
-| RoBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/roberta-large-ipu) | - |
-| DeBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/deberta-base-ipu) | - |
-| HuBERT | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/hubert-base-ipu) | - |
-| BART Base | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/bart-base-ipu) | [Hugging Face Optimum](https://ipu.dev/3XbkoQk) |
-| T5-small | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/t5-small-ipu) | [Hugging Face Optimum](https://ipu.dev/3Ky3VCj) |
-| Bloom | NLP | Inference | [PopXL](nlp/bloom/popxl) | - |
-| Dolly | NLP | Inference | [PopXL](nlp/dolly/popxl) | [PopXL](https://ipu.dev/t8Jxz1) |
-| MT5-small | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/mt5-small-ipu) | [Hugging Face Optimum](https://ipu.dev/d6vE2P) |
-| MT5-large | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/mt5-large-ipu) | [Hugging Face Optimum](https://ipu.dev/6vL5xc) |
+| Model | Domain | Type | Source |
+| ------- | ------- | ------- | ------- |
+| BERT | NLP | Training, Inference | [PyTorch](nlp/bert/pytorch) , [TensorFlow 2](nlp/bert/tensorflow2/), [PopXL](nlp/bert/popxl), [PaddlePaddle](https://github.com/PaddlePaddle/PaddleNLP/tree/develop/model_zoo/bert/static_ipu), [Hugging Face Optimum](https://huggingface.co/Graphcore/bert-large-ipu) |
+| Packed BERT | NLP | Training | [PyTorch](nlp/bert/pytorch) |
+| BERT-large | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/bert-large-ipu) |
+| GPT2 | NLP | Training | [PyTorch](nlp/gpt2/pytorch), [Hugging Face Optimum](https://huggingface.co/Graphcore/gpt2-medium-ipu) |
+| GPTJ | NLP | Training | [PopXL](nlp/gpt_j/popxl) |
+| GPT3-2.7B | NLP | Training | [PopXL](nlp/gpt3_2.7B/popxl) |
+| GPT3-175B | NLP | Training | [PopXL](nlp/gpt3_175B/popxl) |
+| RoBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/roberta-large-ipu) |
+| DeBERTa | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/deberta-base-ipu) |
+| HuBERT | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/hubert-base-ipu) |
+| BART Base | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/bart-base-ipu) |
+| T5-small | NLP | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/t5-small-ipu) |
+| Bloom | NLP | Inference | [PopXL](nlp/bloom/popxl) |
+| Dolly | NLP | Inference | [PopXL](nlp/dolly/popxl) |
+| MT5-small | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/mt5-small-ipu) |
+| MT5-large | NLP | Fine-tuning | [Hugging Face Optimum](https://huggingface.co/Graphcore/mt5-large-ipu) |
 
 <br>
 
 
 ### <img width="30" src="https://user-images.githubusercontent.com/81682248/177355502-87b09860-d323-438a-a0a2-247b8f6e9349.png"></a> Speech <a name="speech"></a>
 
-| Model | Domain | Type | Source | Run on Gradient |
-| ------- | ------- | ------- | ------- | ------- |
-| Fastpitch | TTS (TextToSpeech) | Training | [PyTorch](speech/fastpitch/pytorch) | - |
-| Conformer | STT (SpeechToText) | Training, Inference | [PyTorch](speech/conformer/pytorch) | - |
-| wav2vec2-base | STT (SpeechToText) | Fine-tuning, Inference | [Hugging Face Optimum](https://huggingface.co/Graphcore/wav2vec2-base-ipu) | [Hugging Face Optimum (Fine-tuning)](https://ipu.dev/3WsskMd), [Hugging Face Optimum (Inference)](https://ipu.dev/3W4juV4)|
-| wav2vec2-large | STT (SpeechToText) | Fine-tuning, Inference | [Hugging Face Optimum](https://huggingface.co/Graphcore/wav2vec2-large-ipu) | - |
-| Whisper-tiny | STT (SpeechToText) | Inference | [Hugging Face Optimum](https://huggingface.co/Graphcore/whisper-tiny-ipu) | [Hugging Face Optimum](https://ipu.dev/0LTbKM) |
+| Model | Domain | Type | Source |
+| ------- | ------- | ------- | ------- |
+| Fastpitch | TTS (TextToSpeech) | Training | [PyTorch](speech/fastpitch/pytorch) |
+| Conformer | STT (SpeechToText) | Training, Inference | [PyTorch](speech/conformer/pytorch) |
+| wav2vec2-base | STT (SpeechToText) | Fine-tuning, Inference | [Hugging Face Optimum](https://huggingface.co/Graphcore/wav2vec2-base-ipu) |
+| wav2vec2-large | STT (SpeechToText) | Fine-tuning, Inference | [Hugging Face Optimum](https://huggingface.co/Graphcore/wav2vec2-large-ipu) |
+| Whisper-tiny | STT (SpeechToText) | Inference | [Hugging Face Optimum](https://huggingface.co/Graphcore/whisper-tiny-ipu) |
 
 <br>
 
 ### <img width="30" src="https://user-images.githubusercontent.com/81682248/177357173-57e4cc6f-cff3-43a9-bd40-dcf3616f1fa1.png"></a> Multimodal <a name="multimodal"></a>
 
-| Model | Domain | Type | Source | Run on Gradient |
-| ------- | ------- | ------- | ------- | ------- |
-| miniDALL-E | Multimodal | Training | [PyTorch](multimodal/mini_dalle/pytorch) | - |
-| CLIP | Multimodal | Training | [PyTorch](multimodal/CLIP/pytorch) | - |
-| LXMERT | Multimodal | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/lxmert-base-ipu) | - |
-| Frozen in time | Multimodal | Training, Inference | [PyTorch](multimodal/frozen_in_time/pytorch) | - |
+| Model | Domain | Type | Source |
+| ------- | ------- | ------- | ------- |
+| miniDALL-E | Multimodal | Training | [PyTorch](multimodal/mini_dalle/pytorch) |
+| CLIP | Multimodal | Training | [PyTorch](multimodal/CLIP/pytorch) |
+| LXMERT | Multimodal | Training | [Hugging Face Optimum](https://huggingface.co/Graphcore/lxmert-base-ipu) |
+| Frozen in time | Multimodal | Training, Inference | [PyTorch](multimodal/frozen_in_time/pytorch) |
 
 <br>
 
 ### <img width="25" src="https://user-images.githubusercontent.com/81682248/177357459-84ed7863-6477-4d8f-b63e-3db6c2ad405c.png"></a> Graph Neural Network <a name="gnn"></a>
 
-| Model | Domain | Type | Source | Run on Gradient |
-| ------- | ------- | ------- | ------- | ------- |
-| MPNN (Message Passing Neural Networks) | GNN | Training, Inference | [PyTorch Geometric](gnn/message_passing/pytorch_geometric) , [TensorFlow 2](gnn/message_passing/tensorflow2) | - |
-| Spektral GNN library with QM9 | GNN | Training | [TensorFlow 2](gnn/spektral/tensorflow2) | - |
-| Cluster GCN | GNN | Training, Inference | [PyTorch Geometric](gnn/cluster_gcn/pytorch_geometric) | [PyTorch Geometric](https://ipu.dev/PmAtSw) |
-| TGN (Temporal Graph Networks) | GNN | Training | [PyTorch](gnn/tgn/pytorch) | - |
-| NBFNet | GNN | Training, Inference | [PyTorch Geometric](gnn/nbfnet/pytorch_geometric) | [PyTorch Geometric (Training)](https://ipu.dev/EzpMQD)|
-| SchNet | GNN | Training, Inference | [PyTorch Geometric](gnn/schnet/pytorch_geometric) | [PyTorch Geometric](https://ipu.dev/zUl8uW) |
-| GPS++ - OGB-LSC PCQM4Mv2 competition submission | GNN | Training, Inference | [TensorFlow 2](gnn/ogb_lsc_pcqm4mv2/tensorflow2) | [TensorFlow 2 (Training)](https://ipu.dev/3GxXZpe), [TensorFlow 2 (Inference)](https://ipu.dev/3CGjC5E)|
+| Model | Domain | Type | Source |
+| ------- | ------- | ------- | ------- |
+| MPNN (Message Passing Neural Networks) | GNN | Training, Inference | [PyTorch Geometric](gnn/message_passing/pytorch_geometric) , [TensorFlow 2](gnn/message_passing/tensorflow2) |
+| Spektral GNN library with QM9 | GNN | Training | [TensorFlow 2](gnn/spektral/tensorflow2) |
+| Cluster GCN | GNN | Training, Inference | [PyTorch Geometric](gnn/cluster_gcn/pytorch_geometric) |
+| TGN (Temporal Graph Networks) | GNN | Training | [PyTorch](gnn/tgn/pytorch) |
+| NBFNet | GNN | Training, Inference | [PyTorch Geometric](gnn/nbfnet/pytorch_geometric) |
+| SchNet | GNN | Training, Inference | [PyTorch Geometric](gnn/schnet/pytorch_geometric) |
+| GPS++ - OGB-LSC PCQM4Mv2 competition submission | GNN | Training, Inference | [TensorFlow 2](gnn/ogb_lsc_pcqm4mv2/tensorflow2) |
 
 <br>
 
 ### <img width="25" src="https://user-images.githubusercontent.com/81682248/177359725-f8b1c268-ddbb-41c5-a037-16168564cacc.png"></a> AI for Simulation <a name="simulation"></a>
 
-| Model | Domain | Type | Source | Run on Gradient |
-| ------- | ------- | ------- | ------- | ------- |
-| Approximate Bayesian Computation (ABC) COVID-19 | Medical | Inference | [TensorFlow 2](ai_for_simulation/abc_covid_19/tensorflow2) | - |
+| Model | Domain | Type | Source |
+| ------- | ------- | ------- | ------- |
+| Approximate Bayesian Computation (ABC) COVID-19 | Medical | Inference | [TensorFlow 2](ai_for_simulation/abc_covid_19/tensorflow2) |
 
 
 <br>
@@ -263,7 +263,6 @@ Unless otherwise specified by a LICENSE file in a subdirectory, the LICENSE refe
 ## Connect with us
 <p align="center">
   <a href="https://www.graphcore.ai/join-community"><img src="https://img.shields.io/badge/Slack-4A154B.svg?style=for-the-badge&logo=Slack&logoColor=white"/></a>
-  <a href="https://twitter.com/graphcoreai"><img src="https://img.shields.io/badge/Twitter-1DA1F2.svg?style=for-the-badge&logo=Twitter&logoColor=white"/></a>
   <a href="https://www.linkedin.com/company/graphcore"><img src="https://img.shields.io/badge/LinkedIn-0A66C2.svg?style=for-the-badge&logo=LinkedIn&logoColor=white"/></a>
   <a href="http://www.facebook.com/pages/Graphcore/890447934394683"><img src="https://img.shields.io/badge/Facebook-1877F2.svg?style=for-the-badge&logo=Facebook&logoColor=white"/></a>
   <a href="https://www.youtube.com/c/Graphcore"><img src="https://img.shields.io/badge/YouTube-FF0000.svg?style=for-the-badge&logo=YouTube&logoColor=white"/></a>

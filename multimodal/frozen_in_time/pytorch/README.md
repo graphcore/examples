@@ -9,7 +9,7 @@ A Joint Video and Image Encoder for End-to-End Retrieval
 | PyTorch | Vision | Frozen in time |  | WebVid, MSR-VTT | <p style="text-align: center;">✅ <br> Min. 8 IPUs (POD16) required  | <p style="text-align: center;">❌ |[Frozen in Time: A Joint Video and Image Encoder for End-to-End Retrieval](https://arxiv.org/abs/2104.00650) |
 
 
-WebVid data can be found [here](https://m-bain.github.io/webvid-dataset/)
+WebVid data can be found [here](https://github.com/m-bain/webvid).
 
 
 ## Instructions summary
@@ -79,7 +79,7 @@ More detailed instructions on setting up your PyTorch environment are available 
 ## Dataset setup
 
 ### WebVid
-Download the dataset from [the source](http://www.robots.ox.ac.uk/~maxbain/webvid/results_2M_train.csv), as well as the [validation set.](http://www.robots.ox.ac.uk/~maxbain/webvid/results_2M_val.csv)
+As of 23 February 2024, these datasets are no longer available. The project [GitHub repository](https://github.com/m-bain/webvid) provides some guidance.
 
 Download the videos:
 ```bash
