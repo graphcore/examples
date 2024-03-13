@@ -39,7 +39,7 @@ regex==2021.8.3
 requests==2.27.1
 sacremoses==0.0.43
 scipy==1.5.4
-setuptools==59.6.0
+setuptools==65.5.1
 six==1.16.0
 smmap==3.0.5
 timm==0.5.4
