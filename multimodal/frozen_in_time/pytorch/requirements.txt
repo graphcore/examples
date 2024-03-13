@@ -53,7 +53,7 @@ tqdm==4.62.3
 transformers==4.11.3
 typing_extensions==4.0.1
 urllib3==1.26.8
-wheel==0.37.1
+wheel==0.38.1
 wrapt==1.14.1
 zipp==3.6.0
 opencv-python-headless==4.6.0.66
